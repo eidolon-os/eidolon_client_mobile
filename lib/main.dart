@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:video_player/video_player.dart';
 
 import 'src/avatar/avatar_stage.dart';
 import 'src/controller/client_controller.dart';
@@ -272,6 +273,9 @@ class _Stage extends StatelessWidget {
       hasVideoTrack: track != null,
       turn: state.agentTurn,
     );
+    // At idle, play the configured idle-loop clip over the placeholder (falls
+    // back to the placeholder when there's no clip / it fails to load).
+    final idleClipUrl = controller.idleClipUrl;
     final accent = switch (state.agentTurn) {
       AgentTurnState.listening => const Color(0xFF50E3C2),
       AgentTurnState.thinking => const Color(0xFF9B92FF),
@@ -323,71 +327,84 @@ class _Stage extends StatelessWidget {
                           fit: VideoViewFit.cover,
                           key: const ValueKey('avatar-video'),
                         )
-                      : Center(
+                      : Stack(
                           key: const ValueKey('avatar-idle'),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
-                                width: state.agentSpeaking ? 124 : 106,
-                                height: state.agentSpeaking ? 124 : 106,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: accent.withValues(alpha: .16),
-                                  border: Border.all(
-                                    color: accent.withValues(alpha: .55),
-                                    width: 2,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: accent.withValues(alpha: .28),
-                                      blurRadius: state.agentSpeaking ? 58 : 42,
-                                      spreadRadius:
-                                          state.agentSpeaking ? 12 : 7,
+                          fit: StackFit.expand,
+                          children: [
+                            Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  AnimatedContainer(
+                                    duration: const Duration(milliseconds: 300),
+                                    width: state.agentSpeaking ? 124 : 106,
+                                    height: state.agentSpeaking ? 124 : 106,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: accent.withValues(alpha: .16),
+                                      border: Border.all(
+                                        color: accent.withValues(alpha: .55),
+                                        width: 2,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: accent.withValues(alpha: .28),
+                                          blurRadius:
+                                              state.agentSpeaking ? 58 : 42,
+                                          spreadRadius:
+                                              state.agentSpeaking ? 12 : 7,
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
-                                child: Icon(
-                                  state.microphone == MicrophoneState.muted
-                                      ? Icons.mic_off_rounded
-                                      : state.agentTurn ==
-                                              AgentTurnState.thinking
-                                          ? Icons.auto_awesome_rounded
-                                          : Icons.graphic_eq_rounded,
-                                  size: 52,
-                                  color: accent,
-                                ),
-                              ),
-                              const SizedBox(height: 22),
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 180),
-                                child: Text(
-                                  state.headline,
-                                  key: ValueKey(state.headline),
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
+                                    child: Icon(
+                                      state.microphone == MicrophoneState.muted
+                                          ? Icons.mic_off_rounded
+                                          : state.agentTurn ==
+                                                  AgentTurnState.thinking
+                                              ? Icons.auto_awesome_rounded
+                                              : Icons.graphic_eq_rounded,
+                                      size: 52,
+                                      color: accent,
+                                    ),
                                   ),
-                                ),
-                              ),
-                              const SizedBox(height: 7),
-                              SizedBox(
-                                width: 360,
-                                child: Text(
-                                  state.supportingText,
-                                  textAlign: TextAlign.center,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white54,
-                                    height: 1.35,
+                                  const SizedBox(height: 22),
+                                  AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 180),
+                                    child: Text(
+                                      state.headline,
+                                      key: ValueKey(state.headline),
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                   ),
+                                  const SizedBox(height: 7),
+                                  SizedBox(
+                                    width: 360,
+                                    child: Text(
+                                      state.supportingText,
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white54,
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (idleClipUrl != null)
+                              Positioned.fill(
+                                child: _IdleClipStage(
+                                  url: idleClipUrl,
+                                  headersProvider: controller.idleClipHeaders,
                                 ),
                               ),
-                            ],
-                          ),
+                          ],
                         ),
                 ),
                 Positioned(
@@ -461,6 +478,91 @@ class _Stage extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Plays the companion's offline-generated idle-loop clip (fetched from hub with
+/// signed headers) on a loop as the resting placeholder. Renders nothing until
+/// the clip is ready and nothing on failure (404 / no clip), so the placeholder
+/// behind it shows through.
+class _IdleClipStage extends StatefulWidget {
+  const _IdleClipStage({required this.url, required this.headersProvider});
+  final String url;
+  final Future<Map<String, String>> Function() headersProvider;
+
+  @override
+  State<_IdleClipStage> createState() => _IdleClipStageState();
+}
+
+class _IdleClipStageState extends State<_IdleClipStage> {
+  VideoPlayerController? _player;
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(_IdleClipStage old) {
+    super.didUpdateWidget(old);
+    if (old.url != widget.url) {
+      _teardown();
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    try {
+      final headers = await widget.headersProvider();
+      final player = VideoPlayerController.networkUrl(
+        Uri.parse(widget.url),
+        httpHeaders: headers,
+      );
+      await player.initialize();
+      await player.setLooping(true);
+      await player.setVolume(0); // idle clip is silence-driven; keep it muted
+      await player.play();
+      if (!mounted) {
+        await player.dispose();
+        return;
+      }
+      setState(() {
+        _player = player;
+        _ready = true;
+      });
+    } catch (_) {
+      // No idle clip (404) or load failure → stay transparent; placeholder shows.
+    }
+  }
+
+  void _teardown() {
+    final player = _player;
+    _player = null;
+    _ready = false;
+    if (player != null) player.dispose();
+  }
+
+  @override
+  void dispose() {
+    _teardown();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final player = _player;
+    if (!_ready || player == null) return const SizedBox.shrink();
+    return FittedBox(
+      fit: BoxFit.cover,
+      clipBehavior: Clip.hardEdge,
+      child: SizedBox(
+        width: player.value.size.width,
+        height: player.value.size.height,
+        child: VideoPlayer(player),
       ),
     );
   }

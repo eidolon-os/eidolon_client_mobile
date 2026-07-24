@@ -12,6 +12,25 @@ void main() {
     });
   });
 
+  group('companionIdleUrl', () {
+    test('derives the idle path from the hub register origin', () {
+      expect(
+        companionIdleUrl(
+            'http://192.168.1.10:8082/api/device/register?agent_mode=streaming'),
+        'http://192.168.1.10:8082/api/avatar/idle/video',
+      );
+      expect(
+        companionIdleUrl('https://hub.local:8443/api/device/register'),
+        'https://hub.local:8443/api/avatar/idle/video',
+      );
+    });
+
+    test('returns null for an unparseable register url', () {
+      expect(companionIdleUrl(''), isNull);
+      expect(companionIdleUrl('not a url'), isNull);
+    });
+  });
+
   group('shouldShowAvatarVideo', () {
     test('shows the live talking-head only while speaking with a track', () {
       expect(

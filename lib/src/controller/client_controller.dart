@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:livekit_client/livekit_client.dart';
 
+import '../avatar/avatar_stage.dart';
 import '../models/client_ui_state.dart';
 import '../models/hub_models.dart';
 import '../platform/platform_bridge.dart';
@@ -99,6 +100,31 @@ class ClientController extends ChangeNotifier {
   bool get isBusy => _busy;
   bool get canJoin => phase == ClientPhase.ready;
   bool get canLeave => phase == ClientPhase.conversation;
+
+  /// The companion idle-loop clip URL to play at idle (client-side idle
+  /// placeholder), or null when not in a call / hub unknown.
+  String? get idleClipUrl {
+    final currentHub = hub;
+    if (currentHub == null || phase != ClientPhase.conversation) return null;
+    return companionIdleUrl(currentHub.registerUrl);
+  }
+
+  /// Signed headers to fetch the idle clip — same device auth as registration.
+  Future<Map<String, String>> idleClipHeaders() async {
+    final signed = await _platform.signRequest(
+      method: 'GET',
+      pathQuery: companionIdlePath,
+      body: '',
+    );
+    return {
+      'X-Device-ID': signed.deviceId,
+      'X-Device-Nonce': signed.nonce,
+      'X-Device-Timestamp': signed.timestamp,
+      'X-Device-Public-Key': signed.publicKey,
+      'X-Device-Signature': signed.signature,
+    };
+  }
+
   bool get isWaiting =>
       phase == ClientPhase.awaitingApproval ||
       phase == ClientPhase.awaitingBinding;
