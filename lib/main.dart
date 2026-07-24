@@ -108,6 +108,8 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
       children: [
         _Stage(controller: controller),
+        const SizedBox(height: 12),
+        _AgentStatePanel(controller: controller),
         const SizedBox(height: 16),
         ..._detailChildren(includeActions: true),
       ],
@@ -123,7 +125,16 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
         children: [
           Expanded(
             flex: 3,
-            child: Center(child: _Stage(controller: controller)),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _Stage(controller: controller),
+                  const SizedBox(height: 12),
+                  _AgentStatePanel(controller: controller),
+                ],
+              ),
+            ),
           ),
           const SizedBox(width: 24),
           Expanded(
@@ -269,6 +280,9 @@ class _Stage extends StatelessWidget {
     final state = controller.uiState;
     // Render the live talking-head only while the agent is speaking; the worker
     // publishes a frozen frame between turns, so idle keeps the local placeholder.
+    // Avatar area ONLY — the agent state machine (listening/thinking/speaking/
+    // idle) lives in the separate, always-on _AgentStatePanel, so the two never
+    // share a widget or flash against each other when video↔idle toggles.
     final showVideo = shouldShowAvatarVideo(
       hasVideoTrack: track != null,
       turn: state.agentTurn,
@@ -276,12 +290,6 @@ class _Stage extends StatelessWidget {
     // At idle, play the configured idle-loop clip over the placeholder (falls
     // back to the placeholder when there's no clip / it fails to load).
     final idleClipUrl = controller.idleClipUrl;
-    final accent = switch (state.agentTurn) {
-      AgentTurnState.listening => const Color(0xFF50E3C2),
-      AgentTurnState.thinking => const Color(0xFF9B92FF),
-      AgentTurnState.speaking => const Color(0xFF7B6CFF),
-      AgentTurnState.idle => const Color(0xFF6F61FF),
-    };
     return TweenAnimationBuilder<double>(
       key: ValueKey(state.attentionSequence),
       tween: Tween(begin: 0, end: 1),
@@ -331,72 +339,7 @@ class _Stage extends StatelessWidget {
                           key: const ValueKey('avatar-idle'),
                           fit: StackFit.expand,
                           children: [
-                            Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  AnimatedContainer(
-                                    duration: const Duration(milliseconds: 300),
-                                    width: state.agentSpeaking ? 124 : 106,
-                                    height: state.agentSpeaking ? 124 : 106,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: accent.withValues(alpha: .16),
-                                      border: Border.all(
-                                        color: accent.withValues(alpha: .55),
-                                        width: 2,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: accent.withValues(alpha: .28),
-                                          blurRadius:
-                                              state.agentSpeaking ? 58 : 42,
-                                          spreadRadius:
-                                              state.agentSpeaking ? 12 : 7,
-                                        ),
-                                      ],
-                                    ),
-                                    child: Icon(
-                                      state.microphone == MicrophoneState.muted
-                                          ? Icons.mic_off_rounded
-                                          : state.agentTurn ==
-                                                  AgentTurnState.thinking
-                                              ? Icons.auto_awesome_rounded
-                                              : Icons.graphic_eq_rounded,
-                                      size: 52,
-                                      color: accent,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 22),
-                                  AnimatedSwitcher(
-                                    duration: const Duration(milliseconds: 180),
-                                    child: Text(
-                                      state.headline,
-                                      key: ValueKey(state.headline),
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 7),
-                                  SizedBox(
-                                    width: 360,
-                                    child: Text(
-                                      state.supportingText,
-                                      textAlign: TextAlign.center,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white54,
-                                        height: 1.35,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                            const Center(child: _AvatarPlaceholder()),
                             if (idleClipUrl != null)
                               Positioned.fill(
                                 child: _IdleClipStage(
@@ -478,6 +421,99 @@ class _Stage extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Calm, static avatar placeholder shown when there's no live/idle video. It
+/// carries NO state (no color/size/icon by agent turn) — the state machine is
+/// the separate _AgentStatePanel — so the avatar area doesn't flash on toggles.
+class _AvatarPlaceholder extends StatelessWidget {
+  const _AvatarPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 104,
+      height: 104,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: .05),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: .16), width: 1.5),
+      ),
+      child: const Icon(Icons.person_rounded, size: 52, color: Colors.white38),
+    );
+  }
+}
+
+/// Dedicated, always-on display of the agent turn state (idle / listening /
+/// thinking / speaking). Decoupled from the avatar stage so state and avatar
+/// never share a widget or toggle against each other.
+class _AgentStatePanel extends StatelessWidget {
+  const _AgentStatePanel({required this.controller});
+  final ClientController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = controller.uiState;
+    final (Color color, IconData icon, String label) =
+        switch (state.agentTurn) {
+      AgentTurnState.listening => (
+          const Color(0xFF50E3C2),
+          Icons.hearing_rounded,
+          '正在聆听',
+        ),
+      AgentTurnState.thinking => (
+          const Color(0xFF9B92FF),
+          Icons.auto_awesome_rounded,
+          '思考中',
+        ),
+      AgentTurnState.speaking => (
+          const Color(0xFF7B6CFF),
+          Icons.graphic_eq_rounded,
+          '说话中',
+        ),
+      AgentTurnState.idle => (
+          const Color(0xFF8A8AA0),
+          Icons.hourglass_empty_rounded,
+          '待命',
+        ),
+    };
+    final active = state.agentTurn != AgentTurnState.idle;
+    final muted = state.microphone == MicrophoneState.muted;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        color: const Color(0xFF171720),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: active ? .5 : .16)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+          ),
+          const SizedBox(width: 10),
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+          ),
+          if (muted) ...[
+            const Spacer(),
+            const Icon(Icons.mic_off_rounded,
+                size: 16, color: Color(0xFFFFC96B)),
+            const SizedBox(width: 6),
+            const Text('已静音',
+                style: TextStyle(color: Color(0xFFFFD38B), fontSize: 12)),
+          ],
+        ],
       ),
     );
   }
