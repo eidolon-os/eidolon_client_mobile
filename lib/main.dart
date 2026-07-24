@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -270,23 +271,61 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _Stage extends StatelessWidget {
+class _Stage extends StatefulWidget {
   const _Stage({required this.controller});
   final ClientController controller;
 
   @override
+  State<_Stage> createState() => _StageState();
+}
+
+class _StageState extends State<_Stage> {
+  bool _showVideo = false;
+  Timer? _hideTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_syncVideoVisibility);
+    _syncVideoVisibility();
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_syncVideoVisibility);
+    _hideTimer?.cancel();
+    super.dispose();
+  }
+
+  // Keep the avatar visible through thinking + brief between-turn gaps; only a
+  // sustained inactive period (avatarInactiveHold) falls back to the idle loop,
+  // so the avatar never blinks out mid-conversation.
+  void _syncVideoVisibility() {
+    final active = isAvatarVideoActive(
+      hasVideoTrack: widget.controller.remoteVideoTrack != null,
+      turn: widget.controller.uiState.agentTurn,
+    );
+    if (active) {
+      _hideTimer?.cancel();
+      _hideTimer = null;
+      if (!_showVideo && mounted) setState(() => _showVideo = true);
+    } else if (_showVideo && _hideTimer == null) {
+      _hideTimer = Timer(avatarInactiveHold, () {
+        _hideTimer = null;
+        if (mounted) setState(() => _showVideo = false);
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final controller = widget.controller;
     final track = controller.remoteVideoTrack;
     final state = controller.uiState;
-    // Render the live talking-head only while the agent is speaking; the worker
-    // publishes a frozen frame between turns, so idle keeps the local placeholder.
-    // Avatar area ONLY — the agent state machine (listening/thinking/speaking/
-    // idle) lives in the separate, always-on _AgentStatePanel, so the two never
-    // share a widget or flash against each other when video↔idle toggles.
-    final showVideo = shouldShowAvatarVideo(
-      hasVideoTrack: track != null,
-      turn: state.agentTurn,
-    );
+    // Avatar area ONLY — the agent state machine lives in _AgentStatePanel.
+    // Show the live/last-frame video while active (speaking/thinking) + debounce;
+    // a sustained pause falls to the idle loop / placeholder.
+    final showVideo = _showVideo && track != null;
     // At idle, play the configured idle-loop clip over the placeholder (falls
     // back to the placeholder when there's no clip / it fails to load).
     final idleClipUrl = controller.idleClipUrl;
@@ -331,7 +370,7 @@ class _Stage extends StatelessWidget {
                   duration: const Duration(milliseconds: 260),
                   child: showVideo
                       ? VideoTrackRenderer(
-                          track!,
+                          track,
                           fit: VideoViewFit.cover,
                           key: const ValueKey('avatar-video'),
                         )

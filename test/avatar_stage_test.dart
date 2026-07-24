@@ -31,32 +31,31 @@ void main() {
     });
   });
 
-  group('shouldShowAvatarVideo', () {
-    test('shows the live talking-head only while speaking with a track', () {
+  group('isAvatarVideoActive', () {
+    test('active while speaking or thinking (kept through thinking gaps)', () {
       expect(
-        shouldShowAvatarVideo(
-            hasVideoTrack: true, turn: AgentTurnState.speaking),
+        isAvatarVideoActive(hasVideoTrack: true, turn: AgentTurnState.speaking),
+        isTrue,
+      );
+      expect(
+        isAvatarVideoActive(hasVideoTrack: true, turn: AgentTurnState.thinking),
         isTrue,
       );
     });
 
-    test('hides video at idle/listening/thinking even when a track exists', () {
-      for (final turn in [
-        AgentTurnState.idle,
-        AgentTurnState.listening,
-        AgentTurnState.thinking,
-      ]) {
+    test('inactive at idle/listening (a sustained pause → idle loop)', () {
+      for (final turn in [AgentTurnState.idle, AgentTurnState.listening]) {
         expect(
-          shouldShowAvatarVideo(hasVideoTrack: true, turn: turn),
+          isAvatarVideoActive(hasVideoTrack: true, turn: turn),
           isFalse,
-          reason: 'turn=$turn should keep the local placeholder',
+          reason: 'turn=$turn should (after the hold) fall back to idle',
         );
       }
     });
 
-    test('hides video while speaking before the track arrives', () {
+    test('inactive without a track regardless of turn', () {
       expect(
-        shouldShowAvatarVideo(
+        isAvatarVideoActive(
             hasVideoTrack: false, turn: AgentTurnState.speaking),
         isFalse,
       );
