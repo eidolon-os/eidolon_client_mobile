@@ -111,8 +111,15 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
         _Stage(controller: controller),
         const SizedBox(height: 12),
         _AgentStatePanel(controller: controller),
+        // Primary action sits right under the stage — "开始全双工对话" used to be
+        // last in the list, pushed below the fold by the status card/transcript.
+        const SizedBox(height: 12),
+        KeyedSubtree(
+          key: const Key('compact-actions'),
+          child: _Actions(controller: controller, onManualUrl: _showManualUrl),
+        ),
         const SizedBox(height: 16),
-        ..._detailChildren(includeActions: true),
+        ..._detailChildren(includeActions: false),
       ],
     );
   }

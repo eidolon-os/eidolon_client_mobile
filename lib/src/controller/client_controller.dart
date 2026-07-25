@@ -101,11 +101,18 @@ class ClientController extends ChangeNotifier {
   bool get canJoin => phase == ClientPhase.ready;
   bool get canLeave => phase == ClientPhase.conversation;
 
-  /// The companion idle-loop clip URL to play at idle (client-side idle
-  /// placeholder), or null when not in a call / hub unknown.
+  /// The companion idle-loop clip URL — the resting face. Shown whenever the
+  /// device is provisioned (standby included, where only the control room is
+  /// connected), so the companion still has a face between calls instead of a
+  /// blank placeholder. Null only when the hub / device isn't ready yet.
   String? get idleClipUrl {
     final currentHub = hub;
-    if (currentHub == null || phase != ClientPhase.conversation) return null;
+    if (currentHub == null) return null;
+    const usable = {
+      ClientPhase.ready,
+      ClientPhase.conversation,
+    };
+    if (!usable.contains(phase)) return null;
     return companionIdleUrl(currentHub.registerUrl);
   }
 
