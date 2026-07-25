@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.provider.Settings
 import android.util.Base64
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -22,7 +23,6 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
-import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : FlutterActivity() {
@@ -30,8 +30,7 @@ class MainActivity : FlutterActivity() {
         private const val CHANNEL = "live.eidolon.mobile/platform"
         private const val SERVICE_TYPE = "_eidolon-hub._tcp."
         private const val KEY_ALIAS = "eidolon-mobile-device-p256-v1"
-        private const val PREFS = "eidolon_mobile_identity"
-        private const val PREF_DEVICE_ID = "device_id"
+        private const val DEVICE_ID_NAMESPACE = "eidolon-mobile-android-v1"
         private const val MIC_REQUEST_CODE = 7001
     }
 
@@ -61,14 +60,17 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun deviceId(): String {
-        val preferences = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        preferences.getString(PREF_DEVICE_ID, null)?.let { return it }
-        // Privacy-preserving and install-scoped. A reinstall creates a new ID
-        // together with a new Keystore key, avoiding an apparent key rotation on
-        // a previously approved Hub device record.
-        val created = "mobile-${UUID.randomUUID()}"
-        preferences.edit().putString(PREF_DEVICE_ID, created).apply()
-        return created
+        // ANDROID_ID is stable across uninstall/reinstall for the same Android
+        // user and signing key (Android 8+), but is not a globally reusable
+        // hardware serial. Hashing it with an Eidolon namespace keeps the Hub
+        // identity deterministic without exposing the platform identifier.
+        val androidId = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ANDROID_ID,
+        )?.trim().orEmpty()
+        check(androidId.isNotEmpty()) { "ANDROID_ID is unavailable" }
+        val seed = "$DEVICE_ID_NAMESPACE:$androidId"
+        return "mobile-android-${hex(sha256(seed.toByteArray(StandardCharsets.UTF_8))).take(32)}"
     }
 
     private fun ensureKeyEntry(): KeyStore.PrivateKeyEntry {

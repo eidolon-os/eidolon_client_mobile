@@ -46,6 +46,25 @@ flutter pub get
 flutter run
 ```
 
+也可以使用项目内的 Android 运维脚本。工具链默认读取 `~/Developer` 下已经
+安装的 Flutter 与 Android SDK：
+
+```bash
+./scripts/android-mobile.sh devices
+./scripts/android-mobile.sh diagnose
+./scripts/android-mobile.sh build
+./scripts/android-mobile.sh install --serial df331f93
+./scripts/android-mobile.sh restart --serial df331f93
+./scripts/android-mobile.sh reinstall --serial df331f93
+./scripts/android-mobile.sh logs --serial df331f93
+```
+
+`install` 使用覆盖安装并保留应用数据；`reinstall` 会先卸载再进行干净安装。
+Android 设备 ID 基于系统的 `ANDROID_ID` 确定性生成，因此使用同一 Android
+用户和同一 APK 签名密钥重装后，Hub 中仍是同一个 `device_id`。卸载会删除
+AndroidKeyStore 私钥，所以干净重装后 Hub 会在原设备记录上发起安全的密钥
+重新登记，需要管理员再次批准，不会创建另一台设备。
+
 首次启动点击“发现并连接 Hub”。设备出现于管理端后完成批准和 Companion
 绑定，客户端会自动进入 Ready。点击“开始对话”后授予麦克风权限即可进入
 LiveKit 语音房间。
