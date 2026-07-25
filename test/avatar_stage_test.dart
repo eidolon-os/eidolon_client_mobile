@@ -32,23 +32,14 @@ void main() {
   });
 
   group('isAvatarVideoActive', () {
-    test('active while speaking or thinking (kept through thinking gaps)', () {
-      expect(
-        isAvatarVideoActive(hasVideoTrack: true, turn: AgentTurnState.speaking),
-        isTrue,
-      );
-      expect(
-        isAvatarVideoActive(hasVideoTrack: true, turn: AgentTurnState.thinking),
-        isTrue,
-      );
-    });
-
-    test('inactive at idle/listening (a sustained pause → idle loop)', () {
-      for (final turn in [AgentTurnState.idle, AgentTurnState.listening]) {
+    test(
+        'active for every turn state while the avatar track remains subscribed',
+        () {
+      for (final turn in AgentTurnState.values) {
         expect(
           isAvatarVideoActive(hasVideoTrack: true, turn: turn),
-          isFalse,
-          reason: 'turn=$turn should (after the hold) fall back to idle',
+          isTrue,
+          reason: 'turn=$turn should keep the worker last frame visible',
         );
       }
     });

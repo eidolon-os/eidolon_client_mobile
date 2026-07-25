@@ -30,21 +30,14 @@ String? companionIdleUrl(String registerUrl) {
   ).toString();
 }
 
-/// Whether the avatar is "active" — the agent is producing video (speaking) or
-/// about to (thinking). The worker publishes its track for the whole session
-/// (a frozen frame between turns), so track presence alone is NOT the signal.
+/// Whether the live avatar should remain on stage.
 ///
-/// Kept for *both* speaking and thinking (plus a debounce applied by the stage,
-/// see [avatarInactiveHold]) so the avatar doesn't blink out during thinking or
-/// the brief listening/idle gaps between turns — only a sustained pause falls
-/// back to the idle loop / placeholder.
+/// The worker intentionally keeps its track alive and freezes the last frame
+/// between turns. Therefore a subscribed track remains the correct resting face
+/// while listening/idle; switching it out based on turn state makes the avatar
+/// disappear exactly when the user starts speaking.
 bool isAvatarVideoActive({
   required bool hasVideoTrack,
   required AgentTurnState turn,
 }) =>
-    hasVideoTrack &&
-    (turn == AgentTurnState.speaking || turn == AgentTurnState.thinking);
-
-/// How long to keep showing the avatar after it goes inactive, so momentary
-/// state flips / short gaps between turns don't hide it.
-const avatarInactiveHold = Duration(milliseconds: 1500);
+    hasVideoTrack;

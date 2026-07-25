@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:video_player/video_player.dart';
 
+import 'src/avatar/idle_clip_cache.dart';
 import 'src/avatar/avatar_stage.dart';
 import 'src/controller/client_controller.dart';
 
@@ -288,7 +289,6 @@ class _Stage extends StatefulWidget {
 
 class _StageState extends State<_Stage> {
   bool _showVideo = false;
-  Timer? _hideTimer;
 
   @override
   void initState() {
@@ -300,28 +300,18 @@ class _StageState extends State<_Stage> {
   @override
   void dispose() {
     widget.controller.removeListener(_syncVideoVisibility);
-    _hideTimer?.cancel();
     super.dispose();
   }
 
-  // Keep the avatar visible through thinking + brief between-turn gaps; only a
-  // sustained inactive period (avatarInactiveHold) falls back to the idle loop,
-  // so the avatar never blinks out mid-conversation.
+  // Once subscribed, the worker's frozen last frame remains the resting face
+  // through listening/idle. Only an actual track removal falls back to the local
+  // idle clip.
   void _syncVideoVisibility() {
     final active = isAvatarVideoActive(
       hasVideoTrack: widget.controller.remoteVideoTrack != null,
       turn: widget.controller.uiState.agentTurn,
     );
-    if (active) {
-      _hideTimer?.cancel();
-      _hideTimer = null;
-      if (!_showVideo && mounted) setState(() => _showVideo = true);
-    } else if (_showVideo && _hideTimer == null) {
-      _hideTimer = Timer(avatarInactiveHold, () {
-        _hideTimer = null;
-        if (mounted) setState(() => _showVideo = false);
-      });
-    }
+    if (_showVideo != active && mounted) setState(() => _showVideo = active);
   }
 
   @override
@@ -330,8 +320,7 @@ class _StageState extends State<_Stage> {
     final track = controller.remoteVideoTrack;
     final state = controller.uiState;
     // Avatar area ONLY — the agent state machine lives in _AgentStatePanel.
-    // Show the live/last-frame video while active (speaking/thinking) + debounce;
-    // a sustained pause falls to the idle loop / placeholder.
+    // Keep the subscribed live/last-frame video for the entire voice session.
     final showVideo = _showVideo && track != null;
     // At idle, play the configured idle-loop clip over the placeholder (falls
     // back to the placeholder when there's no clip / it fails to load).
@@ -504,8 +493,14 @@ class _AgentStatePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = controller.uiState;
-    final (Color color, IconData icon, String label) =
-        switch (state.agentTurn) {
+    // A connected full-duplex conversation is listening whenever no explicit
+    // thinking/speaking state is active. `idle` is reserved for control-only
+    // standby so the room state and agent turn state are not conflated.
+    final displayedTurn = state.phase == ClientPhase.conversation &&
+            state.agentTurn == AgentTurnState.idle
+        ? AgentTurnState.listening
+        : state.agentTurn;
+    final (Color color, IconData icon, String label) = switch (displayedTurn) {
       AgentTurnState.listening => (
           const Color(0xFF50E3C2),
           Icons.hearing_rounded,
@@ -524,10 +519,10 @@ class _AgentStatePanel extends StatelessWidget {
       AgentTurnState.idle => (
           const Color(0xFF8A8AA0),
           Icons.hourglass_empty_rounded,
-          '待命',
+          state.phase == ClientPhase.ready ? 'Control Room 待命' : '待命',
         ),
     };
-    final active = state.agentTurn != AgentTurnState.idle;
+    final active = displayedTurn != AgentTurnState.idle;
     final muted = state.microphone == MicrophoneState.muted;
     return Container(
       width: double.infinity,
@@ -580,11 +575,13 @@ class _IdleClipStage extends StatefulWidget {
 
 class _IdleClipStageState extends State<_IdleClipStage> {
   VideoPlayerController? _player;
+  late final IdleClipCache _cache;
   bool _ready = false;
 
   @override
   void initState() {
     super.initState();
+    _cache = IdleClipCache();
     _load();
   }
 
@@ -599,11 +596,14 @@ class _IdleClipStageState extends State<_IdleClipStage> {
 
   Future<void> _load() async {
     try {
-      final headers = await widget.headersProvider();
-      final player = VideoPlayerController.networkUrl(
-        Uri.parse(widget.url),
-        httpHeaders: headers,
+      // Download with a fresh one-shot signature, then loop locally. ExoPlayer
+      // may otherwise repeat a network request with the same nonce and receive
+      // Hub's anti-replay 409.
+      final file = await _cache.download(
+        url: widget.url,
+        headersProvider: widget.headersProvider,
       );
+      final player = VideoPlayerController.file(file);
       await player.initialize();
       await player.setLooping(true);
       await player.setVolume(0); // idle clip is silence-driven; keep it muted
@@ -616,8 +616,9 @@ class _IdleClipStageState extends State<_IdleClipStage> {
         _player = player;
         _ready = true;
       });
-    } catch (_) {
-      // No idle clip (404) or load failure → stay transparent; placeholder shows.
+    } catch (exception) {
+      debugPrint('Idle clip load failed: $exception');
+      // No idle clip or load failure → stay transparent; placeholder shows.
     }
   }
 
@@ -631,6 +632,7 @@ class _IdleClipStageState extends State<_IdleClipStage> {
   @override
   void dispose() {
     _teardown();
+    _cache.close();
     super.dispose();
   }
 

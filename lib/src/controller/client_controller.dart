@@ -246,7 +246,9 @@ class ClientController extends ChangeNotifier {
       await _session.connectVoice(fresh.active);
       await _vad.start();
       microphoneState = MicrophoneState.enabled;
-      agentTurn = AgentTurnState.idle;
+      // Full-duplex mobile starts listening as soon as the voice room is ready.
+      // Do not overwrite an early `listening` packet from channel with `idle`.
+      agentTurn = AgentTurnState.listening;
       _setPhase(ClientPhase.conversation);
       await _session.publishAudioState(
         muted: false,
@@ -579,12 +581,15 @@ class ClientController extends ChangeNotifier {
     try {
       final root = jsonDecode(payload) as Map<String, dynamic>;
       final state = (root['state'] ?? root['phase'])?.toString() ?? '';
-      agentTurn = switch (state) {
+      final nextTurn = switch (state) {
         'listening' => AgentTurnState.listening,
         'thinking' => AgentTurnState.thinking,
         'speaking' || 'agent_speaking' => AgentTurnState.speaking,
-        _ => AgentTurnState.idle,
+        _ => null,
       };
+      // Unknown packets must not reset a healthy full-duplex session to idle.
+      if (nextTurn == null) return;
+      agentTurn = nextTurn;
       if (phase == ClientPhase.conversation) {
         unawaited(
           _session.publishAudioState(
