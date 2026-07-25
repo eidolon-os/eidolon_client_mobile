@@ -362,28 +362,29 @@ class _StageState extends State<_Stage> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // One decoder at a time. The live track is published on its very
-                // first frame — i.e. exactly as speech starts — so swapping whole
-                // subtrees there (AnimatedSwitcher keeps both mounted through the
-                // fade) had the idle clip's MediaCodec and WebRTC decoding at once
-                // right when audio begins. Instead the resting face stays mounted
-                // and is paused the instant the live track takes over, which
-                // fades in above it.
-                const Center(child: _AvatarPlaceholder()),
-                if (idleClipUrl != null)
-                  Positioned.fill(
-                    child: _IdleClipStage(
-                      url: idleClipUrl,
-                      headersProvider: controller.idleClipHeaders,
-                      paused: showVideo,
-                    ),
-                  ),
-                if (showVideo)
-                  Positioned.fill(
-                    child: _FadeIn(
-                      child: VideoTrackRenderer(track, fit: VideoViewFit.cover),
-                    ),
-                  ),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 260),
+                  child: showVideo
+                      ? VideoTrackRenderer(
+                          track,
+                          fit: VideoViewFit.cover,
+                          key: const ValueKey('avatar-video'),
+                        )
+                      : Stack(
+                          key: const ValueKey('avatar-idle'),
+                          fit: StackFit.expand,
+                          children: [
+                            const Center(child: _AvatarPlaceholder()),
+                            if (idleClipUrl != null)
+                              Positioned.fill(
+                                child: _IdleClipStage(
+                                  url: idleClipUrl,
+                                  headersProvider: controller.idleClipHeaders,
+                                ),
+                              ),
+                          ],
+                        ),
+                ),
                 Positioned(
                   left: 18,
                   top: 18,
@@ -458,35 +459,6 @@ class _StageState extends State<_Stage> {
       ),
     );
   }
-}
-
-/// Fades its child in once, so the live talking-head appears over the resting
-/// face instead of the two swapping (which would mount both at once).
-class _FadeIn extends StatefulWidget {
-  const _FadeIn({required this.child});
-  final Widget child;
-
-  @override
-  State<_FadeIn> createState() => _FadeInState();
-}
-
-class _FadeInState extends State<_FadeIn> {
-  double _opacity = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() => _opacity = 1);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => AnimatedOpacity(
-        opacity: _opacity,
-        duration: const Duration(milliseconds: 220),
-        child: widget.child,
-      );
 }
 
 /// Calm, static avatar placeholder shown when there's no live/idle video. It
@@ -593,18 +565,9 @@ class _AgentStatePanel extends StatelessWidget {
 /// the clip is ready and nothing on failure (404 / no clip), so the placeholder
 /// behind it shows through.
 class _IdleClipStage extends StatefulWidget {
-  const _IdleClipStage({
-    required this.url,
-    required this.headersProvider,
-    this.paused = false,
-  });
+  const _IdleClipStage({required this.url, required this.headersProvider});
   final String url;
   final Future<Map<String, String>> Function() headersProvider;
-
-  /// Stop decoding while the live talking-head is on screen. Two video decoders
-  /// running at once — this clip and WebRTC — hitches the audio right as speech
-  /// starts, which is precisely when the live track appears.
-  final bool paused;
 
   @override
   State<_IdleClipStage> createState() => _IdleClipStageState();
@@ -628,18 +591,6 @@ class _IdleClipStageState extends State<_IdleClipStage> {
     if (old.url != widget.url) {
       _teardown();
       _load();
-      return;
-    }
-    if (old.paused != widget.paused) _applyPaused();
-  }
-
-  void _applyPaused() {
-    final player = _player;
-    if (player == null) return;
-    if (widget.paused) {
-      player.pause();
-    } else {
-      player.play();
     }
   }
 
@@ -656,7 +607,7 @@ class _IdleClipStageState extends State<_IdleClipStage> {
       await player.initialize();
       await player.setLooping(true);
       await player.setVolume(0); // idle clip is silence-driven; keep it muted
-      if (!widget.paused) await player.play();
+      await player.play();
       if (!mounted) {
         await player.dispose();
         return;
