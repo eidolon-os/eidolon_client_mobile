@@ -40,4 +40,23 @@ void main() {
     }));
     expect(command?.expired, isTrue);
   });
+
+  group('roomJoinSessionIntent', () {
+    test('defaults missing and unknown intent to a normal user session', () {
+      expect(roomJoinSessionIntent(const {}), sessionIntentUserInitiated);
+      expect(
+        roomJoinSessionIntent(const {'session_intent': 'unexpected'}),
+        sessionIntentUserInitiated,
+      );
+    });
+
+    test('preserves an explicit proactive intent', () {
+      expect(
+        roomJoinSessionIntent(
+          const {'session_intent': sessionIntentProactive},
+        ),
+        sessionIntentProactive,
+      );
+    });
+  });
 }

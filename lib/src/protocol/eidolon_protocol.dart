@@ -7,6 +7,23 @@ const sessionControlTopic = 'eidolon.session_control';
 const transcriptionTopic = 'lk.transcription';
 const agentSessionTopic = 'lk.agent.session';
 
+const controlOpRoomJoin = 'room.join';
+const sessionIntentField = 'session_intent';
+const sessionIntentUserInitiated = 'user_initiated';
+const sessionIntentProactive = 'proactive_initiated';
+
+/// Resolves the intent carried by a cross-session `room.join` command.
+///
+/// Missing and unknown values are normal user-like sessions. Proactive behavior
+/// must always be explicitly requested by the trusted Hub orchestrator. This is
+/// the same defensive default used by Hub and the ESP32 client.
+String roomJoinSessionIntent(Map<String, dynamic> payload) {
+  final value = payload[sessionIntentField]?.toString().trim().toLowerCase();
+  return value == sessionIntentProactive
+      ? sessionIntentProactive
+      : sessionIntentUserInitiated;
+}
+
 class ControlCommand {
   const ControlCommand({
     required this.id,

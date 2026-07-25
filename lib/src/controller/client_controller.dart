@@ -219,7 +219,9 @@ class ClientController extends ChangeNotifier {
     });
   }
 
-  Future<void> join({String sessionIntent = 'user_initiated'}) async {
+  Future<void> join({
+    String sessionIntent = sessionIntentUserInitiated,
+  }) async {
     if (_busy ||
         (phase != ClientPhase.ready && phase != ClientPhase.conversation)) {
       return;
@@ -456,11 +458,10 @@ class ClientController extends ChangeNotifier {
       return;
     }
     switch (command.op) {
-      case 'room.join':
+      case controlOpRoomJoin:
         await _ack(command, 'accepted', 'OK');
         await join(
-          sessionIntent: command.payload['session_intent']?.toString() ??
-              'proactive_initiated',
+          sessionIntent: roomJoinSessionIntent(command.payload),
         );
         if (phase == ClientPhase.conversation) {
           await _ack(command, 'completed', 'OK', result: {'joined': true});
