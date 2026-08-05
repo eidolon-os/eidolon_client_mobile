@@ -1,8 +1,24 @@
-# Eidolon Mobile Client Demo 架构
+# Eidolon Mobile Client 架构
 
-## 首版目标
+## 当前优先级：Host Control first
 
-首版以 Android 真机可运行、可与现有 Eidolon Hub/Channel 联调为验收口径：
+当前 App Shell 默认进入 `features/host_setup`，只与 `eidolon_admin` 的 Local API
+交互。第一条已落地链路是：
+
+```text
+HostSetupPage -> LocalApiClient -> GET /api/local/v1/host
+                                  -> bootstrapd health snapshot
+```
+
+Mobile 不直接访问 Admin 运维 API。首次接入 transport、网络 mutation 和 Controller
+认证在对应 Host 侧能力完成后接入；当前只读链路不能被描述成首次配网完成。
+
+原有 `ClientPage`、`ClientController`、HubClient 和 LiveKit session 暂时作为保留的
+Conversation 功能存在，不参与默认启动，也不在 Host Control 阶段调试。
+
+## 保留的 Conversation 实现
+
+以下能力来自原 Audio Demo，代码与测试继续保留：
 
 1. 通过 `_eidolon-hub._tcp.local.` 发现 Hub，并读取 `register_url`。
 2. 生成并持久化 P-256 设备身份，按 ESP32 相同的 canonical request 规则签名注册请求。
@@ -42,4 +58,3 @@ Android 原生层只承载平台强相关能力。Hub 协议模型、注册流�
 - 后台常驻、锁屏保活、蓝牙耳机的完整产品化策略。
 - 数字人生成服务；但客户端已经能订阅并渲染远端视频轨。
 - iOS 原生桥接实现与发布配置。
-

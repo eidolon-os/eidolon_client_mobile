@@ -1,7 +1,15 @@
-# Eidolon Mobile Client Demo
+# Eidolon Mobile Client
 
-面向 Android 的 Eidolon 移动端首版 Demo，业务层使用 Flutter，并沿用
-`eidolon-client-esp32` 的核心接入流程：
+当前首要目标是成为无屏 Eidolon OS 主机的接入和管理界面。App 默认进入 Host
+Setup，通过树莓派上 `eidolon_admin` 提供的 Local API 读取 Host Identity 和
+Bootstrap 状态：
+
+```text
+Mobile Host Setup -> eidolon-local-api -> bootstrapd
+```
+
+现有 Hub/LiveKit/Audio Demo 保留在同一 codebase，但已退出默认启动流程，等主机
+初始化和管理闭环稳定后再重新接入：
 
 ```text
 mDNS 发现 Hub -> P-256 签名注册 -> 审批/绑定 -> LiveKit control room
@@ -9,6 +17,14 @@ mDNS 发现 Hub -> P-256 签名注册 -> 审批/绑定 -> LiveKit control room
 ```
 
 ## 已实现
+
+- 默认 Host Setup 页面和版本化 Local API client。
+- 读取 `GET /api/local/v1/host`，严格解析 Host ID、公钥指纹、运行模式以及
+  claim/network/workspace/recovery 状态。
+- Debug 构建可手工输入 Local API 地址，或通过 `EIDOLON_LOCAL_API_URL` dart-define
+  注入开发地址；地址不接受 credentials、query、fragment 或 Admin 子路径。
+- Host Setup 不调用 Admin 运维 API、Hub、LiveKit 或 Audio Channel。
+- 原 Audio Demo 的控制器、AEC、Avatar 和回归测试均保留。
 
 - Android mDNS/NSD 发现 `_eidolon-hub._tcp.local.`，支持手动输入
   `register_url` 作为调试兜底。
@@ -43,8 +59,12 @@ JDK 17:      /opt/homebrew/opt/openjdk@17
 
 ```bash
 flutter pub get
-flutter run
+flutter run --dart-define=EIDOLON_LOCAL_API_URL=http://eidolon.local:9002
 ```
+
+当前 Local API 端点是只读的。开发环境需要让 `eidolon-local-api` 监听手机可访问的
+接口；产品环境将由受控的本地入口暴露，不能直接开放 Admin API。未提供 dart-define
+时，用户可以在 Host Setup 页面手工输入地址。
 
 也可以使用项目内的 Android 运维脚本。工具链默认读取 `~/Developer` 下已经
 安装的 Flutter 与 Android SDK：
@@ -65,9 +85,8 @@ Android 设备 ID 基于系统的 `ANDROID_ID` 确定性生成，因此使用同
 AndroidKeyStore 私钥，所以干净重装后 Hub 会在原设备记录上发起安全的密钥
 重新登记，需要管理员再次批准，不会创建另一台设备。
 
-首次启动点击“发现并连接 Hub”。设备出现于管理端后完成批准和 Companion
-绑定，客户端会自动进入 Ready。点击“开始对话”后授予麦克风权限即可进入
-LiveKit 语音房间。
+下面的 Hub 注册和 Audio 使用说明属于保留的后续 Conversation 功能，当前不再是
+App 首次启动流程。待 Host 达到产品定义的 ready 状态后，再恢复对应入口。
 
 若 Android 网络环境拦截 mDNS，可点击“手动输入地址”，格式示例：
 

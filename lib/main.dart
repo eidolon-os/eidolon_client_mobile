@@ -9,6 +9,7 @@ import 'package:video_player/video_player.dart';
 import 'src/avatar/idle_clip_cache.dart';
 import 'src/avatar/avatar_stage.dart';
 import 'src/controller/client_controller.dart';
+import 'src/features/host_setup/host_setup_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,7 +32,7 @@ class EidolonMobileApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFF0D0D13),
         useMaterial3: true,
       ),
-      home: const ClientPage(),
+      home: const HostSetupPage(),
     );
   }
 }

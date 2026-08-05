@@ -9,7 +9,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
 
-    await tester.pumpWidget(const EidolonMobileApp());
+    await tester.pumpWidget(const MaterialApp(home: ClientPage()));
     await tester.pump();
   }
 
