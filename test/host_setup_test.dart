@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'support/setup_fixtures.dart';
+
 const _hostOverview = <String, dynamic>{
   'contract_version': '1',
   'status': 'running',
@@ -29,6 +31,11 @@ const _hostOverview = <String, dynamic>{
     'updated_at': '2026-08-05T00:00:00Z',
   },
 };
+
+Future<void> _useTallViewport(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(900, 1800));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+}
 
 void main() {
   test('parses the Admin Local API host contract', () {
@@ -51,10 +58,20 @@ void main() {
   });
 
   test('LocalApiClient calls only the versioned host endpoint', () async {
-    Uri? requested;
+    final requested = <Uri>[];
     final client = LocalApiClient(
       httpClient: MockClient((request) async {
-        requested = request.url;
+        requested.add(request.url);
+        if (request.url.path == '/api/local/v1/host/proof') {
+          expect(
+            jsonDecode(request.body),
+            {
+              'contract_version': '1',
+              'challenge': validHostChallenge,
+            },
+          );
+          return http.Response(jsonEncode(validHostProof), 200);
+        }
         return http.Response(
           jsonEncode(_hostOverview),
           200,
@@ -64,9 +81,17 @@ void main() {
     );
 
     final host = await client.fetchHost('http://eidolon.local:9002');
+    final proof = await client.fetchHostProof(
+      'http://eidolon.local:9002',
+      validHostChallenge,
+    );
 
-    expect(requested, Uri.parse('http://eidolon.local:9002/api/local/v1/host'));
+    expect(requested, [
+      Uri.parse('http://eidolon.local:9002/api/local/v1/host'),
+      Uri.parse('http://eidolon.local:9002/api/local/v1/host/proof'),
+    ]);
     expect(host.descriptor.hostId, 'ehost-0123456789abcdefabcd');
+    expect(proof.challenge, validHostChallenge);
   });
 
   test('LocalApiClient refuses credentials and paths in a base URL', () {
@@ -90,13 +115,19 @@ void main() {
   });
 
   testWidgets('Host Setup renders the real Local API snapshot', (tester) async {
+    await _useTallViewport(tester);
     final client = LocalApiClient(
       httpClient: MockClient(
         (_) async => http.Response(jsonEncode(_hostOverview), 200),
       ),
     );
     await tester.pumpWidget(
-      MaterialApp(home: HostSetupPage(localApiClient: client)),
+      MaterialApp(
+        home: HostSetupPage(
+          localApiClient: client,
+          clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
+        ),
+      ),
     );
 
     await tester.enterText(
@@ -107,9 +138,90 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('host-overview')), findsOneWidget);
-    expect(find.text('Bootstrap 正在运行'), findsOneWidget);
+    expect(find.text('Bootstrap 可达（身份未验证）'), findsOneWidget);
     expect(find.text('ehost-0123456789abcdefabcd'), findsOneWidget);
     expect(find.text('未配置'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Host Setup verifies trust before matching Local API',
+      (tester) async {
+    await _useTallViewport(tester);
+    final client = LocalApiClient(
+      httpClient: MockClient(
+        (request) async => request.url.path.endsWith('/proof')
+            ? http.Response(jsonEncode(validHostProof), 200)
+            : http.Response(jsonEncode(matchingHostOverview), 200),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostSetupPage(
+          localApiClient: client,
+          clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
+          hostChallengeFactory: () => validHostChallenge,
+        ),
+      ),
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('dev-descriptor-input')),
+      validDevDescriptorJson,
+    );
+    await tester.tap(find.byKey(const Key('verify-dev-descriptor')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('dev-descriptor-verified')), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('local-api-address')),
+      'http://eidolon.local:9002',
+    );
+    await tester.tap(find.byKey(const Key('connect-eidolon-host')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bootstrap 身份已验证'), findsOneWidget);
+    expect(find.text('3. 验证 Bootstrap 持有目标 Host 私钥'), findsOneWidget);
+    expect(find.byKey(const Key('host-setup-error')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Host Setup refuses a different Local API Host', (tester) async {
+    await _useTallViewport(tester);
+    final wrongOverview = Map<String, dynamic>.from(matchingHostOverview);
+    final wrongHostDescriptor = Map<String, dynamic>.from(
+      matchingHostOverview['descriptor']! as Map<String, dynamic>,
+    )..['host_id'] = 'ehost-0123456789abcdefabcd';
+    wrongOverview['descriptor'] = wrongHostDescriptor;
+    final client = LocalApiClient(
+      httpClient: MockClient(
+        (_) async => http.Response(jsonEncode(wrongOverview), 200),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostSetupPage(
+          localApiClient: client,
+          clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
+          hostChallengeFactory: () => validHostChallenge,
+        ),
+      ),
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('dev-descriptor-input')),
+      validDevDescriptorJson,
+    );
+    await tester.tap(find.byKey(const Key('verify-dev-descriptor')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('local-api-address')),
+      'http://wrong-host:9002',
+    );
+    await tester.tap(find.byKey(const Key('connect-eidolon-host')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('host-overview')), findsNothing);
+    expect(find.textContaining('不匹配'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

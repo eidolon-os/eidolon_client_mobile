@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import 'dev_descriptor.dart';
 import 'host_models.dart';
 import 'local_api_client.dart';
 
@@ -11,9 +13,16 @@ const _configuredLocalApiUrl = String.fromEnvironment(
 );
 
 class HostSetupPage extends StatefulWidget {
-  const HostSetupPage({super.key, this.localApiClient});
+  const HostSetupPage({
+    super.key,
+    this.localApiClient,
+    this.clock,
+    this.hostChallengeFactory,
+  });
 
   final LocalApiClient? localApiClient;
+  final DateTime Function()? clock;
+  final String Function()? hostChallengeFactory;
 
   @override
   State<HostSetupPage> createState() => _HostSetupPageState();
@@ -22,33 +31,92 @@ class HostSetupPage extends StatefulWidget {
 class _HostSetupPageState extends State<HostSetupPage> {
   late final LocalApiClient _client;
   late final TextEditingController _address;
+  late final TextEditingController _devDescriptorInput;
+  DevelopmentCommissioningDescriptor? _devDescriptor;
   HostOverview? _host;
   String? _error;
   bool _loading = false;
+  bool _verifying = false;
+  bool _hostIdentityVerified = false;
 
   @override
   void initState() {
     super.initState();
     _client = widget.localApiClient ?? LocalApiClient();
     _address = TextEditingController(text: _configuredLocalApiUrl);
+    _devDescriptorInput = TextEditingController();
   }
 
   @override
   void dispose() {
     if (widget.localApiClient == null) _client.close();
     _address.dispose();
+    _devDescriptorInput.dispose();
     super.dispose();
+  }
+
+  Future<void> _verifyConnectedHost(
+    DevelopmentCommissioningDescriptor descriptor,
+    HostOverview host,
+  ) async {
+    descriptor.requireNotExpired(clock: widget.clock);
+    descriptor.requireHostMatch(host);
+    final challenge =
+        (widget.hostChallengeFactory ?? LocalApiClient.createHostChallenge)();
+    final proof = await _client.fetchHostProof(_address.text, challenge);
+    await descriptor.verifyHostProof(
+      proof,
+      expectedChallenge: challenge,
+    );
+  }
+
+  Future<void> _verifyDevDescriptor() async {
+    setState(() {
+      _verifying = true;
+      _error = null;
+      _devDescriptor = null;
+      _hostIdentityVerified = false;
+    });
+    try {
+      final descriptor =
+          await DevelopmentCommissioningDescriptor.parseAndVerify(
+        _devDescriptorInput.text,
+        clock: widget.clock,
+      );
+      final host = _host;
+      if (host != null) await _verifyConnectedHost(descriptor, host);
+      if (!mounted) return;
+      setState(() {
+        _devDescriptor = descriptor;
+        _hostIdentityVerified = host != null;
+      });
+    } on SetupTrustException catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _verifying = false);
+    }
   }
 
   Future<void> _connect() async {
     setState(() {
       _loading = true;
       _error = null;
+      _host = null;
+      _hostIdentityVerified = false;
     });
     try {
       final host = await _client.fetchHost(_address.text);
+      final descriptor = _devDescriptor;
+      if (descriptor != null) await _verifyConnectedHost(descriptor, host);
       if (!mounted) return;
-      setState(() => _host = host);
+      setState(() {
+        _host = host;
+        _hostIdentityVerified = descriptor != null;
+      });
+    } on SetupTrustException catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.message);
     } on TimeoutException {
       if (!mounted) return;
       setState(() => _error = '连接超时，请确认 Local API 地址和网络可达性');
@@ -86,11 +154,79 @@ class _HostSetupPageState extends State<HostSetupPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '当前阶段只连接树莓派上的 Bootstrap / Local API。'
-                  'Hub、LiveKit 和 Audio Channel 暂不参与。',
+                  'Setup 负责引导用户；Bootstrap 是树莓派上常驻的最小控制面。'
+                  '当前阶段先验证 Host 身份并连接 Local API，认领、配网和 Audio Channel 后续接入。',
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
                 const SizedBox(height: 24),
+                _SetupProgress(
+                  descriptorVerified: _devDescriptor != null,
+                  hostReachable: _host != null,
+                  hostIdentityVerified: _hostIdentityVerified,
+                ),
+                if (kDebugMode) ...[
+                  const SizedBox(height: 24),
+                  Text(
+                    '开发阶段带外凭据',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '在 Host 上执行 eidolon-bootstrapctl dev issue，粘贴完整 JSON。'
+                    '临时凭据只保留在内存，不会显示或持久化。',
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    key: const Key('dev-descriptor-input'),
+                    controller: _devDescriptorInput,
+                    enabled: !_verifying && !_loading,
+                    minLines: 4,
+                    maxLines: 8,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      labelText: 'Dev Descriptor JSON',
+                      alignLabelWithHint: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (_) {
+                      if (_devDescriptor == null && !_hostIdentityVerified) {
+                        return;
+                      }
+                      setState(() {
+                        _devDescriptor = null;
+                        _hostIdentityVerified = false;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    key: const Key('verify-dev-descriptor'),
+                    onPressed:
+                        _verifying || _loading ? null : _verifyDevDescriptor,
+                    icon: _verifying
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.verified_user_outlined),
+                    label: Text(_verifying ? '正在验证' : '验证 Dev Descriptor'),
+                  ),
+                  if (_devDescriptor case final descriptor?) ...[
+                    const SizedBox(height: 12),
+                    _MessageCard(
+                      key: const Key('dev-descriptor-verified'),
+                      icon: Icons.verified_outlined,
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      text: 'Descriptor 签名有效：${descriptor.hostId}',
+                    ),
+                  ],
+                ],
+                const SizedBox(height: 24),
+                Text(
+                  '连接 Bootstrap Local API',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
                 TextField(
                   key: const Key('local-api-address'),
                   controller: _address,
@@ -102,6 +238,13 @@ class _HostSetupPageState extends State<HostSetupPage> {
                     hintText: 'http://eidolon.local:9002',
                     border: OutlineInputBorder(),
                   ),
+                  onChanged: (_) {
+                    if (_host == null && !_hostIdentityVerified) return;
+                    setState(() {
+                      _host = null;
+                      _hostIdentityVerified = false;
+                    });
+                  },
                   onSubmitted: (_) => _connect(),
                 ),
                 const SizedBox(height: 12),
@@ -127,7 +270,10 @@ class _HostSetupPageState extends State<HostSetupPage> {
                 ],
                 if (_host case final host?) ...[
                   const SizedBox(height: 24),
-                  _HostCard(host: host),
+                  _HostCard(
+                    host: host,
+                    identityVerified: _hostIdentityVerified,
+                  ),
                 ],
               ],
             ),
@@ -138,10 +284,88 @@ class _HostSetupPageState extends State<HostSetupPage> {
   }
 }
 
+class _SetupProgress extends StatelessWidget {
+  const _SetupProgress({
+    required this.descriptorVerified,
+    required this.hostReachable,
+    required this.hostIdentityVerified,
+  });
+
+  final bool descriptorVerified;
+  final bool hostReachable;
+  final bool hostIdentityVerified;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const Key('setup-progress'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            _SetupStep(
+              label: '1. 验证带外 Host 凭据',
+              complete: descriptorVerified,
+            ),
+            _SetupStep(
+              label: '2. 连接 Bootstrap Local API',
+              complete: hostReachable,
+            ),
+            _SetupStep(
+              label: '3. 验证 Bootstrap 持有目标 Host 私钥',
+              complete: hostIdentityVerified,
+            ),
+            const _SetupStep(
+              label: '4. 认领与配网（下一阶段）',
+              complete: false,
+              deferred: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SetupStep extends StatelessWidget {
+  const _SetupStep({
+    required this.label,
+    required this.complete,
+    this.deferred = false,
+  });
+
+  final String label;
+  final bool complete;
+  final bool deferred;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Icon(
+            complete
+                ? Icons.check_circle
+                : deferred
+                    ? Icons.more_horiz
+                    : Icons.radio_button_unchecked,
+            color:
+                complete ? Colors.green : Theme.of(context).colorScheme.outline,
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Text(label)),
+        ],
+      ),
+    );
+  }
+}
+
 class _HostCard extends StatelessWidget {
-  const _HostCard({required this.host});
+  const _HostCard({required this.host, required this.identityVerified});
 
   final HostOverview host;
+  final bool identityVerified;
 
   @override
   Widget build(BuildContext context) {
@@ -159,7 +383,9 @@ class _HostCard extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Bootstrap 正在运行',
+                    identityVerified
+                        ? 'Bootstrap 身份已验证'
+                        : 'Bootstrap 可达（身份未验证）',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
