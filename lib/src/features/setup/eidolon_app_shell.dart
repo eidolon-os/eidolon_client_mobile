@@ -1,0 +1,292 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+
+import 'commissioning_transport.dart';
+import 'change_network_page.dart';
+import 'host_registry.dart';
+import 'setup_wizard_page.dart';
+
+class EidolonAppShell extends StatefulWidget {
+  const EidolonAppShell({
+    super.key,
+    this.registry,
+    this.setupTransport,
+  });
+
+  final HostRegistry? registry;
+  final CommissioningTransport? setupTransport;
+
+  @override
+  State<EidolonAppShell> createState() => _EidolonAppShellState();
+}
+
+class _EidolonAppShellState extends State<EidolonAppShell> {
+  late final HostRegistry _registry;
+  List<ManagedHost>? _hosts;
+
+  @override
+  void initState() {
+    super.initState();
+    _registry = widget.registry ??
+        (defaultTargetPlatform == TargetPlatform.android
+            ? PlatformHostRegistry()
+            : InMemoryHostRegistry());
+    _load();
+  }
+
+  Future<void> _load() async {
+    final hosts = await _registry.load();
+    if (mounted) setState(() => _hosts = hosts);
+  }
+
+  Future<void> _openSetup() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) => SetupWizardPage(
+          transport: widget.setupTransport,
+          onComplete: (host) async {
+            await _registry.save(host);
+            if (!context.mounted) return;
+            Navigator.of(context).pop();
+            await _load();
+          },
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hosts = _hosts;
+    if (hosts == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (hosts.isEmpty) {
+      return _WelcomePage(onSetup: _openSetup);
+    }
+    return _HostsPage(hosts: hosts, onAdd: _openSetup);
+  }
+}
+
+class _WelcomePage extends StatelessWidget {
+  const _WelcomePage({required this.onSetup});
+
+  final VoidCallback onSetup;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        key: const Key('eidolon-welcome-page'),
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Icon(Icons.blur_on, size: 72),
+                    const SizedBox(height: 24),
+                    Text(
+                      '让 Eidolon 主机准备就绪',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '无需屏幕、SSH 或预先联网。手机会在附近找到主机，安全配置 Wi-Fi，并完成本地认领。',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 28),
+                    FilledButton.icon(
+                      key: const Key('start-host-setup'),
+                      onPressed: onSetup,
+                      icon: const Icon(Icons.add_circle_outline),
+                      label: const Text('设置新主机'),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      '完成认领后，这台手机会把主机保存在“我的 Eidolon”。',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+class _HostsPage extends StatelessWidget {
+  const _HostsPage({required this.hosts, required this.onAdd});
+
+  final List<ManagedHost> hosts;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        key: const Key('managed-hosts-page'),
+        appBar: AppBar(
+          title: const Text('我的 Eidolon'),
+          actions: [
+            IconButton(
+              key: const Key('add-another-host'),
+              onPressed: onAdd,
+              tooltip: '设置另一台主机',
+              icon: const Icon(Icons.add),
+            ),
+          ],
+        ),
+        body: ListView.separated(
+          padding: const EdgeInsets.all(20),
+          itemCount: hosts.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final host = hosts[index];
+            return Card(
+              child: ListTile(
+                contentPadding: const EdgeInsets.all(18),
+                leading: const CircleAvatar(child: Icon(Icons.memory)),
+                title: Text(host.displayName),
+                subtitle: Text('已认领 · ${host.hostId}'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push<void>(
+                  MaterialPageRoute(
+                    builder: (_) => _HostDetailPage(host: host),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      );
+}
+
+class _HostDetailPage extends StatelessWidget {
+  const _HostDetailPage({required this.host});
+
+  final ManagedHost host;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        key: const Key('managed-host-detail'),
+        appBar: AppBar(title: Text(host.displayName)),
+        body: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('主机身份', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 12),
+                    SelectableText(host.hostId),
+                    const SizedBox(height: 4),
+                    Text('Controller：${host.controllerId}'),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text('主机管理', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            _ManagementEntry(
+              icon: Icons.wifi,
+              title: '更换 Wi-Fi',
+              subtitle: '保留 Owner、Controller 和主机数据；需要靠近主机',
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => ChangeNetworkPage(host: host),
+                ),
+              ),
+            ),
+            _ManagementEntry(
+              icon: Icons.admin_panel_settings_outlined,
+              title: '管理手机',
+              subtitle: '查看、添加或撤销 Host Controller',
+              onTap: () => _showBoundary(
+                context,
+                title: '管理手机',
+                body: 'Controller Grant 属于 Bootstrap 权威；Mobile 本地记录不能自行增加管理权限。',
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              '恢复',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            _ManagementEntry(
+              icon: Icons.phonelink_erase_outlined,
+              title: '手机丢失或重新认领',
+              subtitle: '需要先在主机上触发物理恢复；不会清除 Owner 或 Memory',
+              destructive: true,
+              onTap: () => _showBoundary(
+                context,
+                title: 'Controller 恢复',
+                body: '网络断开不会自动开放认领。只有主机进入限时物理恢复状态后，'
+                    'App 才会允许建立新的 Controller。Factory Reset 是另一条独立流程。',
+              ),
+            ),
+          ],
+        ),
+      );
+
+  static Future<void> _showBoundary(
+    BuildContext context, {
+    required String title,
+    required String body,
+  }) =>
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+}
+
+class _ManagementEntry extends StatelessWidget {
+  const _ManagementEntry({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.destructive = false,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: ListTile(
+          leading: Icon(
+            icon,
+            color: destructive ? Theme.of(context).colorScheme.error : null,
+          ),
+          title: Text(title),
+          subtitle: Text(subtitle),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: onTap,
+        ),
+      );
+}

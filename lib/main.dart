@@ -9,7 +9,8 @@ import 'package:video_player/video_player.dart';
 import 'src/avatar/idle_clip_cache.dart';
 import 'src/avatar/avatar_stage.dart';
 import 'src/controller/client_controller.dart';
-import 'src/features/host_setup/host_setup_page.dart';
+import 'src/features/setup/eidolon_app_shell.dart';
+import 'src/features/setup/host_registry.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,7 +18,9 @@ void main() {
 }
 
 class EidolonMobileApp extends StatelessWidget {
-  const EidolonMobileApp({super.key});
+  const EidolonMobileApp({super.key, this.hostRegistry});
+
+  final HostRegistry? hostRegistry;
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +35,7 @@ class EidolonMobileApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFF0D0D13),
         useMaterial3: true,
       ),
-      home: const HostSetupPage(),
+      home: EidolonAppShell(registry: hostRegistry),
     );
   }
 }

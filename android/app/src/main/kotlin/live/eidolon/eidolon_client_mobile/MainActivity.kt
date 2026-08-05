@@ -1,6 +1,11 @@
 package live.eidolon.eidolon_client_mobile
 
 import android.Manifest
+import android.bluetooth.BluetoothManager
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.nsd.NsdManager
@@ -8,6 +13,8 @@ import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
+import android.os.Build
+import android.os.ParcelUuid
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.provider.Settings
@@ -24,20 +31,27 @@ import java.security.SecureRandom
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.UUID
 
 class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL = "live.eidolon.mobile/platform"
         private const val SERVICE_TYPE = "_eidolon-hub._tcp."
         private const val KEY_ALIAS = "eidolon-mobile-device-p256-v1"
+        private const val CONTROLLER_KEY_ALIAS = "eidolon-host-controller-p256-v1"
         private const val DEVICE_ID_NAMESPACE = "eidolon-mobile-android-v1"
         private const val MIC_REQUEST_CODE = 7001
+        private const val BLE_REQUEST_CODE = 7002
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var permissionResult: MethodChannel.Result? = null
+    private var bluetoothPermissionResult: MethodChannel.Result? = null
     private var discoveryListener: NsdManager.DiscoveryListener? = null
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var setupScanCallback: ScanCallback? = null
+    private var setupScanResult: MethodChannel.Result? = null
+    private var commissioningManager: BleCommissioningManager? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -51,7 +65,46 @@ class MainActivity : FlutterActivity() {
                 "discoverHub" -> discoverHub(call.argument<Int>("timeoutMs") ?: 8000, result)
                 "getDeviceIdentity" -> result.success(deviceIdentity())
                 "signRequest" -> result.success(signRequest(call))
+                "getControllerIdentity" -> result.success(controllerIdentity())
+                "signControllerChallenge" -> result.success(signControllerChallenge(call))
                 "requestMicrophonePermission" -> requestMicrophonePermission(result)
+                "requestBluetoothPermissions" -> requestBluetoothPermissions(result)
+                "scanSetupHosts" -> scanSetupHosts(
+                    call.argument<String>("serviceUuid") ?: error("serviceUuid is required"),
+                    call.argument<Int>("timeoutMs") ?: 8000,
+                    result,
+                )
+                "openCommissioningLink" -> openCommissioningLink(call, result)
+                "startCommissioningTls" -> commissioningManager?.secure(
+                    call.argument<String>("tlsSpkiFingerprint")
+                        ?: error("tlsSpkiFingerprint is required"),
+                    result,
+                ) ?: result.error("LINK_NOT_READY", "Open a commissioning link first", null)
+                "commissioningRequest" -> commissioningManager?.request(
+                    call.argument<String>("requestJson") ?: error("requestJson is required"),
+                    result,
+                ) ?: result.error("LINK_NOT_READY", "Open a commissioning link first", null)
+                "closeCommissioningLink" -> {
+                    commissioningManager?.close()
+                    commissioningManager = null
+                    result.success(null)
+                }
+                "readAppPreference" -> result.success(
+                    getSharedPreferences("eidolon-mobile", Context.MODE_PRIVATE).getString(
+                        call.argument<String>("key") ?: error("key is required"),
+                        null,
+                    ),
+                )
+                "writeAppPreference" -> {
+                    getSharedPreferences("eidolon-mobile", Context.MODE_PRIVATE)
+                        .edit()
+                        .putString(
+                            call.argument<String>("key") ?: error("key is required"),
+                            call.argument<String>("value") ?: error("value is required"),
+                        )
+                        .apply()
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         } catch (error: Exception) {
@@ -73,13 +126,13 @@ class MainActivity : FlutterActivity() {
         return "mobile-android-${hex(sha256(seed.toByteArray(StandardCharsets.UTF_8))).take(32)}"
     }
 
-    private fun ensureKeyEntry(): KeyStore.PrivateKeyEntry {
+    private fun ensureKeyEntry(alias: String = KEY_ALIAS): KeyStore.PrivateKeyEntry {
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry)?.let { return it }
+        (keyStore.getEntry(alias, null) as? KeyStore.PrivateKeyEntry)?.let { return it }
 
         val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore")
         val spec = KeyGenParameterSpec.Builder(
-            KEY_ALIAS,
+            alias,
             KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
         )
             .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
@@ -88,7 +141,7 @@ class MainActivity : FlutterActivity() {
         generator.initialize(spec)
         generator.generateKeyPair()
         keyStore.load(null)
-        return keyStore.getEntry(KEY_ALIAS, null) as KeyStore.PrivateKeyEntry
+        return keyStore.getEntry(alias, null) as KeyStore.PrivateKeyEntry
     }
 
     private fun deviceIdentity(): Map<String, String> {
@@ -97,6 +150,41 @@ class MainActivity : FlutterActivity() {
             "deviceId" to deviceId(),
             "fingerprint" to "p256:${hex(sha256(publicDer))}",
         )
+    }
+
+    private fun controllerIdentity(): Map<String, String> {
+        val publicDer = ensureKeyEntry(CONTROLLER_KEY_ALIAS).certificate.publicKey.encoded
+        val digest = sha256(publicDer)
+        return mapOf(
+            "controllerId" to "ectrl-${hex(digest).take(20)}",
+            "publicKey" to base64Url(publicDer),
+            "fingerprint" to "sha256:${hex(digest)}",
+        )
+    }
+
+    private fun signControllerChallenge(call: MethodCall): String {
+        val challenge = call.argument<String>("challenge") ?: error("challenge is required")
+        val contractVersion = call.argument<String>("contract_version")
+            ?: error("contract_version is required")
+        val controllerId = call.argument<String>("controller_id")
+            ?: error("controller_id is required")
+        val purpose = call.argument<String>("purpose") ?: error("purpose is required")
+        val resetEpoch = call.argument<Int>("reset_epoch") ?: error("reset_epoch is required")
+        require(contractVersion == "1" && purpose == "eidolon-controller-ble-auth-v1") {
+            "Unsupported Controller challenge"
+        }
+        val identity = controllerIdentity()
+        require(identity["controllerId"] == controllerId) { "Controller challenge targets another key" }
+        val canonical = "{" +
+            "\"challenge\":${org.json.JSONObject.quote(challenge)}," +
+            "\"contract_version\":\"1\"," +
+            "\"controller_id\":${org.json.JSONObject.quote(controllerId)}," +
+            "\"purpose\":\"eidolon-controller-ble-auth-v1\"," +
+            "\"reset_epoch\":$resetEpoch}"
+        val signer = Signature.getInstance("SHA256withECDSA")
+        signer.initSign(ensureKeyEntry(CONTROLLER_KEY_ALIAS).privateKey)
+        signer.update(canonical.toByteArray(StandardCharsets.UTF_8))
+        return base64Url(signer.sign())
     }
 
     private fun signRequest(call: MethodCall): Map<String, String> {
@@ -141,11 +229,125 @@ class MainActivity : FlutterActivity() {
         requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), MIC_REQUEST_CODE)
     }
 
+    private fun requiredBluetoothPermissions(): Array<String> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+
+    private fun hasBluetoothPermissions(): Boolean =
+        requiredBluetoothPermissions().all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+
+    private fun requestBluetoothPermissions(result: MethodChannel.Result) {
+        if (hasBluetoothPermissions()) {
+            result.success(true)
+            return
+        }
+        if (bluetoothPermissionResult != null) {
+            result.error("PERMISSION_BUSY", "A Bluetooth permission request is already active", null)
+            return
+        }
+        bluetoothPermissionResult = result
+        requestPermissions(requiredBluetoothPermissions(), BLE_REQUEST_CODE)
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == MIC_REQUEST_CODE) {
             permissionResult?.success(grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
             permissionResult = null
+        }
+        if (requestCode == BLE_REQUEST_CODE) {
+            bluetoothPermissionResult?.success(
+                grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED },
+            )
+            bluetoothPermissionResult = null
+        }
+    }
+
+    private fun scanSetupHosts(serviceUuid: String, timeoutMs: Int, result: MethodChannel.Result) {
+        if (!hasBluetoothPermissions()) {
+            result.error("PERMISSION_DENIED", "Nearby devices permission is required", null)
+            return
+        }
+        if (setupScanCallback != null) {
+            result.error("SCAN_BUSY", "A setup scan is already running", null)
+            return
+        }
+        val manager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter = manager.adapter
+        if (adapter == null || !adapter.isEnabled) {
+            result.error("BLUETOOTH_OFF", "Turn on Bluetooth to find the Eidolon Host", null)
+            return
+        }
+        val scanner = adapter.bluetoothLeScanner
+        val uuid = UUID.fromString(serviceUuid)
+        val parcelUuid = ParcelUuid(uuid)
+        val found = mutableMapOf<String, Map<String, Any>>()
+        val callback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, scanResult: ScanResult) {
+                val record = scanResult.scanRecord ?: return
+                val advertisedName = record.deviceName ?: ""
+                val marker = record.getServiceData(parcelUuid)?.let(::hex)
+                    ?: advertisedName.substringAfter("Eidolon-", "")
+                val address = scanResult.device.address
+                val previous = found[address]
+                if (previous != null && (previous["rssi"] as Int) >= scanResult.rssi) return
+                found[address] = mapOf(
+                    "address" to address,
+                    "name" to (advertisedName.ifEmpty { "Eidolon Host" }),
+                    "hostMarker" to marker.lowercase(),
+                    "rssi" to scanResult.rssi,
+                )
+            }
+
+            override fun onScanFailed(errorCode: Int) {
+                finishSetupScan(errorCode = errorCode)
+            }
+        }
+        setupScanCallback = callback
+        setupScanResult = result
+        val filter = ScanFilter.Builder().setServiceUuid(parcelUuid).build()
+        val settings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .build()
+        scanner.startScan(listOf(filter), settings, callback)
+        mainHandler.postDelayed({ finishSetupScan(found.values.toList()) }, timeoutMs.toLong())
+    }
+
+    private fun finishSetupScan(
+        values: List<Map<String, Any>>? = null,
+        errorCode: Int? = null,
+    ) {
+        val callback = setupScanCallback ?: return
+        val result = setupScanResult ?: return
+        setupScanCallback = null
+        setupScanResult = null
+        try {
+            val manager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+            manager.adapter?.bluetoothLeScanner?.stopScan(callback)
+        } catch (_: Exception) {
+        }
+        if (errorCode == null) {
+            result.success(values ?: emptyList<Map<String, Any>>())
+        } else {
+            result.error("SCAN_FAILED", "Bluetooth scan failed: $errorCode", null)
+        }
+    }
+
+    private fun openCommissioningLink(call: MethodCall, result: MethodChannel.Result) {
+        if (!hasBluetoothPermissions()) {
+            result.error("PERMISSION_DENIED", "Nearby devices permission is required", null)
+            return
+        }
+        commissioningManager?.close()
+        commissioningManager = BleCommissioningManager(applicationContext, mainHandler).also {
+            it.open(
+                call.argument<String>("address") ?: error("address is required"),
+                call.argument<String>("serviceUuid") ?: error("serviceUuid is required"),
+                result,
+            )
         }
     }
 
@@ -214,6 +416,9 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        finishSetupScan()
+        commissioningManager?.close()
+        commissioningManager = null
         discoveryListener?.let {
             try { (getSystemService(Context.NSD_SERVICE) as NsdManager).stopServiceDiscovery(it) } catch (_: Exception) { }
         }
@@ -222,6 +427,8 @@ class MainActivity : FlutterActivity() {
         multicastLock = null
         permissionResult?.success(false)
         permissionResult = null
+        bluetoothPermissionResult?.success(false)
+        bluetoothPermissionResult = null
         super.onDestroy()
     }
 

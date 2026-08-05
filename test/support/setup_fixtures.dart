@@ -52,3 +52,14 @@ const validHostProof = <String, dynamic>{
   'signature':
       'rF3KrfUegMPsqmrjfbBpDy-2xhay3RdqRFslSH_oEDepS3vabevWP9haxt5w1xdW5QeSVKek2HCMwiaasj8yCQ',
 };
+
+const validCommissioningEndpoint = <String, dynamic>{
+  'contract_version': '1',
+  'purpose': 'eidolon-ble-commissioning-endpoint-v1',
+  'host_id': 'ehost-56475aa75463474c0285',
+  'reset_epoch': 0,
+  'ble_service_uuid': '179e2e95-b1ee-5aa5-8dcf-7519b6c7ac52',
+  'tls_spki_fingerprint': 'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
+  'signature':
+      'mYDAL32FkJnAQZI-eu9b98641hT7CzeOOoAUAdKNm7rIIvKrP_5CX2_7iu6JqFIPiTkAFuuiD-u-ffTInT-mCg',
+};

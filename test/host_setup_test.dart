@@ -4,6 +4,7 @@ import 'package:eidolon_client_mobile/main.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_setup_page.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_client.dart';
+import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -105,12 +106,17 @@ void main() {
     );
   });
 
-  testWidgets('the app starts in Host Setup instead of Audio/Hub',
+  testWidgets(
+      'the app starts in the first-use Setup entry instead of Audio/Hub',
       (tester) async {
-    await tester.pumpWidget(const EidolonMobileApp());
+    await tester.pumpWidget(
+      EidolonMobileApp(hostRegistry: InMemoryHostRegistry()),
+    );
+    await tester.pump();
+    await tester.pump();
 
-    expect(find.byKey(const Key('host-setup-page')), findsOneWidget);
-    expect(find.text('连接你的 Eidolon 主机'), findsOneWidget);
+    expect(find.byKey(const Key('eidolon-welcome-page')), findsOneWidget);
+    expect(find.text('设置新主机'), findsOneWidget);
     expect(find.text('发现并连接 Hub'), findsNothing);
   });
 
