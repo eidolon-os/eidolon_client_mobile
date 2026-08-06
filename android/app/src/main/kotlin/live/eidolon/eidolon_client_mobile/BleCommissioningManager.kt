@@ -12,15 +12,12 @@ import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.os.Build
 import android.os.Handler
-import android.util.Base64
 import android.util.Log
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
 import java.security.SecureRandom
-import java.security.cert.X509Certificate
 import java.util.UUID
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.CountDownLatch
@@ -31,7 +28,6 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLEngine
 import javax.net.ssl.SSLEngineResult
 import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
 
 private val INFO_UUID: UUID = UUID.fromString("30af68fb-163b-581f-a94c-1488e8b3b4fd")
 private val RX_UUID: UUID = UUID.fromString("518d55c5-5433-5312-9099-a0a03c90f003")
@@ -363,25 +359,6 @@ class BleCommissioningManager(
 
     private fun safeMessage(error: Throwable): String =
         error.message?.take(180) ?: "Secure BLE Setup failed"
-}
-
-private class PinnedSpkiTrustManager(private val expected: String) : X509TrustManager {
-    override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
-
-    override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
-        val certificate = chain?.firstOrNull() ?: error("Host TLS certificate is missing")
-        certificate.checkValidity()
-        val digest = MessageDigest.getInstance("SHA-256").digest(certificate.publicKey.encoded)
-        val actual = "sha256:" + Base64.encodeToString(
-            digest,
-            Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING,
-        )
-        if (!MessageDigest.isEqual(actual.toByteArray(), expected.toByteArray())) {
-            error("Host TLS identity does not match its signed endpoint")
-        }
-    }
-
-    override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
 }
 
 private class BleTlsClient(

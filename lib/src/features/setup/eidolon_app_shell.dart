@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
+import '../host_setup/host_local_connection_page.dart';
 import 'commissioning_transport.dart';
 import 'change_network_page.dart';
 import 'controller_key_bridge.dart';
@@ -73,6 +74,12 @@ class _EidolonAppShellState extends State<EidolonAppShell> {
     return _HostsPage(
       hosts: hosts,
       onAdd: _openSetup,
+      onHostUpdated: (host) async {
+        await _registry.save(host);
+        await _load();
+      },
+      onRefresh: _load,
+      setupTransport: widget.setupTransport,
       controllerKeys: widget.controllerKeys,
     );
   }
@@ -134,11 +141,17 @@ class _HostsPage extends StatelessWidget {
   const _HostsPage({
     required this.hosts,
     required this.onAdd,
+    required this.onHostUpdated,
+    required this.onRefresh,
+    this.setupTransport,
     this.controllerKeys,
   });
 
   final List<ManagedHost> hosts;
   final VoidCallback onAdd;
+  final ManagedHostUpdater onHostUpdated;
+  final Future<void> Function() onRefresh;
+  final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
 
   @override
@@ -168,14 +181,19 @@ class _HostsPage extends StatelessWidget {
                 title: Text(host.displayName),
                 subtitle: Text('已认领 · ${host.hostId}'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push<void>(
-                  MaterialPageRoute(
-                    builder: (_) => _HostDetailPage(
-                      host: host,
-                      controllerKeys: controllerKeys,
+                onTap: () async {
+                  await Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => _HostDetailPage(
+                        host: host,
+                        onHostUpdated: onHostUpdated,
+                        setupTransport: setupTransport,
+                        controllerKeys: controllerKeys,
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                  await onRefresh();
+                },
               ),
             );
           },
@@ -184,9 +202,16 @@ class _HostsPage extends StatelessWidget {
 }
 
 class _HostDetailPage extends StatelessWidget {
-  const _HostDetailPage({required this.host, this.controllerKeys});
+  const _HostDetailPage({
+    required this.host,
+    required this.onHostUpdated,
+    this.setupTransport,
+    this.controllerKeys,
+  });
 
   final ManagedHost host;
+  final ManagedHostUpdater onHostUpdated;
+  final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
 
   @override
@@ -214,6 +239,22 @@ class _HostDetailPage extends StatelessWidget {
             const SizedBox(height: 20),
             Text('主机管理', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
+            _ManagementEntry.available(
+              key: const Key('connect-local-host'),
+              icon: Icons.lan_outlined,
+              title: '连接主机',
+              subtitle: '在同一局域网中验证 Host 与管理手机身份',
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => HostLocalConnectionPage(
+                    host: host,
+                    onHostUpdated: onHostUpdated,
+                    transport: setupTransport,
+                    controllerKeys: controllerKeys,
+                  ),
+                ),
+              ),
+            ),
             _ManagementEntry.available(
               key: const Key('change-host-network'),
               icon: Icons.wifi,

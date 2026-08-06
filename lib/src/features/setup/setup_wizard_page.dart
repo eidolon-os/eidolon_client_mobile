@@ -235,6 +235,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       controllerId: controller.controllerId,
       displayName: defaultHostDisplayName(endpoint.hostId),
       claimedAt: (widget.clock ?? DateTime.now)().toUtc(),
+      tlsSpkiFingerprint: endpoint.tlsSpkiFingerprint,
     );
     await _transport.close();
     setState(() {
@@ -333,6 +334,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       controllerId: controller.controllerId,
       displayName: defaultHostDisplayName(endpoint.hostId),
       claimedAt: (widget.clock ?? DateTime.now)().toUtc(),
+      tlsSpkiFingerprint: endpoint.tlsSpkiFingerprint,
     );
     await _transport.close();
     setState(() {

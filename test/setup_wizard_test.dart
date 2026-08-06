@@ -251,6 +251,10 @@ void main() {
     expect(completed?.hostId, validHostId);
     expect(completed?.controllerId, 'ectrl-0123456789abcdefabcd');
     expect(completed?.displayName, 'Eidolon-4c0285');
+    expect(
+      completed?.tlsSpkiFingerprint,
+      validCommissioningEndpoint['tls_spki_fingerprint'],
+    );
     expect(transport.closed, isTrue);
   });
 

@@ -19,11 +19,13 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.provider.Settings
 import android.util.Base64
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.nio.charset.StandardCharsets
+import java.net.Inet4Address
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -36,7 +38,8 @@ import java.util.UUID
 class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL = "live.eidolon.mobile/platform"
-        private const val SERVICE_TYPE = "_eidolon-hub._tcp."
+        private const val HUB_SERVICE_TYPE = "_eidolon-hub._tcp."
+        private const val LOCAL_API_SERVICE_TYPE = "_eidolon-local-api._tcp."
         private const val KEY_ALIAS = "eidolon-mobile-device-p256-v1"
         private const val CONTROLLER_KEY_ALIAS = "eidolon-host-controller-p256-v1"
         private val CONTROLLER_CHALLENGE_PURPOSES = setOf(
@@ -52,10 +55,12 @@ class MainActivity : FlutterActivity() {
     private var permissionResult: MethodChannel.Result? = null
     private var bluetoothPermissionResult: MethodChannel.Result? = null
     private var discoveryListener: NsdManager.DiscoveryListener? = null
+    private val serviceInfoCallbacks = mutableSetOf<NsdManager.ServiceInfoCallback>()
     private var multicastLock: WifiManager.MulticastLock? = null
     private var setupScanCallback: ScanCallback? = null
     private var setupScanResult: MethodChannel.Result? = null
     private var commissioningManager: BleCommissioningManager? = null
+    private val pinnedHttpsClient by lazy { PinnedHttpsClient(mainHandler) }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -67,10 +72,15 @@ class MainActivity : FlutterActivity() {
         try {
             when (call.method) {
                 "discoverHub" -> discoverHub(call.argument<Int>("timeoutMs") ?: 8000, result)
+                "discoverLocalApis" -> discoverLocalApis(
+                    call.argument<Int>("timeoutMs") ?: 5000,
+                    result,
+                )
                 "getDeviceIdentity" -> result.success(deviceIdentity())
                 "signRequest" -> result.success(signRequest(call))
                 "getControllerIdentity" -> result.success(controllerIdentity())
                 "signControllerChallenge" -> result.success(signControllerChallenge(call))
+                "pinnedHttpsRequest" -> pinnedHttpsClient.request(call, result)
                 "requestMicrophonePermission" -> requestMicrophonePermission(result)
                 "requestBluetoothPermissions" -> requestBluetoothPermissions(result)
                 "scanSetupHosts" -> scanSetupHosts(
@@ -416,17 +426,162 @@ class MainActivity : FlutterActivity() {
         mainHandler.postDelayed({
             finish(code = "NOT_FOUND", message = "No compatible Eidolon Hub found on the LAN")
         }, timeoutMs.toLong())
-        nsd.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
+        nsd.discoverServices(HUB_SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
+    }
+
+    private fun discoverLocalApis(timeoutMs: Int, result: MethodChannel.Result) {
+        if (discoveryListener != null) {
+            result.error("DISCOVERY_BUSY", "mDNS discovery is already running", null)
+            return
+        }
+        val nsd = getSystemService(Context.NSD_SERVICE) as NsdManager
+        val completed = AtomicBoolean(false)
+        val resolved = linkedMapOf<String, Map<String, String>>()
+        val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        multicastLock = wifi.createMulticastLock("eidolon-local-api-discovery").apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+
+        fun finish(code: String? = null, message: String? = null) {
+            if (!completed.compareAndSet(false, true)) return
+            discoveryListener?.let {
+                try { nsd.stopServiceDiscovery(it) } catch (_: Exception) { }
+            }
+            discoveryListener = null
+            val callbacks = serviceInfoCallbacks.toList()
+            serviceInfoCallbacks.clear()
+            for (callback in callbacks) {
+                try { nsd.unregisterServiceInfoCallback(callback) } catch (_: Exception) { }
+            }
+            multicastLock?.let { if (it.isHeld) it.release() }
+            multicastLock = null
+            if (resolved.isNotEmpty()) {
+                result.success(resolved.values.toList())
+            } else {
+                result.error(code ?: "NOT_FOUND", message ?: "No Eidolon Local API found", null)
+            }
+        }
+
+        fun recordResolved(info: NsdServiceInfo) {
+            if (completed.get()) return
+            val attributes = info.attributes.mapValues {
+                String(it.value, StandardCharsets.UTF_8)
+            }
+            if (attributes["contract"] != "1" || attributes["scheme"] != "https") return
+            val addresses = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                info.hostAddresses
+            } else {
+                @Suppress("DEPRECATION")
+                listOfNotNull(info.host)
+            }
+            val mdnsHost = if (Build.VERSION.SDK_INT >= 36) {
+                info.hostname
+                    ?.trim()
+                    ?.trimEnd('.')
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let {
+                        if (it.endsWith(".local", ignoreCase = true)) it else "$it.local"
+                    }
+            } else {
+                null
+            }
+            val ipv4Addresses = addresses
+                .filterIsInstance<Inet4Address>()
+                .mapNotNull { it.hostAddress }
+            val ipv6Addresses = addresses
+                .filterNot { it is Inet4Address }
+                .mapNotNull { it.hostAddress }
+                .filterNot { it.contains('%') }
+            val fallbackAddress = ipv4Addresses.firstOrNull() ?: ipv6Addresses.firstOrNull()
+            val candidates = buildList {
+                addAll(ipv4Addresses.map { it to it })
+                if (mdnsHost != null && fallbackAddress != null) {
+                    add(mdnsHost to fallbackAddress)
+                }
+                addAll(ipv6Addresses.map { "[$it]" to it })
+            }.distinctBy { it.first }
+            for ((host, ipAddress) in candidates) {
+                val baseUrl = "https://$host:${info.port}"
+                Log.d("EidolonLocalApi", "Resolved ${info.serviceName} to $baseUrl")
+                resolved[baseUrl] = mapOf(
+                    "instanceName" to info.serviceName,
+                    "baseUrl" to baseUrl,
+                    "ipAddress" to ipAddress,
+                    "contractVersion" to "1",
+                )
+            }
+        }
+
+        val listener = object : NsdManager.DiscoveryListener {
+            override fun onDiscoveryStarted(serviceType: String) = Unit
+            override fun onDiscoveryStopped(serviceType: String) = Unit
+            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+                finish("DISCOVERY_FAILED", "NSD start failed: $errorCode")
+            }
+            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
+            override fun onServiceLost(serviceInfo: NsdServiceInfo) = Unit
+
+            @Suppress("DEPRECATION")
+            override fun onServiceFound(serviceInfo: NsdServiceInfo) {
+                if (completed.get() ||
+                    !serviceInfo.serviceType.startsWith("_eidolon-local-api._tcp")
+                ) return
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    val callback = object : NsdManager.ServiceInfoCallback {
+                        override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int) {
+                            serviceInfoCallbacks.remove(this)
+                        }
+
+                        override fun onServiceUpdated(info: NsdServiceInfo) {
+                            recordResolved(info)
+                        }
+
+                        override fun onServiceLost() = Unit
+
+                        override fun onServiceInfoCallbackUnregistered() {
+                            serviceInfoCallbacks.remove(this)
+                        }
+                    }
+                    serviceInfoCallbacks.add(callback)
+                    try {
+                        nsd.registerServiceInfoCallback(serviceInfo, mainExecutor, callback)
+                    } catch (_: Exception) {
+                        serviceInfoCallbacks.remove(callback)
+                    }
+                    return
+                }
+                nsd.resolveService(serviceInfo, object : NsdManager.ResolveListener {
+                    override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) = Unit
+
+                    override fun onServiceResolved(info: NsdServiceInfo) {
+                        recordResolved(info)
+                    }
+                })
+            }
+        }
+        discoveryListener = listener
+        mainHandler.postDelayed({
+            finish("NOT_FOUND", "No compatible Eidolon Local API found on the LAN")
+        }, timeoutMs.toLong())
+        nsd.discoverServices(LOCAL_API_SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
     }
 
     override fun onDestroy() {
         finishSetupScan()
         commissioningManager?.close()
         commissioningManager = null
+        pinnedHttpsClient.close()
         discoveryListener?.let {
             try { (getSystemService(Context.NSD_SERVICE) as NsdManager).stopServiceDiscovery(it) } catch (_: Exception) { }
         }
         discoveryListener = null
+        val nsd = getSystemService(Context.NSD_SERVICE) as NsdManager
+        val callbacks = serviceInfoCallbacks.toList()
+        serviceInfoCallbacks.clear()
+        for (callback in callbacks) {
+            try { nsd.unregisterServiceInfoCallback(callback) } catch (_: Exception) { }
+        }
         multicastLock?.let { if (it.isHeld) it.release() }
         multicastLock = null
         permissionResult?.success(false)

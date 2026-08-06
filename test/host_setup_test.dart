@@ -237,6 +237,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('change-host-network')), findsOneWidget);
+    expect(find.byKey(const Key('connect-local-host')), findsOneWidget);
     expect(
       find.byKey(const Key('manage-controllers-unavailable')),
       findsOneWidget,

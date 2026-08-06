@@ -13,6 +13,7 @@ class ManagedHost {
     required this.controllerId,
     required this.displayName,
     required this.claimedAt,
+    this.tlsSpkiFingerprint,
   });
 
   factory ManagedHost.fromJson(Map<String, dynamic> value) => ManagedHost(
@@ -26,6 +27,9 @@ class ManagedHost {
           value['display_name']! as String,
         ),
         claimedAt: DateTime.parse(value['claimed_at']! as String).toUtc(),
+        tlsSpkiFingerprint: _optionalTlsFingerprint(
+          value['tls_spki_fingerprint'],
+        ),
       );
 
   final String hostId;
@@ -35,6 +39,18 @@ class ManagedHost {
   final String controllerId;
   final String displayName;
   final DateTime claimedAt;
+  final String? tlsSpkiFingerprint;
+
+  ManagedHost copyWith({String? tlsSpkiFingerprint}) => ManagedHost(
+        hostId: hostId,
+        hostPublicKey: hostPublicKey,
+        hostFingerprint: hostFingerprint,
+        bleServiceUuid: bleServiceUuid,
+        controllerId: controllerId,
+        displayName: displayName,
+        claimedAt: claimedAt,
+        tlsSpkiFingerprint: tlsSpkiFingerprint ?? this.tlsSpkiFingerprint,
+      );
 
   Map<String, dynamic> toJson() => {
         'host_id': hostId,
@@ -44,7 +60,18 @@ class ManagedHost {
         'controller_id': controllerId,
         'display_name': displayName,
         'claimed_at': claimedAt.toUtc().toIso8601String(),
+        if (tlsSpkiFingerprint != null)
+          'tls_spki_fingerprint': tlsSpkiFingerprint,
       };
+}
+
+String? _optionalTlsFingerprint(Object? value) {
+  if (value == null) return null;
+  if (value is! String ||
+      !RegExp(r'^sha256:[A-Za-z0-9_-]{43}$').hasMatch(value)) {
+    throw const FormatException('Invalid Host TLS SPKI fingerprint');
+  }
+  return value;
 }
 
 abstract interface class HostRegistry {
