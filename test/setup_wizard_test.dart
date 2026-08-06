@@ -247,7 +247,7 @@ void main() {
     await tester.tap(find.byKey(const Key('configure-and-claim')));
     await tester.pumpAndSettle();
 
-    expect(find.text('主机已可以使用'), findsOneWidget);
+    expect(find.text('主机接入已完成'), findsOneWidget);
     expect(transport.operations, [
       'session.authenticate',
       'wifi.scan',
@@ -258,6 +258,7 @@ void main() {
     await tester.tap(find.byKey(const Key('finish-setup')));
     expect(completed?.hostId, validHostId);
     expect(completed?.controllerId, 'ectrl-0123456789abcdefabcd');
+    expect(completed?.displayName, 'Eidolon-4c0285');
     expect(transport.closed, isTrue);
   });
 
@@ -297,7 +298,7 @@ void main() {
     await tester.tap(keepNetwork);
     await tester.pumpAndSettle();
 
-    expect(find.text('主机已可以使用'), findsOneWidget);
+    expect(find.text('主机接入已完成'), findsOneWidget);
     expect(transport.operations, [
       'session.authenticate',
       'wifi.scan',

@@ -4,6 +4,7 @@ import 'package:eidolon_client_mobile/main.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_client.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
+import 'package:eidolon_client_mobile/src/features/setup/host_identity.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -100,6 +101,30 @@ void main() {
     );
   });
 
+  test('uses the BLE Host marker as the canonical generated display name', () {
+    expect(defaultHostDisplayName(validHostId), 'Eidolon-4c0285');
+    expect(
+      normalizeHostDisplayName(validHostId, 'Eidolon 56475a'),
+      'Eidolon-4c0285',
+    );
+    expect(
+      normalizeHostDisplayName(validHostId, 'Living room Eidolon'),
+      'Living room Eidolon',
+    );
+    expect(() => hostMarker('invalid-host'), throwsFormatException);
+
+    final restored = ManagedHost.fromJson({
+      'host_id': validHostId,
+      'host_public_key': validHostPublicKey,
+      'host_fingerprint': validHostPublicKeyFingerprint,
+      'ble_service_uuid': validBleServiceUuid,
+      'controller_id': 'ectrl-0123456789abcdefabcd',
+      'display_name': 'Eidolon 56475a',
+      'claimed_at': '2026-08-05T00:20:00Z',
+    });
+    expect(restored.displayName, 'Eidolon-4c0285');
+  });
+
   testWidgets(
       'the app starts in the first-use Setup entry instead of Audio/Hub',
       (tester) async {
@@ -112,5 +137,36 @@ void main() {
     expect(find.byKey(const Key('eidolon-welcome-page')), findsOneWidget);
     expect(find.text('设置新主机'), findsOneWidget);
     expect(find.text('发现并连接 Hub'), findsNothing);
+  });
+
+  testWidgets('managed Host exposes only implemented management actions',
+      (tester) async {
+    final host = ManagedHost(
+      hostId: validHostId,
+      hostPublicKey: validHostPublicKey,
+      hostFingerprint: validHostPublicKeyFingerprint,
+      bleServiceUuid: validBleServiceUuid,
+      controllerId: 'ectrl-0123456789abcdefabcd',
+      displayName: 'Eidolon-4c0285',
+      claimedAt: DateTime.parse('2026-08-05T00:20:00Z'),
+    );
+    await tester.pumpWidget(
+      EidolonMobileApp(hostRegistry: InMemoryHostRegistry([host])),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Eidolon-4c0285'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('change-host-network')), findsOneWidget);
+    expect(
+      find.byKey(const Key('manage-controllers-unavailable')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('controller-recovery-unavailable')),
+      findsOneWidget,
+    );
+    expect(find.text('尚未开放'), findsNWidgets(2));
+    expect(find.byType(AlertDialog), findsNothing);
   });
 }

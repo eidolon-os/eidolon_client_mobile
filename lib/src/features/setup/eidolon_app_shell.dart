@@ -197,7 +197,8 @@ class _HostDetailPage extends StatelessWidget {
             const SizedBox(height: 20),
             Text('主机管理', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            _ManagementEntry(
+            _ManagementEntry.available(
+              key: const Key('change-host-network'),
               icon: Icons.wifi,
               title: '更换 Wi-Fi',
               subtitle: '保留 Owner、Controller 和主机数据；需要靠近主机',
@@ -207,15 +208,11 @@ class _HostDetailPage extends StatelessWidget {
                 ),
               ),
             ),
-            _ManagementEntry(
+            _ManagementEntry.unavailable(
+              key: const Key('manage-controllers-unavailable'),
               icon: Icons.admin_panel_settings_outlined,
               title: '管理手机',
-              subtitle: '查看、添加或撤销 Host Controller',
-              onTap: () => _showBoundary(
-                context,
-                title: '管理手机',
-                body: 'Controller Grant 属于 Bootstrap 权威；Mobile 本地记录不能自行增加管理权限。',
-              ),
+              subtitle: '需要先实现 Host Controller Grant 管理协议',
             ),
             const SizedBox(height: 20),
             Text(
@@ -225,36 +222,12 @@ class _HostDetailPage extends StatelessWidget {
                   ),
             ),
             const SizedBox(height: 8),
-            _ManagementEntry(
+            _ManagementEntry.unavailable(
+              key: const Key('controller-recovery-unavailable'),
               icon: Icons.phonelink_erase_outlined,
               title: '手机丢失或重新认领',
-              subtitle: '需要先在主机上触发物理恢复；不会清除 Owner 或 Memory',
+              subtitle: '需要先实现主机侧限时物理恢复通道',
               destructive: true,
-              onTap: () => _showBoundary(
-                context,
-                title: 'Controller 恢复',
-                body: '网络断开不会自动开放认领。只有主机进入限时物理恢复状态后，'
-                    'App 才会允许建立新的 Controller。Factory Reset 是另一条独立流程。',
-              ),
-            ),
-          ],
-        ),
-      );
-
-  static Future<void> _showBoundary(
-    BuildContext context, {
-    required String title,
-    required String body,
-  }) =>
-      showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(title),
-          content: Text(body),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('知道了'),
             ),
           ],
         ),
@@ -262,18 +235,30 @@ class _HostDetailPage extends StatelessWidget {
 }
 
 class _ManagementEntry extends StatelessWidget {
-  const _ManagementEntry({
+  const _ManagementEntry.available({
+    super.key,
     required this.icon,
     required this.title,
     required this.subtitle,
-    required this.onTap,
+    required VoidCallback onTap,
     this.destructive = false,
-  });
+  })  : _onTap = onTap,
+        _unavailable = false;
+
+  const _ManagementEntry.unavailable({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.destructive = false,
+  })  : _onTap = null,
+        _unavailable = true;
 
   final IconData icon;
   final String title;
   final String subtitle;
-  final VoidCallback onTap;
+  final VoidCallback? _onTap;
+  final bool _unavailable;
   final bool destructive;
 
   @override
@@ -285,8 +270,11 @@ class _ManagementEntry extends StatelessWidget {
           ),
           title: Text(title),
           subtitle: Text(subtitle),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: onTap,
+          trailing: _unavailable
+              ? const Chip(label: Text('尚未开放'))
+              : const Icon(Icons.chevron_right),
+          enabled: !_unavailable,
+          onTap: _onTap,
         ),
       );
 }

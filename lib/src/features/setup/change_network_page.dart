@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'commissioning_transport.dart';
+import 'host_identity.dart';
 import 'host_registry.dart';
 import 'setup_models.dart';
 import 'setup_trust.dart';
@@ -57,8 +58,7 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
           '更换 Wi-Fi 需要“附近设备”权限。',
         );
       }
-      final marker =
-          widget.host.hostId.substring(widget.host.hostId.length - 6);
+      final marker = hostMarker(widget.host.hostId);
       final discovered = await _transport.scan(
         serviceUuid: widget.host.bleServiceUuid,
       );

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import 'commissioning_transport.dart';
 import 'host_registry.dart';
+import 'host_identity.dart';
 import 'setup_models.dart';
 import 'setup_trust.dart';
 
@@ -227,7 +228,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       hostFingerprint: endpoint.hostPublicKeyFingerprint,
       bleServiceUuid: endpoint.bleServiceUuid,
       controllerId: controller.controllerId,
-      displayName: 'Eidolon ${endpoint.hostId.substring(6, 12)}',
+      displayName: defaultHostDisplayName(endpoint.hostId),
       claimedAt: (widget.clock ?? DateTime.now)().toUtc(),
     );
     await _transport.close();
@@ -325,7 +326,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       hostFingerprint: endpoint.hostPublicKeyFingerprint,
       bleServiceUuid: endpoint.bleServiceUuid,
       controllerId: controller.controllerId,
-      displayName: 'Eidolon ${endpoint.hostId.substring(6, 12)}',
+      displayName: defaultHostDisplayName(endpoint.hostId),
       claimedAt: (widget.clock ?? DateTime.now)().toUtc(),
     );
     await _transport.close();
@@ -638,9 +639,12 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         children: [
           const Icon(Icons.check_circle, size: 72, color: Colors.green),
           const SizedBox(height: 16),
-          Text('主机已可以使用', style: Theme.of(context).textTheme.headlineSmall),
+          Text('主机接入已完成', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
-          Text('${_completedHost!.displayName} 已联网，这台手机已成为 Host Admin。'),
+          Text(
+            '${_completedHost!.displayName} 已连接 Wi-Fi，'
+            '这台手机已取得 Host Admin 权限。',
+          ),
           const SizedBox(height: 24),
           FilledButton(
             key: const Key('finish-setup'),

@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
+import 'host_identity.dart';
+
 class ManagedHost {
   const ManagedHost({
     required this.hostId,
@@ -19,7 +21,10 @@ class ManagedHost {
         hostFingerprint: value['host_fingerprint']! as String,
         bleServiceUuid: value['ble_service_uuid']! as String,
         controllerId: value['controller_id']! as String,
-        displayName: value['display_name']! as String,
+        displayName: normalizeHostDisplayName(
+          value['host_id']! as String,
+          value['display_name']! as String,
+        ),
         claimedAt: DateTime.parse(value['claimed_at']! as String).toUtc(),
       );
 
