@@ -12,6 +12,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/setup_fixtures.dart';
 
 class _FakeCommissioningTransport implements CommissioningTransport {
+  _FakeCommissioningTransport({
+    this.currentNetworkState = 'unconfigured',
+    this.currentSsid,
+  });
+
+  final String currentNetworkState;
+  final String? currentSsid;
   final operations = <String>[];
   bool closed = false;
 
@@ -58,6 +65,10 @@ class _FakeCommissioningTransport implements CommissioningTransport {
           'state': {'claim_state': 'unclaimed'},
         },
       'wifi.scan' => {
+          'current_network': {
+            'state': currentNetworkState,
+            'ssid': currentSsid,
+          },
           'networks': [
             {'ssid': 'Home', 'signal': 82, 'secured': true},
           ],
@@ -247,6 +258,51 @@ void main() {
     await tester.tap(find.byKey(const Key('finish-setup')));
     expect(completed?.hostId, validHostId);
     expect(completed?.controllerId, 'ectrl-0123456789abcdefabcd');
+    expect(transport.closed, isTrue);
+  });
+
+  testWidgets('already-networked Host keeps Wi-Fi and claims Controller',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final transport = _FakeCommissioningTransport(
+      currentNetworkState: 'connected',
+      currentSsid: 'Existing Home',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SetupWizardPage(
+          transport: transport,
+          clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
+          onComplete: (_) {},
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('scan-nearby-hosts')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Eidolon-4c0285'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('development-setup-code')),
+      '123456',
+    );
+    await tester.tap(find.byKey(const Key('authenticate-setup-code')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('确认主机网络'), findsOneWidget);
+    expect(find.text('主机已连接 Existing Home'), findsOneWidget);
+    final keepNetwork = find.byKey(const Key('keep-network-and-claim'));
+    await tester.ensureVisible(keepNetwork);
+    await tester.tap(keepNetwork);
+    await tester.pumpAndSettle();
+
+    expect(find.text('主机已可以使用'), findsOneWidget);
+    expect(transport.operations, [
+      'session.authenticate',
+      'wifi.scan',
+      'claim.complete',
+    ]);
     expect(transport.closed, isTrue);
   });
 

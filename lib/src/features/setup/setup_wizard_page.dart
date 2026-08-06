@@ -42,6 +42,8 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   List<NearbyEidolonHost> _nearby = const [];
   List<WifiNetwork> _networks = const [];
   WifiNetwork? _selectedNetwork;
+  bool _canKeepCurrentNetwork = false;
+  String? _currentSsid;
   String? _error;
   String? _progress;
   bool _busy = false;
@@ -164,12 +166,37 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           .whereType<Map<String, dynamic>>()
           .map(WifiNetwork.fromJson)
           .toList(growable: false);
+      final rawCurrentNetwork = scanned['current_network'];
+      final currentNetwork = rawCurrentNetwork is Map
+          ? Map<Object?, Object?>.from(rawCurrentNetwork)
+          : const <Object?, Object?>{};
+      final currentSsid = currentNetwork['ssid'];
       _setupCode.clear();
       setState(() {
         _networks = networks;
+        _canKeepCurrentNetwork = currentNetwork['state'] == 'connected';
+        _currentSsid = currentSsid is String && currentSsid.isNotEmpty
+            ? currentSsid
+            : null;
         _stage = _SetupStage.wifi;
         _progress = null;
       });
+    });
+  }
+
+  Future<void> _claimUsingCurrentNetwork() async {
+    final endpoint = _endpoint;
+    if (endpoint == null || !_canKeepCurrentNetwork) return;
+    if (_controllerName.text.trim().isEmpty) {
+      setState(() => _error = '请为这台管理手机填写一个名称');
+      return;
+    }
+    await _run(() async {
+      setState(() {
+        _stage = _SetupStage.configuring;
+        _progress = '正在保留当前网络并认领主机';
+      });
+      await _completeClaim(endpoint);
     });
   }
 
@@ -260,36 +287,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       }
       networkCompleted = true;
       setState(() => _progress = '正在把这台手机认领为主机管理员');
-      final controller = await _transport.getControllerIdentity();
-      final claimed = await _transport.request('claim.complete', {
-        'controller_id': controller.controllerId,
-        'public_key': controller.publicKey,
-        'display_name': _controllerName.text.trim(),
-        'platform': 'android',
-      });
-      final controllerResult = claimed['controller'];
-      if (controllerResult is! Map ||
-          controllerResult['controller_id'] != controller.controllerId) {
-        throw const CommissioningRequestException(
-          'claim_failed',
-          '主机没有确认 Controller 认领结果',
-        );
-      }
-      final host = ManagedHost(
-        hostId: endpoint.hostId,
-        hostPublicKey: endpoint.hostPublicKey,
-        hostFingerprint: endpoint.hostPublicKeyFingerprint,
-        bleServiceUuid: endpoint.bleServiceUuid,
-        controllerId: controller.controllerId,
-        displayName: 'Eidolon ${endpoint.hostId.substring(6, 12)}',
-        claimedAt: (widget.clock ?? DateTime.now)().toUtc(),
-      );
-      await _transport.close();
-      setState(() {
-        _completedHost = host;
-        _stage = _SetupStage.complete;
-        _progress = null;
-      });
+      await _completeClaim(endpoint);
     });
     if (staged) {
       try {
@@ -303,6 +301,39 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
     if (!networkCompleted && mounted) {
       _networkOperationId = _uuidV4();
     }
+  }
+
+  Future<void> _completeClaim(CommissioningEndpoint endpoint) async {
+    final controller = await _transport.getControllerIdentity();
+    final claimed = await _transport.request('claim.complete', {
+      'controller_id': controller.controllerId,
+      'public_key': controller.publicKey,
+      'display_name': _controllerName.text.trim(),
+      'platform': 'android',
+    });
+    final controllerResult = claimed['controller'];
+    if (controllerResult is! Map ||
+        controllerResult['controller_id'] != controller.controllerId) {
+      throw const CommissioningRequestException(
+        'claim_failed',
+        '主机没有确认 Controller 认领结果',
+      );
+    }
+    final host = ManagedHost(
+      hostId: endpoint.hostId,
+      hostPublicKey: endpoint.hostPublicKey,
+      hostFingerprint: endpoint.hostPublicKeyFingerprint,
+      bleServiceUuid: endpoint.bleServiceUuid,
+      controllerId: controller.controllerId,
+      displayName: 'Eidolon ${endpoint.hostId.substring(6, 12)}',
+      claimedAt: (widget.clock ?? DateTime.now)().toUtc(),
+    );
+    await _transport.close();
+    setState(() {
+      _completedHost = host;
+      _stage = _SetupStage.complete;
+      _progress = null;
+    });
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -499,10 +530,28 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   Widget _buildWifi() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('让主机加入 Wi-Fi', style: Theme.of(context).textTheme.headlineSmall),
+          Text(
+            _canKeepCurrentNetwork ? '确认主机网络' : '让主机加入 Wi-Fi',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
           const SizedBox(height: 8),
           const Text(
               '密码只通过已加密的蓝牙 Setup 通道交给 NetworkManager，不保存在 App 或 Bootstrap DB。'),
+          if (_canKeepCurrentNetwork) ...[
+            const SizedBox(height: 16),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.wifi),
+                title: Text(
+                  _currentSsid == null ? '主机当前已经联网' : '主机已连接 $_currentSsid',
+                ),
+                subtitle: const Text('可以保持当前连接直接认领，也可以在下方选择新的 Wi-Fi。'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text('如需更换网络，请选择新的 Wi-Fi：',
+                style: Theme.of(context).textTheme.titleSmall),
+          ],
           const SizedBox(height: 16),
           ..._networks.map(
             (network) => ListTile(
@@ -556,11 +605,22 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
             ),
           ),
           const SizedBox(height: 16),
+          if (_canKeepCurrentNetwork) ...[
+            FilledButton.tonalIcon(
+              key: const Key('keep-network-and-claim'),
+              onPressed: _busy ? null : _claimUsingCurrentNetwork,
+              icon: const Icon(Icons.verified_user_outlined),
+              label: const Text('保持当前 Wi-Fi，直接认领主机'),
+            ),
+            const SizedBox(height: 12),
+          ],
           FilledButton.icon(
             key: const Key('configure-and-claim'),
             onPressed: _busy ? null : _configureAndClaim,
             icon: const Icon(Icons.rocket_launch_outlined),
-            label: const Text('连接 Wi-Fi 并认领主机'),
+            label: Text(
+              _canKeepCurrentNetwork ? '更换 Wi-Fi 并认领主机' : '连接 Wi-Fi 并认领主机',
+            ),
           ),
         ],
       );
