@@ -119,14 +119,14 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         }
         throw const CommissioningRequestException(
           'setup_code_unavailable',
-          '这台主机当前没有有效的开发 Setup 码。请先在 Host 上生成新码，再重新选择主机。',
+          '这台主机当前没有有效的开发 Setup 码。请检查 Host 的开发 Setup 配置，再重新选择主机。',
         );
       }
       final now = (widget.clock ?? DateTime.now)().toUtc();
       if (!developmentSetup.expiresAt.isAfter(now)) {
         throw const CommissioningRequestException(
           'setup_code_expired',
-          '这台主机的开发 Setup 码已过期，请生成新码后重新选择主机。',
+          '这台主机的开发 Setup 会话已过期，请重新选择主机。',
         );
       }
       setState(() {
@@ -379,9 +379,10 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         'network_stage_failed' => '主机未能加入该 Wi-Fi。请检查密码；主机仍可通过蓝牙继续设置。',
         'network_confirm_failed' => '主机加入了 Wi-Fi，但未能安全确认变更。请重试，失败时会自动回滚。',
         'network_rollback_failed' => '主机未能立即回滚 Wi-Fi；系统检查点会继续保护原网络。',
-        'commissioning_denied' => 'Setup 码错误、过期或已失效。请核对 6 位码；连续 5 次失败后需要生成新码。',
-        'setup_code_unavailable' => '这台主机没有有效的开发 Setup 码，请在 Host 上生成新码。',
-        'setup_code_expired' => '开发 Setup 码已过期，请在 Host 上生成新码。',
+        'commissioning_denied' => 'Setup 码错误、过期或已失效。请核对 6 位码；连续 5 次失败后请重新选择主机。',
+        'setup_code_unavailable' =>
+          '这台主机没有有效的开发 Setup 码，请检查 Host 的开发 Setup 配置。',
+        'setup_code_expired' => '开发 Setup 会话已过期，请重新选择主机。',
         'controller_denied' => '开箱凭据已失效，而且这台手机不是该主机已授权的管理手机。',
         'already_claimed' => '这台主机已经被认领，请从“主机恢复”入口操作。',
         'operation_conflict' => '主机正在处理另一项设置，或本次重试已失效。请重新开始这一步。',
@@ -435,7 +436,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
             const SizedBox(height: 12),
             const _Notice(
               icon: Icons.developer_mode,
-              text: '开发测试：先在 Host 上生成 6 位短期 Setup 码。App 不再导入 JSON。',
+              text: '开发测试：Host 可配置固定 6 位 Setup 码，也可临时生成。App 不再导入 JSON。',
               color: Color(0xFF24222D),
             ),
           ],
@@ -476,7 +477,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           const SizedBox(height: 8),
           Text(
             '已连接 ${_selectedNearbyHost?.name ?? 'Eidolon Host'}。'
-            '请输入开发者在这台 Host 上生成的 6 位短期码。',
+            '请输入这台 Host 配置或临时生成的 6 位开发码。',
           ),
           const SizedBox(height: 20),
           TextField(

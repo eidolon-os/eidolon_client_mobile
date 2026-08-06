@@ -19,7 +19,7 @@ mDNS 发现 Hub -> P-256 签名注册 -> 审批/绑定 -> LiveKit control room
 ## 已实现
 
 - 首次使用入口、Setup 向导、我的 Eidolon、主机详情和独立换网/恢复入口。
-- Debug 6 位短期 Setup 码；先发现 Host，再输入数字码，不导入 JSON。
+- Debug 6 位 Setup 码（Host 固定开发码或临时码）；先发现 Host，再输入数字码，不导入 JSON。
 - Android 12+ Nearby Devices 权限及旧 Android BLE/location 权限处理。
 - 按固定 BLE Service UUID 扫描；广播 marker/RSSI 只展示和排序候选，不作为身份认证。
 - 验证 Host 签名的动态 commissioning endpoint，并 pin P-256 TLS SPKI。
