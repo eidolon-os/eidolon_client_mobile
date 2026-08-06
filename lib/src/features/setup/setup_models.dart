@@ -80,11 +80,8 @@ class CommissioningEndpoint {
   static const _keys = <String>{
     'contract_version',
     'purpose',
-    'host_id',
     'host_public_key',
-    'host_public_key_fingerprint',
     'reset_epoch',
-    'ble_service_uuid',
     'tls_spki_fingerprint',
     'development_setup',
     'signature',
@@ -131,19 +128,13 @@ class CommissioningEndpoint {
     }
     final contractVersion = _requiredJsonString(decoded, 'contract_version');
     final purpose = _requiredJsonString(decoded, 'purpose');
-    final endpointHostId = _requiredJsonString(decoded, 'host_id');
     final hostPublicKey = _requiredJsonString(decoded, 'host_public_key');
-    final hostPublicKeyFingerprint =
-        _requiredJsonString(decoded, 'host_public_key_fingerprint');
-    final serviceUuid = _requiredJsonString(decoded, 'ble_service_uuid');
     final resetEpoch = _requiredJsonInt(decoded, 'reset_epoch');
     final fingerprint = _requiredJsonString(decoded, 'tls_spki_fingerprint');
     final signature = _requiredJsonString(decoded, 'signature');
     if (contractVersion != '1' ||
         purpose != _purpose ||
-        !RegExp(r'^ehost-[0-9a-f]{20}$').hasMatch(endpointHostId) ||
-        !_uuidPattern.hasMatch(serviceUuid) ||
-        serviceUuid.toLowerCase() != expectedServiceUuid.toLowerCase() ||
+        !_uuidPattern.hasMatch(expectedServiceUuid) ||
         resetEpoch < 0 ||
         !RegExp(r'^sha256:[A-Za-z0-9_-]{43}$').hasMatch(fingerprint)) {
       throw const SetupTrustException('附近主机返回了无效的 Host endpoint');
@@ -156,11 +147,7 @@ class CommissioningEndpoint {
     final digest = await Sha256().hash(publicKey);
     final derivedHostId = 'ehost-${_hex(digest.bytes).substring(0, 20)}';
     final derivedFingerprint = 'sha256:${_encodeBase64Url(digest.bytes)}';
-    if (endpointHostId != derivedHostId ||
-        hostPublicKeyFingerprint != derivedFingerprint) {
-      throw const SetupTrustException('附近主机的 Host 身份与公钥不一致');
-    }
-    if ((expectedHostId != null && endpointHostId != expectedHostId) ||
+    if ((expectedHostId != null && derivedHostId != expectedHostId) ||
         (expectedHostPublicKey != null &&
             hostPublicKey != expectedHostPublicKey)) {
       throw const SetupTrustException('附近主机与已保存的 Host 身份不匹配');
@@ -180,11 +167,11 @@ class CommissioningEndpoint {
       decoded['development_setup'],
     );
     return CommissioningEndpoint._(
-      hostId: endpointHostId,
+      hostId: derivedHostId,
       hostPublicKey: hostPublicKey,
-      hostPublicKeyFingerprint: hostPublicKeyFingerprint,
+      hostPublicKeyFingerprint: derivedFingerprint,
       resetEpoch: resetEpoch,
-      bleServiceUuid: serviceUuid,
+      bleServiceUuid: expectedServiceUuid,
       tlsSpkiFingerprint: fingerprint,
       developmentSetup: developmentSetup,
     );

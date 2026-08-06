@@ -183,7 +183,7 @@ void main() {
       jsonEncode(validCommissioningEndpoint),
     );
 
-    expect(endpoint.hostId, validCommissioningEndpoint['host_id']);
+    expect(endpoint.hostId, validHostId);
     expect(endpoint.resetEpoch, 0);
 
     final tampered = Map<String, dynamic>.from(validCommissioningEndpoint)
@@ -245,7 +245,7 @@ void main() {
       'claim.complete',
     ]);
     await tester.tap(find.byKey(const Key('finish-setup')));
-    expect(completed?.hostId, validCommissioningEndpoint['host_id']);
+    expect(completed?.hostId, validHostId);
     expect(completed?.controllerId, 'ectrl-0123456789abcdefabcd');
     expect(transport.closed, isTrue);
   });
@@ -256,11 +256,10 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final transport = _FakeChangeNetworkTransport();
     final host = ManagedHost(
-      hostId: validCommissioningEndpoint['host_id']! as String,
-      hostPublicKey: validCommissioningEndpoint['host_public_key']! as String,
-      hostFingerprint:
-          validCommissioningEndpoint['host_public_key_fingerprint']! as String,
-      bleServiceUuid: validCommissioningEndpoint['ble_service_uuid']! as String,
+      hostId: validHostId,
+      hostPublicKey: validHostPublicKey,
+      hostFingerprint: validHostPublicKeyFingerprint,
+      bleServiceUuid: validBleServiceUuid,
       controllerId: 'ectrl-0123456789abcdefabcd',
       displayName: 'Living room Eidolon',
       claimedAt: DateTime.parse('2026-08-05T00:20:00Z'),
