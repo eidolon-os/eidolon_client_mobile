@@ -5,12 +5,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../host_setup/dev_descriptor.dart';
 import 'commissioning_transport.dart';
 import 'host_registry.dart';
 import 'setup_models.dart';
+import 'setup_trust.dart';
 
-enum _SetupStage { credential, nearby, wifi, configuring, complete }
+enum _SetupStage { nearby, code, wifi, configuring, complete }
 
 class SetupWizardPage extends StatefulWidget {
   const SetupWizardPage({
@@ -30,14 +30,15 @@ class SetupWizardPage extends StatefulWidget {
 
 class _SetupWizardPageState extends State<SetupWizardPage> {
   late final CommissioningTransport _transport;
-  final _credentialInput = TextEditingController();
+  final _setupCode = TextEditingController();
   final _passphrase = TextEditingController();
   final _hiddenSsid = TextEditingController();
   final _controllerName = TextEditingController(text: '我的手机');
   final _random = Random.secure();
 
-  _SetupStage _stage = _SetupStage.credential;
-  DevelopmentCommissioningDescriptor? _credential;
+  _SetupStage _stage = _SetupStage.nearby;
+  CommissioningEndpoint? _endpoint;
+  NearbyEidolonHost? _selectedNearbyHost;
   List<NearbyEidolonHost> _nearby = const [];
   List<WifiNetwork> _networks = const [];
   WifiNetwork? _selectedNetwork;
@@ -56,38 +57,18 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   @override
   void dispose() {
     unawaited(_transport.close());
-    _credentialInput.dispose();
+    _setupCode.dispose();
     _passphrase.dispose();
     _hiddenSsid.dispose();
     _controllerName.dispose();
     super.dispose();
   }
 
-  Future<void> _verifyCredential() async {
-    await _run(() async {
-      final credential =
-          await DevelopmentCommissioningDescriptor.parseAndVerify(
-        _credentialInput.text,
-        clock: widget.clock,
-      );
-      setState(() {
-        _credential = credential;
-        _stage = _SetupStage.nearby;
-        _progress = null;
-      });
-      await _scanNearbyInternal(credential);
-    });
-  }
-
   Future<void> _scanNearby() async {
-    final credential = _credential;
-    if (credential == null) return;
-    await _run(() => _scanNearbyInternal(credential));
+    await _run(_scanNearbyInternal);
   }
 
-  Future<void> _scanNearbyInternal(
-    DevelopmentCommissioningDescriptor credential,
-  ) async {
+  Future<void> _scanNearbyInternal() async {
     setState(() => _progress = '正在获取蓝牙权限');
     if (!await _transport.requestPermission()) {
       throw const CommissioningRequestException(
@@ -96,54 +77,80 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       );
     }
     setState(() => _progress = '正在寻找附近的 Eidolon 主机');
-    final marker = credential.hostId.substring(credential.hostId.length - 6);
     final discovered = await _transport.scan(
-      serviceUuid: credential.bleServiceUuid,
+      serviceUuid: CommissioningEndpoint.defaultServiceUuid,
     );
-    var matching = discovered
-        .where((host) => host.hostMarker.toLowerCase() == marker)
-        .toList();
-    if (matching.isEmpty) matching = discovered.toList();
-    matching.sort((left, right) => right.rssi.compareTo(left.rssi));
-    if (matching.isEmpty) {
+    final nearby = discovered.toList()
+      ..sort((left, right) => right.rssi.compareTo(left.rssi));
+    if (nearby.isEmpty) {
       throw const CommissioningRequestException(
         'host_not_found',
-        '没有找到与凭据匹配的主机。请确认主机已通电、靠近手机，并且 Bootstrap 正在运行。',
+        '没有找到附近的 Eidolon 主机。请确认主机已通电、靠近手机，并且 Bootstrap 正在运行。',
       );
     }
     setState(() {
-      _nearby = matching;
+      _nearby = nearby;
       _progress = null;
     });
   }
 
   Future<void> _selectHost(NearbyEidolonHost host) async {
-    final credential = _credential;
-    if (credential == null) return;
     await _run(() async {
       setState(() => _progress = '正在验证 ${host.name} 的 Host 身份');
       final rawEndpoint = await _transport.open(
         address: host.address,
-        serviceUuid: credential.bleServiceUuid,
+        serviceUuid: CommissioningEndpoint.defaultServiceUuid,
       );
-      final endpoint = await CommissioningEndpoint.parseAndVerify(
+      final endpoint = await CommissioningEndpoint.parseAndVerifyDiscovered(
         rawEndpoint,
-        credential,
       );
       setState(() => _progress = '正在建立加密 Setup 通道');
       await _transport.secure(
         tlsSpkiFingerprint: endpoint.tlsSpkiFingerprint,
       );
-      try {
-        await _transport.request('session.authenticate', {
-          'commissioning_id': credential.commissioningId,
-          'commissioning_secret': credential.commissioningSecret,
-        });
-      } on CommissioningRequestException catch (error) {
-        if (error.code != 'commissioning_denied') rethrow;
-        if (await _recoverCompletedClaim(credential)) return;
-        rethrow;
+      final developmentSetup = endpoint.developmentSetup;
+      if (developmentSetup == null) {
+        try {
+          if (await _recoverCompletedClaim(endpoint)) return;
+        } on CommissioningRequestException catch (error) {
+          if (error.code != 'controller_denied') rethrow;
+        }
+        throw const CommissioningRequestException(
+          'setup_code_unavailable',
+          '这台主机当前没有有效的开发 Setup 码。请先在 Host 上生成新码，再重新选择主机。',
+        );
       }
+      final now = (widget.clock ?? DateTime.now)().toUtc();
+      if (!developmentSetup.expiresAt.isAfter(now)) {
+        throw const CommissioningRequestException(
+          'setup_code_expired',
+          '这台主机的开发 Setup 码已过期，请生成新码后重新选择主机。',
+        );
+      }
+      setState(() {
+        _selectedNearbyHost = host;
+        _endpoint = endpoint;
+        _setupCode.clear();
+        _stage = _SetupStage.code;
+        _progress = null;
+      });
+    });
+  }
+
+  Future<void> _authenticateSetupCode() async {
+    final endpoint = _endpoint;
+    final developmentSetup = endpoint?.developmentSetup;
+    if (endpoint == null || developmentSetup == null) return;
+    final code = _setupCode.text.trim();
+    if (!RegExp(r'^[0-9]{6}$').hasMatch(code)) {
+      setState(() => _error = '请输入 Host 上显示的 6 位 Setup 码');
+      return;
+    }
+    await _run(() async {
+      await _transport.request('session.authenticate', {
+        'commissioning_id': developmentSetup.commissioningId,
+        'setup_code': code,
+      });
       setState(() => _progress = '正在读取主机可见的 Wi-Fi');
       final scanned = await _transport.request('wifi.scan', const {});
       final rawNetworks = scanned['networks'];
@@ -157,6 +164,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           .whereType<Map<String, dynamic>>()
           .map(WifiNetwork.fromJson)
           .toList(growable: false);
+      _setupCode.clear();
       setState(() {
         _networks = networks;
         _stage = _SetupStage.wifi;
@@ -166,7 +174,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   }
 
   Future<bool> _recoverCompletedClaim(
-    DevelopmentCommissioningDescriptor credential,
+    CommissioningEndpoint endpoint,
   ) async {
     final controller = await _transport.getControllerIdentity();
     final challenge = await _transport.request('controller.challenge', {
@@ -187,12 +195,12 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
     final state = authenticated['state'];
     if (state is! Map || state['claim_state'] != 'claimed') return false;
     final host = ManagedHost(
-      hostId: credential.hostId,
-      hostPublicKey: credential.hostPublicKey,
-      hostFingerprint: credential.hostPublicKeyFingerprint,
-      bleServiceUuid: credential.bleServiceUuid,
+      hostId: endpoint.hostId,
+      hostPublicKey: endpoint.hostPublicKey,
+      hostFingerprint: endpoint.hostPublicKeyFingerprint,
+      bleServiceUuid: endpoint.bleServiceUuid,
       controllerId: controller.controllerId,
-      displayName: 'Eidolon ${credential.hostId.substring(6, 12)}',
+      displayName: 'Eidolon ${endpoint.hostId.substring(6, 12)}',
       claimedAt: (widget.clock ?? DateTime.now)().toUtc(),
     );
     await _transport.close();
@@ -205,8 +213,8 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   }
 
   Future<void> _configureAndClaim() async {
-    final credential = _credential;
-    if (credential == null) return;
+    final endpoint = _endpoint;
+    if (endpoint == null) return;
     final ssid = (_selectedNetwork?.ssid ?? _hiddenSsid.text).trim();
     if (ssid.isEmpty) {
       setState(() => _error = '请选择 Wi-Fi，或输入隐藏网络名称');
@@ -268,12 +276,12 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         );
       }
       final host = ManagedHost(
-        hostId: credential.hostId,
-        hostPublicKey: credential.hostPublicKey,
-        hostFingerprint: credential.hostPublicKeyFingerprint,
-        bleServiceUuid: credential.bleServiceUuid,
+        hostId: endpoint.hostId,
+        hostPublicKey: endpoint.hostPublicKey,
+        hostFingerprint: endpoint.hostPublicKeyFingerprint,
+        bleServiceUuid: endpoint.bleServiceUuid,
         controllerId: controller.controllerId,
-        displayName: 'Eidolon ${credential.hostId.substring(6, 12)}',
+        displayName: 'Eidolon ${endpoint.hostId.substring(6, 12)}',
         claimedAt: (widget.clock ?? DateTime.now)().toUtc(),
       );
       await _transport.close();
@@ -311,7 +319,13 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       if (mounted) _showFailure(_friendlyError(error));
     } on PlatformException catch (error) {
       if (mounted) {
-        _showFailure(error.message ?? '手机无法完成附近设备操作');
+        _showFailure(
+          switch (error.code) {
+            'BLUETOOTH_OFF' => '请先打开平板蓝牙，再重新查找附近主机。',
+            'PERMISSION_DENIED' => '需要“附近设备”权限才能查找 Eidolon 主机。',
+            _ => error.message ?? '平板无法完成附近设备操作',
+          },
+        );
       }
     } on FormatException catch (error) {
       if (mounted) _showFailure(error.message);
@@ -333,7 +347,9 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         'network_stage_failed' => '主机未能加入该 Wi-Fi。请检查密码；主机仍可通过蓝牙继续设置。',
         'network_confirm_failed' => '主机加入了 Wi-Fi，但未能安全确认变更。请重试，失败时会自动回滚。',
         'network_rollback_failed' => '主机未能立即回滚 Wi-Fi；系统检查点会继续保护原网络。',
-        'commissioning_denied' => '开箱凭据已过期、已使用或被替换，请重新获取。',
+        'commissioning_denied' => 'Setup 码错误、过期或已失效。请核对 6 位码；连续 5 次失败后需要生成新码。',
+        'setup_code_unavailable' => '这台主机没有有效的开发 Setup 码，请在 Host 上生成新码。',
+        'setup_code_expired' => '开发 Setup 码已过期，请在 Host 上生成新码。',
         'controller_denied' => '开箱凭据已失效，而且这台手机不是该主机已授权的管理手机。',
         'already_claimed' => '这台主机已经被认领，请从“主机恢复”入口操作。',
         'operation_conflict' => '主机正在处理另一项设置，或本次重试已失效。请重新开始这一步。',
@@ -355,8 +371,8 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
               children: [
                 _ProgressHeader(stage: _stage),
                 const SizedBox(height: 24),
-                if (_stage == _SetupStage.credential) _buildCredential(),
                 if (_stage == _SetupStage.nearby) _buildNearby(),
+                if (_stage == _SetupStage.code) _buildSetupCode(),
                 if (_stage == _SetupStage.wifi) _buildWifi(),
                 if (_stage == _SetupStage.configuring) _buildConfiguring(),
                 if (_stage == _SetupStage.complete) _buildComplete(),
@@ -377,62 +393,28 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
     );
   }
 
-  Widget _buildCredential() => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('准备连接主机', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          const Text('给主机接通电源，并让手机保持在主机附近。首次设置不要求主机已经联网。'),
-          const SizedBox(height: 20),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.qr_code_scanner),
-              title: const Text('产品机：扫描机身或包装凭据'),
-              subtitle: const Text('制造凭据和扫码入口在产品镜像阶段启用'),
-              trailing: const Icon(Icons.lock_clock_outlined),
-            ),
-          ),
-          if (kDebugMode) ...[
-            const SizedBox(height: 16),
-            ExpansionTile(
-              key: const Key('development-credential-entry'),
-              initiallyExpanded: true,
-              title: const Text('开发测试：导入 Dev Descriptor'),
-              subtitle: const Text('每台主机独立、短期有效；不是固定万能码'),
-              childrenPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              children: [
-                TextField(
-                  key: const Key('commissioning-credential-input'),
-                  controller: _credentialInput,
-                  minLines: 5,
-                  maxLines: 10,
-                  autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Dev Descriptor JSON',
-                    alignLabelWithHint: true,
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  key: const Key('verify-and-find-host'),
-                  onPressed: _busy ? null : _verifyCredential,
-                  icon: const Icon(Icons.bluetooth_searching),
-                  label: const Text('验证并查找这台主机'),
-                ),
-              ],
-            ),
-          ],
-        ],
-      );
-
   Widget _buildNearby() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('选择附近主机', style: Theme.of(context).textTheme.headlineSmall),
+          Text('查找附近主机', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
-          const Text('优先显示广播标记匹配的 Host；最终身份由 signed endpoint 验证，信号强弱只帮助定位。'),
+          const Text('给主机接通电源，并让平板保持在主机附近。首次设置不要求主机已经联网。'),
+          if (kDebugMode) ...[
+            const SizedBox(height: 12),
+            const _Notice(
+              icon: Icons.developer_mode,
+              text: '开发测试：先在 Host 上生成 6 位短期 Setup 码。App 不再导入 JSON。',
+              color: Color(0xFF24222D),
+            ),
+          ],
           const SizedBox(height: 16),
+          if (_nearby.isEmpty)
+            FilledButton.icon(
+              key: const Key('scan-nearby-hosts'),
+              onPressed: _busy ? null : _scanNearby,
+              icon: const Icon(Icons.bluetooth_searching),
+              label: const Text('查找附近 Eidolon 主机'),
+            ),
           for (final host in _nearby)
             Card(
               child: ListTile(
@@ -444,11 +426,71 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
               ),
             ),
           if (_progress != null) _BusyNotice(text: _progress!),
+          if (_nearby.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _scanNearby,
+              icon: const Icon(Icons.refresh),
+              label: const Text('重新扫描'),
+            ),
+          ],
+        ],
+      );
+
+  Widget _buildSetupCode() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('输入 Setup 码', style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          Text(
+            '已连接 ${_selectedNearbyHost?.name ?? 'Eidolon Host'}。'
+            '请输入开发者在这台 Host 上生成的 6 位短期码。',
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            key: const Key('development-setup-code'),
+            controller: _setupCode,
+            enabled: !_busy,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.oneTimeCode],
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(6),
+            ],
+            maxLength: 6,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  letterSpacing: 10,
+                ),
+            decoration: const InputDecoration(
+              labelText: '6 位 Setup 码',
+              hintText: '000000',
+              counterText: '',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _authenticateSetupCode(),
+          ),
           const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: _busy ? null : _scanNearby,
-            icon: const Icon(Icons.refresh),
-            label: const Text('重新扫描'),
+          FilledButton.icon(
+            key: const Key('authenticate-setup-code'),
+            onPressed: _busy ? null : _authenticateSetupCode,
+            icon: const Icon(Icons.lock_open_outlined),
+            label: const Text('验证并继续'),
+          ),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: _busy
+                ? null
+                : () async {
+                    await _transport.close();
+                    setState(() {
+                      _endpoint = null;
+                      _selectedNearbyHost = null;
+                      _stage = _SetupStage.nearby;
+                    });
+                  },
+            child: const Text('选择其他主机'),
           ),
         ],
       );
@@ -562,8 +604,8 @@ class _ProgressHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final index = switch (stage) {
-      _SetupStage.credential => 0,
-      _SetupStage.nearby => 1,
+      _SetupStage.nearby => 0,
+      _SetupStage.code => 1,
       _SetupStage.wifi => 2,
       _SetupStage.configuring => 3,
       _SetupStage.complete => 4,
@@ -575,7 +617,7 @@ class _ProgressHeader extends StatelessWidget {
         const SizedBox(height: 8),
         LinearProgressIndicator(value: (index + 1) / 5),
         const SizedBox(height: 8),
-        Text('凭据  ·  附近主机  ·  Wi-Fi  ·  认领  ·  完成'),
+        Text('附近主机  ·  Setup 码  ·  Wi-Fi  ·  认领  ·  完成'),
       ],
     );
   }

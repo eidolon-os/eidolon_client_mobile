@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
 
-import '../host_setup/dev_descriptor.dart';
+import 'setup_trust.dart';
 
 class NearbyEidolonHost {
   const NearbyEidolonHost({
@@ -67,38 +67,56 @@ class ControllerIdentity {
 class CommissioningEndpoint {
   const CommissioningEndpoint._({
     required this.hostId,
+    required this.hostPublicKey,
+    required this.hostPublicKeyFingerprint,
     required this.resetEpoch,
     required this.bleServiceUuid,
     required this.tlsSpkiFingerprint,
+    required this.developmentSetup,
   });
 
+  static const defaultServiceUuid = 'f6a147b7-abef-57c3-973f-e3a17c6ef0ab';
   static const _purpose = 'eidolon-ble-commissioning-endpoint-v1';
   static const _keys = <String>{
     'contract_version',
     'purpose',
     'host_id',
+    'host_public_key',
+    'host_public_key_fingerprint',
     'reset_epoch',
     'ble_service_uuid',
     'tls_spki_fingerprint',
+    'development_setup',
     'signature',
   };
+  static final _uuidPattern = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+  );
 
-  static Future<CommissioningEndpoint> parseAndVerify(
-    String input,
-    DevelopmentCommissioningDescriptor credential,
-  ) =>
-      parseAndVerifyHost(
-        input,
-        hostId: credential.hostId,
-        hostPublicKey: credential.hostPublicKey,
-        bleServiceUuid: credential.bleServiceUuid,
-      );
+  static Future<CommissioningEndpoint> parseAndVerifyDiscovered(
+    String input, {
+    String expectedServiceUuid = defaultServiceUuid,
+  }) =>
+      _parseAndVerify(input, expectedServiceUuid: expectedServiceUuid);
 
   static Future<CommissioningEndpoint> parseAndVerifyHost(
     String input, {
     required String hostId,
     required String hostPublicKey,
     required String bleServiceUuid,
+  }) =>
+      _parseAndVerify(
+        input,
+        expectedServiceUuid: bleServiceUuid,
+        expectedHostId: hostId,
+        expectedHostPublicKey: hostPublicKey,
+      );
+
+  static Future<CommissioningEndpoint> _parseAndVerify(
+    String input, {
+    required String expectedServiceUuid,
+    String? expectedHostId,
+    String? expectedHostPublicKey,
   }) async {
     final Object? decoded;
     try {
@@ -114,22 +132,38 @@ class CommissioningEndpoint {
     final contractVersion = _requiredJsonString(decoded, 'contract_version');
     final purpose = _requiredJsonString(decoded, 'purpose');
     final endpointHostId = _requiredJsonString(decoded, 'host_id');
+    final hostPublicKey = _requiredJsonString(decoded, 'host_public_key');
+    final hostPublicKeyFingerprint =
+        _requiredJsonString(decoded, 'host_public_key_fingerprint');
     final serviceUuid = _requiredJsonString(decoded, 'ble_service_uuid');
     final resetEpoch = _requiredJsonInt(decoded, 'reset_epoch');
     final fingerprint = _requiredJsonString(decoded, 'tls_spki_fingerprint');
     final signature = _requiredJsonString(decoded, 'signature');
     if (contractVersion != '1' ||
         purpose != _purpose ||
-        endpointHostId != hostId ||
-        serviceUuid.toLowerCase() != bleServiceUuid.toLowerCase() ||
+        !RegExp(r'^ehost-[0-9a-f]{20}$').hasMatch(endpointHostId) ||
+        !_uuidPattern.hasMatch(serviceUuid) ||
+        serviceUuid.toLowerCase() != expectedServiceUuid.toLowerCase() ||
         resetEpoch < 0 ||
         !RegExp(r'^sha256:[A-Za-z0-9_-]{43}$').hasMatch(fingerprint)) {
-      throw const SetupTrustException('附近主机与已验证的 Host 凭据不匹配');
+      throw const SetupTrustException('附近主机返回了无效的 Host endpoint');
     }
     final publicKey = _decodeBase64Url(hostPublicKey);
     final signatureBytes = _decodeBase64Url(signature);
     if (publicKey.length != 32 || signatureBytes.length != 64) {
       throw const SetupTrustException('附近主机的身份签名长度无效');
+    }
+    final digest = await Sha256().hash(publicKey);
+    final derivedHostId = 'ehost-${_hex(digest.bytes).substring(0, 20)}';
+    final derivedFingerprint = 'sha256:${_encodeBase64Url(digest.bytes)}';
+    if (endpointHostId != derivedHostId ||
+        hostPublicKeyFingerprint != derivedFingerprint) {
+      throw const SetupTrustException('附近主机的 Host 身份与公钥不一致');
+    }
+    if ((expectedHostId != null && endpointHostId != expectedHostId) ||
+        (expectedHostPublicKey != null &&
+            hostPublicKey != expectedHostPublicKey)) {
+      throw const SetupTrustException('附近主机与已保存的 Host 身份不匹配');
     }
     final unsigned = Map<String, dynamic>.from(decoded)..remove('signature');
     final verified = await Ed25519().verify(
@@ -142,18 +176,61 @@ class CommissioningEndpoint {
     if (!verified) {
       throw const SetupTrustException('附近主机未能证明目标 Host 身份');
     }
+    final developmentSetup = DevelopmentSetupSession.fromJsonValueOrNull(
+      decoded['development_setup'],
+    );
     return CommissioningEndpoint._(
       hostId: endpointHostId,
+      hostPublicKey: hostPublicKey,
+      hostPublicKeyFingerprint: hostPublicKeyFingerprint,
       resetEpoch: resetEpoch,
       bleServiceUuid: serviceUuid,
       tlsSpkiFingerprint: fingerprint,
+      developmentSetup: developmentSetup,
     );
   }
 
   final String hostId;
+  final String hostPublicKey;
+  final String hostPublicKeyFingerprint;
   final int resetEpoch;
   final String bleServiceUuid;
   final String tlsSpkiFingerprint;
+  final DevelopmentSetupSession? developmentSetup;
+}
+
+class DevelopmentSetupSession {
+  const DevelopmentSetupSession({
+    required this.commissioningId,
+    required this.expiresAt,
+  });
+
+  factory DevelopmentSetupSession.fromJsonValue(Object? value) {
+    if (value is! Map<String, dynamic> ||
+        value.length != 2 ||
+        !value.keys.every({'commissioning_id', 'expires_at'}.contains)) {
+      throw const SetupTrustException('附近主机返回了无效的开发 Setup 状态');
+    }
+    final commissioningId = _requiredJsonString(value, 'commissioning_id');
+    final expiresAt =
+        DateTime.tryParse(_requiredJsonString(value, 'expires_at'));
+    if (!CommissioningEndpoint._uuidPattern.hasMatch(commissioningId) ||
+        expiresAt == null) {
+      throw const SetupTrustException('附近主机返回了无效的开发 Setup 状态');
+    }
+    return DevelopmentSetupSession(
+      commissioningId: commissioningId,
+      expiresAt: expiresAt.toUtc(),
+    );
+  }
+
+  static DevelopmentSetupSession? fromJsonValueOrNull(Object? value) {
+    if (value == null) return null;
+    return DevelopmentSetupSession.fromJsonValue(value);
+  }
+
+  final String commissioningId;
+  final DateTime expiresAt;
 }
 
 class CommissioningRequestException implements Exception {
@@ -211,6 +288,12 @@ List<int> _decodeBase64Url(String value) {
     throw const SetupTrustException('附近主机的身份签名编码无效');
   }
 }
+
+String _encodeBase64Url(List<int> value) =>
+    base64Url.encode(value).replaceAll('=', '');
+
+String _hex(List<int> value) =>
+    value.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
 
 dynamic _canonicalize(dynamic value) {
   if (value is Map<String, dynamic>) {

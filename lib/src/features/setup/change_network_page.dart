@@ -4,10 +4,10 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../host_setup/dev_descriptor.dart';
 import 'commissioning_transport.dart';
 import 'host_registry.dart';
 import 'setup_models.dart';
+import 'setup_trust.dart';
 
 class ChangeNetworkPage extends StatefulWidget {
   const ChangeNetworkPage({super.key, required this.host, this.transport});

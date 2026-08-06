@@ -4,7 +4,8 @@ import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
-import 'dev_descriptor.dart';
+import '../setup/setup_trust.dart';
+import 'host_proof.dart';
 import 'host_models.dart';
 
 class LocalApiRequestException implements Exception {

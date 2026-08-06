@@ -1,11 +1,11 @@
 import 'dart:convert';
 
-import 'package:eidolon_client_mobile/src/features/host_setup/dev_descriptor.dart';
 import 'package:eidolon_client_mobile/src/features/setup/commissioning_transport.dart';
 import 'package:eidolon_client_mobile/src/features/setup/change_network_page.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
 import 'package:eidolon_client_mobile/src/features/setup/setup_models.dart';
 import 'package:eidolon_client_mobile/src/features/setup/setup_wizard_page.dart';
+import 'package:eidolon_client_mobile/src/features/setup/setup_trust.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -179,22 +179,17 @@ class _FakeChangeNetworkTransport implements CommissioningTransport {
 void main() {
   test('verifies the signed dynamic TLS endpoint against the Host credential',
       () async {
-    final credential = await DevelopmentCommissioningDescriptor.parseAndVerify(
-      validDevDescriptorJson,
-      clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
-    );
-    final endpoint = await CommissioningEndpoint.parseAndVerify(
+    final endpoint = await CommissioningEndpoint.parseAndVerifyDiscovered(
       jsonEncode(validCommissioningEndpoint),
-      credential,
     );
 
-    expect(endpoint.hostId, credential.hostId);
+    expect(endpoint.hostId, validCommissioningEndpoint['host_id']);
     expect(endpoint.resetEpoch, 0);
 
     final tampered = Map<String, dynamic>.from(validCommissioningEndpoint)
       ..['reset_epoch'] = 1;
     await expectLater(
-      CommissioningEndpoint.parseAndVerify(jsonEncode(tampered), credential),
+      CommissioningEndpoint.parseAndVerifyDiscovered(jsonEncode(tampered)),
       throwsA(isA<SetupTrustException>()),
     );
   });
@@ -216,16 +211,20 @@ void main() {
       ),
     );
 
-    await tester.enterText(
-      find.byKey(const Key('commissioning-credential-input')),
-      validDevDescriptorJson,
-    );
-    await tester.tap(find.byKey(const Key('verify-and-find-host')));
+    await tester.tap(find.byKey(const Key('scan-nearby-hosts')));
     await tester.pumpAndSettle();
 
-    expect(find.text('选择附近主机'), findsOneWidget);
+    expect(find.text('查找附近主机'), findsOneWidget);
     expect(find.text('Eidolon-4c0285'), findsOneWidget);
     await tester.tap(find.text('Eidolon-4c0285'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('输入 Setup 码'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('development-setup-code')),
+      '123456',
+    );
+    await tester.tap(find.byKey(const Key('authenticate-setup-code')));
     await tester.pumpAndSettle();
 
     expect(find.text('让主机加入 Wi-Fi'), findsOneWidget);
@@ -246,7 +245,7 @@ void main() {
       'claim.complete',
     ]);
     await tester.tap(find.byKey(const Key('finish-setup')));
-    expect(completed?.hostId, validDevDescriptor['host_id']);
+    expect(completed?.hostId, validCommissioningEndpoint['host_id']);
     expect(completed?.controllerId, 'ectrl-0123456789abcdefabcd');
     expect(transport.closed, isTrue);
   });
@@ -257,11 +256,11 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final transport = _FakeChangeNetworkTransport();
     final host = ManagedHost(
-      hostId: validDevDescriptor['host_id']! as String,
-      hostPublicKey: validDevDescriptor['host_public_key']! as String,
+      hostId: validCommissioningEndpoint['host_id']! as String,
+      hostPublicKey: validCommissioningEndpoint['host_public_key']! as String,
       hostFingerprint:
-          validDevDescriptor['host_public_key_fingerprint']! as String,
-      bleServiceUuid: validDevDescriptor['ble_service_uuid']! as String,
+          validCommissioningEndpoint['host_public_key_fingerprint']! as String,
+      bleServiceUuid: validCommissioningEndpoint['ble_service_uuid']! as String,
       controllerId: 'ectrl-0123456789abcdefabcd',
       displayName: 'Living room Eidolon',
       claimedAt: DateTime.parse('2026-08-05T00:20:00Z'),
