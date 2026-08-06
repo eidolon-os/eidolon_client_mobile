@@ -70,10 +70,11 @@ flutter pub get
 flutter run
 ```
 
-开发测试阶段在对应 Host 上执行 `eidolon-bootstrapctl dev code --ttl 600`。App
-发现并连接该 Host 后，只需输入命令显示的 6 位数字。码值每次随机、短期有效，连续
-5 次失败后失效；它不是固定万能码。产品 release 不显示该入口；制造二维码/扫码
-入口尚未实现，不能把开发数字码当作产品带外信任方案。
+开发测试阶段可由 Host 配置固定 6 位码，也可执行
+`eidolon-bootstrapctl dev code --ttl 600` 签发临时码。固定的只是码值；
+commissioning session 仍然短期有效，连续 5 次失败后失效。产品
+release 不显示该入口；制造二维码/扫码入口尚未实现，不能把
+开发数字码当作产品带外信任方案。
 
 也可以使用项目内的 Android 运维脚本。工具链默认读取 `~/Developer` 下已经
 安装的 Flutter 与 Android SDK：
