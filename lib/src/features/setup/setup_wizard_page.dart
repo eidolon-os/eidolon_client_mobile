@@ -323,6 +323,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           switch (error.code) {
             'BLUETOOTH_OFF' => '请先打开平板蓝牙，再重新查找附近主机。',
             'PERMISSION_DENIED' => '需要“附近设备”权限才能查找 Eidolon 主机。',
+            'LINK_FAILED' => '蓝牙暂时无法连接主机。请让平板靠近主机后重试。',
             _ => error.message ?? '平板无法完成附近设备操作',
           },
         );

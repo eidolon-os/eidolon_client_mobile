@@ -13,6 +13,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.util.Base64
+import android.util.Log
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
@@ -36,6 +37,11 @@ private val INFO_UUID: UUID = UUID.fromString("30af68fb-163b-581f-a94c-1488e8b3b
 private val RX_UUID: UUID = UUID.fromString("518d55c5-5433-5312-9099-a0a03c90f003")
 private val TX_UUID: UUID = UUID.fromString("c8a3ab33-7e3a-5827-adf0-f4358a0cfe38")
 private val CCC_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+private const val MAX_GATT_VALUE_BYTES = 512
+private const val ANDROID_GATT_ERROR = 133
+private const val MAX_CONNECT_ATTEMPTS = 2
+private const val CONNECT_RETRY_DELAY_MS = 400L
+private const val LOG_TAG = "EidolonBleSetup"
 
 /** One Android-central BLE link. GATT is transport; SSLEngine owns security. */
 @SuppressLint("MissingPermission")
@@ -47,6 +53,8 @@ class BleCommissioningManager(
     private val encryptedIncoming = ArrayBlockingQueue<ByteArray>(512)
     private val closed = AtomicBoolean(false)
     private var gatt: BluetoothGatt? = null
+    private var pendingDevice: BluetoothDevice? = null
+    private var connectAttempt = 0
     private var serviceUuid: UUID? = null
     private var rx: BluetoothGattCharacteristic? = null
     private var tx: BluetoothGattCharacteristic? = null
@@ -69,11 +77,17 @@ class BleCommissioningManager(
             val device = manager.adapter?.getRemoteDevice(address)
                 ?: error("Bluetooth adapter is unavailable")
             openResult = result
-            gatt = device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
+            pendingDevice = device
+            connectPendingDevice()
         } catch (error: Exception) {
-            openResult = null
-            result.error("LINK_FAILED", error.message, null)
+            failOpen(error.message ?: "Could not connect to the Eidolon Host")
         }
+    }
+
+    private fun connectPendingDevice() {
+        val device = pendingDevice ?: error("Bluetooth Host is unavailable")
+        connectAttempt += 1
+        gatt = device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
     }
 
     fun secure(expectedSpkiFingerprint: String, result: MethodChannel.Result) {
@@ -136,6 +150,7 @@ class BleCommissioningManager(
         gatt?.disconnect()
         gatt?.close()
         gatt = null
+        pendingDevice = null
         failOpen("BLE commissioning link closed")
         failSecure("BLE commissioning link closed")
     }
@@ -148,9 +163,44 @@ class BleCommissioningManager(
                 if (!gatt.discoverServices()) failOpen("Could not discover Host GATT service")
                 return
             }
-            if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+            if (status != BluetoothGatt.GATT_SUCCESS || newState == BluetoothProfile.STATE_DISCONNECTED) {
+                if (this@BleCommissioningManager.gatt === gatt) {
+                    this@BleCommissioningManager.gatt = null
+                }
+                gatt.close()
+                rx = null
+                tx = null
+                negotiatedMtu = 23
+                endpointReadStarted = false
+                val canRetry = status == ANDROID_GATT_ERROR &&
+                    openResult != null &&
+                    connectAttempt < MAX_CONNECT_ATTEMPTS &&
+                    !closed.get()
+                if (canRetry) {
+                    Log.w(LOG_TAG, "GATT status 133; retrying connection once")
+                    mainHandler.postDelayed(
+                        {
+                            if (openResult != null && !closed.get()) {
+                                try {
+                                    connectPendingDevice()
+                                } catch (error: Exception) {
+                                    failOpen(error.message ?: "Could not retry Bluetooth connection")
+                                }
+                            }
+                        },
+                        CONNECT_RETRY_DELAY_MS,
+                    )
+                    return
+                }
                 encryptedIncoming.offer(ByteArray(0))
-                failOpen("Host disconnected during Setup")
+                if (openResult != null) {
+                    val message = if (status == ANDROID_GATT_ERROR) {
+                        "Bluetooth could not connect after one retry. Move closer to the Host and try again."
+                    } else {
+                        "Bluetooth connection to the Host failed (status $status)"
+                    }
+                    failOpen(message)
+                }
                 failSecure("Host disconnected during secure Setup")
             }
         }
@@ -268,7 +318,7 @@ class BleCommissioningManager(
     private fun writeEncrypted(data: ByteArray) {
         val currentGatt = gatt ?: error("BLE link is closed")
         val currentRx = rx ?: error("BLE RX characteristic is missing")
-        val maximum = maxOf(20, negotiatedMtu - 3)
+        val maximum = minOf(MAX_GATT_VALUE_BYTES, maxOf(20, negotiatedMtu - 3))
         var offset = 0
         while (offset < data.size) {
             val chunk = data.copyOfRange(offset, minOf(data.size, offset + maximum))
@@ -301,6 +351,7 @@ class BleCommissioningManager(
     private fun failOpen(message: String) {
         val result = openResult ?: return
         openResult = null
+        pendingDevice = null
         mainHandler.post { result.error("LINK_FAILED", message, null) }
     }
 
