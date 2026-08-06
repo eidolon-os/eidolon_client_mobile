@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import 'commissioning_transport.dart';
 import 'change_network_page.dart';
+import 'controller_key_bridge.dart';
 import 'host_registry.dart';
 import 'setup_wizard_page.dart';
 
@@ -11,10 +12,12 @@ class EidolonAppShell extends StatefulWidget {
     super.key,
     this.registry,
     this.setupTransport,
+    this.controllerKeys,
   });
 
   final HostRegistry? registry;
   final CommissioningTransport? setupTransport;
+  final ControllerKeyBridge? controllerKeys;
 
   @override
   State<EidolonAppShell> createState() => _EidolonAppShellState();
@@ -44,6 +47,7 @@ class _EidolonAppShellState extends State<EidolonAppShell> {
       MaterialPageRoute(
         builder: (context) => SetupWizardPage(
           transport: widget.setupTransport,
+          controllerKeys: widget.controllerKeys,
           onComplete: (host) async {
             await _registry.save(host);
             if (!context.mounted) return;
@@ -66,7 +70,11 @@ class _EidolonAppShellState extends State<EidolonAppShell> {
     if (hosts.isEmpty) {
       return _WelcomePage(onSetup: _openSetup);
     }
-    return _HostsPage(hosts: hosts, onAdd: _openSetup);
+    return _HostsPage(
+      hosts: hosts,
+      onAdd: _openSetup,
+      controllerKeys: widget.controllerKeys,
+    );
   }
 }
 
@@ -123,10 +131,15 @@ class _WelcomePage extends StatelessWidget {
 }
 
 class _HostsPage extends StatelessWidget {
-  const _HostsPage({required this.hosts, required this.onAdd});
+  const _HostsPage({
+    required this.hosts,
+    required this.onAdd,
+    this.controllerKeys,
+  });
 
   final List<ManagedHost> hosts;
   final VoidCallback onAdd;
+  final ControllerKeyBridge? controllerKeys;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -157,7 +170,10 @@ class _HostsPage extends StatelessWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push<void>(
                   MaterialPageRoute(
-                    builder: (_) => _HostDetailPage(host: host),
+                    builder: (_) => _HostDetailPage(
+                      host: host,
+                      controllerKeys: controllerKeys,
+                    ),
                   ),
                 ),
               ),
@@ -168,9 +184,10 @@ class _HostsPage extends StatelessWidget {
 }
 
 class _HostDetailPage extends StatelessWidget {
-  const _HostDetailPage({required this.host});
+  const _HostDetailPage({required this.host, this.controllerKeys});
 
   final ManagedHost host;
+  final ControllerKeyBridge? controllerKeys;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -204,7 +221,10 @@ class _HostDetailPage extends StatelessWidget {
               subtitle: '保留 Owner、Controller 和主机数据；需要靠近主机',
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute(
-                  builder: (_) => ChangeNetworkPage(host: host),
+                  builder: (_) => ChangeNetworkPage(
+                    host: host,
+                    controllerKeys: controllerKeys,
+                  ),
                 ),
               ),
             ),
@@ -241,9 +261,9 @@ class _ManagementEntry extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required VoidCallback onTap,
-    this.destructive = false,
   })  : _onTap = onTap,
-        _unavailable = false;
+        _unavailable = false,
+        destructive = false;
 
   const _ManagementEntry.unavailable({
     super.key,

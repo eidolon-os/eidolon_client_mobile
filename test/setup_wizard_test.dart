@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/features/setup/commissioning_transport.dart';
 import 'package:eidolon_client_mobile/src/features/setup/change_network_page.dart';
+import 'package:eidolon_client_mobile/src/features/setup/controller_key_bridge.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
 import 'package:eidolon_client_mobile/src/features/setup/setup_models.dart';
 import 'package:eidolon_client_mobile/src/features/setup/setup_wizard_page.dart';
@@ -10,6 +11,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/setup_fixtures.dart';
+
+class _FakeControllerKeyBridge implements ControllerKeyBridge {
+  @override
+  Future<ControllerIdentity> getIdentity() async => const ControllerIdentity(
+        controllerId: 'ectrl-0123456789abcdefabcd',
+        publicKey: 'controller-public-key',
+        fingerprint: 'sha256:controller',
+      );
+
+  @override
+  Future<String> signChallenge(Map<String, dynamic> challenge) async =>
+      'valid-controller-signature';
+}
 
 class _FakeCommissioningTransport implements CommissioningTransport {
   _FakeCommissioningTransport({
@@ -94,20 +108,6 @@ class _FakeCommissioningTransport implements CommissioningTransport {
   }
 
   @override
-  Future<ControllerIdentity> getControllerIdentity() async =>
-      const ControllerIdentity(
-        controllerId: 'ectrl-0123456789abcdefabcd',
-        publicKey: 'controller-public-key',
-        fingerprint: 'sha256:controller',
-      );
-
-  @override
-  Future<String> signControllerChallenge(
-    Map<String, dynamic> challenge,
-  ) async =>
-      'test-controller-signature';
-
-  @override
   Future<void> close() async => closed = true;
 }
 
@@ -174,16 +174,6 @@ class _FakeChangeNetworkTransport implements CommissioningTransport {
   }
 
   @override
-  Future<String> signControllerChallenge(
-    Map<String, dynamic> challenge,
-  ) async =>
-      'valid-controller-signature';
-
-  @override
-  Future<ControllerIdentity> getControllerIdentity() =>
-      throw UnimplementedError();
-
-  @override
   Future<void> close() async {}
 }
 
@@ -211,11 +201,13 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(900, 1800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final transport = _FakeCommissioningTransport();
+    final controllerKeys = _FakeControllerKeyBridge();
     ManagedHost? completed;
     await tester.pumpWidget(
       MaterialApp(
         home: SetupWizardPage(
           transport: transport,
+          controllerKeys: controllerKeys,
           clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
           onComplete: (host) => completed = host,
         ),
@@ -270,10 +262,12 @@ void main() {
       currentNetworkState: 'connected',
       currentSsid: 'Existing Home',
     );
+    final controllerKeys = _FakeControllerKeyBridge();
     await tester.pumpWidget(
       MaterialApp(
         home: SetupWizardPage(
           transport: transport,
+          controllerKeys: controllerKeys,
           clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
           onComplete: (_) {},
         ),
@@ -312,6 +306,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(900, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final transport = _FakeChangeNetworkTransport();
+    final controllerKeys = _FakeControllerKeyBridge();
     final host = ManagedHost(
       hostId: validHostId,
       hostPublicKey: validHostPublicKey,
@@ -323,7 +318,11 @@ void main() {
     );
     await tester.pumpWidget(
       MaterialApp(
-        home: ChangeNetworkPage(host: host, transport: transport),
+        home: ChangeNetworkPage(
+          host: host,
+          transport: transport,
+          controllerKeys: controllerKeys,
+        ),
       ),
     );
 

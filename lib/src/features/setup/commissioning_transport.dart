@@ -26,10 +26,6 @@ abstract interface class CommissioningTransport {
     Map<String, dynamic> payload,
   );
 
-  Future<ControllerIdentity> getControllerIdentity();
-
-  Future<String> signControllerChallenge(Map<String, dynamic> challenge);
-
   Future<void> close();
 }
 
@@ -152,39 +148,6 @@ class PlatformBleCommissioningTransport implements CommissioningTransport {
       throw const CommissioningRequestException(
         'invalid_response',
         '主机返回的 Setup 结果缺少数据',
-      );
-    }
-    return result;
-  }
-
-  @override
-  Future<ControllerIdentity> getControllerIdentity() async {
-    _requireAndroid();
-    final result = await _channel.invokeMapMethod<Object?, Object?>(
-      'getControllerIdentity',
-    );
-    if (result == null) {
-      throw const CommissioningRequestException(
-        'controller_key_failed',
-        '无法创建本机管理凭据',
-      );
-    }
-    return ControllerIdentity.fromMap(result);
-  }
-
-  @override
-  Future<String> signControllerChallenge(
-    Map<String, dynamic> challenge,
-  ) async {
-    _requireAndroid();
-    final result = await _channel.invokeMethod<String>(
-      'signControllerChallenge',
-      challenge,
-    );
-    if (result == null || result.isEmpty) {
-      throw const CommissioningRequestException(
-        'controller_key_failed',
-        '无法使用本机 Controller 凭据完成验证',
       );
     }
     return result;

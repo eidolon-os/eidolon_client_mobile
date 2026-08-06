@@ -5,16 +5,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'commissioning_transport.dart';
+import 'controller_key_bridge.dart';
 import 'host_identity.dart';
 import 'host_registry.dart';
 import 'setup_models.dart';
 import 'setup_trust.dart';
 
 class ChangeNetworkPage extends StatefulWidget {
-  const ChangeNetworkPage({super.key, required this.host, this.transport});
+  const ChangeNetworkPage({
+    super.key,
+    required this.host,
+    this.transport,
+    this.controllerKeys,
+  });
 
   final ManagedHost host;
   final CommissioningTransport? transport;
+  final ControllerKeyBridge? controllerKeys;
 
   @override
   State<ChangeNetworkPage> createState() => _ChangeNetworkPageState();
@@ -22,6 +29,7 @@ class ChangeNetworkPage extends StatefulWidget {
 
 class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
   late final CommissioningTransport _transport;
+  late final ControllerKeyBridge _controllerKeys;
   final _passphrase = TextEditingController();
   final _hiddenSsid = TextEditingController();
   final _random = Random.secure();
@@ -39,6 +47,7 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
   void initState() {
     super.initState();
     _transport = widget.transport ?? PlatformBleCommissioningTransport();
+    _controllerKeys = widget.controllerKeys ?? PlatformControllerKeyBridge();
   }
 
   @override
@@ -109,7 +118,7 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
           '主机返回了无效的 Controller challenge',
         );
       }
-      final signature = await _transport.signControllerChallenge(challenge);
+      final signature = await _controllerKeys.signChallenge(challenge);
       await _transport.request('controller.authenticate', {
         ...challenge,
         'signature': signature,

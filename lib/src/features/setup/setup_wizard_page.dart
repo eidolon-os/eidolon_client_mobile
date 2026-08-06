@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'commissioning_transport.dart';
+import 'controller_key_bridge.dart';
 import 'host_registry.dart';
 import 'host_identity.dart';
 import 'setup_models.dart';
@@ -18,11 +19,13 @@ class SetupWizardPage extends StatefulWidget {
     super.key,
     required this.onComplete,
     this.transport,
+    this.controllerKeys,
     this.clock,
   });
 
   final ValueChanged<ManagedHost> onComplete;
   final CommissioningTransport? transport;
+  final ControllerKeyBridge? controllerKeys;
   final DateTime Function()? clock;
 
   @override
@@ -31,6 +34,7 @@ class SetupWizardPage extends StatefulWidget {
 
 class _SetupWizardPageState extends State<SetupWizardPage> {
   late final CommissioningTransport _transport;
+  late final ControllerKeyBridge _controllerKeys;
   final _setupCode = TextEditingController();
   final _passphrase = TextEditingController();
   final _hiddenSsid = TextEditingController();
@@ -55,6 +59,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   void initState() {
     super.initState();
     _transport = widget.transport ?? PlatformBleCommissioningTransport();
+    _controllerKeys = widget.controllerKeys ?? PlatformControllerKeyBridge();
   }
 
   @override
@@ -204,7 +209,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   Future<bool> _recoverCompletedClaim(
     CommissioningEndpoint endpoint,
   ) async {
-    final controller = await _transport.getControllerIdentity();
+    final controller = await _controllerKeys.getIdentity();
     final challenge = await _transport.request('controller.challenge', {
       'controller_id': controller.controllerId,
     });
@@ -215,7 +220,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         challenge['reset_epoch'] is! int) {
       return false;
     }
-    final signature = await _transport.signControllerChallenge(challenge);
+    final signature = await _controllerKeys.signChallenge(challenge);
     final authenticated = await _transport.request('controller.authenticate', {
       ...challenge,
       'signature': signature,
@@ -305,7 +310,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   }
 
   Future<void> _completeClaim(CommissioningEndpoint endpoint) async {
-    final controller = await _transport.getControllerIdentity();
+    final controller = await _controllerKeys.getIdentity();
     final claimed = await _transport.request('claim.complete', {
       'controller_id': controller.controllerId,
       'public_key': controller.publicKey,

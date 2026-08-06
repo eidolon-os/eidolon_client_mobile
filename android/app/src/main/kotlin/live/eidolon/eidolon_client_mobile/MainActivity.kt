@@ -39,6 +39,10 @@ class MainActivity : FlutterActivity() {
         private const val SERVICE_TYPE = "_eidolon-hub._tcp."
         private const val KEY_ALIAS = "eidolon-mobile-device-p256-v1"
         private const val CONTROLLER_KEY_ALIAS = "eidolon-host-controller-p256-v1"
+        private val CONTROLLER_CHALLENGE_PURPOSES = setOf(
+            "eidolon-controller-ble-auth-v1",
+            "eidolon-controller-local-auth-v1",
+        )
         private const val DEVICE_ID_NAMESPACE = "eidolon-mobile-android-v1"
         private const val MIC_REQUEST_CODE = 7001
         private const val BLE_REQUEST_CODE = 7002
@@ -170,7 +174,7 @@ class MainActivity : FlutterActivity() {
             ?: error("controller_id is required")
         val purpose = call.argument<String>("purpose") ?: error("purpose is required")
         val resetEpoch = call.argument<Int>("reset_epoch") ?: error("reset_epoch is required")
-        require(contractVersion == "1" && purpose == "eidolon-controller-ble-auth-v1") {
+        require(contractVersion == "1" && purpose in CONTROLLER_CHALLENGE_PURPOSES) {
             "Unsupported Controller challenge"
         }
         val identity = controllerIdentity()
@@ -179,7 +183,7 @@ class MainActivity : FlutterActivity() {
             "\"challenge\":${org.json.JSONObject.quote(challenge)}," +
             "\"contract_version\":\"1\"," +
             "\"controller_id\":${org.json.JSONObject.quote(controllerId)}," +
-            "\"purpose\":\"eidolon-controller-ble-auth-v1\"," +
+            "\"purpose\":${org.json.JSONObject.quote(purpose)}," +
             "\"reset_epoch\":$resetEpoch}"
         val signer = Signature.getInstance("SHA256withECDSA")
         signer.initSign(ensureKeyEntry(CONTROLLER_KEY_ALIAS).privateKey)

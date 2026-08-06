@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'package:eidolon_client_mobile/main.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_client.dart';
+import 'package:eidolon_client_mobile/src/features/setup/controller_key_bridge.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_identity.dart';
+import 'package:eidolon_client_mobile/src/features/setup/setup_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -32,6 +34,23 @@ const _hostOverview = <String, dynamic>{
     'updated_at': '2026-08-05T00:00:00Z',
   },
 };
+
+class _FakeControllerKeys implements ControllerKeyBridge {
+  Map<String, dynamic>? signed;
+
+  @override
+  Future<ControllerIdentity> getIdentity() async => const ControllerIdentity(
+        controllerId: 'ectrl-0123456789abcdefabcd',
+        publicKey: 'controller-public-key',
+        fingerprint: 'sha256:controller',
+      );
+
+  @override
+  Future<String> signChallenge(Map<String, dynamic> challenge) async {
+    signed = Map<String, dynamic>.from(challenge);
+    return 'valid_controller_signature';
+  }
+}
 
 void main() {
   test('parses the Admin Local API host contract', () {
@@ -99,6 +118,66 @@ void main() {
       () => LocalApiClient.parseBaseUri('http://host:9002/api/admin'),
       throwsA(isA<FormatException>()),
     );
+  });
+
+  test('LocalApiClient creates a reset-bound Controller session', () async {
+    final requested = <String>[];
+    final keys = _FakeControllerKeys();
+    final client = LocalApiClient(
+      httpClient: MockClient((request) async {
+        requested.add(request.url.path);
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        if (request.url.path == '/api/local/v1/auth/challenges') {
+          expect(body, {
+            'contract_version': '1',
+            'controller_id': 'ectrl-0123456789abcdefabcd',
+          });
+          return http.Response(
+            jsonEncode({
+              'contract_version': '1',
+              'purpose': 'eidolon-controller-local-auth-v1',
+              'controller_id': 'ectrl-0123456789abcdefabcd',
+              'challenge': validHostChallenge,
+              'reset_epoch': 2,
+            }),
+            200,
+          );
+        }
+        expect(body['signature'], 'valid_controller_signature');
+        return http.Response(
+          jsonEncode({
+            'contract_version': '1',
+            'token_type': 'Bearer',
+            'access_token': validHostChallenge,
+            'expires_at': '2026-08-06T01:00:00Z',
+            'controller': {
+              'contract_version': '1',
+              'controller_id': 'ectrl-0123456789abcdefabcd',
+              'role': 'host_admin',
+              'display_name': 'Primary phone',
+              'platform': 'android',
+              'reset_epoch': 2,
+            },
+          }),
+          200,
+        );
+      }),
+    );
+
+    final session = await client.authenticateController(
+      'https://eidolon.local:9002',
+      expectedControllerId: 'ectrl-0123456789abcdefabcd',
+      controllerKeys: keys,
+    );
+
+    expect(requested, [
+      '/api/local/v1/auth/challenges',
+      '/api/local/v1/auth/sessions',
+    ]);
+    expect(keys.signed?['purpose'], 'eidolon-controller-local-auth-v1');
+    expect(session.controllerId, 'ectrl-0123456789abcdefabcd');
+    expect(session.resetEpoch, 2);
+    expect(session.accessToken, validHostChallenge);
   });
 
   test('uses the BLE Host marker as the canonical generated display name', () {
