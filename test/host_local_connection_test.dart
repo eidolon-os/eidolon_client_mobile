@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_local_connection_page.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_client.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_discovery.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/pinned_http_client.dart';
 import 'package:eidolon_client_mobile/src/features/setup/commissioning_transport.dart';
 import 'package:eidolon_client_mobile/src/features/setup/controller_key_bridge.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
@@ -104,7 +105,11 @@ ManagedHost _host({String? tlsSpkiFingerprint}) => ManagedHost(
       tlsSpkiFingerprint: tlsSpkiFingerprint,
     );
 
-Map<String, dynamic> _hostOverview({String hostId = validHostId}) => {
+Map<String, dynamic> _hostOverview({
+  String hostId = validHostId,
+  String workspaceState = 'absent',
+}) =>
+    {
       'contract_version': '1',
       'status': 'running',
       'mode': 'development',
@@ -119,15 +124,45 @@ Map<String, dynamic> _hostOverview({String hostId = validHostId}) => {
         'reset_epoch': 2,
         'claim_state': 'claimed',
         'network_state': 'connected',
-        'workspace_state': 'absent',
+        'workspace_state': workspaceState,
         'recovery_state': 'normal',
         'updated_at': '2026-08-06T08:00:00Z',
+      },
+    };
+
+Map<String, dynamic> _workspaceRuntime() => {
+      'contract_version': '1',
+      'operation_id': _workspaceOperationId,
+      'state': 'ready',
+      'owner': {
+        'owner_id': 'owner_primary',
+        'display_name': 'Manson',
+        'lifecycle_state': 'active',
+      },
+      'primary_companion': {
+        'companion_id': 'companion_primary',
+        'lifecycle_state': 'active',
+      },
+      'persona': {
+        'genome_id': 'genome_current',
+        'version': 2,
+        'lifecycle_state': 'committed',
+        'schema_version': 'eidolon.persona_genome',
+        'genome_hash': 'sha256:${'a' * 64}',
+        'realizer_version': '1',
+      },
+      'memory_workspace': {
+        'realm_id': 'realm_primary',
+        'lifecycle_state': 'active',
       },
     };
 
 LocalApiClient _clientFor(
   Map<String, dynamic> overview, {
   int workspaceStatusCode = 200,
+  bool workspaceReady = false,
+  int runtimeStatusCode = 200,
+  PinnedHttpFailureKind? workspaceTransportFailure,
 }) =>
     LocalApiClient(
       httpClient: MockClient((request) async {
@@ -160,26 +195,58 @@ LocalApiClient _clientFor(
                 'display_name': 'Test tablet',
                 'platform': 'android',
                 'reset_epoch': 2,
-                'owner_id': null,
+                'owner_id': workspaceReady ? 'owner_primary' : null,
               },
             }),
             200,
           );
         }
         if (request.url.path == '/api/local/v1/setup/workspace') {
+          if (workspaceTransportFailure case final kind?) {
+            throw PinnedHttpException(
+              kind: kind,
+              message: 'simulated workspace transport failure',
+              uri: request.url,
+            );
+          }
           if (workspaceStatusCode != 200) {
             return http.Response('', workspaceStatusCode);
           }
           return http.Response(
-            jsonEncode({
-              'contract_version': '1',
-              'operation_id': _workspaceOperationId,
-              'state': 'absent',
-              'owner': null,
-              'workspace': null,
-            }),
+            jsonEncode(
+              workspaceReady
+                  ? {
+                      'contract_version': '1',
+                      'operation_id': _workspaceOperationId,
+                      'state': 'ready',
+                      'owner': {
+                        'owner_id': 'owner_primary',
+                        'display_name': 'Manson',
+                        'lifecycle_state': 'active',
+                      },
+                      'workspace': {
+                        'state': 'ready',
+                        'primary_companion_id': 'companion_primary',
+                        'persona_genome_id': 'genome_origin',
+                        'memory_realm_id': 'realm_primary',
+                      },
+                    }
+                  : {
+                      'contract_version': '1',
+                      'operation_id': _workspaceOperationId,
+                      'state': 'absent',
+                      'owner': null,
+                      'workspace': null,
+                    },
+            ),
             200,
           );
+        }
+        if (request.url.path == '/api/local/v1/workspace/runtime') {
+          if (runtimeStatusCode != 200) {
+            return http.Response('', runtimeStatusCode);
+          }
+          return http.Response(jsonEncode(_workspaceRuntime()), 200);
         }
         return http.Response('', 404);
       }),
@@ -272,9 +339,65 @@ void main() {
     expect(find.textContaining('认领和 Wi-Fi 不会回滚'), findsOneWidget);
   });
 
+  testWidgets(
+      'Workspace transport interruption does not erase a valid Host session',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(
+            _hostOverview(),
+            workspaceTransportFailure: PinnedHttpFailureKind.io,
+          ),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('local-connection-complete')), findsOneWidget);
+    expect(find.byKey(const Key('local-connection-error')), findsNothing);
+    expect(find.byKey(const Key('workspace-setup-error')), findsOneWidget);
+    expect(find.textContaining('本地安全连接在传输过程中中断'), findsOneWidget);
+  });
+
+  testWidgets(
+      'runtime outage preserves ready Workspace and degrades only daily status',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(
+            _hostOverview(workspaceState: 'ready'),
+            workspaceReady: true,
+            runtimeStatusCode: 503,
+          ),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('local-connection-complete')), findsOneWidget);
+    expect(find.byKey(const Key('workspace-ready')), findsOneWidget);
+    expect(find.byKey(const Key('local-connection-error')), findsNothing);
+    expect(find.byKey(const Key('workspace-runtime-error')), findsOneWidget);
+    expect(find.textContaining('日常运行状态暂时不可用'), findsOneWidget);
+    expect(find.text('已创建'), findsNWidgets(3));
+  });
+
   testWidgets('setup continuation initializes Workspace without redoing claim',
       (tester) async {
     var initialized = false;
+    var runtimeAvailable = false;
     var finished = false;
     final requests = <String>[];
 
@@ -319,13 +442,32 @@ void main() {
             if (request.url.path == '/api/local/v1/setup/workspace' &&
                 request.method == 'GET') {
               return http.Response(
-                jsonEncode({
-                  'contract_version': '1',
-                  'operation_id': _workspaceOperationId,
-                  'state': 'absent',
-                  'owner': null,
-                  'workspace': null,
-                }),
+                jsonEncode(
+                  initialized
+                      ? {
+                          'contract_version': '1',
+                          'operation_id': _workspaceOperationId,
+                          'state': 'ready',
+                          'owner': {
+                            'owner_id': 'owner_primary',
+                            'display_name': 'Manson',
+                            'lifecycle_state': 'active',
+                          },
+                          'workspace': {
+                            'state': 'ready',
+                            'primary_companion_id': 'companion_primary',
+                            'persona_genome_id': 'genome_origin',
+                            'memory_realm_id': 'realm_primary',
+                          },
+                        }
+                      : {
+                          'contract_version': '1',
+                          'operation_id': _workspaceOperationId,
+                          'state': 'absent',
+                          'owner': null,
+                          'workspace': null,
+                        },
+                ),
                 200,
               );
             }
@@ -357,6 +499,14 @@ void main() {
                 }),
                 200,
               );
+            }
+            if (request.url.path == '/api/local/v1/workspace/runtime') {
+              expect(request.headers['authorization'],
+                  'Bearer $validHostChallenge');
+              if (!runtimeAvailable) {
+                return http.Response('', 503);
+              }
+              return http.Response(jsonEncode(_workspaceRuntime()), 200);
             }
             return http.Response('', 404);
           }),
@@ -392,9 +542,18 @@ void main() {
     expect(initialized, isTrue);
     expect(find.byKey(const Key('workspace-ready')), findsOneWidget);
     expect(find.text('你好，Manson。'), findsOneWidget);
+    expect(find.byKey(const Key('workspace-runtime-error')), findsOneWidget);
+    expect(find.textContaining('日常运行状态暂时不可用'), findsOneWidget);
+    runtimeAvailable = true;
+    await tester.tap(find.byKey(const Key('retry-workspace-runtime')));
+    await tester.pumpAndSettle();
+
     expect(find.text('主 Companion'), findsOneWidget);
     expect(find.text('Persona'), findsOneWidget);
     expect(find.text('Memory Workspace'), findsOneWidget);
+    expect(find.textContaining('v2'), findsOneWidget);
+    expect(find.text('运行中'), findsNWidgets(3));
+    expect(find.byKey(const Key('workspace-runtime-error')), findsNothing);
     expect(find.text('我的 Eidolon'), findsOneWidget);
     await tester.tap(find.byKey(const Key('finish-workspace-setup')));
     expect(finished, isTrue);

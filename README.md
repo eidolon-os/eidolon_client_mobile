@@ -35,6 +35,9 @@ mDNS 发现 Hub -> P-256 签名注册 -> 审批/绑定 -> LiveKit control room
 - Controller-authenticated `GET/PUT /api/local/v1/setup/workspace`；认领后通过
   mDNS、pinned HTTPS 和短期 Controller session 创建或恢复首个 Owner、主
   Companion 与 Workspace。
+- Controller/Owner-scoped `GET /api/local/v1/workspace/runtime`；只展示主 Companion、
+  当前 Persona 版本和 Memory Workspace 的安全摘要，不把 raw Persona 或 runtime
+  config 暴露给 Mobile。
 - Host 在 Workspace 前先保存；LAN/Admin/Data 暂不可用时只暂停后半段，不回滚
   Wi-Fi 或 Controller claim，可从“连接主机”继续。
 - Host Setup 不直接调用 Admin 运维 API、Hub、LiveKit 或 Audio Channel。
@@ -114,8 +117,9 @@ BlueZ、NetworkManager、Android GATT/TLS、LAN mDNS 和 Controller session 已�
 Pi 5/Android 平板/路由器组合上完成过一次真实 Host commissioning 与重启恢复；该结果
 不能外推为完整网络兼容矩阵。当前 Pi/Android 已真实完成首个 Owner、主 Companion 和
 Workspace 创建，并在新建 Controller session 后重复读取到 ready；Data outage、进程重启、
-重复提交和 App kill 的故障矩阵仍未完成。产品二维码、物理 recovery、Factory Reset 和
-iOS 仍是后续项。
+重复提交和 App kill 的实机故障矩阵仍未完成。自动化已覆盖重复提交、Local API 重启后
+重新认证、runtime authority 降级以及跨 Owner/Companion 拒绝。产品二维码、物理
+recovery、Factory Reset 和 iOS 仍是后续项。
 
 下面的 Hub 注册和 Audio 使用说明属于保留的后续 Conversation 功能，当前不再是
 App 首次启动流程。待 Host 达到产品定义的 ready 状态后，再恢复对应入口。

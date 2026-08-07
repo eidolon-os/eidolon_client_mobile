@@ -22,6 +22,12 @@ onboarding 是三个连续但独立的完成点：Host claim 成功后立即持�
 内部 operation fingerprint 或服务凭证。Local API 使用稳定 Host operation 恢复中断，
 Mobile 不保存第二份可写的 Workspace ready 状态。
 
+Workspace ready 后，Mobile 读取 `GET /api/local/v1/workspace/runtime`。Local API 从
+Controller session 推导 Owner，Admin 再通过 System Directory 声明的只读 runtime
+authority endpoint 访问 Data。返回值只包含 Owner 显示名、主 Companion ID、Persona
+版本摘要和 Memory Realm ID；raw Persona genome 与 runtime config 留在系统内部。
+Workspace/runtime 的 operation、Owner 和主 Companion 必须一致，否则 Mobile 拒绝展示。
+
 原有 `ClientPage`、`ClientController`、HubClient 和 LiveKit session 暂时作为保留的
 Conversation 功能存在，不参与默认启动，也不在 Host Control 阶段调试。
 

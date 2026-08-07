@@ -16,9 +16,31 @@ import 'local_api_client.dart';
 import 'local_api_discovery.dart';
 import 'pinned_http_client.dart';
 import 'workspace_models.dart';
+import 'workspace_runtime_models.dart';
 
 typedef LocalApiClientFactory = LocalApiClient Function(String fingerprint);
 typedef ManagedHostUpdater = Future<void> Function(ManagedHost host);
+
+class _RuntimeLoad {
+  const _RuntimeLoad({this.value, this.error});
+
+  final WorkspaceRuntime? value;
+  final String? error;
+}
+
+class _ProductStateLoad {
+  const _ProductStateLoad({
+    this.workspace,
+    this.workspaceError,
+    this.runtime,
+    this.runtimeError,
+  });
+
+  final WorkspaceStatus? workspace;
+  final String? workspaceError;
+  final WorkspaceRuntime? runtime;
+  final String? runtimeError;
+}
 
 class HostLocalConnectionPage extends StatefulWidget {
   const HostLocalConnectionPage({
@@ -65,6 +87,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   LocalControllerSession? _session;
   WorkspaceStatus? _workspace;
   String? _workspaceError;
+  WorkspaceRuntime? _workspaceRuntime;
+  String? _workspaceRuntimeError;
   bool _workspaceBusy = false;
 
   @override
@@ -96,6 +120,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       _session = null;
       _workspace = null;
       _workspaceError = null;
+      _workspaceRuntime = null;
+      _workspaceRuntimeError = null;
       _baseUrl = null;
     });
     try {
@@ -119,18 +145,11 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             expectedControllerId: _host.controllerId,
             controllerKeys: _controllerKeys,
           );
-          WorkspaceStatus? workspace;
-          String? workspaceError;
-          try {
-            workspace = await client.fetchWorkspace(
-              endpoint.baseUrl,
-              accessToken: session.accessToken,
-            );
-          } on LocalApiRequestException catch (error) {
-            workspaceError = _workspaceFailure(error);
-          } on FormatException {
-            workspaceError = '主机已安全连接，但 Workspace 返回了不兼容的数据。';
-          }
+          final productState = await _loadProductState(
+            client,
+            endpoint.baseUrl,
+            session.accessToken,
+          );
           if (!mounted) return;
           setState(() {
             _endpointName = endpoint.instanceName;
@@ -138,8 +157,10 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             _baseUrl = endpoint.baseUrl;
             _overview = overview;
             _session = session;
-            _workspace = workspace;
-            _workspaceError = workspaceError;
+            _workspace = productState.workspace;
+            _workspaceError = productState.workspaceError;
+            _workspaceRuntime = productState.runtime;
+            _workspaceRuntimeError = productState.runtimeError;
             _progress = null;
           });
           return;
@@ -273,6 +294,82 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     return '$message 主机认领和 Wi-Fi 不会回滚，可稍后继续 Workspace。';
   }
 
+  String _runtimePinnedHttpFailure(PinnedHttpException error) {
+    return '${_pinnedHttpFailure(error)} Workspace 已就绪，可稍后刷新日常状态。';
+  }
+
+  Future<_ProductStateLoad> _loadProductState(
+    LocalApiClient client,
+    String baseUrl,
+    String accessToken,
+  ) async {
+    WorkspaceStatus workspace;
+    try {
+      workspace = await client.fetchWorkspace(
+        baseUrl,
+        accessToken: accessToken,
+      );
+    } on LocalApiRequestException catch (error) {
+      return _ProductStateLoad(workspaceError: _workspaceFailure(error));
+    } on PinnedHttpException catch (error) {
+      return _ProductStateLoad(
+        workspaceError: _pinnedHttpFailure(
+          error,
+          workspaceIsOptional: true,
+        ),
+      );
+    } on FormatException {
+      return const _ProductStateLoad(
+        workspaceError: '主机已安全连接，但 Workspace 返回了不兼容的数据。',
+      );
+    } catch (_) {
+      return const _ProductStateLoad(
+        workspaceError: '主机已安全接入，但 Workspace 服务暂时不可用。',
+      );
+    }
+    if (!workspace.isReady) {
+      return _ProductStateLoad(workspace: workspace);
+    }
+    final runtime = await _loadRuntime(client, baseUrl, accessToken);
+    if (runtime.value case final value?
+        when !value.matchesWorkspace(workspace)) {
+      return _ProductStateLoad(
+        workspace: workspace,
+        runtimeError: 'Workspace 与日常运行状态不一致，已拒绝展示跨 Owner 或 Companion 数据。',
+      );
+    }
+    return _ProductStateLoad(
+      workspace: workspace,
+      runtime: runtime.value,
+      runtimeError: runtime.error,
+    );
+  }
+
+  Future<_RuntimeLoad> _loadRuntime(
+    LocalApiClient client,
+    String baseUrl,
+    String accessToken,
+  ) async {
+    try {
+      return _RuntimeLoad(
+        value: await client.fetchWorkspaceRuntime(
+          baseUrl,
+          accessToken: accessToken,
+        ),
+      );
+    } on LocalApiRequestException catch (error) {
+      return _RuntimeLoad(error: _workspaceRuntimeFailure(error));
+    } on PinnedHttpException catch (error) {
+      return _RuntimeLoad(
+        error: _runtimePinnedHttpFailure(error),
+      );
+    } on FormatException {
+      return const _RuntimeLoad(error: '主机返回了不兼容的日常运行状态。');
+    } catch (_) {
+      return const _RuntimeLoad(error: 'Eidolon 日常运行状态暂时不可用。');
+    }
+  }
+
   Future<void> _refreshWorkspace() async {
     final baseUrl = _baseUrl;
     final session = _session;
@@ -280,35 +377,21 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     setState(() {
       _workspaceBusy = true;
       _workspaceError = null;
+      _workspaceRuntimeError = null;
     });
     final client = _createClient(_host.tlsSpkiFingerprint!);
     try {
-      final workspace = await client.fetchWorkspace(
+      final productState = await _loadProductState(
+        client,
         baseUrl,
-        accessToken: session.accessToken,
+        session.accessToken,
       );
-      if (mounted) setState(() => _workspace = workspace);
-    } on LocalApiRequestException catch (error) {
-      if (mounted) setState(() => _workspaceError = _workspaceFailure(error));
-    } on PinnedHttpException catch (error) {
       if (mounted) {
         setState(() {
-          _workspaceError = _pinnedHttpFailure(
-            error,
-            workspaceIsOptional: true,
-          );
-        });
-      }
-    } on FormatException {
-      if (mounted) {
-        setState(() {
-          _workspaceError = '主机已安全连接，但 Workspace 返回了不兼容的数据。';
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _workspaceError = '主机已安全接入，但 Workspace 服务暂时不可用。';
+          _workspace = productState.workspace;
+          _workspaceError = productState.workspaceError;
+          _workspaceRuntime = productState.runtime;
+          _workspaceRuntimeError = productState.runtimeError;
         });
       }
     } finally {
@@ -334,6 +417,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     setState(() {
       _workspaceBusy = true;
       _workspaceError = null;
+      _workspaceRuntimeError = null;
     });
     final client = _createClient(_host.tlsSpkiFingerprint!);
     try {
@@ -346,7 +430,26 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       if (!workspace.isReady) {
         throw const FormatException('Workspace 初始化没有返回 ready');
       }
-      if (mounted) setState(() => _workspace = workspace);
+      final runtime = await _loadRuntime(
+        client,
+        baseUrl,
+        session.accessToken,
+      );
+      final runtimeValue = runtime.value;
+      final acceptedRuntime =
+          runtimeValue != null && runtimeValue.matchesWorkspace(workspace)
+              ? runtimeValue
+              : null;
+      final runtimeError = runtimeValue != null && acceptedRuntime == null
+          ? 'Workspace 与日常运行状态不一致，已拒绝展示跨 Owner 或 Companion 数据。'
+          : runtime.error;
+      if (mounted) {
+        setState(() {
+          _workspace = workspace;
+          _workspaceRuntime = acceptedRuntime;
+          _workspaceRuntimeError = runtimeError;
+        });
+      }
     } on LocalApiRequestException catch (error) {
       if (mounted) setState(() => _workspaceError = _workspaceFailure(error));
     } on PinnedHttpException catch (error) {
@@ -395,6 +498,14 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         409 => '主机的 Owner 绑定与 Workspace 不一致，已停止继续设置。',
         422 => 'Workspace 名称未被主机接受，请检查后重试。',
         _ => '主机已安全接入，但 Workspace 服务暂时不可用。认领和 Wi-Fi 不会回滚。',
+      };
+
+  String _workspaceRuntimeFailure(LocalApiRequestException error) =>
+      switch (error.statusCode) {
+        401 => '本次管理会话已失效，请重新连接主机。',
+        404 => '主机尚未提供日常运行状态接口；Workspace 本身已就绪。',
+        409 => 'Workspace 已创建，但主 Companion 的运行资源尚未一致。',
+        _ => 'Workspace 已就绪，但日常运行状态暂时不可用。',
       };
 
   @override
@@ -459,6 +570,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   Widget _buildWorkspaceCard() {
     final workspace = _workspace;
     if (workspace?.isReady ?? false) {
+      final runtime = _workspaceRuntime;
       return Card(
         key: const Key('workspace-ready'),
         child: Padding(
@@ -478,18 +590,53 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               const SizedBox(height: 12),
               Text('你好，${workspace!.owner!.displayName}。'),
               const SizedBox(height: 12),
-              const _WorkspaceResourceStatus(
+              _WorkspaceResourceStatus(
                 icon: Icons.face_retouching_natural,
                 label: '主 Companion',
+                statusLabel: runtime == null ? '已创建' : '运行中',
+                detail: runtime == null
+                    ? 'Workspace 已创建'
+                    : '运行身份 ${_shortId(runtime.primaryCompanion.companionId)}',
               ),
-              const _WorkspaceResourceStatus(
+              _WorkspaceResourceStatus(
                 icon: Icons.psychology_alt_outlined,
                 label: 'Persona',
+                statusLabel: runtime == null ? '已创建' : '运行中',
+                detail: runtime == null
+                    ? 'Workspace 已创建'
+                    : 'v${runtime.persona.version} · ${_shortId(runtime.persona.genomeId)}',
               ),
-              const _WorkspaceResourceStatus(
+              _WorkspaceResourceStatus(
                 icon: Icons.auto_stories_outlined,
                 label: 'Memory Workspace',
+                statusLabel: runtime == null ? '已创建' : '运行中',
+                detail: runtime == null
+                    ? 'Workspace 已创建'
+                    : '运行空间 ${_shortId(runtime.memoryWorkspace.realmId)}',
               ),
+              if (_workspaceRuntimeError case final error?) ...[
+                const SizedBox(height: 12),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      error,
+                      key: const Key('workspace-runtime-error'),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                TextButton.icon(
+                  key: const Key('retry-workspace-runtime'),
+                  onPressed: _workspaceBusy ? null : _refreshWorkspace,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('重新加载日常状态'),
+                ),
+              ],
               if (widget.setupContinuation) ...[
                 const SizedBox(height: 20),
                 FilledButton.icon(
@@ -591,10 +738,17 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
 }
 
 class _WorkspaceResourceStatus extends StatelessWidget {
-  const _WorkspaceResourceStatus({required this.icon, required this.label});
+  const _WorkspaceResourceStatus({
+    required this.icon,
+    required this.label,
+    required this.detail,
+    required this.statusLabel,
+  });
 
   final IconData icon;
   final String label;
+  final String detail;
+  final String statusLabel;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -603,17 +757,33 @@ class _WorkspaceResourceStatus extends StatelessWidget {
           children: [
             Icon(icon, size: 20),
             const SizedBox(width: 10),
-            Expanded(child: Text(label)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label),
+                  Text(
+                    detail,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
             Icon(
               Icons.check_circle_outline,
               size: 18,
               color: Theme.of(context).colorScheme.primary,
             ),
             const SizedBox(width: 4),
-            const Text('已就绪'),
+            Text(statusLabel),
           ],
         ),
       );
+}
+
+String _shortId(String value) {
+  if (value.length <= 16) return value;
+  return '…${value.substring(value.length - 12)}';
 }
 
 class _ConnectedHostCard extends StatelessWidget {

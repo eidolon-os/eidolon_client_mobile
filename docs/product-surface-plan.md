@@ -30,7 +30,7 @@ Mobile -> pinned Local API -> product adapters -> owning authorities
 | 产品面 | 当前真实能力 | Mobile 决策 |
 |---|---|---|
 | Host Setup | BLE commissioning、Wi-Fi、Controller claim、LAN auth 已实现 | 保持独立恢复入口 |
-| Workspace | Local API `GET/PUT /setup/workspace` 已实现 | 完成首次 Owner/Companion/Workspace；失败不回滚 Host |
+| Workspace | Local API `GET/PUT /setup/workspace` 与 Owner-scoped `GET /workspace/runtime` 已实现 | 首次初始化与日常 runtime 分离；下游失败不回滚 Host |
 | System | Host/Bootstrap 正交状态与 IP 可读；换网已有 BLE 流程 | 作为 My Eidolon 的系统卡片，不开放 Supervisor/日志/配置 |
 | Admin Web control plane | 当前产品分支只有运维型 Device Admission/Mount 编排，要求操作者输入 Hub credential | 只复用领域语义；不能把 credential 输入或 Admin route 搬到 Mobile |
 | Mission Control | Data V2 产品分支已移除旧跨库聚合；旧 cockpit 分支不是当前可用 producer contract | 等 Owner-scoped projection API 后接 snapshot + stream，不复活跨库读取 |
@@ -107,7 +107,8 @@ voice turn 已停止，也不能承载任何 mutation。
 
 1. 已完成 Host Setup/Workspace 基础真机闭环以及 pinned unary transport 契约测试；
    重启、Data outage、重复提交和 App kill 属于后续故障矩阵。
-2. 当前推进 My Eidolon/System/Workspace 的 Local API 产品 projection 与原生 Mobile 页面。
+2. My Eidolon 的 Workspace runtime 安全投影与原生 Mobile 页面已接入；下一步补齐
+   System/Workspace 实机故障矩阵和可操作的日常设置契约。
 3. Hub 提供 Controller/Owner scope 到 management principal 的服务端交换边界后，增加
    Devices read 与 forward-only admission allowlist。
 4. ESP32 固件补齐 product descriptor、安全 provisioning、enrollment receipt；实现

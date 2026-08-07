@@ -68,7 +68,7 @@ class WorkspaceStatus {
     if (value.length != 5 ||
         value['contract_version'] != '1' ||
         operationId is! String ||
-        !_uuid.hasMatch(operationId) ||
+        !workspaceOperationIdPattern.hasMatch(operationId) ||
         rawState is! String) {
       throw const FormatException('Local API 返回了无效的 Workspace status');
     }
@@ -109,7 +109,7 @@ class WorkspaceStatus {
   bool get isReady => state == WorkspaceSetupState.ready;
 }
 
-final _uuid = RegExp(
+final workspaceOperationIdPattern = RegExp(
   r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
   r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
 );
