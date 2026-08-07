@@ -3,15 +3,24 @@
 ## 当前优先级：Host Control first
 
 当前 App Shell 默认进入 `features/host_setup`，只与 `eidolon_admin` 的 Local API
-交互。第一条已落地链路是：
+交互。当前开箱链路是：
 
 ```text
-HostSetupPage -> LocalApiClient -> GET /api/local/v1/host
-                                  -> bootstrapd health snapshot
+SetupWizard -> BLE commissioning -> NetworkManager + Controller claim
+            -> save ManagedHost
+            -> mDNS candidate + pinned HTTPS
+            -> Local Controller session
+            -> GET/PUT /api/local/v1/setup/workspace
+            -> Local API -> Admin internal onboarding -> Data Workspace Authority
 ```
 
-Mobile 不直接访问 Admin 运维 API。首次接入 transport、网络 mutation 和 Controller
-认证在对应 Host 侧能力完成后接入；当前只读链路不能被描述成首次配网完成。
+Mobile 不直接访问 Admin 运维 API。BLE Host access、LAN authentication 和 Workspace
+onboarding 是三个连续但独立的完成点：Host claim 成功后立即持久化，后半段失败不会
+回滚网络或认领；用户可从已保存 Host 的“连接主机”入口恢复 Workspace operation。
+
+`host_setup/workspace_models.dart` 严格消费 Local API 的产品投影，不接触 Data/Admin
+内部 operation fingerprint 或服务凭证。Local API 使用稳定 Host operation 恢复中断，
+Mobile 不保存第二份可写的 Workspace ready 状态。
 
 原有 `ClientPage`、`ClientController`、HubClient 和 LiveKit session 暂时作为保留的
 Conversation 功能存在，不参与默认启动，也不在 Host Control 阶段调试。

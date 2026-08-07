@@ -9,6 +9,7 @@ import '../setup/setup_trust.dart';
 import 'controller_session.dart';
 import 'host_proof.dart';
 import 'host_models.dart';
+import 'workspace_models.dart';
 
 class LocalApiRequestException implements Exception {
   const LocalApiRequestException(this.message, {this.statusCode});
@@ -162,6 +163,57 @@ class LocalApiClient {
       );
     }
     return session;
+  }
+
+  Future<WorkspaceStatus> fetchWorkspace(
+    String baseUrl, {
+    required String accessToken,
+  }) async {
+    final response = await _httpClient
+        .get(
+          parseBaseUri(baseUrl).resolve('/api/local/v1/setup/workspace'),
+          headers: _authorizedHeaders(accessToken),
+        )
+        .timeout(timeout);
+    return WorkspaceStatus.fromJson(
+      _decodeResponse(response, operation: 'Workspace status'),
+    );
+  }
+
+  Future<WorkspaceStatus> initializeWorkspace(
+    String baseUrl, {
+    required String accessToken,
+    required String ownerDisplayName,
+    required String companionDisplayName,
+  }) async {
+    final response = await _httpClient
+        .put(
+          parseBaseUri(baseUrl).resolve('/api/local/v1/setup/workspace'),
+          headers: _authorizedHeaders(accessToken, json: true),
+          body: jsonEncode({
+            'owner_display_name': ownerDisplayName,
+            'companion_display_name': companionDisplayName,
+          }),
+        )
+        .timeout(timeout);
+    return WorkspaceStatus.fromJson(
+      _decodeResponse(response, operation: 'Workspace setup'),
+    );
+  }
+
+  static Map<String, String> _authorizedHeaders(
+    String accessToken, {
+    bool json = false,
+  }) {
+    final token = accessToken.trim();
+    if (token.isEmpty) {
+      throw const LocalApiRequestException('Controller session token 为空');
+    }
+    return {
+      'accept': 'application/json',
+      'authorization': 'Bearer $token',
+      if (json) 'content-type': 'application/json',
+    };
   }
 
   static Map<String, dynamic> _decodeResponse(

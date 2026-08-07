@@ -6,6 +6,7 @@ Setup；主机无需预先联网，Android 通过 BLE 与 `eidolon-bootstrapd` �
 
 ```text
 Mobile Setup -> BLE GATT -> pinned TLS -> bootstrapd -> NetworkManager
+             -> LAN pinned HTTPS -> Local API -> Admin -> Data Workspace Authority
 ```
 
 现有 Hub/LiveKit/Audio Demo 保留在同一 codebase，但已退出默认启动流程，等主机
@@ -31,7 +32,12 @@ mDNS 发现 Hub -> P-256 签名注册 -> 审批/绑定 -> LiveKit control room
 - 版本化 Local API client 和 Host proof 数据契约仍保留，但不再是无网开箱前置。
 - 读取 `GET /api/local/v1/host`，严格解析 Host ID、公钥指纹、运行模式以及
   claim/network/workspace/recovery 状态。
-- Host Setup 不调用 Admin 运维 API、Hub、LiveKit 或 Audio Channel。
+- Controller-authenticated `GET/PUT /api/local/v1/setup/workspace`；认领后通过
+  mDNS、pinned HTTPS 和短期 Controller session 创建或恢复首个 Owner、主
+  Companion 与 Workspace。
+- Host 在 Workspace 前先保存；LAN/Admin/Data 暂不可用时只暂停后半段，不回滚
+  Wi-Fi 或 Controller claim，可从“连接主机”继续。
+- Host Setup 不直接调用 Admin 运维 API、Hub、LiveKit 或 Audio Channel。
 - 原 Audio Demo 的控制器、AEC、Avatar 和回归测试均保留。
 
 - Android mDNS/NSD 发现 `_eidolon-hub._tcp.local.`，支持手动输入
@@ -98,9 +104,10 @@ AndroidKeyStore 私钥，所以干净重装后 Hub 会在原设备记录上发�
 Host Controller 使用另一个 Keystore alias。卸载 App 会删除 Controller 私钥，不能
 仅靠本地记录恢复主机权限；之后必须走主机物理 recovery，而不是自动开放认领。
 
-当前 BlueZ、NetworkManager 和 Android 代码已通过无硬件测试/编译，但尚未在 Pi 5
-与 Android 真机上完成 GATT/TLS/D-Bus 互操作。产品二维码、物理 recovery、Factory
-Reset、Owner/Workspace onboarding 和 iOS 仍是明确的后续验收项。
+BlueZ、NetworkManager、Android GATT/TLS、LAN mDNS 和 Controller session 已在当前
+Pi 5/Android 平板/路由器组合上完成过一次真实 Host commissioning 与重启恢复；该结果
+不能外推为完整网络兼容矩阵。Workspace 后半段代码已经接通，但尚未在 Pi/Android 上完成
+真实端到端验收。产品二维码、物理 recovery、Factory Reset 和 iOS 仍是后续项。
 
 下面的 Hub 注册和 Audio 使用说明属于保留的后续 Conversation 功能，当前不再是
 App 首次启动流程。待 Host 达到产品定义的 ready 状态后，再恢复对应入口。

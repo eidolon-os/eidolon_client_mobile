@@ -16,6 +16,7 @@ import 'support/setup_fixtures.dart';
 
 const _tlsFingerprint = 'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8';
 const _controllerId = 'ectrl-0123456789abcdefabcd';
+const _workspaceOperationId = '32c421a3-e0df-40f9-8f75-68745ae39d81';
 
 class _FakeDiscovery implements LocalApiDiscovery {
   @override
@@ -124,7 +125,11 @@ Map<String, dynamic> _hostOverview({String hostId = validHostId}) => {
       },
     };
 
-LocalApiClient _clientFor(Map<String, dynamic> overview) => LocalApiClient(
+LocalApiClient _clientFor(
+  Map<String, dynamic> overview, {
+  int workspaceStatusCode = 200,
+}) =>
+    LocalApiClient(
       httpClient: MockClient((request) async {
         if (request.url.path == '/api/local/v1/host') {
           return http.Response(jsonEncode(overview), 200);
@@ -157,6 +162,21 @@ LocalApiClient _clientFor(Map<String, dynamic> overview) => LocalApiClient(
                 'reset_epoch': 2,
                 'owner_id': null,
               },
+            }),
+            200,
+          );
+        }
+        if (request.url.path == '/api/local/v1/setup/workspace') {
+          if (workspaceStatusCode != 200) {
+            return http.Response('', workspaceStatusCode);
+          }
+          return http.Response(
+            jsonEncode({
+              'contract_version': '1',
+              'operation_id': _workspaceOperationId,
+              'state': 'absent',
+              'owner': null,
+              'workspace': null,
             }),
             200,
           );
@@ -224,5 +244,156 @@ void main() {
     expect(find.byKey(const Key('local-connection-complete')), findsNothing);
     expect(find.byKey(const Key('local-connection-error')), findsOneWidget);
     expect(find.textContaining('另一台 Host'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Workspace outage does not turn a valid Host connection into failure',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(
+            _hostOverview(),
+            workspaceStatusCode: 503,
+          ),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('local-connection-complete')), findsOneWidget);
+    expect(find.byKey(const Key('local-connection-error')), findsNothing);
+    expect(find.byKey(const Key('workspace-setup-error')), findsOneWidget);
+    expect(find.textContaining('认领和 Wi-Fi 不会回滚'), findsOneWidget);
+  });
+
+  testWidgets('setup continuation initializes Workspace without redoing claim',
+      (tester) async {
+    var initialized = false;
+    var finished = false;
+    final requests = <String>[];
+
+    LocalApiClient clientFactory(String _) => LocalApiClient(
+          httpClient: MockClient((request) async {
+            requests.add('${request.method} ${request.url.path}');
+            if (request.url.path == '/api/local/v1/host') {
+              return http.Response(jsonEncode(_hostOverview()), 200);
+            }
+            if (request.url.path == '/api/local/v1/auth/challenges') {
+              return http.Response(
+                jsonEncode({
+                  'contract_version': '1',
+                  'purpose': 'eidolon-controller-local-auth-v1',
+                  'controller_id': _controllerId,
+                  'challenge': validHostChallenge,
+                  'reset_epoch': 2,
+                }),
+                200,
+              );
+            }
+            if (request.url.path == '/api/local/v1/auth/sessions') {
+              return http.Response(
+                jsonEncode({
+                  'contract_version': '1',
+                  'token_type': 'Bearer',
+                  'access_token': validHostChallenge,
+                  'expires_at': '2026-08-08T09:00:00Z',
+                  'controller': {
+                    'contract_version': '1',
+                    'controller_id': _controllerId,
+                    'role': 'host_admin',
+                    'display_name': 'Test tablet',
+                    'platform': 'android',
+                    'reset_epoch': 2,
+                    'owner_id': initialized ? 'owner_primary' : null,
+                  },
+                }),
+                200,
+              );
+            }
+            if (request.url.path == '/api/local/v1/setup/workspace' &&
+                request.method == 'GET') {
+              return http.Response(
+                jsonEncode({
+                  'contract_version': '1',
+                  'operation_id': _workspaceOperationId,
+                  'state': 'absent',
+                  'owner': null,
+                  'workspace': null,
+                }),
+                200,
+              );
+            }
+            if (request.url.path == '/api/local/v1/setup/workspace' &&
+                request.method == 'PUT') {
+              expect(request.headers['authorization'],
+                  'Bearer $validHostChallenge');
+              expect(jsonDecode(request.body), {
+                'owner_display_name': 'Manson',
+                'companion_display_name': 'Eidolon',
+              });
+              initialized = true;
+              return http.Response(
+                jsonEncode({
+                  'contract_version': '1',
+                  'operation_id': _workspaceOperationId,
+                  'state': 'ready',
+                  'owner': {
+                    'owner_id': 'owner_primary',
+                    'display_name': 'Manson',
+                    'lifecycle_state': 'active',
+                  },
+                  'workspace': {
+                    'state': 'ready',
+                    'primary_companion_id': 'companion_primary',
+                    'persona_genome_id': 'genome_origin',
+                    'memory_realm_id': 'realm_primary',
+                  },
+                }),
+                200,
+              );
+            }
+            return http.Response('', 404);
+          }),
+        );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: clientFactory,
+          onHostUpdated: (_) async {},
+          setupContinuation: true,
+          onSetupComplete: () => finished = true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('local-connection-complete')), findsOneWidget);
+    expect(find.byKey(const Key('workspace-setup')), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('workspace-owner-name')),
+      'Manson',
+    );
+    await tester.drag(find.byType(ListView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('initialize-workspace')));
+    await tester.pumpAndSettle();
+
+    expect(initialized, isTrue);
+    expect(find.byKey(const Key('workspace-ready')), findsOneWidget);
+    expect(find.text('你好，Manson。'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('finish-workspace-setup')));
+    expect(finished, isTrue);
+    expect(requests, contains('PUT /api/local/v1/setup/workspace'));
   });
 }

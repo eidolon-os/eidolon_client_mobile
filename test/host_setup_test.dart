@@ -182,6 +182,66 @@ void main() {
     expect(session.accessToken, validHostChallenge);
   });
 
+  test('LocalApiClient uses only the authenticated Workspace GET and PUT',
+      () async {
+    final requested = <String>[];
+    final client = LocalApiClient(
+      httpClient: MockClient((request) async {
+        requested.add('${request.method} ${request.url.path}');
+        expect(request.headers['authorization'], 'Bearer $validHostChallenge');
+        if (request.method == 'PUT') {
+          expect(jsonDecode(request.body), {
+            'owner_display_name': 'Manson',
+            'companion_display_name': 'Eidolon',
+          });
+        }
+        final ready = request.method == 'PUT';
+        return http.Response(
+          jsonEncode({
+            'contract_version': '1',
+            'operation_id': '32c421a3-e0df-40f9-8f75-68745ae39d81',
+            'state': ready ? 'ready' : 'absent',
+            'owner': ready
+                ? {
+                    'owner_id': 'owner_primary',
+                    'display_name': 'Manson',
+                    'lifecycle_state': 'active',
+                  }
+                : null,
+            'workspace': ready
+                ? {
+                    'state': 'ready',
+                    'primary_companion_id': 'companion_primary',
+                    'persona_genome_id': 'genome_origin',
+                    'memory_realm_id': 'realm_primary',
+                  }
+                : null,
+          }),
+          200,
+        );
+      }),
+    );
+
+    final absent = await client.fetchWorkspace(
+      'https://eidolon.local:9002',
+      accessToken: validHostChallenge,
+    );
+    final ready = await client.initializeWorkspace(
+      'https://eidolon.local:9002',
+      accessToken: validHostChallenge,
+      ownerDisplayName: 'Manson',
+      companionDisplayName: 'Eidolon',
+    );
+
+    expect(absent.isReady, isFalse);
+    expect(ready.isReady, isTrue);
+    expect(ready.owner?.displayName, 'Manson');
+    expect(requested, [
+      'GET /api/local/v1/setup/workspace',
+      'PUT /api/local/v1/setup/workspace',
+    ]);
+  });
+
   test('uses the BLE Host marker as the canonical generated display name', () {
     expect(defaultHostDisplayName(validHostId), 'Eidolon-4c0285');
     expect(

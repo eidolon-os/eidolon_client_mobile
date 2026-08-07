@@ -650,13 +650,13 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           const SizedBox(height: 8),
           Text(
             '${_completedHost!.displayName} 已连接 Wi-Fi，'
-            '这台手机已取得 Host Admin 权限。',
+            '这台手机已取得 Host Admin 权限。主机已可恢复保存，下一步会通过局域网创建 Workspace。',
           ),
           const SizedBox(height: 24),
           FilledButton(
             key: const Key('finish-setup'),
             onPressed: () => widget.onComplete(_completedHost!),
-            child: const Text('进入我的 Eidolon'),
+            child: const Text('继续创建我的 Eidolon'),
           ),
         ],
       );
@@ -693,7 +693,7 @@ class _ProgressHeader extends StatelessWidget {
         const SizedBox(height: 8),
         LinearProgressIndicator(value: (index + 1) / 5),
         const SizedBox(height: 8),
-        Text('附近主机  ·  Setup 码  ·  Wi-Fi  ·  认领  ·  完成'),
+        Text('附近主机  ·  Setup 码  ·  Wi-Fi  ·  认领  ·  主机接入'),
       ],
     );
   }

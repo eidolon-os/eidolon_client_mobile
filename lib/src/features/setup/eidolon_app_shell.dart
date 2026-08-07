@@ -52,12 +52,23 @@ class _EidolonAppShellState extends State<EidolonAppShell> {
           onComplete: (host) async {
             await _registry.save(host);
             if (!context.mounted) return;
-            Navigator.of(context).pop();
-            await _load();
+            await Navigator.of(context).pushReplacement<void, void>(
+              MaterialPageRoute(
+                builder: (localContext) => HostLocalConnectionPage(
+                  host: host,
+                  onHostUpdated: _registry.save,
+                  transport: widget.setupTransport,
+                  controllerKeys: widget.controllerKeys,
+                  setupContinuation: true,
+                  onSetupComplete: () => Navigator.of(localContext).pop(),
+                ),
+              ),
+            );
           },
         ),
       ),
     );
+    await _load();
   }
 
   @override
@@ -112,7 +123,7 @@ class _WelcomePage extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     const Text(
-                      '无需屏幕、SSH 或预先联网。手机会在附近找到主机，安全配置 Wi-Fi，并完成本地认领。',
+                      '无需屏幕、SSH 或预先联网。手机会找到主机、配置 Wi-Fi、完成本地认领，并创建你的 Eidolon Workspace。',
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 28),
@@ -124,7 +135,7 @@ class _WelcomePage extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      '完成认领后，这台手机会把主机保存在“我的 Eidolon”。',
+                      '主机认领完成后会立即保存；如果 Workspace 暂不可用，可以稍后继续。',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
@@ -179,7 +190,7 @@ class _HostsPage extends StatelessWidget {
                 contentPadding: const EdgeInsets.all(18),
                 leading: const CircleAvatar(child: Icon(Icons.memory)),
                 title: Text(host.displayName),
-                subtitle: Text('已认领 · ${host.hostId}'),
+                subtitle: Text('主机已保存 · ${host.hostId}'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
                   await Navigator.of(context).push<void>(
@@ -243,7 +254,7 @@ class _HostDetailPage extends StatelessWidget {
               key: const Key('connect-local-host'),
               icon: Icons.lan_outlined,
               title: '连接主机',
-              subtitle: '在同一局域网中验证 Host 与管理手机身份',
+              subtitle: '验证 Host 与管理手机身份，检查或继续 Workspace Setup',
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute(
                   builder: (_) => HostLocalConnectionPage(

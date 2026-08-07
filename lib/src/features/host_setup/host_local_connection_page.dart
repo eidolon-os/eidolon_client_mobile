@@ -14,6 +14,7 @@ import 'host_models.dart';
 import 'local_api_client.dart';
 import 'local_api_discovery.dart';
 import 'pinned_http_client.dart';
+import 'workspace_models.dart';
 
 typedef LocalApiClientFactory = LocalApiClient Function(String fingerprint);
 typedef ManagedHostUpdater = Future<void> Function(ManagedHost host);
@@ -27,7 +28,9 @@ class HostLocalConnectionPage extends StatefulWidget {
     this.controllerKeys,
     this.discovery,
     this.localApiClientFactory,
-  });
+    this.setupContinuation = false,
+    this.onSetupComplete,
+  }) : assert(!setupContinuation || onSetupComplete != null);
 
   final ManagedHost host;
   final ManagedHostUpdater onHostUpdated;
@@ -35,6 +38,8 @@ class HostLocalConnectionPage extends StatefulWidget {
   final ControllerKeyBridge? controllerKeys;
   final LocalApiDiscovery? discovery;
   final LocalApiClientFactory? localApiClientFactory;
+  final bool setupContinuation;
+  final VoidCallback? onSetupComplete;
 
   @override
   State<HostLocalConnectionPage> createState() =>
@@ -46,14 +51,20 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   late final ControllerKeyBridge _controllerKeys;
   late final LocalApiDiscovery _discovery;
   late ManagedHost _host;
+  final _ownerName = TextEditingController();
+  final _companionName = TextEditingController(text: 'Eidolon');
 
   bool _busy = false;
   String? _progress;
   String? _error;
   String? _endpointName;
   String? _endpointIpAddress;
+  String? _baseUrl;
   HostOverview? _overview;
   LocalControllerSession? _session;
+  WorkspaceStatus? _workspace;
+  String? _workspaceError;
+  bool _workspaceBusy = false;
 
   @override
   void initState() {
@@ -70,6 +81,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   @override
   void dispose() {
     unawaited(_transport.close());
+    _ownerName.dispose();
+    _companionName.dispose();
     super.dispose();
   }
 
@@ -80,6 +93,9 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       _error = null;
       _overview = null;
       _session = null;
+      _workspace = null;
+      _workspaceError = null;
+      _baseUrl = null;
     });
     try {
       if (_host.tlsSpkiFingerprint == null) {
@@ -102,12 +118,27 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             expectedControllerId: _host.controllerId,
             controllerKeys: _controllerKeys,
           );
+          WorkspaceStatus? workspace;
+          String? workspaceError;
+          try {
+            workspace = await client.fetchWorkspace(
+              endpoint.baseUrl,
+              accessToken: session.accessToken,
+            );
+          } on LocalApiRequestException catch (error) {
+            workspaceError = _workspaceFailure(error);
+          } on FormatException {
+            workspaceError = '主机已安全连接，但 Workspace 返回了不兼容的数据。';
+          }
           if (!mounted) return;
           setState(() {
             _endpointName = endpoint.instanceName;
             _endpointIpAddress = endpoint.ipAddress;
+            _baseUrl = endpoint.baseUrl;
             _overview = overview;
             _session = session;
+            _workspace = workspace;
+            _workspaceError = workspaceError;
             _progress = null;
           });
           return;
@@ -222,6 +253,99 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         _ => error.message ?? '平板无法完成本地主机连接',
       };
 
+  Future<void> _refreshWorkspace() async {
+    final baseUrl = _baseUrl;
+    final session = _session;
+    if (baseUrl == null || session == null || _workspaceBusy) return;
+    setState(() {
+      _workspaceBusy = true;
+      _workspaceError = null;
+    });
+    final client = _createClient(_host.tlsSpkiFingerprint!);
+    try {
+      final workspace = await client.fetchWorkspace(
+        baseUrl,
+        accessToken: session.accessToken,
+      );
+      if (mounted) setState(() => _workspace = workspace);
+    } on LocalApiRequestException catch (error) {
+      if (mounted) setState(() => _workspaceError = _workspaceFailure(error));
+    } on FormatException {
+      if (mounted) {
+        setState(() {
+          _workspaceError = '主机已安全连接，但 Workspace 返回了不兼容的数据。';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _workspaceError = '主机已安全接入，但 Workspace 服务暂时不可用。';
+        });
+      }
+    } finally {
+      client.close();
+      if (mounted) setState(() => _workspaceBusy = false);
+    }
+  }
+
+  Future<void> _initializeWorkspace() async {
+    final baseUrl = _baseUrl;
+    final session = _session;
+    final ownerName = _ownerName.text.trim();
+    final companionName = _companionName.text.trim();
+    if (baseUrl == null || session == null || _workspaceBusy) return;
+    if (ownerName.isEmpty || ownerName.length > 128) {
+      setState(() => _workspaceError = '请填写 1–128 个字符的称呼。');
+      return;
+    }
+    if (companionName.isEmpty || companionName.length > 128) {
+      setState(() => _workspaceError = '请填写 1–128 个字符的 Eidolon 名称。');
+      return;
+    }
+    setState(() {
+      _workspaceBusy = true;
+      _workspaceError = null;
+    });
+    final client = _createClient(_host.tlsSpkiFingerprint!);
+    try {
+      final workspace = await client.initializeWorkspace(
+        baseUrl,
+        accessToken: session.accessToken,
+        ownerDisplayName: ownerName,
+        companionDisplayName: companionName,
+      );
+      if (!workspace.isReady) {
+        throw const FormatException('Workspace 初始化没有返回 ready');
+      }
+      if (mounted) setState(() => _workspace = workspace);
+    } on LocalApiRequestException catch (error) {
+      if (mounted) setState(() => _workspaceError = _workspaceFailure(error));
+    } on FormatException {
+      if (mounted) {
+        setState(() {
+          _workspaceError = '主机没有返回完整的 Workspace 结果，请重试。';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _workspaceError = 'Workspace 暂时未能完成；主机认领和 Wi-Fi 不会回滚。';
+        });
+      }
+    } finally {
+      client.close();
+      if (mounted) setState(() => _workspaceBusy = false);
+    }
+  }
+
+  String _workspaceFailure(LocalApiRequestException error) =>
+      switch (error.statusCode) {
+        401 => '本次管理会话已失效，请重新连接主机。',
+        409 => '主机的 Owner 绑定与 Workspace 不一致，已停止继续设置。',
+        422 => 'Workspace 名称未被主机接受，请检查后重试。',
+        _ => '主机已安全接入，但 Workspace 服务暂时不可用。认领和 Wi-Fi 不会回滚。',
+      };
+
   @override
   Widget build(BuildContext context) {
     final overview = _overview;
@@ -246,13 +370,16 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               textAlign: TextAlign.center,
             ),
           ],
-          if (!_busy && overview != null && session != null)
+          if (!_busy && overview != null && session != null) ...[
             _ConnectedHostCard(
               endpointName: _endpointName ?? _host.displayName,
               ipAddress: _endpointIpAddress!,
               overview: overview,
               session: session,
             ),
+            const SizedBox(height: 16),
+            _buildWorkspaceCard(),
+          ],
           if (!_busy && _error != null) ...[
             Card(
               color: Theme.of(context).colorScheme.errorContainer,
@@ -270,6 +397,111 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildWorkspaceCard() {
+    final workspace = _workspace;
+    if (workspace?.isReady ?? false) {
+      return Card(
+        key: const Key('workspace-ready'),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.check_circle,
+                      color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 10),
+                  Text('Eidolon 已准备就绪',
+                      style: Theme.of(context).textTheme.titleLarge),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text('你好，${workspace!.owner!.displayName}。'),
+              const Text('主 Companion、Persona 和 Memory Workspace 已创建。'),
+              if (widget.setupContinuation) ...[
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  key: const Key('finish-workspace-setup'),
+                  onPressed: widget.onSetupComplete,
+                  icon: const Icon(Icons.arrow_forward),
+                  label: const Text('进入我的 Eidolon'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+    return Card(
+      key: const Key('workspace-setup'),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('完成你的 Eidolon', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            const Text('主机已经安全接入。现在创建首个 Owner、主 Companion 和 Workspace。'),
+            if (_workspaceError case final error?) ...[
+              const SizedBox(height: 12),
+              Text(
+                error,
+                key: const Key('workspace-setup-error'),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+            const SizedBox(height: 16),
+            TextField(
+              key: const Key('workspace-owner-name'),
+              controller: _ownerName,
+              enabled: !_workspaceBusy,
+              maxLength: 128,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: '怎么称呼你',
+                hintText: '例如：Manson',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              key: const Key('workspace-companion-name'),
+              controller: _companionName,
+              enabled: !_workspaceBusy,
+              maxLength: 128,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _initializeWorkspace(),
+              decoration: const InputDecoration(
+                labelText: 'Eidolon 的名字',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              key: const Key('initialize-workspace'),
+              onPressed: _workspaceBusy ? null : _initializeWorkspace,
+              icon: _workspaceBusy
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.auto_awesome),
+              label: Text(_workspaceBusy ? '正在创建' : '创建我的 Eidolon'),
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              key: const Key('retry-workspace-status'),
+              onPressed: _workspaceBusy ? null : _refreshWorkspace,
+              icon: const Icon(Icons.refresh),
+              label: const Text('检查已有进度'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -308,7 +540,6 @@ class _ConnectedHostCard extends StatelessWidget {
               Text('服务：$endpointName'),
               Text('Host IP：$ipAddress'),
               Text('网络：${_networkLabel(overview.state.network)}'),
-              Text('工作区：${_workspaceLabel(overview.state.workspace)}'),
               Text('Controller：${session.controllerId}'),
               Text('本次管理会话有效至 ${_localTime(session.expiresAt)}'),
             ],
@@ -323,13 +554,6 @@ String _networkLabel(HostNetworkState state) => switch (state) {
       HostNetworkState.connected => '已连接',
       HostNetworkState.degraded => '异常',
       HostNetworkState.rollingBack => '正在恢复',
-    };
-
-String _workspaceLabel(HostWorkspaceState state) => switch (state) {
-      HostWorkspaceState.absent => '尚未创建',
-      HostWorkspaceState.provisioning => '正在创建',
-      HostWorkspaceState.ready => '已就绪',
-      HostWorkspaceState.degraded => '异常',
     };
 
 String _localTime(DateTime value) {
