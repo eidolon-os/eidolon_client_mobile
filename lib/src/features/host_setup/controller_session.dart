@@ -48,12 +48,14 @@ class LocalControllerSession {
     required this.expiresAt,
     required this.controllerId,
     required this.resetEpoch,
+    required this.ownerId,
   });
 
   factory LocalControllerSession.fromJson(Map<String, dynamic> value) {
     final controller = value['controller'];
     final expiresAt = DateTime.tryParse(value['expires_at'] as String? ?? '');
     final token = value['access_token'];
+    final ownerId = controller is Map ? controller['owner_id'] : null;
     if (value.length != 5 ||
         value['contract_version'] != '1' ||
         value['token_type'] != 'Bearer' ||
@@ -61,7 +63,7 @@ class LocalControllerSession {
         !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(token) ||
         expiresAt == null ||
         controller is! Map ||
-        controller.length != 6 ||
+        controller.length != 7 ||
         controller['contract_version'] != '1' ||
         controller['controller_id'] is! String ||
         !RegExp(r'^ectrl-[0-9a-f]{20}$')
@@ -69,7 +71,11 @@ class LocalControllerSession {
         controller['role'] != 'host_admin' ||
         !{'android', 'ios'}.contains(controller['platform']) ||
         controller['reset_epoch'] is! int ||
-        (controller['reset_epoch'] as int) < 0) {
+        (controller['reset_epoch'] as int) < 0 ||
+        (ownerId != null &&
+            (ownerId is! String ||
+                !RegExp(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
+                    .hasMatch(ownerId)))) {
       throw const FormatException(
         'Local API 返回了无效的 Controller session',
       );
@@ -79,6 +85,7 @@ class LocalControllerSession {
       expiresAt: expiresAt.toUtc(),
       controllerId: controller['controller_id'] as String,
       resetEpoch: controller['reset_epoch'] as int,
+      ownerId: ownerId as String?,
     );
   }
 
@@ -86,4 +93,5 @@ class LocalControllerSession {
   final DateTime expiresAt;
   final String controllerId;
   final int resetEpoch;
+  final String? ownerId;
 }

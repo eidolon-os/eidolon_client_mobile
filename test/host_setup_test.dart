@@ -157,6 +157,7 @@ void main() {
               'display_name': 'Primary phone',
               'platform': 'android',
               'reset_epoch': 2,
+              'owner_id': 'owner_0123456789abcdef0123456789abcdef',
             },
           }),
           200,
@@ -177,6 +178,7 @@ void main() {
     expect(keys.signed?['purpose'], 'eidolon-controller-local-auth-v1');
     expect(session.controllerId, 'ectrl-0123456789abcdefabcd');
     expect(session.resetEpoch, 2);
+    expect(session.ownerId, 'owner_0123456789abcdef0123456789abcdef');
     expect(session.accessToken, validHostChallenge);
   });
 

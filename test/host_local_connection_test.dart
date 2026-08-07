@@ -155,6 +155,7 @@ LocalApiClient _clientFor(Map<String, dynamic> overview) => LocalApiClient(
                 'display_name': 'Test tablet',
                 'platform': 'android',
                 'reset_epoch': 2,
+                'owner_id': null,
               },
             }),
             200,
