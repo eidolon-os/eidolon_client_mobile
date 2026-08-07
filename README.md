@@ -38,6 +38,10 @@ mDNS 发现 Hub -> P-256 签名注册 -> 审批/绑定 -> LiveKit control room
 - Host 在 Workspace 前先保存；LAN/Admin/Data 暂不可用时只暂停后半段，不回滚
   Wi-Fi 或 Controller claim，可从“连接主机”继续。
 - Host Setup 不直接调用 Admin 运维 API、Hub、LiveKit 或 Audio Channel。
+- Android pinned HTTPS 使用版本化、二进制安全的 unary transport；HTTP 方法契约由
+  Local API client/server 拥有，平台 adapter 不维护重复的 route-level 白名单。
+- 外部 Device Setup 已拆出 provisioning/admission/checkpoint Port 和前向恢复状态机；
+  当前 ESP32 开放 Hotspot 仅被认定为 development provisioning，尚未开放产品 UI。
 - 原 Audio Demo 的控制器、AEC、Avatar 和回归测试均保留。
 
 - Android mDNS/NSD 发现 `_eidolon-hub._tcp.local.`，支持手动输入
@@ -53,6 +57,8 @@ mDNS 发现 Hub -> P-256 签名注册 -> 审批/绑定 -> LiveKit control room
 - `VadProcessor` 扩展接口；首版使用 `NoOpVadProcessor`。
 
 详细设计见 [docs/architecture.md](docs/architecture.md)。
+Mobile 产品层与 ESP32/Mission Control 的真实契约门槛见
+[docs/product-surface-plan.md](docs/product-surface-plan.md)。
 
 ## 环境
 
@@ -106,8 +112,10 @@ Host Controller 使用另一个 Keystore alias。卸载 App 会删除 Controller
 
 BlueZ、NetworkManager、Android GATT/TLS、LAN mDNS 和 Controller session 已在当前
 Pi 5/Android 平板/路由器组合上完成过一次真实 Host commissioning 与重启恢复；该结果
-不能外推为完整网络兼容矩阵。Workspace 后半段代码已经接通，但尚未在 Pi/Android 上完成
-真实端到端验收。产品二维码、物理 recovery、Factory Reset 和 iOS 仍是后续项。
+不能外推为完整网络兼容矩阵。当前 Pi/Android 已真实完成首个 Owner、主 Companion 和
+Workspace 创建，并在新建 Controller session 后重复读取到 ready；Data outage、进程重启、
+重复提交和 App kill 的故障矩阵仍未完成。产品二维码、物理 recovery、Factory Reset 和
+iOS 仍是后续项。
 
 下面的 Hub 注册和 Audio 使用说明属于保留的后续 Conversation 功能，当前不再是
 App 首次启动流程。待 Host 达到产品定义的 ready 状态后，再恢复对应入口。

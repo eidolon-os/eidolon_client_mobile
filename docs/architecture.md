@@ -50,6 +50,27 @@ Flutter UI / ClientController
 
 Android 原生层只承载平台强相关能力。Hub 协议模型、注册流程、会话状态机和 UI 均在 Dart 层，后续 iOS 只需补齐 discovery/identity/permission 的平台实现。
 
+## Local API transport
+
+Android pinned HTTPS 被定义为有界 unary transport，不维护第二份 Local API
+route/method 白名单。MethodChannel 协议版本化，request/response body 使用 Base64
+保持字节语义，并在 Dart 与原生两侧限制大小。原生错误分类为 invalid request、
+secure channel、timeout、unreachable 与 I/O；UI 不得用无类型 `catch` 把客户端契约
+错误误报为 Workspace 服务故障。
+
+Mission Control 的长生命周期事件流不复用 unary bridge；后续使用独立 streaming
+transport 管理 cursor、重连、去重和 App lifecycle。
+
+## 外部 Device Setup
+
+`features/device_setup` 已建立独立的 provisioning、admission 与 checkpoint Port。
+它不依赖 Host Bootstrap transport，也不保存 Wi-Fi 密码。网络配置与 Owner admission
+使用两个正交状态轴；Admission 失败只前向重试，不撤销已成功的设备配网。
+
+当前 ESP32 build 实际优先使用开放 Hotspot + HTTP `/submit`，没有产品 Device Identity
+证明或 enrollment receipt。因此 Mobile product coordinator 默认拒绝把它当作产品完成
+链路。完整审计与推进条件见 [product-surface-plan.md](product-surface-plan.md)。
+
 ## AEC 决策
 
 首版使用 LiveKit Flutter SDK 下层 WebRTC 的音频处理，并在 `AudioCaptureOptions` 显式开启：

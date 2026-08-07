@@ -253,8 +253,8 @@ class _HostDetailPage extends StatelessWidget {
             _ManagementEntry.available(
               key: const Key('connect-local-host'),
               icon: Icons.lan_outlined,
-              title: '连接主机',
-              subtitle: '验证 Host 与管理手机身份，检查或继续 Workspace Setup',
+              title: '打开我的 Eidolon',
+              subtitle: '安全连接主机，查看状态或继续完成设置',
               onTap: () => Navigator.of(context).push<void>(
                 MaterialPageRoute(
                   builder: (_) => HostLocalConnectionPage(

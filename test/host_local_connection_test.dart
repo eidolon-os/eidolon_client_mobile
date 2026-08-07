@@ -392,6 +392,10 @@ void main() {
     expect(initialized, isTrue);
     expect(find.byKey(const Key('workspace-ready')), findsOneWidget);
     expect(find.text('你好，Manson。'), findsOneWidget);
+    expect(find.text('主 Companion'), findsOneWidget);
+    expect(find.text('Persona'), findsOneWidget);
+    expect(find.text('Memory Workspace'), findsOneWidget);
+    expect(find.text('我的 Eidolon'), findsOneWidget);
     await tester.tap(find.byKey(const Key('finish-workspace-setup')));
     expect(finished, isTrue);
     expect(requests, contains('PUT /api/local/v1/setup/workspace'));

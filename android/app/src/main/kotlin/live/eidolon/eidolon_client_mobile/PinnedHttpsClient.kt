@@ -1,14 +1,16 @@
 package live.eidolon.eidolon_client_mobile
 
 import android.os.Handler
+import android.util.Base64
 import android.util.Log
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
-import java.net.URL
+import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.URI
-import java.nio.charset.StandardCharsets
+import java.net.URL
 import java.security.SecureRandom
 import java.util.concurrent.Executors
 import javax.net.ssl.HostnameVerifier
@@ -22,21 +24,29 @@ internal class PinnedHttpsClient(private val mainHandler: Handler) {
     fun request(call: MethodCall, result: MethodChannel.Result) {
         executor.execute {
             try {
+                require(call.argument<Int>("protocolVersion") == PINNED_HTTPS_PROTOCOL_VERSION) {
+                    "Pinned HTTPS protocol version is unsupported"
+                }
                 val url = URL(call.argument<String>("url") ?: error("url is required"))
                 require(url.protocol == "https" && url.userInfo == null) {
                     "Pinned Local API requests require an HTTPS origin"
                 }
-                val method = call.argument<String>("method") ?: "GET"
-                require(method in setOf("GET", "POST", "DELETE")) { "HTTP method is unsupported" }
+                val method = normalizePinnedHttpMethod(
+                    call.argument<String>("method") ?: "GET",
+                )
                 val expected = call.argument<String>("tlsSpkiFingerprint")
                     ?: error("tlsSpkiFingerprint is required")
-                val body = call.argument<String>("body") ?: ""
-                require(body.toByteArray(StandardCharsets.UTF_8).size <= 1024 * 1024) {
+                val body = Base64.decode(
+                    call.argument<String>("bodyBase64") ?: "",
+                    Base64.DEFAULT,
+                )
+                require(body.size <= PINNED_HTTPS_MAX_BODY_BYTES) {
                     "Local API request body is too large"
                 }
                 val headers = (call.argument<Map<*, *>>("headers") ?: emptyMap<Any, Any>())
                     .entries
                     .associate { it.key.toString() to it.value.toString() }
+                validatePinnedHttpHeaders(headers)
 
                 val context = SSLContext.getInstance("TLS")
                 context.init(
@@ -60,34 +70,41 @@ internal class PinnedHttpsClient(private val mainHandler: Handler) {
                     if (body.isNotEmpty()) {
                         connection.doOutput = true
                         connection.outputStream.use {
-                            it.write(body.toByteArray(StandardCharsets.UTF_8))
+                            it.write(body)
                         }
                     }
                     val statusCode = connection.responseCode
                     val stream = if (statusCode >= 400) connection.errorStream else connection.inputStream
-                    val responseBody = stream?.use { it.readBytes() } ?: ByteArray(0)
-                    require(responseBody.size <= 1024 * 1024) {
-                        "Local API response body is too large"
-                    }
+                    val responseBody = stream?.use { readBounded(it) } ?: ByteArray(0)
                     val responseHeaders = connection.headerFields
                         .filterKeys { it != null }
                         .mapValues { it.value.joinToString(",") }
                     mainHandler.post {
                         result.success(
                             mapOf(
+                                "protocolVersion" to PINNED_HTTPS_PROTOCOL_VERSION,
                                 "statusCode" to statusCode,
                                 "headers" to responseHeaders,
-                                "body" to String(responseBody, StandardCharsets.UTF_8),
+                                "bodyBase64" to Base64.encodeToString(
+                                    responseBody,
+                                    Base64.NO_WRAP,
+                                ),
                             ),
                         )
                     }
                 } finally {
                     connection.disconnect()
                 }
-            } catch (error: Throwable) {
+            } catch (error: Exception) {
                 val message = error.message?.take(180) ?: "Pinned HTTPS request failed"
                 Log.w("EidolonPinnedHttps", "${error.javaClass.simpleName}: $message")
-                mainHandler.post { result.error("PINNED_HTTPS_FAILED", message, null) }
+                mainHandler.post {
+                    result.error(
+                        pinnedHttpsErrorCode(error),
+                        message,
+                        mapOf("exceptionType" to error.javaClass.simpleName),
+                    )
+                }
             }
         }
     }
@@ -108,5 +125,21 @@ internal class PinnedHttpsClient(private val mainHandler: Handler) {
             url.query,
             null,
         ).toURL()
+    }
+
+    private fun readBounded(stream: java.io.InputStream): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8192)
+        var total = 0
+        while (true) {
+            val count = stream.read(buffer)
+            if (count < 0) break
+            total += count
+            if (total > PINNED_HTTPS_MAX_BODY_BYTES) {
+                throw IOException("Local API response body is too large")
+            }
+            output.write(buffer, 0, count)
+        }
+        return output.toByteArray()
     }
 }

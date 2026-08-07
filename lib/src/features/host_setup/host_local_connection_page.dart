@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../setup/commissioning_transport.dart';
+import '../setup/change_network_page.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/host_identity.dart';
 import '../setup/host_registry.dart';
@@ -156,6 +157,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       _showError(error.message);
     } on LocalApiRequestException catch (error) {
       _showError(error.message);
+    } on PinnedHttpException catch (error) {
+      _showError(_pinnedHttpFailure(error));
     } on PlatformException catch (error) {
       _showError(_platformError(error));
     } on FormatException catch (error) {
@@ -247,11 +250,28 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   String _platformError(PlatformException error) => switch (error.code) {
         'NOT_FOUND' => '局域网中没有发现主机。请确认平板和主机连接同一 Wi-Fi。',
         'DISCOVERY_FAILED' => 'Android 无法启动局域网发现，请稍后重试。',
-        'PINNED_HTTPS_FAILED' => '发现了主机地址，但其加密身份或连接不可用，已拒绝连接。',
         'BLUETOOTH_OFF' => '请先打开蓝牙，以确认已保存主机的本地连接身份。',
         'PERMISSION_DENIED' => '需要“附近设备”权限来确认主机身份。',
         _ => error.message ?? '平板无法完成本地主机连接',
       };
+
+  String _pinnedHttpFailure(
+    PinnedHttpException error, {
+    bool workspaceIsOptional = false,
+  }) {
+    final message = switch (error.kind) {
+      PinnedHttpFailureKind.invalidRequest =>
+        'App 无法构造有效的本地管理请求，请更新或重新安装当前开发版本。',
+      PinnedHttpFailureKind.unsupportedPlatform => '当前平台尚未实现安全的本地主机连接。',
+      PinnedHttpFailureKind.secureChannel => '主机的加密身份与已保存身份不一致，已拒绝连接。',
+      PinnedHttpFailureKind.timeout => '主机已找到，但本地管理请求超时。',
+      PinnedHttpFailureKind.unreachable => '主机地址已找到，但当前网络无法到达该地址。',
+      PinnedHttpFailureKind.io => '与主机的本地安全连接在传输过程中中断。',
+      PinnedHttpFailureKind.platform => '平板的本地安全连接组件暂时不可用。',
+    };
+    if (!workspaceIsOptional) return message;
+    return '$message 主机认领和 Wi-Fi 不会回滚，可稍后继续 Workspace。';
+  }
 
   Future<void> _refreshWorkspace() async {
     final baseUrl = _baseUrl;
@@ -270,6 +290,15 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       if (mounted) setState(() => _workspace = workspace);
     } on LocalApiRequestException catch (error) {
       if (mounted) setState(() => _workspaceError = _workspaceFailure(error));
+    } on PinnedHttpException catch (error) {
+      if (mounted) {
+        setState(() {
+          _workspaceError = _pinnedHttpFailure(
+            error,
+            workspaceIsOptional: true,
+          );
+        });
+      }
     } on FormatException {
       if (mounted) {
         setState(() {
@@ -320,6 +349,15 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       if (mounted) setState(() => _workspace = workspace);
     } on LocalApiRequestException catch (error) {
       if (mounted) setState(() => _workspaceError = _workspaceFailure(error));
+    } on PinnedHttpException catch (error) {
+      if (mounted) {
+        setState(() {
+          _workspaceError = _pinnedHttpFailure(
+            error,
+            workspaceIsOptional: true,
+          );
+        });
+      }
     } on FormatException {
       if (mounted) {
         setState(() {
@@ -338,6 +376,19 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     }
   }
 
+  Future<void> _openNetworkChange() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => ChangeNetworkPage(
+          host: _host,
+          transport: widget.transport,
+          controllerKeys: widget.controllerKeys,
+        ),
+      ),
+    );
+    if (mounted) await _connect();
+  }
+
   String _workspaceFailure(LocalApiRequestException error) =>
       switch (error.statusCode) {
         401 => '本次管理会话已失效，请重新连接主机。',
@@ -352,7 +403,11 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     final session = _session;
     return Scaffold(
       key: const Key('host-local-connection-page'),
-      appBar: AppBar(title: const Text('连接主机')),
+      appBar: AppBar(
+        title: Text(
+          (_workspace?.isReady ?? false) ? '我的 Eidolon' : '连接主机',
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
@@ -422,7 +477,19 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               ),
               const SizedBox(height: 12),
               Text('你好，${workspace!.owner!.displayName}。'),
-              const Text('主 Companion、Persona 和 Memory Workspace 已创建。'),
+              const SizedBox(height: 12),
+              const _WorkspaceResourceStatus(
+                icon: Icons.face_retouching_natural,
+                label: '主 Companion',
+              ),
+              const _WorkspaceResourceStatus(
+                icon: Icons.psychology_alt_outlined,
+                label: 'Persona',
+              ),
+              const _WorkspaceResourceStatus(
+                icon: Icons.auto_stories_outlined,
+                label: 'Memory Workspace',
+              ),
               if (widget.setupContinuation) ...[
                 const SizedBox(height: 20),
                 FilledButton.icon(
@@ -430,6 +497,22 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                   onPressed: widget.onSetupComplete,
                   icon: const Icon(Icons.arrow_forward),
                   label: const Text('进入我的 Eidolon'),
+                ),
+              ] else ...[
+                const SizedBox(height: 20),
+                FilledButton.tonalIcon(
+                  key: const Key('refresh-host-product-state'),
+                  onPressed: _busy || _workspaceBusy ? null : _connect,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('刷新主机状态'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: const Key('change-network-from-product'),
+                  onPressed:
+                      _busy || _workspaceBusy ? null : _openNetworkChange,
+                  icon: const Icon(Icons.wifi),
+                  label: const Text('更换 Wi-Fi'),
                 ),
               ],
             ],
@@ -505,6 +588,32 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       ),
     );
   }
+}
+
+class _WorkspaceResourceStatus extends StatelessWidget {
+  const _WorkspaceResourceStatus({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          children: [
+            Icon(icon, size: 20),
+            const SizedBox(width: 10),
+            Expanded(child: Text(label)),
+            Icon(
+              Icons.check_circle_outline,
+              size: 18,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 4),
+            const Text('已就绪'),
+          ],
+        ),
+      );
 }
 
 class _ConnectedHostCard extends StatelessWidget {
