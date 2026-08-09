@@ -143,7 +143,7 @@ void main() {
         hubId: 'hub-1',
         descriptorUri: Uri.parse('https://hub.local/onboarding'),
         tlsSpkiFingerprint:
-            'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
       ),
       companionId: 'companion-1',
     );
@@ -181,7 +181,7 @@ void main() {
         hubId: 'hub-1',
         descriptorUri: Uri.parse('https://hub.local/onboarding'),
         tlsSpkiFingerprint:
-            'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
       ),
     );
     expect(failed.provisioningState, DeviceProvisioningState.networkConfigured);
@@ -237,7 +237,7 @@ void main() {
         hubId: 'hub-1',
         descriptorUri: Uri.parse('https://hub.local/onboarding'),
         tlsSpkiFingerprint:
-            'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
       ),
     );
 

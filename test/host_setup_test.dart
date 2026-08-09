@@ -259,7 +259,7 @@ void main() {
               'descriptor_uri':
                   'https://eidolon-hub.local/api/device-onboarding/v1/descriptor',
               'tls_spki_fingerprint':
-                  'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                  'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
             }),
             200,
           );

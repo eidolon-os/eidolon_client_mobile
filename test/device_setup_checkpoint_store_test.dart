@@ -23,7 +23,7 @@ DeviceSetupCheckpoint _checkpoint(
         hubId: 'hub-local',
         descriptorUri: Uri.parse('https://hub.local/onboarding'),
         tlsSpkiFingerprint:
-            'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
       ),
       deviceId: deviceId ?? 'device-$setupId',
       enrollmentId: 'enrollment-$setupId',

@@ -32,7 +32,8 @@ class VerifiedHubTarget {
       throw const FormatException('Hub ID is invalid');
     }
     _requireHttpsUri(descriptorUri, field: 'descriptor URI');
-    if (!RegExp(r'^sha256:[0-9a-f]{64}$').hasMatch(tlsSpkiFingerprint)) {
+    if (!RegExp(r'^sha256:[A-Za-z0-9_-]{43}$')
+        .hasMatch(tlsSpkiFingerprint)) {
       throw const FormatException('Hub TLS SPKI fingerprint is invalid');
     }
   }

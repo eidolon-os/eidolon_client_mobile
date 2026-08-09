@@ -12,7 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 const _fingerprint =
-    'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8';
 const _enrollmentId = 'enrollment_abcdefghijklmnopqrstuvwx';
 const _pairingSecret = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFG';
 const _retrievalToken = 'retrieval-token-abcdefghijklmnopqrstuvwxyz';

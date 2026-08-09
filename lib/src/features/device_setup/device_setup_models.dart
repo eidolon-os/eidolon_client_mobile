@@ -105,7 +105,7 @@ class DeviceOnboardingTarget {
       'tls_spki_fingerprint',
       71,
     );
-    if (!RegExp(r'^sha256:[0-9a-f]{64}$').hasMatch(fingerprint)) {
+    if (!RegExp(r'^sha256:[A-Za-z0-9_-]{43}$').hasMatch(fingerprint)) {
       throw const FormatException('Local API 返回了无效的 Hub TLS 身份');
     }
     return DeviceOnboardingTarget(
@@ -438,7 +438,7 @@ Uri _checkpointHttpsUri(Map<String, dynamic> value, String key) {
 
 String _checkpointFingerprint(Map<String, dynamic> value) {
   final fingerprint = _boundedWireString(value, 'tls_spki_fingerprint', 71);
-  if (!RegExp(r'^sha256:[0-9a-f]{64}$').hasMatch(fingerprint)) {
+  if (!RegExp(r'^sha256:[A-Za-z0-9_-]{43}$').hasMatch(fingerprint)) {
     throw const FormatException('Invalid Device Setup tls_spki_fingerprint');
   }
   return fingerprint;
