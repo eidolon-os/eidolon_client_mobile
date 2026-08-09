@@ -76,29 +76,9 @@ class HubOnboardingClient {
     required Map<String, dynamic> manifest,
   }) async {
     _validateDescriptorTarget(target, descriptor);
-    final pairingSecret = material.pairingSecret;
-    if (pairingSecret == null) {
-      throw const HubOnboardingRequestException(
-        operation: 'Device enrollment',
-        message: '本机配对凭据已经清除，不能创建新的待认领 Enrollment',
-      );
-    }
     _bounded(deviceId, 'deviceId', 128);
     _bounded(displayName, 'displayName', 128, allowEmpty: true);
     _bounded(deviceKind, 'deviceKind', 96);
-    final retrievalHash = await _sha256Label(material.retrievalToken);
-    final pairingCommitment = await _sha256Label(pairingSecret);
-    final manifestRevision = await canonicalManifestRevision(manifest);
-    final proof = await _security.signEnrollmentProof(
-      requestId: material.enrollmentRequestId,
-      deviceId: deviceId,
-      retrievalTokenHash: retrievalHash,
-      pairingMethod: 'local-secret-sha256',
-      pairingCommitment: pairingCommitment,
-      deviceKind: deviceKind,
-      displayName: displayName,
-      manifestRevision: manifestRevision,
-    );
     final response = await _send(
       target,
       operation: 'Device enrollment',
@@ -116,15 +96,6 @@ class HubOnboardingClient {
           'manifest': manifest,
           'display_name': displayName,
           'device_kind': deviceKind,
-          'identity_proof': {
-            'algorithm': 'p256-sha256',
-            'public_key_spki': proof.publicKeySpki,
-            'signature': proof.signature,
-          },
-          'pairing_proof': {
-            'method': 'local-secret-sha256',
-            'commitment': pairingCommitment,
-          },
         }),
       ),
     );
@@ -133,9 +104,7 @@ class HubOnboardingClient {
     );
     if (receipt.requestId != material.enrollmentRequestId ||
         receipt.deviceId != deviceId ||
-        receipt.lifecycle != HubDeviceLifecycle.pendingApproval ||
-        receipt.pairingClaimUri == null ||
-        !_sameOrigin(descriptor.descriptorUri, receipt.pairingClaimUri!)) {
+        receipt.lifecycle != HubDeviceLifecycle.pendingApproval) {
       throw const HubOnboardingRequestException(
         operation: 'Device enrollment',
         message: 'Hub 返回了不属于本机的 Enrollment',

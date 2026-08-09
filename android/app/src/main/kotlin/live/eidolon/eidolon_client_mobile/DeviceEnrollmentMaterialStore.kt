@@ -47,7 +47,6 @@ internal class DeviceEnrollmentMaterialStore(context: Context) {
                 .put("enrollmentRequestId", "mobile-enroll-${UUID.randomUUID()}")
                 .put("handoffRequestId", "mobile-handoff-${UUID.randomUUID()}")
                 .put("retrievalToken", randomBase64Url())
-                .put("pairingSecret", randomBase64Url())
                 .also { save(key, normalizedHubId, it) }
         } else {
             decrypt(stored, normalizedHubId)
@@ -79,67 +78,8 @@ internal class DeviceEnrollmentMaterialStore(context: Context) {
     }
 
     @Synchronized
-    fun clearPairingSecret(hubId: String) {
-        val normalizedHubId = requireHubId(hubId)
-        val key = enrollmentPreferenceKey(normalizedHubId)
-        val stored = preferences.getString(key, null) ?: return
-        val record = decrypt(stored, normalizedHubId)
-        validateRecord(record, normalizedHubId)
-        record.remove("pairingSecret")
-        save(key, normalizedHubId, record)
-    }
-
-    @Synchronized
     fun clear(hubId: String) {
         remove(enrollmentPreferenceKey(requireHubId(hubId)))
-    }
-
-    @Synchronized
-    fun loadPendingPairing(hostId: String): Map<String, Any>? {
-        val normalizedHostId = requireHostId(hostId)
-        val stored = preferences.getString(pendingPairingPreferenceKey(normalizedHostId), null)
-            ?: return null
-        val record = decrypt(stored, pendingPairingAad(normalizedHostId))
-        validatePendingPairing(record, normalizedHostId)
-        return mapOf(
-            "setupId" to record.getString("setupId"),
-            "requestId" to record.getString("requestId"),
-            "enrollmentId" to record.getString("enrollmentId"),
-            "pairingSecret" to record.getString("pairingSecret"),
-        )
-    }
-
-    @Synchronized
-    fun savePendingPairing(
-        hostId: String,
-        setupId: String,
-        requestId: String,
-        enrollmentId: String,
-        pairingSecret: String,
-    ) {
-        val normalizedHostId = requireHostId(hostId)
-        requireBounded(setupId, 1, 128, "setupId")
-        requireBounded(requestId, 1, 128, "requestId")
-        requireCurrentEnrollmentId(enrollmentId)
-        requireCurrentPairingSecret(pairingSecret)
-        val record = JSONObject()
-            .put("version", RECORD_VERSION)
-            .put("kind", "pending-device-pairing")
-            .put("hostId", normalizedHostId)
-            .put("setupId", setupId)
-            .put("requestId", requestId)
-            .put("enrollmentId", enrollmentId)
-            .put("pairingSecret", pairingSecret)
-        save(
-            pendingPairingPreferenceKey(normalizedHostId),
-            pendingPairingAad(normalizedHostId),
-            record,
-        )
-    }
-
-    @Synchronized
-    fun clearPendingPairing(hostId: String) {
-        remove(pendingPairingPreferenceKey(requireHostId(hostId)))
     }
 
     private fun save(key: String, associatedData: String, record: JSONObject) {
@@ -214,9 +154,6 @@ internal class DeviceEnrollmentMaterialStore(context: Context) {
         requireBounded(record.getString("enrollmentRequestId"), 1, 96, "enrollmentRequestId")
         requireBounded(record.getString("handoffRequestId"), 1, 96, "handoffRequestId")
         requireBase64Url(record.getString("retrievalToken"), "retrievalToken")
-        if (record.has("pairingSecret")) {
-            requireBase64Url(record.getString("pairingSecret"), "pairingSecret")
-        }
         if (record.has("enrollmentId")) {
             requireBounded(record.getString("enrollmentId"), 1, 128, "enrollmentId")
         }
@@ -231,36 +168,14 @@ internal class DeviceEnrollmentMaterialStore(context: Context) {
         put("enrollmentRequestId", getString("enrollmentRequestId"))
         put("handoffRequestId", getString("handoffRequestId"))
         put("retrievalToken", getString("retrievalToken"))
-        if (has("pairingSecret")) put("pairingSecret", getString("pairingSecret"))
         if (has("enrollmentId")) put("enrollmentId", getString("enrollmentId"))
         if (has("retrievalExpiresAtMs")) {
             put("retrievalExpiresAtMs", getLong("retrievalExpiresAtMs"))
         }
     }
 
-    private fun validatePendingPairing(record: JSONObject, hostId: String) {
-        check(record.getInt("version") == RECORD_VERSION) {
-            "Pending Device pairing version is unsupported"
-        }
-        check(record.getString("kind") == "pending-device-pairing") {
-            "Encrypted record has the wrong kind"
-        }
-        check(record.getString("hostId") == hostId) {
-            "Pending Device pairing belongs to another Host"
-        }
-        requireBounded(record.getString("setupId"), 1, 128, "setupId")
-        requireBounded(record.getString("requestId"), 1, 128, "requestId")
-        requireCurrentEnrollmentId(record.getString("enrollmentId"))
-        requireCurrentPairingSecret(record.getString("pairingSecret"))
-    }
-
     private fun enrollmentPreferenceKey(hubId: String): String =
         "hub-${digestKey(hubId)}"
-
-    private fun pendingPairingPreferenceKey(hostId: String): String =
-        "device-pair-${digestKey(hostId)}"
-
-    private fun pendingPairingAad(hostId: String): String = "device-pairing:$hostId"
 
     private fun digestKey(value: String): String = hex(
         MessageDigest.getInstance("SHA-256").digest(value.toByteArray(StandardCharsets.UTF_8)),
@@ -279,27 +194,11 @@ internal class DeviceEnrollmentMaterialStore(context: Context) {
         require(it.isNotEmpty() && it.length <= 128) { "hubId is invalid" }
     }
 
-    private fun requireHostId(value: String): String = value.trim().also {
-        require(it.isNotEmpty() && it.length <= 128) { "hostId is invalid" }
-    }
-
     private fun requireBase64Url(value: String, field: String) {
         requireBounded(value, 32, 256, field)
         require(value.all { it.isLetterOrDigit() || it == '-' || it == '_' }) {
             "$field is invalid"
         }
-    }
-
-    private fun requireCurrentEnrollmentId(value: String) {
-        require(Regex("^enrollment_[A-Za-z0-9_-]{24}$").matches(value)) {
-            "enrollmentId is invalid"
-        }
-    }
-
-    private fun requireCurrentPairingSecret(value: String) {
-        require(value.length == 43 && value.all {
-            it.isLetterOrDigit() || it == '-' || it == '_'
-        }) { "pairingSecret is invalid" }
     }
 
     private fun requireBounded(value: String, min: Int, max: Int, field: String) {

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../device_setup/device_setup_ports.dart';
-import '../device_setup/device_pairing_page.dart';
+import '../device_setup/device_admission_page.dart';
 import '../device_setup/legacy_hotspot_provisioning_page.dart';
 import '../host_setup/host_product_controller.dart';
 import 'mounted_device_models.dart';
@@ -49,12 +49,13 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
     if (mounted) await widget.controller.refreshDevices();
   }
 
-  Future<void> _openPairing() async {
+  Future<void> _openAdmission() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => DevicePairingPage(
+        builder: (_) => DeviceAdmissionPage(
           hostId: widget.controller.host.hostId,
-          onClaim: widget.controller.claimDevicePairing,
+          loadPending: widget.controller.listPendingDeviceEnrollments,
+          onApprove: widget.controller.approveDeviceEnrollment,
         ),
       ),
     );
@@ -121,9 +122,9 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
           const SizedBox(height: 24),
           FilledButton.icon(
             key: const Key('pair-device-from-product'),
-            onPressed: controller.devicesBusy ? null : _openPairing,
-            icon: const Icon(Icons.qr_code_scanner),
-            label: const Text('扫描二维码添加设备'),
+            onPressed: controller.devicesBusy ? null : _openAdmission,
+            icon: const Icon(Icons.playlist_add_check),
+            label: const Text('认领待接入设备'),
           ),
           const SizedBox(height: 10),
           OutlinedButton.icon(
@@ -134,7 +135,7 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            '安全认领与 Wi-Fi 配网是两个独立步骤。兼容热点入口只配置网络；设备显示二维码后，再通过上方入口认领。',
+            '认领与 Wi-Fi 配网是两个独立步骤。兼容热点入口只配置网络；设备连接 Hub 并进入待认领状态后，再由你确认绑定。',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],

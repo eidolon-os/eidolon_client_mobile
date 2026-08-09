@@ -49,7 +49,7 @@ class EidolonMobileApp extends StatelessWidget {
         conversationBuilder: (_, controller) => ClientPage(
           provisioner: MobileConversationProvisioner(
             loadTarget: controller.fetchDeviceOnboardingTarget,
-            claimAdmission: controller.claimDevicePairing,
+            approveAdmission: controller.approveDeviceEnrollment,
           ),
         ),
       ),

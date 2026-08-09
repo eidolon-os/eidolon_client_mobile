@@ -32,8 +32,7 @@ class VerifiedHubTarget {
       throw const FormatException('Hub ID is invalid');
     }
     _requireHttpsUri(descriptorUri, field: 'descriptor URI');
-    if (!RegExp(r'^sha256:[A-Za-z0-9_-]{43}$')
-        .hasMatch(tlsSpkiFingerprint)) {
+    if (!RegExp(r'^sha256:[A-Za-z0-9_-]{43}$').hasMatch(tlsSpkiFingerprint)) {
       throw const FormatException('Hub TLS SPKI fingerprint is invalid');
     }
   }
@@ -84,7 +83,6 @@ class DeviceEnrollmentMaterial {
     required this.enrollmentRequestId,
     required this.handoffRequestId,
     required this.retrievalToken,
-    required this.pairingSecret,
     this.enrollmentId,
     this.retrievalExpiresAt,
   });
@@ -92,7 +90,6 @@ class DeviceEnrollmentMaterial {
   final String enrollmentRequestId;
   final String handoffRequestId;
   final String retrievalToken;
-  final String? pairingSecret;
   final String? enrollmentId;
   final DateTime? retrievalExpiresAt;
 
@@ -115,12 +112,6 @@ class DeviceEnrollmentMaterial {
         minLength: 32,
         maxLength: 256,
       ),
-      pairingSecret: _optionalPlatformString(
-        value,
-        'pairingSecret',
-        minLength: 32,
-        maxLength: 256,
-      ),
       enrollmentId: _optionalPlatformString(
         value,
         'enrollmentId',
@@ -140,32 +131,6 @@ class DeviceEnrollmentMaterial {
   }
 }
 
-class DeviceEnrollmentIdentityProof {
-  const DeviceEnrollmentIdentityProof({
-    required this.publicKeySpki,
-    required this.signature,
-  });
-
-  final String publicKeySpki;
-  final String signature;
-
-  factory DeviceEnrollmentIdentityProof.fromMap(Map<Object?, Object?> value) =>
-      DeviceEnrollmentIdentityProof(
-        publicKeySpki: _base64UrlPlatformString(
-          value,
-          'publicKeySpki',
-          minLength: 80,
-          maxLength: 256,
-        ),
-        signature: _base64UrlPlatformString(
-          value,
-          'signature',
-          minLength: 64,
-          maxLength: 256,
-        ),
-      );
-}
-
 class HubEnrollmentReceipt {
   const HubEnrollmentReceipt({
     required this.requestId,
@@ -173,7 +138,6 @@ class HubEnrollmentReceipt {
     required this.deviceId,
     required this.lifecycle,
     required this.retrievalExpiresAt,
-    this.pairingClaimUri,
   });
 
   final String requestId;
@@ -181,7 +145,6 @@ class HubEnrollmentReceipt {
   final String deviceId;
   final HubDeviceLifecycle lifecycle;
   final DateTime retrievalExpiresAt;
-  final Uri? pairingClaimUri;
 
   factory HubEnrollmentReceipt.fromJson(Map<String, dynamic> value) {
     if (value['operation'] != 'device.enrollment-received') {
@@ -190,18 +153,6 @@ class HubEnrollmentReceipt {
     final expiresAt = value['retrieval_expires_at_ms'];
     if (expiresAt is! int || expiresAt < 0) {
       throw const FormatException('Hub enrollment expiry is invalid');
-    }
-    final rawClaimUri = value['pairing_claim_uri'];
-    final claimUri = rawClaimUri == null
-        ? null
-        : rawClaimUri is String
-            ? Uri.tryParse(rawClaimUri)
-            : null;
-    if (rawClaimUri != null && claimUri == null) {
-      throw const FormatException('Hub pairing claim URI is invalid');
-    }
-    if (claimUri != null) {
-      _requireHttpsUri(claimUri, field: 'pairing claim URI');
     }
     return HubEnrollmentReceipt(
       requestId: _boundedString(value, 'request_id', maxLength: 96),
@@ -212,7 +163,6 @@ class HubEnrollmentReceipt {
         expiresAt,
         isUtc: true,
       ),
-      pairingClaimUri: claimUri,
     );
   }
 }
@@ -409,24 +359,6 @@ String? _optionalPlatformString(
   if (result is! String ||
       result.length < minLength ||
       result.length > maxLength) {
-    throw FormatException('Secure enrollment field $key is invalid');
-  }
-  return result;
-}
-
-String _base64UrlPlatformString(
-  Map<Object?, Object?> value,
-  String key, {
-  required int minLength,
-  required int maxLength,
-}) {
-  final result = _boundedPlatformString(
-    value,
-    key,
-    minLength: minLength,
-    maxLength: maxLength,
-  );
-  if (!RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(result)) {
     throw FormatException('Secure enrollment field $key is invalid');
   }
   return result;

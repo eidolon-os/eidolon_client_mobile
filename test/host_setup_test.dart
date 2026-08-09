@@ -243,7 +243,7 @@ void main() {
     ]);
   });
 
-  test('LocalApiClient sends pairing proof through Owner-scoped Local API',
+  test('LocalApiClient lists and explicitly approves pending enrollments',
       () async {
     final requests = <http.Request>[];
     final client = LocalApiClient(
@@ -253,13 +253,16 @@ void main() {
         if (request.method == 'GET') {
           return http.Response(
             jsonEncode({
-              'operation': 'local.device-onboarding-target',
+              'operation': 'local.pending-device-enrollments',
               'contract_version': '1',
-              'hub_id': 'hub-local',
-              'descriptor_uri':
-                  'https://eidolon-hub.local/api/device-onboarding/v1/descriptor',
-              'tls_spki_fingerprint':
-                  'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
+              'devices': [
+                {
+                  'device_id': 'esp32-device-1',
+                  'display_name': 'Desk Device',
+                  'device_kind': 'voice-client',
+                  'enrolled_at': '2026-08-09T10:00:00Z',
+                },
+              ],
             }),
             200,
           );
@@ -268,10 +271,8 @@ void main() {
           jsonEncode({
             'operation': 'local.device-admission-progress',
             'contract_version': '1',
-            'setup_id': 'device-pair-1',
-            'request_id': 'device-pair-claim-1',
+            'request_id': 'device-approval-1',
             'device_id': 'esp32-device-1',
-            'enrollment_id': 'enrollment_1',
             'owner_id': 'owner_primary',
             'state': 'ready',
             'completed_stage': 'companion-attached',
@@ -283,52 +284,28 @@ void main() {
       }),
     );
 
-    final target = await client.fetchDeviceOnboardingTarget(
+    final pending = await client.fetchPendingDeviceEnrollments(
       'https://eidolon.local:9002',
       accessToken: validHostChallenge,
     );
-    final progress = await client.claimDeviceAdmission(
+    final progress = await client.approveDeviceEnrollment(
       'https://eidolon.local:9002',
       accessToken: validHostChallenge,
-      setupId: 'device-pair-1',
-      requestId: 'device-pair-claim-1',
-      onboardingTarget: target,
-      pairing: const DevicePairingPayload(
-        enrollmentId: 'enrollment_1',
-        pairingSecret: 'device-generated-pairing-secret-00001',
-      ),
+      requestId: 'device-approval-1',
+      deviceId: 'esp32-device-1',
       companionId: 'companion_primary',
     );
 
+    expect(pending.single.deviceId, 'esp32-device-1');
     expect(progress.state, DeviceAdmissionState.ready);
     expect(requests.map((request) => '${request.method} ${request.url.path}'), [
-      'GET /api/local/v1/device-onboarding/target',
-      'PUT /api/local/v1/device-admissions/device-pair-1',
+      'GET /api/local/v1/device-enrollments/pending',
+      'POST /api/local/v1/device-enrollments/esp32-device-1/approval',
     ]);
     final body = jsonDecode(requests.last.body) as Map<String, dynamic>;
-    expect(body['hub_id'], 'hub-local');
-    expect(body['enrollment_id'], 'enrollment_1');
+    expect(body['request_id'], 'device-approval-1');
     expect(body, isNot(contains('owner_id')));
     expect(body, isNot(contains('device_id')));
-  });
-
-  test('compact Device pairing payload rejects JSON and unbounded input', () {
-    final parsed = DevicePairingPayload.parse(
-      'EIDOLON:PAIR:1:enrollment_abcdefghijklmnopqrstuvwx:0123456789abcdefghijklmnopqrstuvwxyzABCDEFG',
-    );
-    expect(parsed.enrollmentId, 'enrollment_abcdefghijklmnopqrstuvwx');
-    expect(
-      () => DevicePairingPayload.parse(
-        '{"enrollment_id":"enrollment_1","pairing_secret":"secret"}',
-      ),
-      throwsFormatException,
-    );
-    expect(
-      () => DevicePairingPayload.parse(
-        'EIDOLON:PAIR:1:e:${List.filled(90, 'x').join()}',
-      ),
-      throwsFormatException,
-    );
   });
 
   test('uses the BLE Host marker as the canonical generated display name', () {

@@ -11,14 +11,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-const _fingerprint =
-    'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8';
+const _fingerprint = 'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8';
 const _enrollmentId = 'enrollment_abcdefghijklmnopqrstuvwx';
-const _pairingSecret = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFG';
 const _retrievalToken = 'retrieval-token-abcdefghijklmnopqrstuvwxyz';
 
 void main() {
-  test('provisions Mobile through Owner claim and consumes Provider binding',
+  test('provisions Mobile through Owner approval and consumes Provider binding',
       () async {
     final expectedRevision = await canonicalManifestRevision(
       mobileBodyManifest,
@@ -30,24 +28,19 @@ void main() {
       requests,
       handoffResponse: _handoffResponse(expectedRevision),
     );
-    DevicePairingPayload? claimedPairing;
-    String? claimedSetupId;
+    String? approvedDeviceId;
     String? claimedRequestId;
     final provisioner = MobileConversationProvisioner(
       loadTarget: () async => _target,
-      claimAdmission: ({
-        required setupId,
+      approveAdmission: ({
         required requestId,
-        required pairing,
+        required deviceId,
       }) async {
-        claimedPairing = pairing;
-        claimedSetupId = setupId;
+        approvedDeviceId = deviceId;
         claimedRequestId = requestId;
         return DeviceAdmissionProgress(
-          setupId: setupId,
           requestId: requestId,
-          deviceId: 'mobile-android-test',
-          enrollmentId: pairing.enrollmentId,
+          deviceId: deviceId,
           ownerId: 'owner-1',
           state: DeviceAdmissionState.ready,
           completedStage: 'companion-attached',
@@ -68,11 +61,8 @@ void main() {
     expect(config.control?.roomName, 'mobile-control');
     expect(config.sampleRate, 16000);
     expect(config.channels, 1);
-    expect(claimedPairing?.enrollmentId, _enrollmentId);
-    expect(claimedPairing?.pairingSecret, _pairingSecret);
-    expect(claimedSetupId, startsWith('mobile-body-'));
-    expect(claimedRequestId, startsWith('mobile-body-claim-'));
-    expect(security.pairingSecretCleared, isTrue);
+    expect(approvedDeviceId, 'mobile-android-test');
+    expect(claimedRequestId, startsWith('mobile-body-approval-'));
     expect(
       requests.map((request) => '${request.method} ${request.url.path}'),
       [
@@ -89,16 +79,13 @@ void main() {
     final requests = <http.Request>[];
     final provisioner = MobileConversationProvisioner(
       loadTarget: () async => _target,
-      claimAdmission: ({
-        required setupId,
+      approveAdmission: ({
         required requestId,
-        required pairing,
+        required deviceId,
       }) async =>
           DeviceAdmissionProgress(
-        setupId: setupId,
         requestId: requestId,
-        deviceId: 'mobile-android-test',
-        enrollmentId: pairing.enrollmentId,
+        deviceId: deviceId,
         ownerId: 'owner-1',
         state: DeviceAdmissionState.binding,
         completedStage: 'kernel-mounted',
@@ -117,7 +104,6 @@ void main() {
     final config = await provisioner.provision();
 
     expect(config.status, HubConfigStatus.waitingBinding);
-    expect(security.pairingSecretCleared, isFalse);
     expect(requests, hasLength(2));
   });
 }
@@ -146,9 +132,6 @@ HubOnboardingClient _hubClient(
                 'device_id': 'mobile-android-test',
                 'lifecycle_state': 'pending-approval',
                 'retrieval_expires_at_ms': 1893456000000,
-                'pairing_claim_uri':
-                    'https://eidolon.example/api/device-management/v1/'
-                        'enrollments/$_enrollmentId/pairing-claims',
               }),
               200,
             );
@@ -229,24 +212,16 @@ class _Platform extends PlatformBridge {
 }
 
 class _Security implements MobileBodySecurity {
-  var pairingSecretCleared = false;
-
   @override
   Future<DeviceEnrollmentMaterial> loadOrCreateMaterial(String hubId) async =>
       const DeviceEnrollmentMaterial(
         enrollmentRequestId: 'mobile-enroll-1',
         handoffRequestId: 'mobile-handoff-1',
         retrievalToken: _retrievalToken,
-        pairingSecret: _pairingSecret,
       );
 
   @override
   Future<void> clearMaterial(String hubId) async {}
-
-  @override
-  Future<void> clearPairingSecret(String hubId) async {
-    pairingSecretCleared = true;
-  }
 
   @override
   Future<void> saveEnrollmentReceipt({
@@ -254,20 +229,4 @@ class _Security implements MobileBodySecurity {
     required String enrollmentId,
     required DateTime retrievalExpiresAt,
   }) async {}
-
-  @override
-  Future<DeviceEnrollmentIdentityProof> signEnrollmentProof({
-    required String requestId,
-    required String deviceId,
-    required String retrievalTokenHash,
-    required String pairingMethod,
-    required String pairingCommitment,
-    required String deviceKind,
-    required String displayName,
-    required String manifestRevision,
-  }) async =>
-      DeviceEnrollmentIdentityProof(
-        publicKeySpki: List.filled(80, 'A').join(),
-        signature: List.filled(64, 'B').join(),
-      );
 }

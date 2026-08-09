@@ -250,26 +250,36 @@ class LocalApiClient {
     );
   }
 
-  Future<DeviceAdmissionProgress> claimDeviceAdmission(
+  Future<List<PendingDeviceEnrollment>> fetchPendingDeviceEnrollments(
     String baseUrl, {
     required String accessToken,
-    required String setupId,
+  }) async {
+    final response = await _httpClient
+        .get(
+          parseBaseUri(baseUrl)
+              .resolve('/api/local/v1/device-enrollments/pending'),
+          headers: _authorizedHeaders(accessToken),
+        )
+        .timeout(timeout);
+    return PendingDeviceEnrollmentPage.fromJson(
+      _decodeResponse(response, operation: 'Pending Device enrollments'),
+    ).devices;
+  }
+
+  Future<DeviceAdmissionProgress> approveDeviceEnrollment(
+    String baseUrl, {
+    required String accessToken,
     required String requestId,
-    required DeviceOnboardingTarget onboardingTarget,
-    required DevicePairingPayload pairing,
+    required String deviceId,
     String? companionId,
   }) async {
     final response = await _httpClient
-        .put(
-          _deviceAdmissionUri(baseUrl, setupId),
+        .post(
+          _deviceApprovalUri(baseUrl, deviceId),
           headers: _authorizedHeaders(accessToken, json: true),
           body: jsonEncode({
             'contract_version': '1',
             'request_id': _boundedId(requestId, 'request ID'),
-            'hub_id': _boundedId(onboardingTarget.hubId, 'Hub ID'),
-            'descriptor_uri': onboardingTarget.descriptorUri.toString(),
-            'enrollment_id': pairing.enrollmentId,
-            'pairing_secret': pairing.pairingSecret,
             if (companionId != null) 'companion_id': companionId,
           }),
         )
@@ -279,32 +289,17 @@ class LocalApiClient {
     );
   }
 
-  Future<DeviceAdmissionProgress> fetchDeviceAdmissionProgress(
-    String baseUrl, {
-    required String accessToken,
-    required String setupId,
-  }) async {
-    final response = await _httpClient
-        .get(
-          _deviceAdmissionUri(baseUrl, setupId),
-          headers: _authorizedHeaders(accessToken),
-        )
-        .timeout(timeout);
-    return DeviceAdmissionProgress.fromJson(
-      _decodeResponse(response, operation: 'Device admission progress'),
-    );
-  }
-
-  static Uri _deviceAdmissionUri(String baseUrl, String setupId) {
-    final normalized = _boundedId(setupId, 'setup ID');
+  static Uri _deviceApprovalUri(String baseUrl, String deviceId) {
+    final normalized = _boundedId(deviceId, 'device ID');
     final base = parseBaseUri(baseUrl);
     return base.replace(
       pathSegments: [
         'api',
         'local',
         'v1',
-        'device-admissions',
+        'device-enrollments',
         normalized,
+        'approval',
       ],
     );
   }

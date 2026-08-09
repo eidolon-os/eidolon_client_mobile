@@ -7,10 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-const _fingerprint =
-    'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8';
+const _fingerprint = 'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8';
 const _retrievalToken = 'device-generated-random-token-000001';
-const _pairingSecret = 'device-generated-pairing-secret-00001';
 
 void main() {
   test('canonical manifest revision matches the Hub and ESP32 vector',
@@ -21,8 +19,7 @@ void main() {
     );
   });
 
-  test(
-      'proof-bound enrollment and pending handoff use the current Hub contract',
+  test('screen-independent enrollment and pending handoff use the Hub contract',
       () async {
     final security = _Security();
     final requests = <http.Request>[];
@@ -49,9 +46,6 @@ void main() {
                 'device_id': 'aa:bb',
                 'lifecycle_state': 'pending-approval',
                 'retrieval_expires_at_ms': 1786000000000,
-                'pairing_claim_uri':
-                    'https://eidolon-hub.local/api/device-management/v1/'
-                        'enrollments/enrollment_1/pairing-claims',
               }),
               200,
             );
@@ -95,25 +89,10 @@ void main() {
     expect(receipt.enrollmentId, 'enrollment_1');
     expect(handoff.isPending, isTrue);
     expect(security.savedEnrollmentId, 'enrollment_1');
-    expect(
-      security.proofArguments?['retrievalTokenHash'],
-      'sha256:8a3f8ba8e8f044009aef31324b1a6073e5c20992b8a6b468cd9153bb40a4152d',
-    );
-    expect(
-      security.proofArguments?['manifestRevision'],
-      'sha256:61fbd6624779ccded820c200cb9f289dde23860ec6952a52e5068824758d0175',
-    );
     final enrollmentBody = jsonDecode(requests[1].body) as Map<String, dynamic>;
     expect(enrollmentBody['operation'], 'device.enrollment');
-    expect(enrollmentBody['identity_proof'], {
-      'algorithm': 'p256-sha256',
-      'public_key_spki': _publicKey,
-      'signature': _signature,
-    });
-    expect(
-      enrollmentBody['pairing_proof'],
-      containsPair('method', 'local-secret-sha256'),
-    );
+    expect(enrollmentBody, isNot(contains('identity_proof')));
+    expect(enrollmentBody, isNot(contains('pairing_proof')));
     expect(
       requests[2].url.path,
       '/api/device-onboarding/v1/enrollments/enrollment_1/handoff',
@@ -168,9 +147,6 @@ const _descriptorJson = {
   'protocol_versions': [1],
 };
 
-final _publicKey = List.filled(80, 'A').join();
-final _signature = List.filled(64, 'B').join();
-
 const _manifest = <String, dynamic>{
   'schema_version': 1,
   'title': 'esp32-s3-touch-amoled-2.06',
@@ -188,7 +164,6 @@ const _manifest = <String, dynamic>{
 
 class _Security implements MobileBodySecurity {
   String? savedEnrollmentId;
-  Map<String, String>? proofArguments;
 
   @override
   Future<DeviceEnrollmentMaterial> loadOrCreateMaterial(String hubId) async =>
@@ -196,35 +171,7 @@ class _Security implements MobileBodySecurity {
         enrollmentRequestId: 'mobile-enroll-1',
         handoffRequestId: 'mobile-handoff-1',
         retrievalToken: _retrievalToken,
-        pairingSecret: _pairingSecret,
       );
-
-  @override
-  Future<DeviceEnrollmentIdentityProof> signEnrollmentProof({
-    required String requestId,
-    required String deviceId,
-    required String retrievalTokenHash,
-    required String pairingMethod,
-    required String pairingCommitment,
-    required String deviceKind,
-    required String displayName,
-    required String manifestRevision,
-  }) async {
-    proofArguments = {
-      'requestId': requestId,
-      'deviceId': deviceId,
-      'retrievalTokenHash': retrievalTokenHash,
-      'pairingMethod': pairingMethod,
-      'pairingCommitment': pairingCommitment,
-      'deviceKind': deviceKind,
-      'displayName': displayName,
-      'manifestRevision': manifestRevision,
-    };
-    return DeviceEnrollmentIdentityProof(
-      publicKeySpki: _publicKey,
-      signature: _signature,
-    );
-  }
 
   @override
   Future<void> saveEnrollmentReceipt({
@@ -237,7 +184,4 @@ class _Security implements MobileBodySecurity {
 
   @override
   Future<void> clearMaterial(String hubId) async {}
-
-  @override
-  Future<void> clearPairingSecret(String hubId) async {}
 }

@@ -56,7 +56,6 @@ class DeviceSetupCoordinator {
     await checkpoints.save(checkpoint);
 
     DeviceProvisioningSession? session;
-    DevicePairingPayload? pairing;
     try {
       session = await transport.open(candidate);
       _validateTrust(candidate, session.descriptor);
@@ -85,13 +84,13 @@ class DeviceSetupCoordinator {
           message: 'Enrollment does not belong to the provisioned Device',
         );
       }
-      if (receipt.pairingPayload.enrollmentId != receipt.enrollmentId) {
+      if (receipt.lifecycleState != 'pending-approval' &&
+          receipt.lifecycleState != 'approved') {
         throw const DeviceSetupException(
-          code: 'pairing_enrollment_mismatch',
-          message: 'Physical pairing proof does not belong to the Enrollment',
+          code: 'invalid_enrollment_state',
+          message: 'Device enrollment is not awaiting approval',
         );
       }
-      pairing = receipt.pairingPayload;
       checkpoint = checkpoint.copyWith(
         admissionState: DeviceAdmissionState.pendingApproval,
         enrollmentId: receipt.enrollmentId,
@@ -119,13 +118,10 @@ class DeviceSetupCoordinator {
     } finally {
       await _closeProvisioning(session);
     }
-    return _continueAdmission(checkpoint, pairing);
+    return _continueAdmission(checkpoint);
   }
 
-  Future<DeviceSetupCheckpoint> resumeAdmission(
-    String setupId, {
-    required DevicePairingPayload pairing,
-  }) async {
+  Future<DeviceSetupCheckpoint> resumeAdmission(String setupId) async {
     final checkpoint = await checkpoints.load(setupId);
     if (checkpoint == null) {
       throw const DeviceSetupException(
@@ -142,31 +138,20 @@ class DeviceSetupCoordinator {
         message: 'Device enrollment has not completed',
       );
     }
-    if (pairing.enrollmentId != checkpoint.enrollmentId) {
-      throw const DeviceSetupException(
-        code: 'pairing_enrollment_mismatch',
-        message: 'Scanned pairing proof does not match this Device Setup',
-      );
-    }
-    return _continueAdmission(checkpoint, pairing);
+    return _continueAdmission(checkpoint);
   }
 
   Future<DeviceSetupCheckpoint> _continueAdmission(
     DeviceSetupCheckpoint checkpoint,
-    DevicePairingPayload pairing,
   ) async {
     try {
-      final progress = await admission.claim(
-        setupId: checkpoint.setupId,
+      final progress = await admission.approve(
         requestId: checkpoint.requestId,
-        onboardingTarget: checkpoint.onboardingTarget,
-        pairing: pairing,
+        deviceId: checkpoint.deviceId!,
         companionId: checkpoint.companionId,
       );
-      if (progress.setupId != checkpoint.setupId ||
-          progress.requestId != checkpoint.requestId ||
-          progress.deviceId != checkpoint.deviceId ||
-          progress.enrollmentId != checkpoint.enrollmentId) {
+      if (progress.requestId != checkpoint.requestId ||
+          progress.deviceId != checkpoint.deviceId) {
         throw const DeviceSetupException(
           code: 'admission_identity_mismatch',
           message: 'Local API returned another Device admission',

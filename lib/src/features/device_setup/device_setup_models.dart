@@ -116,42 +116,59 @@ class DeviceOnboardingTarget {
   }
 }
 
-/// Ephemeral physical-access proof emitted by the Device after Hub enrollment.
-///
-/// The compact product payload intentionally carries no Hub URL, Owner ID or
-/// Device ID. Those identities are resolved through the already authenticated
-/// Host session and the Hub response. This value must never be checkpointed.
-class DevicePairingPayload {
-  const DevicePairingPayload({
-    required this.enrollmentId,
-    required this.pairingSecret,
+class PendingDeviceEnrollment {
+  const PendingDeviceEnrollment({
+    required this.deviceId,
+    required this.displayName,
+    required this.deviceKind,
+    required this.enrolledAt,
   });
 
-  static final _compactPattern = RegExp(
-    r'^EIDOLON:PAIR:1:(enrollment_[A-Za-z0-9_-]{24}):([A-Za-z0-9_-]{43})$',
-  );
+  final String deviceId;
+  final String displayName;
+  final String deviceKind;
+  final DateTime enrolledAt;
 
-  final String enrollmentId;
-  final String pairingSecret;
-
-  factory DevicePairingPayload.parse(String input) {
-    final value = input.trim();
-    if (value.length > 106 || value.codeUnits.any((unit) => unit > 0x7f)) {
-      throw const FormatException('设备配对码无效');
+  factory PendingDeviceEnrollment.fromJson(Map<String, dynamic> value) {
+    final enrolledAt = DateTime.tryParse(
+      _boundedWireString(value, 'enrolled_at', 64),
+    );
+    if (enrolledAt == null) {
+      throw const FormatException('Local API 返回了无效的设备接入时间');
     }
-    final match = _compactPattern.firstMatch(value);
-    final enrollmentId = match?.group(1);
-    final pairingSecret = match?.group(2);
-    if (enrollmentId == null || pairingSecret == null) {
-      throw const FormatException('设备配对码无效');
-    }
-    return DevicePairingPayload(
-      enrollmentId: enrollmentId,
-      pairingSecret: pairingSecret,
+    return PendingDeviceEnrollment(
+      deviceId: _boundedWireString(value, 'device_id', 128),
+      displayName: _boundedWireString(value, 'display_name', 128),
+      deviceKind: _boundedWireString(value, 'device_kind', 96),
+      enrolledAt: enrolledAt.toUtc(),
     );
   }
+}
 
-  String encode() => 'EIDOLON:PAIR:1:$enrollmentId:$pairingSecret';
+class PendingDeviceEnrollmentPage {
+  const PendingDeviceEnrollmentPage({required this.devices});
+
+  final List<PendingDeviceEnrollment> devices;
+
+  factory PendingDeviceEnrollmentPage.fromJson(Map<String, dynamic> value) {
+    if (value['operation'] != 'local.pending-device-enrollments' ||
+        value['contract_version'] != '1') {
+      throw const FormatException('Local API 返回了无效的待认领设备目录');
+    }
+    final raw = value['devices'];
+    if (raw is! List || raw.length > 100) {
+      throw const FormatException('Local API 返回了无效的待认领设备目录');
+    }
+    final devices = raw
+        .map((item) => item is Map
+            ? PendingDeviceEnrollment.fromJson(Map<String, dynamic>.from(item))
+            : throw const FormatException('待认领设备条目无效'))
+        .toList(growable: false);
+    if (devices.map((item) => item.deviceId).toSet().length != devices.length) {
+      throw const FormatException('待认领设备目录包含重复设备');
+    }
+    return PendingDeviceEnrollmentPage(devices: devices);
+  }
 }
 
 class DeviceEnrollmentReceipt {
@@ -159,21 +176,17 @@ class DeviceEnrollmentReceipt {
     required this.deviceId,
     required this.enrollmentId,
     required this.lifecycleState,
-    required this.pairingPayload,
   });
 
   final String deviceId;
   final String enrollmentId;
   final String lifecycleState;
-  final DevicePairingPayload pairingPayload;
 }
 
 class DeviceAdmissionProgress {
   const DeviceAdmissionProgress({
-    required this.setupId,
     required this.requestId,
     required this.deviceId,
-    required this.enrollmentId,
     required this.ownerId,
     required this.state,
     required this.completedStage,
@@ -181,10 +194,8 @@ class DeviceAdmissionProgress {
     this.retryable = false,
   });
 
-  final String setupId;
   final String requestId;
   final String deviceId;
-  final String enrollmentId;
   final String ownerId;
   final DeviceAdmissionState state;
   final String completedStage;
@@ -209,10 +220,8 @@ class DeviceAdmissionProgress {
       throw const FormatException('Local API 返回了无效的设备重试状态');
     }
     return DeviceAdmissionProgress(
-      setupId: _boundedWireString(value, 'setup_id', 128),
       requestId: _boundedWireString(value, 'request_id', 128),
       deviceId: _boundedWireString(value, 'device_id', 128),
-      enrollmentId: _boundedWireString(value, 'enrollment_id', 128),
       ownerId: _boundedWireString(value, 'owner_id', 64),
       state: state,
       completedStage: _boundedWireString(value, 'completed_stage', 64),

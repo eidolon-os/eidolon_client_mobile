@@ -11,20 +11,7 @@ abstract interface class MobileBodySecurity {
     required DateTime retrievalExpiresAt,
   });
 
-  Future<void> clearPairingSecret(String hubId);
-
   Future<void> clearMaterial(String hubId);
-
-  Future<DeviceEnrollmentIdentityProof> signEnrollmentProof({
-    required String requestId,
-    required String deviceId,
-    required String retrievalTokenHash,
-    required String pairingMethod,
-    required String pairingCommitment,
-    required String deviceKind,
-    required String displayName,
-    required String manifestRevision,
-  });
 }
 
 class PlatformMobileBodySecurity implements MobileBodySecurity {
@@ -69,46 +56,10 @@ class PlatformMobileBodySecurity implements MobileBodySecurity {
   }
 
   @override
-  Future<void> clearPairingSecret(String hubId) => _channel.invokeMethod<void>(
-        'clearDevicePairingSecret',
-        {'hubId': _hubId(hubId)},
-      );
-
-  @override
   Future<void> clearMaterial(String hubId) => _channel.invokeMethod<void>(
         'clearDeviceEnrollmentMaterial',
         {'hubId': _hubId(hubId)},
       );
-
-  @override
-  Future<DeviceEnrollmentIdentityProof> signEnrollmentProof({
-    required String requestId,
-    required String deviceId,
-    required String retrievalTokenHash,
-    required String pairingMethod,
-    required String pairingCommitment,
-    required String deviceKind,
-    required String displayName,
-    required String manifestRevision,
-  }) async {
-    final value = await _channel.invokeMapMethod<Object?, Object?>(
-      'signDeviceEnrollmentProof',
-      {
-        'requestId': requestId,
-        'deviceId': deviceId,
-        'retrievalTokenHash': retrievalTokenHash,
-        'pairingMethod': pairingMethod,
-        'pairingCommitment': pairingCommitment,
-        'deviceKind': deviceKind,
-        'displayName': displayName,
-        'manifestRevision': manifestRevision,
-      },
-    );
-    if (value == null) {
-      throw StateError('Platform did not return an enrollment proof');
-    }
-    return DeviceEnrollmentIdentityProof.fromMap(value);
-  }
 }
 
 String _hubId(String value) {

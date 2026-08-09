@@ -24,19 +24,14 @@ void main() {
     }
   });
 
-  test('system QR scanner is preloaded without requesting camera permission',
-      () {
+  test('device admission has no QR scanner or camera dependency', () {
     final manifest = File(
       'android/app/src/main/AndroidManifest.xml',
     ).readAsStringSync();
     final gradle = File('android/app/build.gradle.kts').readAsStringSync();
 
     expect(manifest, isNot(contains('android.permission.CAMERA')));
-    expect(manifest, contains('com.google.mlkit.vision.DEPENDENCIES'));
-    expect(manifest, contains('android:value="barcode_ui"'));
-    expect(
-      gradle,
-      contains('play-services-code-scanner:16.1.0'),
-    );
+    expect(manifest, isNot(contains('com.google.mlkit.vision.DEPENDENCIES')));
+    expect(gradle, isNot(contains('play-services-code-scanner')));
   });
 }

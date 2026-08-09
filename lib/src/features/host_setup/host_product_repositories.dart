@@ -64,32 +64,26 @@ class HostDeviceAdmissionRepository implements DeviceAdmissionPort {
       );
 
   @override
-  Future<DeviceAdmissionProgress> claim({
-    required String setupId,
-    required String requestId,
-    required DeviceOnboardingTarget onboardingTarget,
-    required DevicePairingPayload pairing,
-    String? companionId,
-  }) =>
-      _session.execute(
-        (client, baseUrl, accessToken) => client.claimDeviceAdmission(
+  Future<List<PendingDeviceEnrollment>> listPending() => _session.execute(
+        (client, baseUrl, accessToken) => client.fetchPendingDeviceEnrollments(
           baseUrl,
           accessToken: accessToken,
-          setupId: setupId,
-          requestId: requestId,
-          onboardingTarget: onboardingTarget,
-          pairing: pairing,
-          companionId: companionId,
         ),
       );
 
   @override
-  Future<DeviceAdmissionProgress> readProgress({required String setupId}) =>
+  Future<DeviceAdmissionProgress> approve({
+    required String requestId,
+    required String deviceId,
+    String? companionId,
+  }) =>
       _session.execute(
-        (client, baseUrl, accessToken) => client.fetchDeviceAdmissionProgress(
+        (client, baseUrl, accessToken) => client.approveDeviceEnrollment(
           baseUrl,
           accessToken: accessToken,
-          setupId: setupId,
+          requestId: requestId,
+          deviceId: deviceId,
+          companionId: companionId,
         ),
       );
 }

@@ -6,7 +6,7 @@ import 'device_setup_models.dart';
 import 'device_setup_ports.dart';
 
 /// Persists only the non-secret Device Setup state required for forward
-/// recovery. Wi-Fi credentials and pairing material are never accepted by the
+/// recovery. Wi-Fi credentials and enrollment bearer material are never accepted by the
 /// checkpoint model and therefore cannot enter this document.
 class PersistentDeviceSetupCheckpointStore
     implements DeviceSetupCheckpointStore {

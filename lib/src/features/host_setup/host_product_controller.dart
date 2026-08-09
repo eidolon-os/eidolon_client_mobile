@@ -220,10 +220,18 @@ class HostProductController extends ChangeNotifier {
     return _deviceAdmissionRepository.fetchTarget();
   }
 
-  Future<DeviceAdmissionProgress> claimDevicePairing({
-    required String setupId,
+  Future<List<PendingDeviceEnrollment>> listPendingDeviceEnrollments() {
+    if (!(_workspace?.isReady ?? false)) {
+      throw const HostControllerAuthorizationException(
+        '请先完成 Owner Workspace，再添加设备',
+      );
+    }
+    return _deviceAdmissionRepository.listPending();
+  }
+
+  Future<DeviceAdmissionProgress> approveDeviceEnrollment({
     required String requestId,
-    required DevicePairingPayload pairing,
+    required String deviceId,
   }) async {
     final workspace = _workspace;
     if (workspace == null || !workspace.isReady) {
@@ -231,12 +239,9 @@ class HostProductController extends ChangeNotifier {
         '请先完成 Owner Workspace，再认领设备',
       );
     }
-    final target = await _deviceAdmissionRepository.fetchTarget();
-    final progress = await _deviceAdmissionRepository.claim(
-      setupId: setupId,
+    final progress = await _deviceAdmissionRepository.approve(
       requestId: requestId,
-      onboardingTarget: target,
-      pairing: pairing,
+      deviceId: deviceId,
       companionId: workspace.workspace?.primaryCompanionId,
     );
     if (progress.state == DeviceAdmissionState.ready) {

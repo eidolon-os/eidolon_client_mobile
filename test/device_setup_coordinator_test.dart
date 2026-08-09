@@ -38,10 +38,6 @@ class _FakeSession implements DeviceProvisioningSession {
         deviceId: 'device-1',
         enrollmentId: 'enrollment-1',
         lifecycleState: 'pending-approval',
-        pairingPayload: DevicePairingPayload(
-          enrollmentId: 'enrollment-1',
-          pairingSecret: 'device-generated-pairing-secret-00001',
-        ),
       );
 
   @override
@@ -88,21 +84,17 @@ class _FakeAdmission implements DeviceAdmissionPort {
   final List<String> requestIds = [];
 
   @override
-  Future<DeviceAdmissionProgress> claim({
-    required String setupId,
+  Future<DeviceAdmissionProgress> approve({
     required String requestId,
-    required DeviceOnboardingTarget onboardingTarget,
-    required DevicePairingPayload pairing,
+    required String deviceId,
     String? companionId,
   }) async {
     calls += 1;
     requestIds.add(requestId);
     if (fail) throw StateError('Hub is unavailable');
     return DeviceAdmissionProgress(
-      setupId: setupId,
       requestId: requestId,
-      deviceId: 'device-1',
-      enrollmentId: pairing.enrollmentId,
+      deviceId: deviceId,
       ownerId: 'owner-1',
       state: DeviceAdmissionState.ready,
       completedStage: 'companion-attached',
@@ -111,10 +103,7 @@ class _FakeAdmission implements DeviceAdmissionPort {
   }
 
   @override
-  Future<DeviceAdmissionProgress> readProgress({
-    required String setupId,
-  }) =>
-      throw UnimplementedError();
+  Future<List<PendingDeviceEnrollment>> listPending() async => const [];
 }
 
 void main() {
@@ -189,13 +178,7 @@ void main() {
     expect(failed.failure?.retryable, isTrue);
 
     admission.fail = false;
-    final resumed = await coordinator.resumeAdmission(
-      'setup-1',
-      pairing: const DevicePairingPayload(
-        enrollmentId: 'enrollment-1',
-        pairingSecret: 'device-generated-pairing-secret-00001',
-      ),
-    );
+    final resumed = await coordinator.resumeAdmission('setup-1');
 
     expect(resumed.isReady, isTrue);
     expect(admission.requestIds, ['stable-request-1', 'stable-request-1']);

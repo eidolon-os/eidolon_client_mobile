@@ -15,10 +15,9 @@ const mobileLiveKitBindingFormat =
 
 typedef DeviceOnboardingTargetLoader = Future<DeviceOnboardingTarget>
     Function();
-typedef MobileBodyAdmissionClaim = Future<DeviceAdmissionProgress> Function({
-  required String setupId,
+typedef MobileBodyAdmissionApproval = Future<DeviceAdmissionProgress> Function({
   required String requestId,
-  required DevicePairingPayload pairing,
+  required String deviceId,
 });
 
 /// Current Mobile body onboarding: authenticated Host target -> Hub enrollment
@@ -29,13 +28,13 @@ typedef MobileBodyAdmissionClaim = Future<DeviceAdmissionProgress> Function({
 class MobileConversationProvisioner implements ConversationProvisioner {
   MobileConversationProvisioner({
     required DeviceOnboardingTargetLoader loadTarget,
-    required MobileBodyAdmissionClaim claimAdmission,
+    required MobileBodyAdmissionApproval approveAdmission,
     PlatformBridge? platform,
     MobileBodySecurity? security,
     HubOnboardingClient? hubClient,
     DateTime Function()? clock,
   })  : _loadTarget = loadTarget,
-        _claimAdmission = claimAdmission,
+        _approveAdmission = approveAdmission,
         _platform = platform ?? const PlatformBridge(),
         _security = security ?? const PlatformMobileBodySecurity(),
         _hubClient = hubClient ??
@@ -45,7 +44,7 @@ class MobileConversationProvisioner implements ConversationProvisioner {
         _clock = clock ?? DateTime.now;
 
   final DeviceOnboardingTargetLoader _loadTarget;
-  final MobileBodyAdmissionClaim _claimAdmission;
+  final MobileBodyAdmissionApproval _approveAdmission;
   final PlatformBridge _platform;
   final MobileBodySecurity _security;
   final HubOnboardingClient _hubClient;
@@ -88,34 +87,25 @@ class MobileConversationProvisioner implements ConversationProvisioner {
       enrollmentId = receipt.enrollmentId;
     }
 
-    final pairingSecret = material.pairingSecret;
-    if (pairingSecret != null) {
-      final pairing = DevicePairingPayload.parse(
-        'EIDOLON:PAIR:1:$enrollmentId:$pairingSecret',
-      );
-      final workflow = await _workflowIds(
-        hubId: target.hubId,
-        deviceId: identity.deviceId,
-        enrollmentId: enrollmentId,
-      );
-      final progress = await _claimAdmission(
-        setupId: workflow.$1,
-        requestId: workflow.$2,
-        pairing: pairing,
-      );
-      _validateAdmission(
-        progress,
-        enrollmentId: enrollmentId,
-        setupId: workflow.$1,
-        requestId: workflow.$2,
-      );
-      if (progress.state == DeviceAdmissionState.failed) {
-        throw StateError('移动设备接入未完成：${progress.completedStage}');
-      }
-      if (progress.state != DeviceAdmissionState.ready) {
-        return _waitingConfig(identity);
-      }
-      await _security.clearPairingSecret(target.hubId);
+    final requestId = await _approvalRequestId(
+      hubId: target.hubId,
+      deviceId: identity.deviceId,
+      enrollmentId: enrollmentId,
+    );
+    final progress = await _approveAdmission(
+      requestId: requestId,
+      deviceId: identity.deviceId,
+    );
+    _validateAdmission(
+      progress,
+      deviceId: identity.deviceId,
+      requestId: requestId,
+    );
+    if (progress.state == DeviceAdmissionState.failed) {
+      throw StateError('移动设备接入未完成：${progress.completedStage}');
+    }
+    if (progress.state != DeviceAdmissionState.ready) {
+      return _waitingConfig(identity);
     }
 
     final expectedRevision = await canonicalManifestRevision(
@@ -160,7 +150,7 @@ class MobileConversationProvisioner implements ConversationProvisioner {
         !expiresAt.isAfter(_clock().toUtc());
   }
 
-  Future<(String, String)> _workflowIds({
+  Future<String> _approvalRequestId({
     required String hubId,
     required String deviceId,
     required String enrollmentId,
@@ -169,18 +159,15 @@ class MobileConversationProvisioner implements ConversationProvisioner {
       utf8.encode('$hubId\n$deviceId\n$enrollmentId'),
     );
     final suffix = base64UrlEncode(digest.bytes).replaceAll('=', '');
-    return ('mobile-body-$suffix', 'mobile-body-claim-$suffix');
+    return 'mobile-body-approval-$suffix';
   }
 
   void _validateAdmission(
     DeviceAdmissionProgress progress, {
-    required String enrollmentId,
-    required String setupId,
+    required String deviceId,
     required String requestId,
   }) {
-    if (progress.enrollmentId != enrollmentId ||
-        progress.setupId != setupId ||
-        progress.requestId != requestId) {
+    if (progress.deviceId != deviceId || progress.requestId != requestId) {
       throw const FormatException('Local API 返回了不属于当前 Mobile 的接入状态');
     }
   }
