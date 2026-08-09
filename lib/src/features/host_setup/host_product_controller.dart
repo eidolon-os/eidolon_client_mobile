@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../device_management/mounted_device_models.dart';
+import '../device_setup/device_setup_models.dart';
 import '../setup/commissioning_transport.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/host_registry.dart';
@@ -38,6 +39,7 @@ class HostProductController extends ChangeNotifier {
         ) {
     _workspaceRepository = HostWorkspaceRepository(_session);
     _devicesRepository = HostDevicesRepository(_session);
+    _deviceAdmissionRepository = HostDeviceAdmissionRepository(_session);
   }
 
   ManagedHost _host;
@@ -45,6 +47,7 @@ class HostProductController extends ChangeNotifier {
   final HostProductSession _session;
   late final HostWorkspaceRepository _workspaceRepository;
   late final HostDevicesRepository _devicesRepository;
+  late final HostDeviceAdmissionRepository _deviceAdmissionRepository;
 
   bool _connecting = false;
   bool _workspaceBusy = false;
@@ -206,6 +209,40 @@ class HostProductController extends ChangeNotifier {
       _devicesBusy = false;
       _notify();
     }
+  }
+
+  Future<DeviceOnboardingTarget> fetchDeviceOnboardingTarget() {
+    if (!(_workspace?.isReady ?? false)) {
+      throw const HostControllerAuthorizationException(
+        '请先完成 Owner Workspace，再添加设备',
+      );
+    }
+    return _deviceAdmissionRepository.fetchTarget();
+  }
+
+  Future<DeviceAdmissionProgress> claimDevicePairing({
+    required String setupId,
+    required String requestId,
+    required DevicePairingPayload pairing,
+  }) async {
+    final workspace = _workspace;
+    if (workspace == null || !workspace.isReady) {
+      throw const HostControllerAuthorizationException(
+        '请先完成 Owner Workspace，再认领设备',
+      );
+    }
+    final target = await _deviceAdmissionRepository.fetchTarget();
+    final progress = await _deviceAdmissionRepository.claim(
+      setupId: setupId,
+      requestId: requestId,
+      onboardingTarget: target,
+      pairing: pairing,
+      companionId: workspace.workspace?.primaryCompanionId,
+    );
+    if (progress.state == DeviceAdmissionState.ready) {
+      await refreshDevices();
+    }
+    return progress;
   }
 
   Future<void> _loadProductState() async {

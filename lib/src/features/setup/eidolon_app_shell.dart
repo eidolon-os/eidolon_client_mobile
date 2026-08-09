@@ -17,12 +17,14 @@ class EidolonAppShell extends StatefulWidget {
     this.setupTransport,
     this.controllerKeys,
     this.deviceProvisioning,
+    this.conversationBuilder,
   });
 
   final HostRegistry? registry;
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
   final LegacyHotspotProvisioningPort? deviceProvisioning;
+  final HostConversationBuilder? conversationBuilder;
 
   @override
   State<EidolonAppShell> createState() => _EidolonAppShellState();
@@ -65,6 +67,7 @@ class _EidolonAppShellState extends State<EidolonAppShell> {
                   controllerKeys: widget.controllerKeys,
                   setupContinuation: true,
                   onSetupComplete: () => Navigator.of(localContext).pop(),
+                  conversationBuilder: widget.conversationBuilder,
                 ),
               ),
             );
@@ -97,6 +100,7 @@ class _EidolonAppShellState extends State<EidolonAppShell> {
       setupTransport: widget.setupTransport,
       controllerKeys: widget.controllerKeys,
       deviceProvisioning: widget.deviceProvisioning,
+      conversationBuilder: widget.conversationBuilder,
     );
   }
 }
@@ -162,6 +166,7 @@ class _HostsPage extends StatelessWidget {
     this.setupTransport,
     this.controllerKeys,
     this.deviceProvisioning,
+    this.conversationBuilder,
   });
 
   final List<ManagedHost> hosts;
@@ -171,6 +176,7 @@ class _HostsPage extends StatelessWidget {
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
   final LegacyHotspotProvisioningPort? deviceProvisioning;
+  final HostConversationBuilder? conversationBuilder;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -208,6 +214,7 @@ class _HostsPage extends StatelessWidget {
                         setupTransport: setupTransport,
                         controllerKeys: controllerKeys,
                         deviceProvisioning: deviceProvisioning,
+                        conversationBuilder: conversationBuilder,
                       ),
                     ),
                   );
@@ -227,6 +234,7 @@ class _HostDetailPage extends StatelessWidget {
     this.setupTransport,
     this.controllerKeys,
     this.deviceProvisioning,
+    this.conversationBuilder,
   });
 
   final ManagedHost host;
@@ -234,6 +242,7 @@ class _HostDetailPage extends StatelessWidget {
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
   final LegacyHotspotProvisioningPort? deviceProvisioning;
+  final HostConversationBuilder? conversationBuilder;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -273,6 +282,7 @@ class _HostDetailPage extends StatelessWidget {
                     transport: setupTransport,
                     controllerKeys: controllerKeys,
                     deviceProvisioning: deviceProvisioning,
+                    conversationBuilder: conversationBuilder,
                   ),
                 ),
               ),

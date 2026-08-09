@@ -38,6 +38,10 @@ class _FakeSession implements DeviceProvisioningSession {
         deviceId: 'device-1',
         enrollmentId: 'enrollment-1',
         lifecycleState: 'pending-approval',
+        pairingPayload: DevicePairingPayload(
+          enrollmentId: 'enrollment-1',
+          pairingSecret: 'device-generated-pairing-secret-00001',
+        ),
       );
 
   @override
@@ -84,28 +88,31 @@ class _FakeAdmission implements DeviceAdmissionPort {
   final List<String> requestIds = [];
 
   @override
-  Future<DeviceAdmissionProgress> continueAdmission({
-    required String deviceId,
-    required String enrollmentId,
+  Future<DeviceAdmissionProgress> claim({
+    required String setupId,
     required String requestId,
+    required DeviceOnboardingTarget onboardingTarget,
+    required DevicePairingPayload pairing,
     String? companionId,
   }) async {
     calls += 1;
     requestIds.add(requestId);
     if (fail) throw StateError('Hub is unavailable');
     return DeviceAdmissionProgress(
-      deviceId: deviceId,
-      enrollmentId: enrollmentId,
+      setupId: setupId,
+      requestId: requestId,
+      deviceId: 'device-1',
+      enrollmentId: pairing.enrollmentId,
+      ownerId: 'owner-1',
       state: DeviceAdmissionState.ready,
-      completedStage: 'companion_attached',
+      completedStage: 'companion-attached',
       companionId: companionId,
     );
   }
 
   @override
   Future<DeviceAdmissionProgress> readProgress({
-    required String deviceId,
-    required String enrollmentId,
+    required String setupId,
   }) =>
       throw UnimplementedError();
 }
@@ -135,6 +142,8 @@ void main() {
       onboardingTarget: DeviceOnboardingTarget(
         hubId: 'hub-1',
         descriptorUri: Uri.parse('https://hub.local/onboarding'),
+        tlsSpkiFingerprint:
+            'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       ),
       companionId: 'companion-1',
     );
@@ -171,6 +180,8 @@ void main() {
       onboardingTarget: DeviceOnboardingTarget(
         hubId: 'hub-1',
         descriptorUri: Uri.parse('https://hub.local/onboarding'),
+        tlsSpkiFingerprint:
+            'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       ),
     );
     expect(failed.provisioningState, DeviceProvisioningState.networkConfigured);
@@ -178,7 +189,13 @@ void main() {
     expect(failed.failure?.retryable, isTrue);
 
     admission.fail = false;
-    final resumed = await coordinator.resumeAdmission('setup-1');
+    final resumed = await coordinator.resumeAdmission(
+      'setup-1',
+      pairing: const DevicePairingPayload(
+        enrollmentId: 'enrollment-1',
+        pairingSecret: 'device-generated-pairing-secret-00001',
+      ),
+    );
 
     expect(resumed.isReady, isTrue);
     expect(admission.requestIds, ['stable-request-1', 'stable-request-1']);
@@ -219,6 +236,8 @@ void main() {
       onboardingTarget: DeviceOnboardingTarget(
         hubId: 'hub-1',
         descriptorUri: Uri.parse('https://hub.local/onboarding'),
+        tlsSpkiFingerprint:
+            'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       ),
     );
 

@@ -50,11 +50,13 @@ class DeviceSetupCoordinator {
       provisioningState: DeviceProvisioningState.selected,
       admissionState: DeviceAdmissionState.notStarted,
       updatedAt: _now(),
+      onboardingTarget: onboardingTarget,
       companionId: companionId,
     );
     await checkpoints.save(checkpoint);
 
     DeviceProvisioningSession? session;
+    DevicePairingPayload? pairing;
     try {
       session = await transport.open(candidate);
       _validateTrust(candidate, session.descriptor);
@@ -83,6 +85,13 @@ class DeviceSetupCoordinator {
           message: 'Enrollment does not belong to the provisioned Device',
         );
       }
+      if (receipt.pairingPayload.enrollmentId != receipt.enrollmentId) {
+        throw const DeviceSetupException(
+          code: 'pairing_enrollment_mismatch',
+          message: 'Physical pairing proof does not belong to the Enrollment',
+        );
+      }
+      pairing = receipt.pairingPayload;
       checkpoint = checkpoint.copyWith(
         admissionState: DeviceAdmissionState.pendingApproval,
         enrollmentId: receipt.enrollmentId,
@@ -110,10 +119,13 @@ class DeviceSetupCoordinator {
     } finally {
       await _closeProvisioning(session);
     }
-    return _continueAdmission(checkpoint);
+    return _continueAdmission(checkpoint, pairing);
   }
 
-  Future<DeviceSetupCheckpoint> resumeAdmission(String setupId) async {
+  Future<DeviceSetupCheckpoint> resumeAdmission(
+    String setupId, {
+    required DevicePairingPayload pairing,
+  }) async {
     final checkpoint = await checkpoints.load(setupId);
     if (checkpoint == null) {
       throw const DeviceSetupException(
@@ -130,20 +142,30 @@ class DeviceSetupCoordinator {
         message: 'Device enrollment has not completed',
       );
     }
-    return _continueAdmission(checkpoint);
+    if (pairing.enrollmentId != checkpoint.enrollmentId) {
+      throw const DeviceSetupException(
+        code: 'pairing_enrollment_mismatch',
+        message: 'Scanned pairing proof does not match this Device Setup',
+      );
+    }
+    return _continueAdmission(checkpoint, pairing);
   }
 
   Future<DeviceSetupCheckpoint> _continueAdmission(
     DeviceSetupCheckpoint checkpoint,
+    DevicePairingPayload pairing,
   ) async {
     try {
-      final progress = await admission.continueAdmission(
-        deviceId: checkpoint.deviceId!,
-        enrollmentId: checkpoint.enrollmentId!,
+      final progress = await admission.claim(
+        setupId: checkpoint.setupId,
         requestId: checkpoint.requestId,
+        onboardingTarget: checkpoint.onboardingTarget,
+        pairing: pairing,
         companionId: checkpoint.companionId,
       );
-      if (progress.deviceId != checkpoint.deviceId ||
+      if (progress.setupId != checkpoint.setupId ||
+          progress.requestId != checkpoint.requestId ||
+          progress.deviceId != checkpoint.deviceId ||
           progress.enrollmentId != checkpoint.enrollmentId) {
         throw const DeviceSetupException(
           code: 'admission_identity_mismatch',

@@ -23,8 +23,8 @@ class PersistentDeviceSetupCheckpointStore
     }
   }
 
-  static const _preferenceKey = 'eidolon.device-setup-checkpoints.v1';
-  static const _documentVersion = '1';
+  static const _preferenceKey = 'eidolon.device-setup-checkpoints.v2';
+  static const _documentVersion = '2';
 
   final AppPreferences _preferences;
   final int maximumEntries;

@@ -20,6 +20,9 @@ import android.security.keystore.KeyProperties
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
@@ -56,6 +59,7 @@ class MainActivity : FlutterActivity() {
     private var permissionResult: MethodChannel.Result? = null
     private var bluetoothPermissionResult: MethodChannel.Result? = null
     private var wifiProvisioningPermissionResult: MethodChannel.Result? = null
+    private var codeScanResult: MethodChannel.Result? = null
     private var discoveryListener: NsdManager.DiscoveryListener? = null
     private val serviceInfoCallbacks = mutableSetOf<NsdManager.ServiceInfoCallback>()
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -63,6 +67,9 @@ class MainActivity : FlutterActivity() {
     private var setupScanResult: MethodChannel.Result? = null
     private var commissioningManager: BleCommissioningManager? = null
     private val pinnedHttpsClient by lazy { PinnedHttpsClient(mainHandler) }
+    private val deviceEnrollmentMaterialStore by lazy {
+        DeviceEnrollmentMaterialStore(applicationContext)
+    }
     private val legacyHotspotProvisioning by lazy {
         LegacyHotspotProvisioningManager(applicationContext, mainHandler)
     }
@@ -83,6 +90,62 @@ class MainActivity : FlutterActivity() {
                 )
                 "getDeviceIdentity" -> result.success(deviceIdentity())
                 "signRequest" -> result.success(signRequest(call))
+                "loadOrCreateDeviceEnrollmentMaterial" -> result.success(
+                    deviceEnrollmentMaterialStore.loadOrCreate(
+                        call.argument<String>("hubId") ?: error("hubId is required"),
+                    ),
+                )
+                "saveDeviceEnrollmentReceipt" -> {
+                    deviceEnrollmentMaterialStore.saveReceipt(
+                        hubId = call.argument<String>("hubId")
+                            ?: error("hubId is required"),
+                        enrollmentId = call.argument<String>("enrollmentId")
+                            ?: error("enrollmentId is required"),
+                        retrievalExpiresAtMs = call.argument<Number>("retrievalExpiresAtMs")
+                            ?.toLong() ?: error("retrievalExpiresAtMs is required"),
+                    )
+                    result.success(null)
+                }
+                "clearDevicePairingSecret" -> {
+                    deviceEnrollmentMaterialStore.clearPairingSecret(
+                        call.argument<String>("hubId") ?: error("hubId is required"),
+                    )
+                    result.success(null)
+                }
+                "clearDeviceEnrollmentMaterial" -> {
+                    deviceEnrollmentMaterialStore.clear(
+                        call.argument<String>("hubId") ?: error("hubId is required"),
+                    )
+                    result.success(null)
+                }
+                "loadPendingDevicePairing" -> result.success(
+                    deviceEnrollmentMaterialStore.loadPendingPairing(
+                        call.argument<String>("hostId") ?: error("hostId is required"),
+                    ),
+                )
+                "savePendingDevicePairing" -> {
+                    deviceEnrollmentMaterialStore.savePendingPairing(
+                        hostId = call.argument<String>("hostId")
+                            ?: error("hostId is required"),
+                        setupId = call.argument<String>("setupId")
+                            ?: error("setupId is required"),
+                        requestId = call.argument<String>("requestId")
+                            ?: error("requestId is required"),
+                        enrollmentId = call.argument<String>("enrollmentId")
+                            ?: error("enrollmentId is required"),
+                        pairingSecret = call.argument<String>("pairingSecret")
+                            ?: error("pairingSecret is required"),
+                    )
+                    result.success(null)
+                }
+                "clearPendingDevicePairing" -> {
+                    deviceEnrollmentMaterialStore.clearPendingPairing(
+                        call.argument<String>("hostId") ?: error("hostId is required"),
+                    )
+                    result.success(null)
+                }
+                "signDeviceEnrollmentProof" ->
+                    result.success(signDeviceEnrollmentProof(call))
                 "getControllerIdentity" -> result.success(controllerIdentity())
                 "signControllerChallenge" -> result.success(signControllerChallenge(call))
                 "pinnedHttpsRequest" -> pinnedHttpsClient.request(call, result)
@@ -90,6 +153,7 @@ class MainActivity : FlutterActivity() {
                 "requestBluetoothPermissions" -> requestBluetoothPermissions(result)
                 "requestWifiProvisioningPermission" ->
                     requestWifiProvisioningPermission(result)
+                "scanDevicePairingCode" -> scanDevicePairingCode(result)
                 "openLegacyHotspotProvisioning" -> {
                     if (!hasWifiProvisioningPermission()) {
                         result.error(
@@ -257,6 +321,59 @@ class MainActivity : FlutterActivity() {
         )
     }
 
+    private fun signDeviceEnrollmentProof(call: MethodCall): Map<String, String> {
+        val values = listOf(
+            requiredEnrollmentProofField(call, "requestId", 1, 96),
+            requiredEnrollmentProofField(call, "deviceId", 1, 128),
+            requiredEnrollmentHash(call, "retrievalTokenHash"),
+            requiredEnrollmentProofField(call, "pairingMethod", 0, 64),
+            requiredEnrollmentHash(call, "pairingCommitment"),
+            requiredEnrollmentProofField(call, "deviceKind", 1, 96),
+            requiredEnrollmentProofField(call, "displayName", 0, 128),
+            requiredEnrollmentHash(call, "manifestRevision"),
+        )
+        require(values[3].isEmpty() || values[3] == "local-secret-sha256") {
+            "pairingMethod is unsupported"
+        }
+        require(values[3].isEmpty() == values[4].isEmpty()) {
+            "pairingMethod and pairingCommitment must be supplied together"
+        }
+        val statement = buildString {
+            append("eidolon-device-enrollment-proof-v1\n")
+            for (value in values) {
+                val encoded = value.toByteArray(StandardCharsets.UTF_8)
+                append(encoded.size)
+                append(':')
+                append(value)
+                append('\n')
+            }
+        }.toByteArray(StandardCharsets.UTF_8)
+        val entry = ensureKeyEntry()
+        val signer = Signature.getInstance("SHA256withECDSA")
+        signer.initSign(entry.privateKey)
+        signer.update(statement)
+        return mapOf(
+            "publicKeySpki" to base64Url(entry.certificate.publicKey.encoded),
+            "signature" to base64Url(signer.sign()),
+        )
+    }
+
+    private fun requiredEnrollmentProofField(
+        call: MethodCall,
+        name: String,
+        minLength: Int,
+        maxLength: Int,
+    ): String = (call.argument<String>(name) ?: error("$name is required")).also {
+        require(it.length in minLength..maxLength) { "$name is invalid" }
+    }
+
+    private fun requiredEnrollmentHash(call: MethodCall, name: String): String =
+        requiredEnrollmentProofField(call, name, 0, 71).also {
+            require(it.isEmpty() || Regex("^sha256:[0-9a-f]{64}$").matches(it)) {
+                "$name is invalid"
+            }
+        }
+
     private fun requestMicrophonePermission(result: MethodChannel.Result) {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             result.success(true)
@@ -268,6 +385,44 @@ class MainActivity : FlutterActivity() {
         }
         permissionResult = result
         requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), MIC_REQUEST_CODE)
+    }
+
+    private fun scanDevicePairingCode(result: MethodChannel.Result) {
+        if (codeScanResult != null) {
+            result.error("SCANNER_BUSY", "A device pairing scan is already active", null)
+            return
+        }
+        codeScanResult = result
+        val options = GmsBarcodeScannerOptions.Builder()
+            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+            .enableAutoZoom()
+            .build()
+        GmsBarcodeScanning.getClient(this, options)
+            .startScan()
+            .addOnSuccessListener { barcode ->
+                val pending = codeScanResult
+                codeScanResult = null
+                val value = barcode.rawValue
+                if (value.isNullOrBlank()) {
+                    pending?.error("SCAN_EMPTY", "The QR code contains no text", null)
+                } else {
+                    pending?.success(value)
+                }
+            }
+            .addOnCanceledListener {
+                val pending = codeScanResult
+                codeScanResult = null
+                pending?.success(null)
+            }
+            .addOnFailureListener { error ->
+                val pending = codeScanResult
+                codeScanResult = null
+                pending?.error(
+                    "SCAN_FAILED",
+                    error.message?.take(180) ?: "Could not scan the device QR code",
+                    mapOf("exceptionType" to error.javaClass.simpleName),
+                )
+            }
     }
 
     private fun requiredBluetoothPermissions(): Array<String> =
@@ -665,6 +820,8 @@ class MainActivity : FlutterActivity() {
         bluetoothPermissionResult = null
         wifiProvisioningPermissionResult?.success(false)
         wifiProvisioningPermissionResult = null
+        codeScanResult?.success(null)
+        codeScanResult = null
         super.onDestroy()
     }
 

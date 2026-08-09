@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:http/http.dart' as http;
 
 import '../device_management/mounted_device_models.dart';
+import '../device_setup/device_setup_models.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/setup_trust.dart';
 import 'controller_session.dart';
@@ -231,6 +232,89 @@ class LocalApiClient {
     return MountedDeviceInventory.fromJson(
       _decodeResponse(response, operation: 'Device inventory'),
     );
+  }
+
+  Future<DeviceOnboardingTarget> fetchDeviceOnboardingTarget(
+    String baseUrl, {
+    required String accessToken,
+  }) async {
+    final response = await _httpClient
+        .get(
+          parseBaseUri(baseUrl)
+              .resolve('/api/local/v1/device-onboarding/target'),
+          headers: _authorizedHeaders(accessToken),
+        )
+        .timeout(timeout);
+    return DeviceOnboardingTarget.fromJson(
+      _decodeResponse(response, operation: 'Device onboarding target'),
+    );
+  }
+
+  Future<DeviceAdmissionProgress> claimDeviceAdmission(
+    String baseUrl, {
+    required String accessToken,
+    required String setupId,
+    required String requestId,
+    required DeviceOnboardingTarget onboardingTarget,
+    required DevicePairingPayload pairing,
+    String? companionId,
+  }) async {
+    final response = await _httpClient
+        .put(
+          _deviceAdmissionUri(baseUrl, setupId),
+          headers: _authorizedHeaders(accessToken, json: true),
+          body: jsonEncode({
+            'contract_version': '1',
+            'request_id': _boundedId(requestId, 'request ID'),
+            'hub_id': _boundedId(onboardingTarget.hubId, 'Hub ID'),
+            'descriptor_uri': onboardingTarget.descriptorUri.toString(),
+            'enrollment_id': pairing.enrollmentId,
+            'pairing_secret': pairing.pairingSecret,
+            if (companionId != null) 'companion_id': companionId,
+          }),
+        )
+        .timeout(timeout);
+    return DeviceAdmissionProgress.fromJson(
+      _decodeResponse(response, operation: 'Device admission'),
+    );
+  }
+
+  Future<DeviceAdmissionProgress> fetchDeviceAdmissionProgress(
+    String baseUrl, {
+    required String accessToken,
+    required String setupId,
+  }) async {
+    final response = await _httpClient
+        .get(
+          _deviceAdmissionUri(baseUrl, setupId),
+          headers: _authorizedHeaders(accessToken),
+        )
+        .timeout(timeout);
+    return DeviceAdmissionProgress.fromJson(
+      _decodeResponse(response, operation: 'Device admission progress'),
+    );
+  }
+
+  static Uri _deviceAdmissionUri(String baseUrl, String setupId) {
+    final normalized = _boundedId(setupId, 'setup ID');
+    final base = parseBaseUri(baseUrl);
+    return base.replace(
+      pathSegments: [
+        'api',
+        'local',
+        'v1',
+        'device-admissions',
+        normalized,
+      ],
+    );
+  }
+
+  static String _boundedId(String value, String label) {
+    final normalized = value.trim();
+    if (normalized.isEmpty || normalized.length > 128) {
+      throw FormatException('$label 无效');
+    }
+    return normalized;
   }
 
   static Map<String, String> _authorizedHeaders(

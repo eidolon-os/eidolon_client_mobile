@@ -67,7 +67,7 @@ void main() {
     );
 
     expect(approval.connectionLabel, '待批准');
-    expect(approval.supportingText, contains('自动检查'));
+    expect(approval.supportingText, contains('自动向前推进'));
     expect(binding.connectionLabel, '待绑定');
     expect(binding.headline, contains('Companion'));
   });

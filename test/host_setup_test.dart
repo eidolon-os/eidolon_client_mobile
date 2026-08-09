@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:eidolon_client_mobile/main.dart';
+import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_client.dart';
 import 'package:eidolon_client_mobile/src/features/setup/controller_key_bridge.dart';
@@ -240,6 +241,94 @@ void main() {
       'GET /api/local/v1/setup/workspace',
       'PUT /api/local/v1/setup/workspace',
     ]);
+  });
+
+  test('LocalApiClient sends pairing proof through Owner-scoped Local API',
+      () async {
+    final requests = <http.Request>[];
+    final client = LocalApiClient(
+      httpClient: MockClient((request) async {
+        requests.add(request);
+        expect(request.headers['authorization'], 'Bearer $validHostChallenge');
+        if (request.method == 'GET') {
+          return http.Response(
+            jsonEncode({
+              'operation': 'local.device-onboarding-target',
+              'contract_version': '1',
+              'hub_id': 'hub-local',
+              'descriptor_uri':
+                  'https://eidolon-hub.local/api/device-onboarding/v1/descriptor',
+              'tls_spki_fingerprint':
+                  'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            }),
+            200,
+          );
+        }
+        return http.Response(
+          jsonEncode({
+            'operation': 'local.device-admission-progress',
+            'contract_version': '1',
+            'setup_id': 'device-pair-1',
+            'request_id': 'device-pair-claim-1',
+            'device_id': 'esp32-device-1',
+            'enrollment_id': 'enrollment_1',
+            'owner_id': 'owner_primary',
+            'state': 'ready',
+            'completed_stage': 'companion-attached',
+            'companion_id': 'companion_primary',
+            'retryable': false,
+          }),
+          200,
+        );
+      }),
+    );
+
+    final target = await client.fetchDeviceOnboardingTarget(
+      'https://eidolon.local:9002',
+      accessToken: validHostChallenge,
+    );
+    final progress = await client.claimDeviceAdmission(
+      'https://eidolon.local:9002',
+      accessToken: validHostChallenge,
+      setupId: 'device-pair-1',
+      requestId: 'device-pair-claim-1',
+      onboardingTarget: target,
+      pairing: const DevicePairingPayload(
+        enrollmentId: 'enrollment_1',
+        pairingSecret: 'device-generated-pairing-secret-00001',
+      ),
+      companionId: 'companion_primary',
+    );
+
+    expect(progress.state, DeviceAdmissionState.ready);
+    expect(requests.map((request) => '${request.method} ${request.url.path}'), [
+      'GET /api/local/v1/device-onboarding/target',
+      'PUT /api/local/v1/device-admissions/device-pair-1',
+    ]);
+    final body = jsonDecode(requests.last.body) as Map<String, dynamic>;
+    expect(body['hub_id'], 'hub-local');
+    expect(body['enrollment_id'], 'enrollment_1');
+    expect(body, isNot(contains('owner_id')));
+    expect(body, isNot(contains('device_id')));
+  });
+
+  test('compact Device pairing payload rejects JSON and unbounded input', () {
+    final parsed = DevicePairingPayload.parse(
+      'EIDOLON:PAIR:1:enrollment_abcdefghijklmnopqrstuvwx:0123456789abcdefghijklmnopqrstuvwxyzABCDEFG',
+    );
+    expect(parsed.enrollmentId, 'enrollment_abcdefghijklmnopqrstuvwx');
+    expect(
+      () => DevicePairingPayload.parse(
+        '{"enrollment_id":"enrollment_1","pairing_secret":"secret"}',
+      ),
+      throwsFormatException,
+    );
+    expect(
+      () => DevicePairingPayload.parse(
+        'EIDOLON:PAIR:1:e:${List.filled(90, 'x').join()}',
+      ),
+      throwsFormatException,
+    );
   });
 
   test('uses the BLE Host marker as the canonical generated display name', () {

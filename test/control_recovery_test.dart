@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:eidolon_client_mobile/src/controller/client_controller.dart';
+import 'package:eidolon_client_mobile/src/features/conversation/conversation_provisioner.dart';
 import 'package:eidolon_client_mobile/src/models/hub_models.dart';
+import 'package:eidolon_client_mobile/src/platform/platform_bridge.dart';
 import 'package:eidolon_client_mobile/src/services/eidolon_session.dart';
 import 'package:eidolon_client_mobile/src/services/hub_client.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,6 +70,25 @@ void main() {
 
     controller.dispose();
   });
+
+  test('product conversation uses authenticated provisioner, not legacy URL',
+      () async {
+    final session = _FakeSession();
+    final provisioner = _FakeProvisioner(active);
+    final controller = ClientController(
+      platform: _FakePlatform(),
+      session: session,
+      conversationProvisioner: provisioner,
+    );
+
+    await controller.start();
+
+    expect(provisioner.calls, 1);
+    expect(controller.hub?.api, 'device-onboarding-v1');
+    expect(controller.phase, ClientPhase.ready);
+    expect(session.connectControlCalls, 1);
+    controller.dispose();
+  });
 }
 
 Future<void> _waitUntil(bool Function() condition) async {
@@ -92,6 +113,33 @@ class _FakeHubClient extends HubClient {
     registerCalls += 1;
     return response;
   }
+}
+
+class _FakeProvisioner implements ConversationProvisioner {
+  _FakeProvisioner(this.response);
+
+  final HubConfig response;
+  var calls = 0;
+
+  @override
+  String get serviceName => 'Product Hub';
+
+  @override
+  Uri get serviceUri => Uri.parse('https://hub.example/descriptor');
+
+  @override
+  Future<HubConfig> provision({String sessionIntent = ''}) async {
+    calls += 1;
+    return response;
+  }
+}
+
+class _FakePlatform extends PlatformBridge {
+  @override
+  Future<DeviceIdentity> getDeviceIdentity() async => const DeviceIdentity(
+        deviceId: 'mobile-test',
+        fingerprint: 'p256:test',
+      );
 }
 
 class _FakeSession extends EidolonSession {

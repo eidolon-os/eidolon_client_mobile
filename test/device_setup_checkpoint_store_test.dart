@@ -5,7 +5,7 @@ import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_mod
 import 'package:eidolon_client_mobile/src/platform/app_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const _preferenceKey = 'eidolon.device-setup-checkpoints.v1';
+const _preferenceKey = 'eidolon.device-setup-checkpoints.v2';
 
 DeviceSetupCheckpoint _checkpoint(
   String setupId, {
@@ -19,6 +19,12 @@ DeviceSetupCheckpoint _checkpoint(
       provisioningState: DeviceProvisioningState.networkConfigured,
       admissionState: DeviceAdmissionState.pendingApproval,
       updatedAt: DateTime.utc(2026, 8, 9, 10, minute),
+      onboardingTarget: DeviceOnboardingTarget(
+        hubId: 'hub-local',
+        descriptorUri: Uri.parse('https://hub.local/onboarding'),
+        tlsSpkiFingerprint:
+            'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      ),
       deviceId: deviceId ?? 'device-$setupId',
       enrollmentId: 'enrollment-$setupId',
     );
@@ -68,9 +74,9 @@ void main() {
     await preferences.writeString(
       _preferenceKey,
       jsonEncode({
-        'contract_version': '1',
+        'contract_version': '2',
         'checkpoints': [
-          {'contract_version': '1', 'setup_id': 42},
+          {'contract_version': '2', 'setup_id': 42},
           _checkpoint('setup-valid').toJson(),
         ],
       }),

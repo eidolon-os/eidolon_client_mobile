@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:livekit_client/livekit_client.dart';
 
 import '../avatar/avatar_stage.dart';
+import '../features/conversation/conversation_provisioner.dart';
 import '../models/client_ui_state.dart';
 import '../models/hub_models.dart';
 import '../platform/platform_bridge.dart';
@@ -24,10 +25,12 @@ class ClientController extends ChangeNotifier {
     VadProcessor vad = const NoOpVadProcessor(),
     Duration controlReconnectGrace = const Duration(seconds: 2),
     Duration controlRecoveryRetry = const Duration(seconds: 2),
+    ConversationProvisioner? conversationProvisioner,
   })  : _platform = platform ?? const PlatformBridge(),
         _hubClient = hubClient ?? HubClient(platform: platform),
         _session = session ?? EidolonSession(),
         _vad = vad,
+        _conversationProvisioner = conversationProvisioner,
         _controlReconnectGrace = controlReconnectGrace,
         _controlRecoveryRetry = controlRecoveryRetry {
     _dataSubscription = _session.dataEvents.listen(_onSessionData);
@@ -47,6 +50,7 @@ class ClientController extends ChangeNotifier {
   final HubClient _hubClient;
   final EidolonSession _session;
   final VadProcessor _vad;
+  final ConversationProvisioner? _conversationProvisioner;
   final Duration _controlReconnectGrace;
   final Duration _controlRecoveryRetry;
 
@@ -100,12 +104,14 @@ class ClientController extends ChangeNotifier {
   bool get isBusy => _busy;
   bool get canJoin => phase == ClientPhase.ready;
   bool get canLeave => phase == ClientPhase.conversation;
+  bool get usesProductProvisioning => _conversationProvisioner != null;
 
   /// The companion idle-loop clip URL — the resting face. Shown whenever the
   /// device is provisioned (standby included, where only the control room is
   /// connected), so the companion still has a face between calls instead of a
   /// blank placeholder. Null only when the hub / device isn't ready yet.
   String? get idleClipUrl {
+    if (usesProductProvisioning) return null;
     final currentHub = hub;
     if (currentHub == null) return null;
     const usable = {
@@ -144,7 +150,10 @@ class ClientController extends ChangeNotifier {
     notifyListeners();
     try {
       identity = await _platform.getDeviceIdentity();
-      if (manualRegisterUrl != null && manualRegisterUrl.trim().isNotEmpty) {
+      if (_conversationProvisioner != null) {
+        _setPhase(ClientPhase.discovering);
+      } else if (manualRegisterUrl != null &&
+          manualRegisterUrl.trim().isNotEmpty) {
         hub = HubService(
           instanceName: 'Manual Hub',
           registerUrl: manualRegisterUrl.trim(),
@@ -154,6 +163,13 @@ class ClientController extends ChangeNotifier {
         hub = await _platform.discoverHub();
       }
       await _registerAndApply();
+      if (_conversationProvisioner != null) {
+        hub = HubService(
+          instanceName: _conversationProvisioner.serviceName,
+          registerUrl: _conversationProvisioner.serviceUri.toString(),
+          api: 'device-onboarding-v1',
+        );
+      }
     } catch (exception) {
       _fail(exception);
     } finally {
@@ -166,15 +182,10 @@ class ClientController extends ChangeNotifier {
     String sessionIntent = '',
     bool showRegistering = true,
   }) async {
-    final currentHub = hub;
-    if (currentHub == null) throw StateError('Hub has not been discovered');
     if (showRegistering) {
       _setPhase(ClientPhase.registering);
     }
-    final next = await _hubClient.register(
-      currentHub.registerUrl,
-      sessionIntent: sessionIntent,
-    );
+    final next = await _provisionConfig(sessionIntent: sessionIntent);
     config = next;
     failure = null;
     switch (next.status) {
@@ -199,6 +210,21 @@ class ClientController extends ChangeNotifier {
       case HubConfigStatus.unregistered:
         throw StateError('设备授权已撤销，请在管理端重新批准');
     }
+  }
+
+  Future<HubConfig> _provisionConfig({String sessionIntent = ''}) {
+    final provisioner = _conversationProvisioner;
+    if (provisioner != null) {
+      return provisioner.provision(sessionIntent: sessionIntent);
+    }
+    final currentHub = hub;
+    if (currentHub == null) {
+      throw StateError('Hub has not been discovered');
+    }
+    return _hubClient.register(
+      currentHub.registerUrl,
+      sessionIntent: sessionIntent,
+    );
   }
 
   void _scheduleActivationRefresh() {
@@ -235,12 +261,7 @@ class ClientController extends ChangeNotifier {
       if (!allowed) throw StateError('需要麦克风权限才能开始对话');
       microphoneState = MicrophoneState.switching;
       notifyListeners();
-      final currentHub = hub;
-      if (currentHub == null) throw StateError('Hub is unavailable');
-      final fresh = await _hubClient.register(
-        currentHub.registerUrl,
-        sessionIntent: sessionIntent,
-      );
+      final fresh = await _provisionConfig(sessionIntent: sessionIntent);
       config = fresh;
       if (fresh.status != HubConfigStatus.active) {
         throw StateError('设备当前不是 active 状态');
@@ -744,7 +765,9 @@ class ClientController extends ChangeNotifier {
       return ClientFailure(
         kind: ClientErrorKind.discovery,
         title: '没有发现 Eidolon Hub',
-        message: '确认平板与 Hub 在同一局域网，或手动输入 Hub 地址',
+        message: usesProductProvisioning
+            ? '确认平板与主机在同一局域网，并检查主机的 Hub 服务状态'
+            : '确认平板与 Hub 在同一局域网，或手动输入 Hub 地址',
         technicalDetails: details,
       );
     }

@@ -100,11 +100,11 @@ class ClientUiState {
   String get headline {
     if (phase == ClientPhase.error && failure != null) return failure!.title;
     return switch (phase) {
-      ClientPhase.idle => '连接你的 Eidolon Hub',
-      ClientPhase.discovering => '正在寻找局域网中的 Hub…',
-      ClientPhase.registering => '正在验证设备身份…',
-      ClientPhase.awaitingApproval => '等待管理员批准',
-      ClientPhase.awaitingBinding => '等待绑定 Companion',
+      ClientPhase.idle => '连接我的 Eidolon',
+      ClientPhase.discovering => '正在验证主机与 Hub…',
+      ClientPhase.registering => '正在安全接入 Mobile…',
+      ClientPhase.awaitingApproval => '主机正在认领 Mobile',
+      ClientPhase.awaitingBinding => '正在关联 Companion',
       ClientPhase.activating => '正在建立控制连接…',
       ClientPhase.ready =>
         controlConnection == ChannelConnectionState.reconnecting
@@ -132,11 +132,12 @@ class ClientUiState {
   }
 
   String get supportingText => switch (phase) {
-        ClientPhase.idle => '自动发现、注册并连接同一局域网中的服务',
-        ClientPhase.discovering => '正在通过 mDNS 扫描，通常几秒内完成',
-        ClientPhase.registering => '使用设备密钥安全注册，并声明全双工能力',
-        ClientPhase.awaitingApproval => '请在管理端批准此移动设备，页面会自动检查',
-        ClientPhase.awaitingBinding => '设备已批准，请在管理端选择要绑定的 Companion',
+        ClientPhase.idle => '通过已认证主机接入 Hub 与当前 Companion',
+        ClientPhase.discovering => '验证 Host 会话提供的 Hub 身份和 TLS 绑定',
+        ClientPhase.registering =>
+          '使用 Android Keystore 身份完成 Enrollment 与 Owner 认领',
+        ClientPhase.awaitingApproval => '认领请求会自动向前推进，无需手动填写设备 ID',
+        ClientPhase.awaitingBinding => 'Hub 已批准，主机正在完成 Owner 挂载和 Companion 关联',
         ClientPhase.activating => '授权已完成，正在连接 LiveKit 控制通道',
         ClientPhase.ready => '控制通道保持在线，点击下方按钮开始语音会话',
         ClientPhase.joining => '正在刷新会话凭据并启用 WebRTC AEC',

@@ -14,6 +14,11 @@ import 'workspace_models.dart';
 
 export 'host_product_controller.dart' show ManagedHostUpdater;
 
+typedef HostConversationBuilder = Widget Function(
+  BuildContext context,
+  HostProductController controller,
+);
+
 class HostLocalConnectionPage extends StatefulWidget {
   const HostLocalConnectionPage({
     super.key,
@@ -24,6 +29,7 @@ class HostLocalConnectionPage extends StatefulWidget {
     this.discovery,
     this.localApiClientFactory,
     this.deviceProvisioning,
+    this.conversationBuilder,
     this.setupContinuation = false,
     this.onSetupComplete,
   }) : assert(!setupContinuation || onSetupComplete != null);
@@ -35,6 +41,7 @@ class HostLocalConnectionPage extends StatefulWidget {
   final LocalApiDiscovery? discovery;
   final LocalApiClientFactory? localApiClientFactory;
   final LegacyHotspotProvisioningPort? deviceProvisioning;
+  final HostConversationBuilder? conversationBuilder;
   final bool setupContinuation;
   final VoidCallback? onSetupComplete;
 
@@ -153,6 +160,16 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             if ((_controller.workspace?.isReady ?? false) &&
                 !widget.setupContinuation) ...[
               const SizedBox(height: 16),
+              if (widget.conversationBuilder case final builder?) ...[
+                _ConversationCard(
+                  onOpen: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (context) => builder(context, _controller),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
               _DevicesSummaryCard(
                 controller: _controller,
                 onOpen: _openDevices,
@@ -178,6 +195,51 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       ),
     );
   }
+}
+
+class _ConversationCard extends StatelessWidget {
+  const _ConversationCard({required this.onOpen});
+
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        key: const Key('conversation-card'),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.graphic_eq,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '对话',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '这台移动设备使用独立 Device 身份连接 Hub。首次使用需要完成设备批准和 Companion 绑定。',
+              ),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                key: const Key('open-conversation'),
+                onPressed: onOpen,
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: const Text('打开对话'),
+              ),
+            ],
+          ),
+        ),
+      );
 }
 
 class _ConnectedHostCard extends StatelessWidget {

@@ -9,6 +9,8 @@ import 'package:video_player/video_player.dart';
 import 'src/avatar/idle_clip_cache.dart';
 import 'src/avatar/avatar_stage.dart';
 import 'src/controller/client_controller.dart';
+import 'src/features/conversation/conversation_provisioner.dart';
+import 'src/features/conversation/mobile_conversation_provisioner.dart';
 import 'src/features/device_setup/device_setup_ports.dart';
 import 'src/features/setup/eidolon_app_shell.dart';
 import 'src/features/setup/host_registry.dart';
@@ -44,13 +46,21 @@ class EidolonMobileApp extends StatelessWidget {
       home: EidolonAppShell(
         registry: hostRegistry,
         deviceProvisioning: deviceProvisioning,
+        conversationBuilder: (_, controller) => ClientPage(
+          provisioner: MobileConversationProvisioner(
+            loadTarget: controller.fetchDeviceOnboardingTarget,
+            claimAdmission: controller.claimDevicePairing,
+          ),
+        ),
       ),
     );
   }
 }
 
 class ClientPage extends StatefulWidget {
-  const ClientPage({super.key});
+  const ClientPage({super.key, this.provisioner});
+
+  final ConversationProvisioner? provisioner;
 
   @override
   State<ClientPage> createState() => _ClientPageState();
@@ -64,7 +74,9 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    controller = ClientController()..addListener(_refresh);
+    controller = ClientController(
+      conversationProvisioner: widget.provisioner,
+    )..addListener(_refresh);
   }
 
   @override
@@ -130,7 +142,11 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
         const SizedBox(height: 12),
         KeyedSubtree(
           key: const Key('compact-actions'),
-          child: _Actions(controller: controller, onManualUrl: _showManualUrl),
+          child: _Actions(
+            controller: controller,
+            onManualUrl:
+                controller.usesProductProvisioning ? null : _showManualUrl,
+          ),
         ),
         const SizedBox(height: 16),
         ..._detailChildren(includeActions: false),
@@ -174,7 +190,9 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
                   key: const Key('tablet-actions'),
                   child: _Actions(
                     controller: controller,
-                    onManualUrl: _showManualUrl,
+                    onManualUrl: controller.usesProductProvisioning
+                        ? null
+                        : _showManualUrl,
                   ),
                 ),
               ],
@@ -211,7 +229,8 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
             key: const Key('compact-actions'),
             child: _Actions(
               controller: controller,
-              onManualUrl: _showManualUrl,
+              onManualUrl:
+                  controller.usesProductProvisioning ? null : _showManualUrl,
             ),
           ),
         ],
@@ -278,7 +297,7 @@ class _Header extends StatelessWidget {
                     Text('Eidolon Mobile',
                         style: TextStyle(
                             fontWeight: FontWeight.w700, fontSize: 18)),
-                    Text('Android client demo',
+                    Text('本地 Companion 客户端',
                         style: TextStyle(color: Colors.white54, fontSize: 12)),
                   ],
                 ),
@@ -801,7 +820,7 @@ class _ProvisioningProgress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final activeStep = phase == ClientPhase.awaitingApproval ? 1 : 2;
-    const labels = ['发现 Hub', '管理员批准', '绑定 Companion'];
+    const labels = ['验证 Hub', '认领 Mobile', '准备对话'];
     return Row(
       children: List.generate(labels.length, (index) {
         final completed = index < activeStep;
@@ -981,7 +1000,7 @@ class _FailureCard extends StatelessWidget {
 class _Actions extends StatelessWidget {
   const _Actions({required this.controller, required this.onManualUrl});
   final ClientController controller;
-  final VoidCallback onManualUrl;
+  final VoidCallback? onManualUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -1043,15 +1062,22 @@ class _Actions extends StatelessWidget {
                 label: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   child: Text(
-                      state.phase == ClientPhase.error ? '重新连接' : '发现并连接 Hub'),
+                    state.phase == ClientPhase.error
+                        ? '重新连接'
+                        : controller.usesProductProvisioning
+                            ? '连接我的 Eidolon'
+                            : '发现并连接 Hub',
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: 4),
-            TextButton(
-              onPressed: state.busy ? null : onManualUrl,
-              child: const Text('mDNS 不可用？手动输入地址'),
-            ),
+            if (onManualUrl != null) ...[
+              const SizedBox(height: 4),
+              TextButton(
+                onPressed: state.busy ? null : onManualUrl,
+                child: const Text('mDNS 不可用？手动输入地址'),
+              ),
+            ],
           ],
         ),
     };

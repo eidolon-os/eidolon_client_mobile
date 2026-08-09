@@ -440,6 +440,11 @@ void main() {
             workspaceReady: true,
             withReadyDevice: true,
           ),
+          conversationBuilder: (_, __) => Scaffold(
+            key: const Key('conversation-placeholder'),
+            appBar: AppBar(title: const Text('Conversation')),
+            body: const Text('Conversation'),
+          ),
           onHostUpdated: (_) async {},
         ),
       ),
@@ -447,6 +452,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('mounted-devices-card')), findsOneWidget);
+    expect(find.byKey(const Key('conversation-card')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('open-conversation')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('conversation-placeholder')), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
     expect(find.text('1'), findsOneWidget);
     await tester.tap(find.byKey(const Key('open-mounted-devices')));
     await tester.pumpAndSettle();

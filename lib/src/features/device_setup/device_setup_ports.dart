@@ -31,18 +31,21 @@ abstract interface class DeviceProvisioningSession {
 }
 
 abstract interface class DeviceAdmissionPort {
-  /// Continues an Owner-scoped, forward-only approval/mount workflow.
-  /// Owner scope is derived by Local API from the Controller session.
-  Future<DeviceAdmissionProgress> continueAdmission({
-    required String deviceId,
-    required String enrollmentId,
+  /// Claims the physical pairing proof and continues the Owner-scoped,
+  /// forward-only approval/mount/Companion workflow.
+  ///
+  /// Owner scope and authoritative Device ID are derived by Local API. The
+  /// pairing secret is ephemeral and must not enter a checkpoint.
+  Future<DeviceAdmissionProgress> claim({
+    required String setupId,
     required String requestId,
+    required DeviceOnboardingTarget onboardingTarget,
+    required DevicePairingPayload pairing,
     String? companionId,
   });
 
   Future<DeviceAdmissionProgress> readProgress({
-    required String deviceId,
-    required String enrollmentId,
+    required String setupId,
   });
 }
 
