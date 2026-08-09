@@ -146,10 +146,10 @@ class DeviceSetupFailure {
 
   factory DeviceSetupFailure.fromJson(Map<String, dynamic> value) =>
       DeviceSetupFailure(
-        stage: value['stage'] as String,
-        code: value['code'] as String,
-        message: value['message'] as String,
-        retryable: value['retryable'] as bool,
+        stage: _requiredCheckpointString(value, 'stage'),
+        code: _requiredCheckpointString(value, 'code'),
+        message: _requiredCheckpointString(value, 'message'),
+        retryable: _requiredCheckpointBool(value, 'retryable'),
       );
 }
 
@@ -237,19 +237,58 @@ class DeviceSetupCheckpoint {
       throw const FormatException('Invalid Device Setup checkpoint state');
     }
     final failureValue = value['failure'];
+    final setupId = _requiredCheckpointString(value, 'setup_id');
+    final requestId = _requiredCheckpointString(value, 'request_id');
+    final updatedAt = DateTime.tryParse(
+      _requiredCheckpointString(value, 'updated_at'),
+    );
+    if (setupId.length > 128 || requestId.length > 128 || updatedAt == null) {
+      throw const FormatException('Invalid Device Setup checkpoint identity');
+    }
     return DeviceSetupCheckpoint(
       contractVersion: currentContractVersion,
-      setupId: value['setup_id'] as String,
-      requestId: value['request_id'] as String,
+      setupId: setupId,
+      requestId: requestId,
       provisioningState: provisioning,
       admissionState: admission,
-      updatedAt: DateTime.parse(value['updated_at'] as String).toUtc(),
-      deviceId: value['device_id'] as String?,
-      enrollmentId: value['enrollment_id'] as String?,
-      companionId: value['companion_id'] as String?,
-      failure: failureValue is Map<String, dynamic>
-          ? DeviceSetupFailure.fromJson(failureValue)
-          : null,
+      updatedAt: updatedAt.toUtc(),
+      deviceId: _optionalCheckpointString(value, 'device_id'),
+      enrollmentId: _optionalCheckpointString(value, 'enrollment_id'),
+      companionId: _optionalCheckpointString(value, 'companion_id'),
+      failure: failureValue == null
+          ? null
+          : failureValue is Map
+              ? DeviceSetupFailure.fromJson(
+                  Map<String, dynamic>.from(failureValue),
+                )
+              : throw const FormatException(
+                  'Invalid Device Setup checkpoint failure',
+                ),
     );
   }
+}
+
+String _requiredCheckpointString(Map<String, dynamic> value, String key) {
+  final result = value[key];
+  if (result is! String || result.isEmpty) {
+    throw FormatException('Invalid Device Setup checkpoint $key');
+  }
+  return result;
+}
+
+String? _optionalCheckpointString(Map<String, dynamic> value, String key) {
+  final result = value[key];
+  if (result == null) return null;
+  if (result is! String || result.isEmpty || result.length > 256) {
+    throw FormatException('Invalid Device Setup checkpoint $key');
+  }
+  return result;
+}
+
+bool _requiredCheckpointBool(Map<String, dynamic> value, String key) {
+  final result = value[key];
+  if (result is! bool) {
+    throw FormatException('Invalid Device Setup checkpoint $key');
+  }
+  return result;
 }

@@ -38,12 +38,20 @@ mDNS 发现 Hub -> P-256 签名注册 -> 审批/绑定 -> LiveKit control room
 - Controller/Owner-scoped `GET /api/local/v1/workspace/runtime`；只展示主 Companion、
   当前 Persona 版本和 Memory Workspace 的安全摘要，不把 raw Persona 或 runtime
   config 暴露给 Mobile。
+- 独立 System 页面展示 Host IP、运行模式、认领/网络/Workspace/恢复正交状态、
+  Reset epoch 与短期管理会话；不把日志、进程、凭据等 Admin/Ops 能力搬入 Mobile。
+- Host 产品会话统一承担 mDNS 重发现、Host pin/身份校验、Controller 认证和一次有界
+  重新认证；IP 变化与会话失效不再由各业务页面重复处理。
 - Host 在 Workspace 前先保存；LAN/Admin/Data 暂不可用时只暂停后半段，不回滚
   Wi-Fi 或 Controller claim，可从“连接主机”继续。
 - Host Setup 不直接调用 Admin 运维 API、Hub、LiveKit 或 Audio Channel。
 - Android pinned HTTPS 使用版本化、二进制安全的 unary transport；HTTP 方法契约由
   Local API client/server 拥有，平台 adapter 不维护重复的 route-level 白名单。
 - 外部 Device Setup 已拆出 provisioning/admission/checkpoint Port 和前向恢复状态机。
+- Device Setup 的非敏感 checkpoint 已提供有界持久化实现，支持并发写入和损坏条目
+  隔离；Wi-Fi 密码、pairing secret 与 Controller credential 不进入持久化。
+- 独立 Devices 页面展示主机确认的 mounted inventory、Companion attachment、revision
+  和详情；不从 mount 事实臆断设备在线。
 - 已提供明确隔离的兼容设备开发配网入口：Android 通过系统网络选择器连接当前
   `Xiaozhi-*` 热点，使用设备 `/scan` 与 `/submit` 配置 Wi-Fi；UI 不会把成功结果
   表示为 Device 认领、挂载或添加完成。

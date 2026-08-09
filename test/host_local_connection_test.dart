@@ -447,6 +447,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('mounted-devices-card')), findsOneWidget);
+    expect(find.text('1'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('open-mounted-devices')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('mounted-devices-page')), findsOneWidget);
     expect(
       find.byKey(const Key('mounted-device-device-waveshare-1')),
       findsOneWidget,
@@ -628,5 +632,114 @@ void main() {
     await tester.tap(find.byKey(const Key('finish-workspace-setup')));
     expect(finished, isTrue);
     expect(requests, contains('PUT /api/local/v1/setup/workspace'));
+  });
+
+  testWidgets('system page exposes Host orthogonal state and real IP',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(_hostOverview()),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('open-host-system-status')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('host-system-page')), findsOneWidget);
+    expect(find.text('192.168.1.26'), findsOneWidget);
+    expect(find.text('Reset epoch'), findsOneWidget);
+    expect(find.text('已认领'), findsOneWidget);
+    expect(find.textContaining('Admin/Ops 运维边界'), findsOneWidget);
+  });
+
+  testWidgets('failed reauthentication invalidates the whole product session',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    var expireSession = false;
+    final client = MockClient((request) async {
+      if (request.url.path == '/api/local/v1/host') {
+        return http.Response(jsonEncode(_hostOverview()), 200);
+      }
+      if (request.url.path == '/api/local/v1/auth/challenges') {
+        if (expireSession) return http.Response('', 404);
+        return http.Response(
+          jsonEncode({
+            'contract_version': '1',
+            'purpose': 'eidolon-controller-local-auth-v1',
+            'controller_id': _controllerId,
+            'challenge': validHostChallenge,
+            'reset_epoch': 2,
+          }),
+          200,
+        );
+      }
+      if (request.url.path == '/api/local/v1/auth/sessions') {
+        return http.Response(
+          jsonEncode({
+            'contract_version': '1',
+            'token_type': 'Bearer',
+            'access_token': validHostChallenge,
+            'expires_at': '2030-08-08T09:00:00Z',
+            'controller': {
+              'contract_version': '1',
+              'controller_id': _controllerId,
+              'role': 'host_admin',
+              'display_name': 'Test tablet',
+              'platform': 'android',
+              'reset_epoch': 2,
+              'owner_id': null,
+            },
+          }),
+          200,
+        );
+      }
+      if (request.url.path == '/api/local/v1/setup/workspace') {
+        if (expireSession) return http.Response('', 401);
+        return http.Response(
+          jsonEncode({
+            'contract_version': '1',
+            'operation_id': _workspaceOperationId,
+            'state': 'absent',
+            'owner': null,
+            'workspace': null,
+          }),
+          200,
+        );
+      }
+      return http.Response('', 404);
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => LocalApiClient(httpClient: client),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('workspace-setup')), findsOneWidget);
+
+    expireSession = true;
+    await tester.tap(find.byKey(const Key('retry-workspace-status')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('local-connection-error')), findsOneWidget);
+    expect(find.textContaining('主机已重置或不再授权'), findsOneWidget);
+    expect(find.byKey(const Key('workspace-setup')), findsNothing);
   });
 }

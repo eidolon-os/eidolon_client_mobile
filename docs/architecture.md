@@ -28,6 +28,24 @@ authority endpoint 访问 Data。返回值只包含 Owner 显示名、主 Compan
 版本摘要和 Memory Realm ID；raw Persona genome 与 runtime config 留在系统内部。
 Workspace/runtime 的 operation、Owner 和主 Companion 必须一致，否则 Mobile 拒绝展示。
 
+日常产品层不再由页面直接持有 URL、Bearer token 或 Local API client。边界拆分为：
+
+```text
+HostProductSession
+  -> BLE trust refresh / mDNS rediscovery / Host identity verification
+  -> short-lived Controller authentication and one bounded re-authentication
+HostWorkspaceRepository / HostDevicesRepository
+  -> typed Local API operations
+HostProductController
+  -> independent connection / Workspace / runtime / Devices degradation
+Flutter pages
+  -> My Eidolon / System / Devices presentation only
+```
+
+每次全量刷新重新进行 mDNS 发现，因此 DHCP 地址变化不会复用陈旧 IP。Controller session
+返回的 reset epoch 必须与 Host overview 一致；业务请求遇到 401 时只重新认证一次，若主机
+已 Reset 或 Controller 已撤销，则清空整个产品会话，不继续展示“已安全连接”。
+
 原有 `ClientPage`、`ClientController`、HubClient 和 LiveKit session 暂时作为保留的
 Conversation 功能存在，不参与默认启动，也不在 Host Control 阶段调试。
 
@@ -72,6 +90,11 @@ transport 管理 cursor、重连、去重和 App lifecycle。
 `features/device_setup` 已建立独立的 provisioning、admission 与 checkpoint Port。
 它不依赖 Host Bootstrap transport，也不保存 Wi-Fi 密码。网络配置与 Owner admission
 使用两个正交状态轴；Admission 失败只前向重试，不撤销已成功的设备配网。
+
+非敏感 checkpoint 通过统一 `AppPreferences` adapter 持久化，写入串行化并逐条隔离
+损坏数据；只保留有界的最近记录。checkpoint model 不接受 Wi-Fi 密码、pairing secret
+或 Controller 凭据。当前 legacy Hotspot 没有可信 Device 身份，因此不会创建产品
+checkpoint；持久化 store 留给完成真实 pairing/admission 契约后的产品 adapter。
 
 当前 ESP32 build 实际优先使用开放 Hotspot + HTTP `/submit`，没有产品 Device Identity
 证明或 enrollment receipt。因此 Mobile product coordinator 默认拒绝把它当作产品完成

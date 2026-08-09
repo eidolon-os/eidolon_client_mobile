@@ -1,7 +1,6 @@
 import 'dart:convert';
 
-import 'package:flutter/services.dart';
-
+import '../../platform/app_preferences.dart';
 import 'host_identity.dart';
 
 class ManagedHost {
@@ -82,38 +81,53 @@ abstract interface class HostRegistry {
 
 class PlatformHostRegistry implements HostRegistry {
   static const _key = 'eidolon.managed-hosts.v1';
-  static const _channel = MethodChannel('live.eidolon.mobile/platform');
+  static const _maximumHosts = 16;
+
+  PlatformHostRegistry({AppPreferences? preferences})
+      : _preferences = preferences ?? PlatformAppPreferences();
+
+  final AppPreferences _preferences;
+  Future<void> _writeQueue = Future<void>.value();
 
   @override
   Future<List<ManagedHost>> load() async {
-    final raw = await _channel.invokeMethod<String>(
-      'readAppPreference',
-      {'key': _key},
-    );
+    final raw = await _preferences.readString(_key);
     if (raw == null) return const [];
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! List) return const [];
-      return decoded
-          .whereType<Map<String, dynamic>>()
-          .map(ManagedHost.fromJson)
-          .toList(growable: false);
+      final hosts = <ManagedHost>[];
+      final seen = <String>{};
+      for (final value in decoded) {
+        if (value is! Map) continue;
+        try {
+          final host = ManagedHost.fromJson(Map<String, dynamic>.from(value));
+          if (seen.add(host.hostId)) hosts.add(host);
+        } catch (_) {
+          // One malformed entry must not erase every valid saved Host.
+        }
+      }
+      return hosts.take(_maximumHosts).toList(growable: false);
     } catch (_) {
       return const [];
     }
   }
 
   @override
-  Future<void> save(ManagedHost host) async {
-    final current = await load();
-    final next = [
-      host,
-      ...current.where((item) => item.hostId != host.hostId),
-    ];
-    await _channel.invokeMethod<void>('writeAppPreference', {
-      'key': _key,
-      'value': jsonEncode(next.map((item) => item.toJson()).toList()),
+  Future<void> save(ManagedHost host) {
+    final result = _writeQueue.then((_) async {
+      final current = await load();
+      final next = [
+        host,
+        ...current.where((item) => item.hostId != host.hostId),
+      ].take(_maximumHosts);
+      await _preferences.writeString(
+        _key,
+        jsonEncode(next.map((item) => item.toJson()).toList()),
+      );
     });
+    _writeQueue = result.then<void>((_) {}, onError: (_, __) {});
+    return result;
   }
 }
 
