@@ -34,7 +34,7 @@ Mobile -> pinned Local API -> product adapters -> owning authorities
 | System | Host/Bootstrap 正交状态与 IP 可读；换网已有 BLE 流程 | 作为 My Eidolon 的系统卡片，不开放 Supervisor/日志/配置 |
 | Admin Web control plane | 当前产品分支只有运维型 Device Admission/Mount 编排，要求操作者输入 Hub credential | 只复用领域语义；不能把 credential 输入或 Admin route 搬到 Mobile |
 | Mission Control | Data V2 产品分支已移除旧跨库聚合；旧 cockpit 分支不是当前可用 producer contract | 等 Owner-scoped projection API 后接 snapshot + stream，不复活跨库读取 |
-| ESP32 provisioning | 当前目标 build 同时设置 Hotspot/BLUFI，但预处理顺序实际选择 Hotspot；开放 `Xiaozhi-XXXX` AP + 明文 `/submit` | 只认定为 development provisioning；不能当作产品 Device claim |
+| ESP32 provisioning | 当前目标 build 同时设置 Hotspot/BLUFI，但预处理顺序实际选择 Hotspot；开放 `Xiaozhi-XXXX` AP + 明文 `/submit` | 已接入隔离的 development UI；只能确认 Wi-Fi 配置，不能当作产品 Device claim |
 | Hub onboarding | enrollment/handoff 与 management approval contract 已存在 | ESP32 固件须先迁移；Mobile 只经 Local API 批准，Owner scope 不由 App 自报 |
 | Conversation | Hub/LiveKit/AEC Demo 保留 | Workspace 与 Mobile Body admission ready 后恢复入口 |
 
@@ -84,6 +84,32 @@ admission:    notStarted -> awaitingEnrollment -> pendingApproval
 当前 build 事实决定第一个开发 adapter 可以验证 Hotspot，但不能由此推导最终产品采用
 Hotspot。Hotspot 与 ESP-BLUFI 的产品选择必须在上述身份与机密性条件下做真机矩阵，
 而不是按编译开关数量决定。
+
+开发 adapter 使用 Android `WifiNetworkSpecifier` 让用户在系统界面选择
+`Xiaozhi-*`，并让 `/scan`、`/submit` 仅通过该局部 `Network` 发出，不把整个 App
+进程绑定到开放热点。它不创建 Device checkpoint、不调用 admission，也不持久化密码。
+若 `/submit` 的连接在固件确认前中断，结果按 unknown 展示，不能臆断配网失败。
+Android adapter 同时声明 `NEARBY_WIFI_DEVICES`、`CHANGE_WIFI_STATE` 与
+`CHANGE_NETWORK_STATE`；前者是用户运行时授权，后两者是系统网络请求的静态能力，
+错误分类不能把缺失静态能力误报为用户拒绝授权。
+系统选择窗口有 120 秒有界等待；Android 的 `onUnavailable` 无法区分用户取消、
+设备不可用和超时，因此 UI 必须使用组合语义并给出可执行的重试指引，不能误称为
+“扫描不到设备”。原生日志只记录 selector / available / scan / lost 阶段和结果数，
+不记录 SSID 清单、Wi-Fi 密码或响应正文。
+
+### 4.1 从 Admin Web 复用的设备领域语义
+
+Admin Web 当前的 `Device Admission & Mount` 已将设备管理拆成 Hub directory、
+Kernel mount 和 Companion attachment，并显式表达 `pending-approval / approved /
+revoked`、mount revision/active、attachment 以及 Hub/Kernel 逐源 degraded 状态。
+Mobile 的 Devices 页应复用这些 read model 和前向恢复语义，但不复用 Admin 路由或身份：
+
+- 列表与详情由 pinned Local API 返回当前 Controller 可见的 Owner-scoped inventory；
+- 日常动作只允许重命名、查看状态、重试已有 admission、解除 attachment 等明确 allowlist；
+- admission 使用 App 生成的稳定 request ID 前向重试，Owner scope 从 Controller session 推导；
+- Mobile 不输入 `owner_id`、Hub Bearer credential、mount revision 或 replace-existing 运维开关；
+- Admin Web 的 firmware/serial、ADB、Supervisor 与任意 API console 仍是开发/运维面，
+  不进入 Mobile 设备管理。
 
 ## 5. Mission Control Mobile 契约门槛
 

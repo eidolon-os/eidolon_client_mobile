@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
+import '../device_setup/device_setup_ports.dart';
+import '../device_setup/legacy_hotspot_provisioning_page.dart';
 import '../host_setup/host_local_connection_page.dart';
 import 'commissioning_transport.dart';
 import 'change_network_page.dart';
@@ -14,11 +16,13 @@ class EidolonAppShell extends StatefulWidget {
     this.registry,
     this.setupTransport,
     this.controllerKeys,
+    this.deviceProvisioning,
   });
 
   final HostRegistry? registry;
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
+  final LegacyHotspotProvisioningPort? deviceProvisioning;
 
   @override
   State<EidolonAppShell> createState() => _EidolonAppShellState();
@@ -92,6 +96,7 @@ class _EidolonAppShellState extends State<EidolonAppShell> {
       onRefresh: _load,
       setupTransport: widget.setupTransport,
       controllerKeys: widget.controllerKeys,
+      deviceProvisioning: widget.deviceProvisioning,
     );
   }
 }
@@ -156,6 +161,7 @@ class _HostsPage extends StatelessWidget {
     required this.onRefresh,
     this.setupTransport,
     this.controllerKeys,
+    this.deviceProvisioning,
   });
 
   final List<ManagedHost> hosts;
@@ -164,6 +170,7 @@ class _HostsPage extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
+  final LegacyHotspotProvisioningPort? deviceProvisioning;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -200,6 +207,7 @@ class _HostsPage extends StatelessWidget {
                         onHostUpdated: onHostUpdated,
                         setupTransport: setupTransport,
                         controllerKeys: controllerKeys,
+                        deviceProvisioning: deviceProvisioning,
                       ),
                     ),
                   );
@@ -218,12 +226,14 @@ class _HostDetailPage extends StatelessWidget {
     required this.onHostUpdated,
     this.setupTransport,
     this.controllerKeys,
+    this.deviceProvisioning,
   });
 
   final ManagedHost host;
   final ManagedHostUpdater onHostUpdated;
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
+  final LegacyHotspotProvisioningPort? deviceProvisioning;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -276,6 +286,23 @@ class _HostDetailPage extends StatelessWidget {
                   builder: (_) => ChangeNetworkPage(
                     host: host,
                     controllerKeys: controllerKeys,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text('设备', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            _ManagementEntry.available(
+              key: const Key('add-device-development'),
+              icon: Icons.developer_board_outlined,
+              title: '设备配网',
+              subtitle: '开发入口：为兼容设备配置 Wi-Fi；暂不代表认领',
+              onTap: () => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => LegacyHotspotProvisioningPage(
+                    host: host,
+                    provisioning: deviceProvisioning,
                   ),
                 ),
               ),

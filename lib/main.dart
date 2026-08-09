@@ -9,6 +9,7 @@ import 'package:video_player/video_player.dart';
 import 'src/avatar/idle_clip_cache.dart';
 import 'src/avatar/avatar_stage.dart';
 import 'src/controller/client_controller.dart';
+import 'src/features/device_setup/device_setup_ports.dart';
 import 'src/features/setup/eidolon_app_shell.dart';
 import 'src/features/setup/host_registry.dart';
 
@@ -18,9 +19,14 @@ void main() {
 }
 
 class EidolonMobileApp extends StatelessWidget {
-  const EidolonMobileApp({super.key, this.hostRegistry});
+  const EidolonMobileApp({
+    super.key,
+    this.hostRegistry,
+    this.deviceProvisioning,
+  });
 
   final HostRegistry? hostRegistry;
+  final LegacyHotspotProvisioningPort? deviceProvisioning;
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +41,10 @@ class EidolonMobileApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFF0D0D13),
         useMaterial3: true,
       ),
-      home: EidolonAppShell(registry: hostRegistry),
+      home: EidolonAppShell(
+        registry: hostRegistry,
+        deviceProvisioning: deviceProvisioning,
+      ),
     );
   }
 }

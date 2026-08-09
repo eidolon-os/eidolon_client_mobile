@@ -300,15 +300,18 @@ void main() {
 
     expect(find.byKey(const Key('change-host-network')), findsOneWidget);
     expect(find.byKey(const Key('connect-local-host')), findsOneWidget);
+    expect(find.byKey(const Key('add-device-development')), findsOneWidget);
     expect(
       find.byKey(const Key('manage-controllers-unavailable')),
       findsOneWidget,
     );
+    await tester.drag(find.byType(ListView), const Offset(0, -420));
+    await tester.pumpAndSettle();
     expect(
       find.byKey(const Key('controller-recovery-unavailable')),
       findsOneWidget,
     );
-    expect(find.text('尚未开放'), findsNWidgets(2));
+    expect(find.text('尚未开放'), findsWidgets);
     expect(find.byType(AlertDialog), findsNothing);
   });
 }

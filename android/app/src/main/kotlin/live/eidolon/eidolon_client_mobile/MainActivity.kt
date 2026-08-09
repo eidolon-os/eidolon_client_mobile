@@ -49,11 +49,13 @@ class MainActivity : FlutterActivity() {
         private const val DEVICE_ID_NAMESPACE = "eidolon-mobile-android-v1"
         private const val MIC_REQUEST_CODE = 7001
         private const val BLE_REQUEST_CODE = 7002
+        private const val WIFI_PROVISIONING_REQUEST_CODE = 7003
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var permissionResult: MethodChannel.Result? = null
     private var bluetoothPermissionResult: MethodChannel.Result? = null
+    private var wifiProvisioningPermissionResult: MethodChannel.Result? = null
     private var discoveryListener: NsdManager.DiscoveryListener? = null
     private val serviceInfoCallbacks = mutableSetOf<NsdManager.ServiceInfoCallback>()
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -61,6 +63,9 @@ class MainActivity : FlutterActivity() {
     private var setupScanResult: MethodChannel.Result? = null
     private var commissioningManager: BleCommissioningManager? = null
     private val pinnedHttpsClient by lazy { PinnedHttpsClient(mainHandler) }
+    private val legacyHotspotProvisioning by lazy {
+        LegacyHotspotProvisioningManager(applicationContext, mainHandler)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -83,6 +88,28 @@ class MainActivity : FlutterActivity() {
                 "pinnedHttpsRequest" -> pinnedHttpsClient.request(call, result)
                 "requestMicrophonePermission" -> requestMicrophonePermission(result)
                 "requestBluetoothPermissions" -> requestBluetoothPermissions(result)
+                "requestWifiProvisioningPermission" ->
+                    requestWifiProvisioningPermission(result)
+                "openLegacyHotspotProvisioning" -> {
+                    if (!hasWifiProvisioningPermission()) {
+                        result.error(
+                            "WIFI_PERMISSION_DENIED",
+                            "Nearby Wi-Fi permission is required",
+                            null,
+                        )
+                    } else {
+                        legacyHotspotProvisioning.open(result)
+                    }
+                }
+                "submitLegacyHotspotWifi" -> legacyHotspotProvisioning.submit(
+                    call.argument<String>("ssid") ?: error("ssid is required"),
+                    call.argument<String>("password") ?: error("password is required"),
+                    result,
+                )
+                "closeLegacyHotspotProvisioning" -> {
+                    legacyHotspotProvisioning.close()
+                    result.success(null)
+                }
                 "scanSetupHosts" -> scanSetupHosts(
                     call.argument<String>("serviceUuid") ?: error("serviceUuid is required"),
                     call.argument<Int>("timeoutMs") ?: 8000,
@@ -266,6 +293,43 @@ class MainActivity : FlutterActivity() {
         requestPermissions(requiredBluetoothPermissions(), BLE_REQUEST_CODE)
     }
 
+    private fun requiredWifiProvisioningPermissions(): Array<String> = when {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ->
+            arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES)
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        else -> emptyArray()
+    }
+
+    private fun hasWifiProvisioningPermission(): Boolean =
+        requiredWifiProvisioningPermissions().all {
+            checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
+        }
+
+    private fun requestWifiProvisioningPermission(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            result.error(
+                "WIFI_UNSUPPORTED",
+                "Android 10 or newer is required for in-app device hotspot selection",
+                null,
+            )
+            return
+        }
+        if (hasWifiProvisioningPermission()) {
+            result.success(true)
+            return
+        }
+        if (wifiProvisioningPermissionResult != null) {
+            result.error("PERMISSION_BUSY", "A Wi-Fi permission request is already active", null)
+            return
+        }
+        wifiProvisioningPermissionResult = result
+        requestPermissions(
+            requiredWifiProvisioningPermissions(),
+            WIFI_PROVISIONING_REQUEST_CODE,
+        )
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == MIC_REQUEST_CODE) {
@@ -277,6 +341,16 @@ class MainActivity : FlutterActivity() {
                 grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED },
             )
             bluetoothPermissionResult = null
+        }
+        if (requestCode == WIFI_PROVISIONING_REQUEST_CODE) {
+            val pending = wifiProvisioningPermissionResult
+            wifiProvisioningPermissionResult = null
+            // The package permission state is authoritative. Some Android
+            // variants update the Nearby Devices app-op asynchronously or
+            // return an empty grantResults array for an already-granted group.
+            mainHandler.post {
+                pending?.success(hasWifiProvisioningPermission())
+            }
         }
     }
 
@@ -571,6 +645,7 @@ class MainActivity : FlutterActivity() {
         finishSetupScan()
         commissioningManager?.close()
         commissioningManager = null
+        legacyHotspotProvisioning.destroy()
         pinnedHttpsClient.close()
         discoveryListener?.let {
             try { (getSystemService(Context.NSD_SERVICE) as NsdManager).stopServiceDiscovery(it) } catch (_: Exception) { }
@@ -588,6 +663,8 @@ class MainActivity : FlutterActivity() {
         permissionResult = null
         bluetoothPermissionResult?.success(false)
         bluetoothPermissionResult = null
+        wifiProvisioningPermissionResult?.success(false)
+        wifiProvisioningPermissionResult = null
         super.onDestroy()
     }
 

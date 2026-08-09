@@ -43,8 +43,10 @@ mDNS 发现 Hub -> P-256 签名注册 -> 审批/绑定 -> LiveKit control room
 - Host Setup 不直接调用 Admin 运维 API、Hub、LiveKit 或 Audio Channel。
 - Android pinned HTTPS 使用版本化、二进制安全的 unary transport；HTTP 方法契约由
   Local API client/server 拥有，平台 adapter 不维护重复的 route-level 白名单。
-- 外部 Device Setup 已拆出 provisioning/admission/checkpoint Port 和前向恢复状态机；
-  当前 ESP32 开放 Hotspot 仅被认定为 development provisioning，尚未开放产品 UI。
+- 外部 Device Setup 已拆出 provisioning/admission/checkpoint Port 和前向恢复状态机。
+- 已提供明确隔离的兼容设备开发配网入口：Android 通过系统网络选择器连接当前
+  `Xiaozhi-*` 热点，使用设备 `/scan` 与 `/submit` 配置 Wi-Fi；UI 不会把成功结果
+  表示为 Device 认领、挂载或添加完成。
 - 原 Audio Demo 的控制器、AEC、Avatar 和回归测试均保留。
 
 - Android mDNS/NSD 发现 `_eidolon-hub._tcp.local.`，支持手动输入
