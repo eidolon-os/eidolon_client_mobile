@@ -157,11 +157,32 @@ Map<String, dynamic> _workspaceRuntime() => {
       },
     };
 
+Map<String, dynamic> _deviceInventory({bool withReadyDevice = false}) => {
+      'contract_version': '1',
+      'coverage': 'mounted-devices',
+      'devices': withReadyDevice
+          ? [
+              {
+                'device_id': 'device-waveshare-1',
+                'admission_state': 'ready',
+                'mount': {
+                  'state': 'active',
+                  'revision': 2,
+                  'attached_companion_id': 'companion_primary',
+                  'updated_at': '2026-08-09T08:10:00Z',
+                },
+              },
+            ]
+          : [],
+    };
+
 LocalApiClient _clientFor(
   Map<String, dynamic> overview, {
   int workspaceStatusCode = 200,
   bool workspaceReady = false,
   int runtimeStatusCode = 200,
+  int devicesStatusCode = 200,
+  bool withReadyDevice = false,
   PinnedHttpFailureKind? workspaceTransportFailure,
 }) =>
     LocalApiClient(
@@ -247,6 +268,15 @@ LocalApiClient _clientFor(
             return http.Response('', runtimeStatusCode);
           }
           return http.Response(jsonEncode(_workspaceRuntime()), 200);
+        }
+        if (request.url.path == '/api/local/v1/devices') {
+          if (devicesStatusCode != 200) {
+            return http.Response('', devicesStatusCode);
+          }
+          return http.Response(
+            jsonEncode(_deviceInventory(withReadyDevice: withReadyDevice)),
+            200,
+          );
         }
         return http.Response('', 404);
       }),
@@ -392,6 +422,46 @@ void main() {
     expect(find.byKey(const Key('workspace-runtime-error')), findsOneWidget);
     expect(find.textContaining('日常运行状态暂时不可用'), findsOneWidget);
     expect(find.text('已创建'), findsNWidgets(3));
+  });
+
+  testWidgets('ready Workspace shows only Kernel-confirmed mounted devices',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(
+            _hostOverview(workspaceState: 'ready'),
+            workspaceReady: true,
+            withReadyDevice: true,
+          ),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('mounted-devices-card')), findsOneWidget);
+    expect(
+      find.byKey(const Key('mounted-device-device-waveshare-1')),
+      findsOneWidget,
+    );
+    expect(find.text('已接入'), findsOneWidget);
+    expect(find.textContaining('revision 2'), findsOneWidget);
+    expect(find.textContaining('尚未安全认领'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const Key('mounted-device-device-waveshare-1')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('mounted-device-detail')), findsOneWidget);
+    expect(find.text('设备详情'), findsOneWidget);
+    expect(find.textContaining('不代表设备当前在线'), findsOneWidget);
   });
 
   testWidgets('setup continuation initializes Workspace without redoing claim',

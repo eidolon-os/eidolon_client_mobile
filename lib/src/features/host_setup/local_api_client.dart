@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
+import '../device_management/mounted_device_models.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/setup_trust.dart';
 import 'controller_session.dart';
@@ -214,6 +215,21 @@ class LocalApiClient {
         .timeout(timeout);
     return WorkspaceRuntime.fromJson(
       _decodeResponse(response, operation: 'Workspace runtime'),
+    );
+  }
+
+  Future<MountedDeviceInventory> fetchMountedDevices(
+    String baseUrl, {
+    required String accessToken,
+  }) async {
+    final response = await _httpClient
+        .get(
+          parseBaseUri(baseUrl).resolve('/api/local/v1/devices'),
+          headers: _authorizedHeaders(accessToken),
+        )
+        .timeout(timeout);
+    return MountedDeviceInventory.fromJson(
+      _decodeResponse(response, operation: 'Device inventory'),
     );
   }
 

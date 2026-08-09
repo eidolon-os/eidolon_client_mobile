@@ -111,6 +111,14 @@ Mobile 的 Devices 页应复用这些 read model 和前向恢复语义，但不�
 - Admin Web 的 firmware/serial、ADB、Supervisor 与任意 API console 仍是开发/运维面，
   不进入 Mobile 设备管理。
 
+当前已落地的第一段日常读模型是 Controller-authenticated
+`GET /api/local/v1/devices`，响应明确声明 `coverage=mounted-devices`。Local API
+从 Controller principal 推导 Owner，经 Admin 的独立 loopback service credential 只读取
+Kernel mount，并剔除 `owner_id`、request ID 和 fingerprint。Mobile 因此可以安全展示
+已挂载设备、Companion attachment、revision 和 active/inactive，但不得据此推断设备在线。
+Hub pending enrollment 和 directory metadata 不会被伪装成该列表的一部分；它们要等安全
+pairing/admission proof 契约落地后再合并为下一版产品投影。
+
 ## 5. Mission Control Mobile 契约门槛
 
 Mobile Mission Control 只读。恢复它需要新的、权威边界正确的产品投影：

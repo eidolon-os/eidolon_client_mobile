@@ -272,6 +272,7 @@ class _HostDetailPage extends StatelessWidget {
                     onHostUpdated: onHostUpdated,
                     transport: setupTransport,
                     controllerKeys: controllerKeys,
+                    deviceProvisioning: deviceProvisioning,
                   ),
                 ),
               ),

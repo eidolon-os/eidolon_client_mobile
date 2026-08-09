@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../device_management/mounted_device_models.dart';
+import '../device_setup/device_setup_ports.dart';
+import '../device_setup/legacy_hotspot_provisioning_page.dart';
 import '../setup/commissioning_transport.dart';
 import '../setup/change_network_page.dart';
 import '../setup/controller_key_bridge.dart';
@@ -28,18 +31,29 @@ class _RuntimeLoad {
   final String? error;
 }
 
+class _DevicesLoad {
+  const _DevicesLoad({this.value, this.error});
+
+  final MountedDeviceInventory? value;
+  final String? error;
+}
+
 class _ProductStateLoad {
   const _ProductStateLoad({
     this.workspace,
     this.workspaceError,
     this.runtime,
     this.runtimeError,
+    this.devices,
+    this.devicesError,
   });
 
   final WorkspaceStatus? workspace;
   final String? workspaceError;
   final WorkspaceRuntime? runtime;
   final String? runtimeError;
+  final MountedDeviceInventory? devices;
+  final String? devicesError;
 }
 
 class HostLocalConnectionPage extends StatefulWidget {
@@ -51,6 +65,7 @@ class HostLocalConnectionPage extends StatefulWidget {
     this.controllerKeys,
     this.discovery,
     this.localApiClientFactory,
+    this.deviceProvisioning,
     this.setupContinuation = false,
     this.onSetupComplete,
   }) : assert(!setupContinuation || onSetupComplete != null);
@@ -61,6 +76,7 @@ class HostLocalConnectionPage extends StatefulWidget {
   final ControllerKeyBridge? controllerKeys;
   final LocalApiDiscovery? discovery;
   final LocalApiClientFactory? localApiClientFactory;
+  final LegacyHotspotProvisioningPort? deviceProvisioning;
   final bool setupContinuation;
   final VoidCallback? onSetupComplete;
 
@@ -89,7 +105,10 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   String? _workspaceError;
   WorkspaceRuntime? _workspaceRuntime;
   String? _workspaceRuntimeError;
+  MountedDeviceInventory? _devices;
+  String? _devicesError;
   bool _workspaceBusy = false;
+  bool _devicesBusy = false;
 
   @override
   void initState() {
@@ -122,6 +141,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       _workspaceError = null;
       _workspaceRuntime = null;
       _workspaceRuntimeError = null;
+      _devices = null;
+      _devicesError = null;
       _baseUrl = null;
     });
     try {
@@ -161,6 +182,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             _workspaceError = productState.workspaceError;
             _workspaceRuntime = productState.runtime;
             _workspaceRuntimeError = productState.runtimeError;
+            _devices = productState.devices;
+            _devicesError = productState.devicesError;
             _progress = null;
           });
           return;
@@ -331,18 +354,46 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       return _ProductStateLoad(workspace: workspace);
     }
     final runtime = await _loadRuntime(client, baseUrl, accessToken);
+    final devices = await _loadDevices(client, baseUrl, accessToken);
     if (runtime.value case final value?
         when !value.matchesWorkspace(workspace)) {
       return _ProductStateLoad(
         workspace: workspace,
         runtimeError: 'Workspace 与日常运行状态不一致，已拒绝展示跨 Owner 或 Companion 数据。',
+        devices: devices.value,
+        devicesError: devices.error,
       );
     }
     return _ProductStateLoad(
       workspace: workspace,
       runtime: runtime.value,
       runtimeError: runtime.error,
+      devices: devices.value,
+      devicesError: devices.error,
     );
+  }
+
+  Future<_DevicesLoad> _loadDevices(
+    LocalApiClient client,
+    String baseUrl,
+    String accessToken,
+  ) async {
+    try {
+      return _DevicesLoad(
+        value: await client.fetchMountedDevices(
+          baseUrl,
+          accessToken: accessToken,
+        ),
+      );
+    } on LocalApiRequestException catch (error) {
+      return _DevicesLoad(error: _deviceFailure(error));
+    } on PinnedHttpException catch (error) {
+      return _DevicesLoad(error: _pinnedHttpFailure(error));
+    } on FormatException {
+      return const _DevicesLoad(error: '主机返回了不兼容的设备列表。');
+    } catch (_) {
+      return const _DevicesLoad(error: '设备列表暂时不可用。');
+    }
   }
 
   Future<_RuntimeLoad> _loadRuntime(
@@ -378,6 +429,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       _workspaceBusy = true;
       _workspaceError = null;
       _workspaceRuntimeError = null;
+      _devicesError = null;
     });
     final client = _createClient(_host.tlsSpkiFingerprint!);
     try {
@@ -392,6 +444,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
           _workspaceError = productState.workspaceError;
           _workspaceRuntime = productState.runtime;
           _workspaceRuntimeError = productState.runtimeError;
+          _devices = productState.devices;
+          _devicesError = productState.devicesError;
         });
       }
     } finally {
@@ -443,11 +497,18 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       final runtimeError = runtimeValue != null && acceptedRuntime == null
           ? 'Workspace 与日常运行状态不一致，已拒绝展示跨 Owner 或 Companion 数据。'
           : runtime.error;
+      final devices = await _loadDevices(
+        client,
+        baseUrl,
+        session.accessToken,
+      );
       if (mounted) {
         setState(() {
           _workspace = workspace;
           _workspaceRuntime = acceptedRuntime;
           _workspaceRuntimeError = runtimeError;
+          _devices = devices.value;
+          _devicesError = devices.error;
         });
       }
     } on LocalApiRequestException catch (error) {
@@ -492,6 +553,41 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     if (mounted) await _connect();
   }
 
+  Future<void> _refreshDevices() async {
+    final baseUrl = _baseUrl;
+    final session = _session;
+    if (baseUrl == null || session == null || _devicesBusy) return;
+    setState(() {
+      _devicesBusy = true;
+      _devicesError = null;
+    });
+    final client = _createClient(_host.tlsSpkiFingerprint!);
+    try {
+      final result = await _loadDevices(client, baseUrl, session.accessToken);
+      if (mounted) {
+        setState(() {
+          _devices = result.value;
+          _devicesError = result.error;
+        });
+      }
+    } finally {
+      client.close();
+      if (mounted) setState(() => _devicesBusy = false);
+    }
+  }
+
+  Future<void> _openDeviceProvisioning() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => LegacyHotspotProvisioningPage(
+          host: _host,
+          provisioning: widget.deviceProvisioning,
+        ),
+      ),
+    );
+    if (mounted) await _refreshDevices();
+  }
+
   String _workspaceFailure(LocalApiRequestException error) =>
       switch (error.statusCode) {
         401 => '本次管理会话已失效，请重新连接主机。',
@@ -506,6 +602,14 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         404 => '主机尚未提供日常运行状态接口；Workspace 本身已就绪。',
         409 => 'Workspace 已创建，但主 Companion 的运行资源尚未一致。',
         _ => 'Workspace 已就绪，但日常运行状态暂时不可用。',
+      };
+
+  String _deviceFailure(LocalApiRequestException error) =>
+      switch (error.statusCode) {
+        401 => '本次管理会话已失效，请重新连接主机。',
+        409 => '主机尚未建立 Owner Workspace，不能读取设备。',
+        404 => '当前主机版本尚未提供设备列表。',
+        _ => '主机已连接，但设备列表暂时不可用。',
       };
 
   @override
@@ -545,6 +649,11 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             ),
             const SizedBox(height: 16),
             _buildWorkspaceCard(),
+            if ((_workspace?.isReady ?? false) &&
+                !widget.setupContinuation) ...[
+              const SizedBox(height: 16),
+              _buildDevicesCard(),
+            ],
           ],
           if (!_busy && _error != null) ...[
             Card(
@@ -732,6 +841,169 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDevicesCard() {
+    final inventory = _devices;
+    return Card(
+      key: const Key('mounted-devices-card'),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.devices_other_outlined),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '设备',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                IconButton(
+                  key: const Key('refresh-mounted-devices'),
+                  onPressed: _devicesBusy ? null : _refreshDevices,
+                  tooltip: '刷新设备',
+                  icon: _devicesBusy
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text('这里显示已由主机确认挂载的设备；配网完成但尚未安全认领的设备不会出现在这里。'),
+            if (_devicesError case final error?) ...[
+              const SizedBox(height: 12),
+              Text(
+                error,
+                key: const Key('mounted-devices-error'),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ] else if (inventory == null || inventory.devices.isEmpty) ...[
+              const SizedBox(height: 16),
+              const Text(
+                '还没有已接入的设备。',
+                key: Key('mounted-devices-empty'),
+              ),
+            ] else ...[
+              const SizedBox(height: 12),
+              ...inventory.devices.map(_buildDeviceRow),
+            ],
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              key: const Key('provision-device-from-product'),
+              onPressed: _devicesBusy ? null : _openDeviceProvisioning,
+              icon: const Icon(Icons.add_link),
+              label: const Text('设备配网（开发）'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeviceRow(MountedDevice device) {
+    final companionId = device.mount.attachedCompanionId;
+    final (label, color) = switch (device.admissionState) {
+      MountedDeviceAdmissionState.ready => (
+          '已接入',
+          Theme.of(context).colorScheme.primary,
+        ),
+      MountedDeviceAdmissionState.mounted => (
+          '待关联 Companion',
+          Theme.of(context).colorScheme.tertiary,
+        ),
+      MountedDeviceAdmissionState.inactive => (
+          '已停用',
+          Theme.of(context).colorScheme.outline,
+        ),
+    };
+    return ListTile(
+      key: Key('mounted-device-${device.deviceId}'),
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(Icons.developer_board_outlined, color: color),
+      title: Text(_shortId(device.deviceId)),
+      subtitle: Text(
+        companionId != null
+            ? 'Companion ${_shortId(companionId)} · revision ${device.mount.revision}'
+            : 'revision ${device.mount.revision}',
+      ),
+      trailing: Chip(label: Text(label)),
+      onTap: () => Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => _MountedDeviceDetailPage(device: device),
+        ),
+      ),
+    );
+  }
+}
+
+class _MountedDeviceDetailPage extends StatelessWidget {
+  const _MountedDeviceDetailPage({required this.device});
+
+  final MountedDevice device;
+
+  @override
+  Widget build(BuildContext context) {
+    final stateLabel = switch (device.admissionState) {
+      MountedDeviceAdmissionState.ready => '已接入',
+      MountedDeviceAdmissionState.mounted => '待关联 Companion',
+      MountedDeviceAdmissionState.inactive => '已停用',
+    };
+    final companionId = device.mount.attachedCompanionId;
+    return Scaffold(
+      key: const Key('mounted-device-detail'),
+      appBar: AppBar(title: const Text('设备详情')),
+      body: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Text('设备身份', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: SelectableText(device.deviceId),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('接入状态', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  title: const Text('状态'),
+                  trailing: Text(stateLabel),
+                ),
+                ListTile(
+                  title: const Text('挂载 revision'),
+                  trailing: Text('${device.mount.revision}'),
+                ),
+                ListTile(
+                  title: const Text('关联 Companion'),
+                  subtitle: companionId == null
+                      ? const Text('尚未关联')
+                      : SelectableText(companionId),
+                ),
+                ListTile(
+                  title: const Text('最后更新'),
+                  subtitle: Text(device.mount.updatedAt.toLocal().toString()),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            '这里展示主机权威确认的挂载关系，不代表设备当前在线。在线状态需要独立的运行时遥测投影。',
+          ),
+        ],
       ),
     );
   }
