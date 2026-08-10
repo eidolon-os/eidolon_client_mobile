@@ -29,7 +29,6 @@ mDNS 发现 Hub -> P-256 签名注册 -> 审批/绑定 -> LiveKit control room
 - 独立 Android Keystore Controller P-256 key；与 Mobile Body/Hub key alias 隔离。
 - 已认领换网使用 Controller challenge 签名，不复用一次性开箱 secret。
 - 已认领 Host 的公开信息与 Controller ID 本地持久化；secret、Wi-Fi 密码和私钥不写入。
-- 版本化 Local API client 和 Host proof 数据契约仍保留，但不再是无网开箱前置。
 - 读取 `GET /api/local/v1/host`，严格解析 Host ID、公钥指纹、运行模式以及
   claim/network/workspace/recovery 状态。
 - Controller-authenticated `GET/PUT /api/local/v1/setup/workspace`；认领后通过
@@ -121,7 +120,9 @@ AndroidKeyStore 私钥，所以干净重装后 Hub 会在原设备记录上发�
 重新登记，需要管理员再次批准，不会创建另一台设备。
 
 Host Controller 使用另一个 Keystore alias。卸载 App 会删除 Controller 私钥，不能
-仅靠本地记录恢复主机权限；之后必须走主机物理 recovery，而不是自动开放认领。
+仅靠本地记录恢复主机权限。此时由持有主机的人执行 `eidolon-ops controller-reset`
+撤销全部 Controller，再像首次开箱一样重新认领；Owner、Companion、记忆、网络和
+已准入设备都不受影响。App 不会因为连不上就自动开放认领。
 
 BlueZ、NetworkManager、Android GATT/TLS、LAN mDNS 和 Controller session 已在当前
 Pi 5/Android 平板/路由器组合上完成过一次真实 Host commissioning 与重启恢复；该结果

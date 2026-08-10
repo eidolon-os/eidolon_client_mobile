@@ -78,16 +78,6 @@ void main() {
     final client = LocalApiClient(
       httpClient: MockClient((request) async {
         requested.add(request.url);
-        if (request.url.path == '/api/local/v1/host/proof') {
-          expect(
-            jsonDecode(request.body),
-            {
-              'contract_version': '1',
-              'challenge': validHostChallenge,
-            },
-          );
-          return http.Response(jsonEncode(validHostProof), 200);
-        }
         return http.Response(
           jsonEncode(_hostOverview),
           200,
@@ -97,17 +87,12 @@ void main() {
     );
 
     final host = await client.fetchHost('http://eidolon.local:9002');
-    final proof = await client.fetchHostProof(
-      'http://eidolon.local:9002',
-      validHostChallenge,
-    );
 
-    expect(requested, [
-      Uri.parse('http://eidolon.local:9002/api/local/v1/host'),
-      Uri.parse('http://eidolon.local:9002/api/local/v1/host/proof'),
-    ]);
-    expect(host.descriptor.hostId, 'ehost-0123456789abcdefabcd');
-    expect(proof.challenge, validHostChallenge);
+    expect(host.descriptor.hostId, _hostOverview['descriptor']['host_id']);
+    expect(
+      requested.map((uri) => uri.path).toList(),
+      ['/api/local/v1/host'],
+    );
   });
 
   test('LocalApiClient refuses credentials and paths in a base URL', () {

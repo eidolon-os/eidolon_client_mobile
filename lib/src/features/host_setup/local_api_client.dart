@@ -9,7 +9,6 @@ import '../device_setup/device_setup_models.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/setup_trust.dart';
 import 'controller_session.dart';
-import 'host_proof.dart';
 import 'host_models.dart';
 import 'workspace_models.dart';
 import 'workspace_runtime_models.dart';
@@ -76,37 +75,6 @@ class LocalApiClient {
       throw const FormatException('Local API 返回的 Host 数据不是 JSON object');
     }
     return HostOverview.fromJson(decoded);
-  }
-
-  Future<HostProof> fetchHostProof(String baseUrl, String challenge) async {
-    final baseUri = parseBaseUri(baseUrl);
-    final endpoint = baseUri.resolve('/api/local/v1/host/proof');
-    final response = await _httpClient
-        .post(
-          endpoint,
-          headers: const {
-            'accept': 'application/json',
-            'content-type': 'application/json',
-          },
-          body: jsonEncode({
-            'contract_version': '1',
-            'challenge': challenge,
-          }),
-        )
-        .timeout(timeout);
-    if (response.statusCode != 200) {
-      throw LocalApiRequestException(
-        'Eidolon Local API Host proof 返回 HTTP ${response.statusCode}',
-        statusCode: response.statusCode,
-      );
-    }
-    final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-    if (decoded is! Map<String, dynamic>) {
-      throw const SetupTrustException(
-        'Local API 返回的 Host proof 不是 JSON object',
-      );
-    }
-    return HostProof.fromJson(decoded);
   }
 
   Future<LocalControllerSession> authenticateController(

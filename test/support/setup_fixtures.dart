@@ -5,15 +5,6 @@ const validHostPublicKeyFingerprint =
     'sha256:Vkdap1RjR0wChd9dvyvKtz2mUTWIOem3dIGy6rEHcIw';
 const validBleServiceUuid = 'f6a147b7-abef-57c3-973f-e3a17c6ef0ab';
 
-const validHostProof = <String, dynamic>{
-  'contract_version': '1',
-  'purpose': 'eidolon-local-api-host-proof-v1',
-  'host_id': validHostId,
-  'challenge': validHostChallenge,
-  'signature':
-      'rF3KrfUegMPsqmrjfbBpDy-2xhay3RdqRFslSH_oEDepS3vabevWP9haxt5w1xdW5QeSVKek2HCMwiaasj8yCQ',
-};
-
 const validCommissioningEndpoint = <String, dynamic>{
   'contract_version': '1',
   'purpose': 'eidolon-ble-commissioning-endpoint-v1',

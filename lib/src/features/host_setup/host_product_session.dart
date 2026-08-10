@@ -180,7 +180,8 @@ class HostProductSession {
                 error.statusCode == 403 ||
                 error.statusCode == 404 ||
                 error.statusCode == 409
-            ? '主机已重置或不再授权这台管理设备，请使用主机恢复流程。'
+            ? '主机已重置或不再授权这台管理设备。请让持有主机的人执行 Controller Reset，'
+                  '然后像首次开箱一样重新连接；主机数据不会丢失。'
             : '管理会话已失效，且暂时无法重新认证。请重新连接主机。',
       );
     } on SetupTrustException catch (error) {
@@ -224,7 +225,8 @@ class HostProductSession {
           error.statusCode == 404 ||
           error.statusCode == 409) {
         throw const HostControllerAuthorizationException(
-          '主机已重置或不再授权这台管理设备，请使用主机恢复流程。',
+          '主机已重置或不再授权这台管理设备。请让持有主机的人执行 Controller Reset，'
+          '然后像首次开箱一样重新连接；主机数据不会丢失。',
         );
       }
       rethrow;
