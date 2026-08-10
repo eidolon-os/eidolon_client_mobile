@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 
 import 'commissioning_transport.dart';
 import 'controller_key_bridge.dart';
+import 'development_lan_commissioning.dart';
+import 'development_lan_setup_page.dart';
 import 'host_registry.dart';
 import 'host_identity.dart';
 import 'setup_models.dart';
@@ -21,12 +23,14 @@ class SetupWizardPage extends StatefulWidget {
     this.transport,
     this.controllerKeys,
     this.clock,
+    this.developmentLanCommissioning,
   });
 
   final ValueChanged<ManagedHost> onComplete;
   final CommissioningTransport? transport;
   final ControllerKeyBridge? controllerKeys;
   final DateTime Function()? clock;
+  final DevelopmentLanCommissioning? developmentLanCommissioning;
 
   @override
   State<SetupWizardPage> createState() => _SetupWizardPageState();
@@ -35,6 +39,7 @@ class SetupWizardPage extends StatefulWidget {
 class _SetupWizardPageState extends State<SetupWizardPage> {
   late final CommissioningTransport _transport;
   late final ControllerKeyBridge _controllerKeys;
+  late final DevelopmentLanCommissioning _developmentLanCommissioning;
   final _setupCode = TextEditingController();
   final _passphrase = TextEditingController();
   final _hiddenSsid = TextEditingController();
@@ -60,6 +65,8 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
     super.initState();
     _transport = widget.transport ?? PlatformBleCommissioningTransport();
     _controllerKeys = widget.controllerKeys ?? PlatformControllerKeyBridge();
+    _developmentLanCommissioning = widget.developmentLanCommissioning ??
+        DevelopmentLanCommissioning(controllerKeys: _controllerKeys);
   }
 
   @override
@@ -74,6 +81,23 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
 
   Future<void> _scanNearby() async {
     await _run(_scanNearbyInternal);
+  }
+
+  Future<void> _openDevelopmentLanSetup() async {
+    final host = await Navigator.of(context).push<ManagedHost>(
+      MaterialPageRoute(
+        builder: (_) => DevelopmentLanSetupPage(
+          commissioning: _developmentLanCommissioning,
+        ),
+      ),
+    );
+    if (host == null || !mounted) return;
+    setState(() {
+      _completedHost = host;
+      _stage = _SetupStage.complete;
+      _progress = null;
+      _error = null;
+    });
   }
 
   Future<void> _scanNearbyInternal() async {
@@ -113,9 +137,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         rawEndpoint,
       );
       setState(() => _progress = '正在建立加密 Setup 通道');
-      await _transport.secure(
-        tlsSpkiFingerprint: endpoint.tlsSpkiFingerprint,
-      );
+      await _transport.secure(tlsSpkiFingerprint: endpoint.tlsSpkiFingerprint);
       final developmentSetup = endpoint.developmentSetup;
       if (developmentSetup == null) {
         try {
@@ -206,9 +228,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
     });
   }
 
-  Future<bool> _recoverCompletedClaim(
-    CommissioningEndpoint endpoint,
-  ) async {
+  Future<bool> _recoverCompletedClaim(CommissioningEndpoint endpoint) async {
     final controller = await _controllerKeys.getIdentity();
     final challenge = await _transport.request('controller.challenge', {
       'controller_id': controller.controllerId,
@@ -358,14 +378,12 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       if (mounted) _showFailure(_friendlyError(error));
     } on PlatformException catch (error) {
       if (mounted) {
-        _showFailure(
-          switch (error.code) {
-            'BLUETOOTH_OFF' => '请先打开平板蓝牙，再重新查找附近主机。',
-            'PERMISSION_DENIED' => '需要“附近设备”权限才能查找 Eidolon 主机。',
-            'LINK_FAILED' => '蓝牙暂时无法连接主机。请让平板靠近主机后重试。',
-            _ => error.message ?? '平板无法完成附近设备操作',
-          },
-        );
+        _showFailure(switch (error.code) {
+          'BLUETOOTH_OFF' => '请先打开平板蓝牙，再重新查找附近主机。',
+          'PERMISSION_DENIED' => '需要“附近设备”权限才能查找 Eidolon 主机。',
+          'LINK_FAILED' => '蓝牙暂时无法连接主机。请让平板靠近主机后重试。',
+          _ => error.message ?? '平板无法完成附近设备操作',
+        });
       }
     } on FormatException catch (error) {
       if (mounted) _showFailure(error.message);
@@ -450,6 +468,13 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
               text: '开发测试：Host 可配置固定 6 位 Setup 码，也可临时生成。App 不再导入 JSON。',
               color: Color(0xFF24222D),
             ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              key: const Key('open-development-lan-setup'),
+              onPressed: _busy ? null : _openDevelopmentLanSetup,
+              icon: const Icon(Icons.lan_outlined),
+              label: const Text('通过局域网添加已联网开发 Host'),
+            ),
           ],
           const SizedBox(height: 16),
           if (_nearby.isEmpty)
@@ -504,9 +529,9 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
             ],
             maxLength: 6,
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  letterSpacing: 10,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineMedium?.copyWith(letterSpacing: 10),
             decoration: const InputDecoration(
               labelText: '6 位 Setup 码',
               hintText: '000000',
@@ -548,7 +573,8 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           ),
           const SizedBox(height: 8),
           const Text(
-              '密码只通过已加密的蓝牙 Setup 通道交给 NetworkManager，不保存在 App 或 Bootstrap DB。'),
+            '密码只通过已加密的蓝牙 Setup 通道交给 NetworkManager，不保存在 App 或 Bootstrap DB。',
+          ),
           if (_canKeepCurrentNetwork) ...[
             const SizedBox(height: 16),
             Card(
@@ -561,8 +587,10 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
               ),
             ),
             const SizedBox(height: 12),
-            Text('如需更换网络，请选择新的 Wi-Fi：',
-                style: Theme.of(context).textTheme.titleSmall),
+            Text(
+              '如需更换网络，请选择新的 Wi-Fi：',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
           ],
           const SizedBox(height: 16),
           ..._networks.map(

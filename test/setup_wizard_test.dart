@@ -214,6 +214,8 @@ void main() {
       ),
     );
 
+    expect(find.byKey(const Key('open-development-lan-setup')), findsOneWidget);
+
     await tester.tap(find.byKey(const Key('scan-nearby-hosts')));
     await tester.pumpAndSettle();
 
