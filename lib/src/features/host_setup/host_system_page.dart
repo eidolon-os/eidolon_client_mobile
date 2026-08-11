@@ -69,10 +69,6 @@ class HostSystemPage extends StatelessWidget {
                 label: 'Workspace',
                 value: _workspaceLabel(state.workspace),
               ),
-              _StatusRow(
-                label: '恢复状态',
-                value: _recoveryLabel(state.recovery),
-              ),
               _StatusRow(label: 'Reset epoch', value: '${state.resetEpoch}'),
               _StatusRow(label: '状态更新时间', value: _dateTime(state.updatedAt)),
             ],
@@ -114,8 +110,7 @@ class _StatusHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final healthy = state.claim == HostClaimState.claimed &&
-        state.network == HostNetworkState.connected &&
-        state.recovery == HostRecoveryState.normal;
+        state.network == HostNetworkState.connected;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -390,16 +385,7 @@ String _claimLabel(HostClaimState state) => switch (state) {
 
 String _workspaceLabel(HostWorkspaceState state) => switch (state) {
       HostWorkspaceState.absent => '未创建',
-      HostWorkspaceState.provisioning => '正在创建',
       HostWorkspaceState.ready => '已就绪',
-      HostWorkspaceState.degraded => '异常',
-    };
-
-String _recoveryLabel(HostRecoveryState state) => switch (state) {
-      HostRecoveryState.normal => '正常',
-      HostRecoveryState.physicallyArmed => '已物理授权',
-      HostRecoveryState.controllerRecovery => '正在恢复管理权限',
-      HostRecoveryState.factoryResetPending => '等待恢复出厂设置',
     };
 
 String _dateTime(DateTime value) {

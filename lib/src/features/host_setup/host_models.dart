@@ -10,14 +10,9 @@ enum HostNetworkState {
   rollingBack,
 }
 
-enum HostWorkspaceState { absent, provisioning, ready, degraded }
-
-enum HostRecoveryState {
-  normal,
-  physicallyArmed,
-  controllerRecovery,
-  factoryResetPending,
-}
+/// Whether this Host has an Owner's workspace on it yet. Provisioning and
+/// degraded were modelled on both sides and written by neither.
+enum HostWorkspaceState { absent, ready }
 
 class HostDescriptor {
   const HostDescriptor({
@@ -74,7 +69,6 @@ class HostBootstrapState {
     required this.claim,
     required this.network,
     required this.workspace,
-    required this.recovery,
     required this.updatedAt,
   });
 
@@ -92,7 +86,6 @@ class HostBootstrapState {
       claim: _parseClaim(_requiredString(json, 'claim_state')),
       network: _parseNetwork(_requiredString(json, 'network_state')),
       workspace: _parseWorkspace(_requiredString(json, 'workspace_state')),
-      recovery: _parseRecovery(_requiredString(json, 'recovery_state')),
       updatedAt: updatedAt,
     );
   }
@@ -101,7 +94,6 @@ class HostBootstrapState {
   final HostClaimState claim;
   final HostNetworkState network;
   final HostWorkspaceState workspace;
-  final HostRecoveryState recovery;
   final DateTime updatedAt;
 }
 
@@ -180,16 +172,7 @@ HostNetworkState _parseNetwork(String value) => switch (value) {
 
 HostWorkspaceState _parseWorkspace(String value) => switch (value) {
       'absent' => HostWorkspaceState.absent,
-      'provisioning' => HostWorkspaceState.provisioning,
       'ready' => HostWorkspaceState.ready,
-      'degraded' => HostWorkspaceState.degraded,
       _ => throw FormatException('Unknown workspace state: $value'),
     };
 
-HostRecoveryState _parseRecovery(String value) => switch (value) {
-      'normal' => HostRecoveryState.normal,
-      'physically_armed' => HostRecoveryState.physicallyArmed,
-      'controller_recovery' => HostRecoveryState.controllerRecovery,
-      'factory_reset_pending' => HostRecoveryState.factoryResetPending,
-      _ => throw FormatException('Unknown recovery state: $value'),
-    };
