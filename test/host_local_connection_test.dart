@@ -670,7 +670,7 @@ void main() {
     expect(find.text('192.168.1.26'), findsOneWidget);
     expect(find.text('Reset epoch'), findsOneWidget);
     expect(find.text('已认领'), findsOneWidget);
-    expect(find.textContaining('Admin/Ops 运维边界'), findsOneWidget);
+    expect(find.textContaining('发布、激活和回滚仍由 Ops'), findsOneWidget);
   });
 
   testWidgets('failed reauthentication invalidates the whole product session',

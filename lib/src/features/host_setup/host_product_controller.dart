@@ -12,6 +12,7 @@ import '../setup/setup_models.dart';
 import '../setup/setup_trust.dart';
 import 'host_product_repositories.dart';
 import 'host_product_session.dart';
+import 'host_service_models.dart';
 import 'local_api_client.dart';
 import 'local_api_discovery.dart';
 import 'pinned_http_client.dart';
@@ -40,6 +41,7 @@ class HostProductController extends ChangeNotifier {
     _workspaceRepository = HostWorkspaceRepository(_session);
     _devicesRepository = HostDevicesRepository(_session);
     _deviceAdmissionRepository = HostDeviceAdmissionRepository(_session);
+    _hostServicesRepository = HostServicesRepository(_session);
   }
 
   ManagedHost _host;
@@ -48,6 +50,7 @@ class HostProductController extends ChangeNotifier {
   late final HostWorkspaceRepository _workspaceRepository;
   late final HostDevicesRepository _devicesRepository;
   late final HostDeviceAdmissionRepository _deviceAdmissionRepository;
+  late final HostServicesRepository _hostServicesRepository;
 
   bool _connecting = false;
   bool _workspaceBusy = false;
@@ -210,6 +213,22 @@ class HostProductController extends ChangeNotifier {
       _notify();
     }
   }
+
+  Future<HostServiceInventory> listHostServices() =>
+      _hostServicesRepository.list();
+
+  /// [expectedRevision] must be the revision the caller displayed, so that a
+  /// screen showing stale state loses the race instead of silently winning it.
+  Future<HostServiceChange> changeHostService({
+    required String serviceId,
+    required String operation,
+    required int expectedRevision,
+  }) =>
+      _hostServicesRepository.change(
+        serviceId: serviceId,
+        operation: operation,
+        expectedRevision: expectedRevision,
+      );
 
   Future<DeviceOnboardingTarget> fetchDeviceOnboardingTarget() {
     if (!(_workspace?.isReady ?? false)) {

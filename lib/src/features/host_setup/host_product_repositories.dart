@@ -2,6 +2,7 @@ import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
 import '../device_setup/device_setup_ports.dart';
 import 'host_product_session.dart';
+import 'host_service_models.dart';
 import 'workspace_models.dart';
 import 'workspace_runtime_models.dart';
 
@@ -47,6 +48,35 @@ class HostDevicesRepository {
         (client, baseUrl, accessToken) => client.fetchMountedDevices(
           baseUrl,
           accessToken: accessToken,
+        ),
+      );
+}
+
+class HostServicesRepository {
+  const HostServicesRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<HostServiceInventory> list() => _session.execute(
+        (client, baseUrl, accessToken) => client.fetchHostServices(
+          baseUrl,
+          accessToken: accessToken,
+        ),
+      );
+
+  /// [expectedRevision] is the revision the screen displayed, not a re-read.
+  Future<HostServiceChange> change({
+    required String serviceId,
+    required String operation,
+    required int expectedRevision,
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.changeHostService(
+          baseUrl,
+          accessToken: accessToken,
+          serviceId: serviceId,
+          operation: operation,
+          expectedRevision: expectedRevision,
         ),
       );
 }

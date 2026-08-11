@@ -143,6 +143,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                   builder: (_) => HostSystemPage(
                     host: _controller.host,
                     connection: connection,
+                    listServices: _controller.listHostServices,
+                    changeService: _controller.changeHostService,
                   ),
                 ),
               ),
