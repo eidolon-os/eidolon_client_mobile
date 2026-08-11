@@ -135,7 +135,7 @@ class DevelopmentLanCommissioning {
         final code = switch (response.statusCode) {
           401 => 'commissioning_denied',
           404 => 'development_lan_unavailable',
-          409 => 'already_claimed',
+          409 => 'operation_conflict',
           _ => 'lan_claim_failed',
         };
         throw CommissioningRequestException(

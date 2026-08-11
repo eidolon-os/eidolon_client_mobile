@@ -411,7 +411,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           '这台主机没有开放首次 Setup。如果已被认领，需要原 Controller 或物理恢复权限。',
         'setup_code_expired' => '开发 Setup 会话已过期，请重新选择主机。',
         'controller_denied' => '开箱凭据已失效，而且这台手机不是该主机已授权的管理手机。',
-        'already_claimed' => '这台主机已经被认领，请从“主机恢复”入口操作。',
+        'operation_conflict' => '主机当前状态无法完成这一步，请稍后重试或检查主机网络。',
         'operation_conflict' => '主机正在处理另一项设置，或本次重试已失效。请重新开始这一步。',
         'internal_error' => '主机暂时无法完成这一步；蓝牙入口仍会保持可用，请稍后重试。',
         _ => error.message,
