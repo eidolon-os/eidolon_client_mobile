@@ -64,6 +64,13 @@ class ControllerIdentity {
   final String fingerprint;
 }
 
+/// Digits in a Setup code. Mirrors the Host's own rule: eight is what Matter
+/// and HomeKit both settled on, short enough to read aloud and safe only
+/// because the session it unlocks is one-time, expiring, and dies after a few
+/// wrong guesses.
+const int setupCodeDigits = 8;
+final RegExp setupCodePattern = RegExp('^[0-9]{$setupCodeDigits}\$');
+
 class CommissioningEndpoint {
   const CommissioningEndpoint._({
     required this.hostId,
@@ -83,7 +90,7 @@ class CommissioningEndpoint {
     'host_public_key',
     'reset_epoch',
     'tls_spki_fingerprint',
-    'development_setup',
+    'setup_session',
     'signature',
   };
   static final _uuidPattern = RegExp(
@@ -164,7 +171,7 @@ class CommissioningEndpoint {
       throw const SetupTrustException('附近主机未能证明目标 Host 身份');
     }
     final developmentSetup = DevelopmentSetupSession.fromJsonValueOrNull(
-      decoded['development_setup'],
+      decoded['setup_session'],
     );
     return CommissioningEndpoint._(
       hostId: derivedHostId,

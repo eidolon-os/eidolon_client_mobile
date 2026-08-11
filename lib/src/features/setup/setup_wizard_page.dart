@@ -172,8 +172,8 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
     final developmentSetup = endpoint?.developmentSetup;
     if (endpoint == null || developmentSetup == null) return;
     final code = _setupCode.text.trim();
-    if (!RegExp(r'^[0-9]{6}$').hasMatch(code)) {
-      setState(() => _error = '请输入 Host 上显示的 6 位 Setup 码');
+    if (!setupCodePattern.hasMatch(code)) {
+      setState(() => _error = '请输入 Host 上显示的 $setupCodeDigits 位 Setup 码');
       return;
     }
     await _run(() async {
@@ -406,7 +406,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           '主机未能完成 Wi-Fi 连接。请检查密码、网络安全模式和信号；主机仍可通过蓝牙继续设置。',
         'network_confirm_failed' => '主机加入了 Wi-Fi，但未能安全确认变更。请重试，失败时会自动回滚。',
         'network_rollback_failed' => '主机未能立即回滚 Wi-Fi；系统检查点会继续保护原网络。',
-        'commissioning_denied' => 'Setup 码错误、过期或已失效。请核对 6 位码；连续 5 次失败后请重新选择主机。',
+        'commissioning_denied' => 'Setup 码错误、过期或已失效。请核对 $setupCodeDigits 位码；连续 5 次失败后请重新选择主机。',
         'setup_code_unavailable' =>
           '这台主机没有开放首次 Setup。如果已被认领，需要原 Controller 或物理恢复权限。',
         'setup_code_expired' => '开发 Setup 会话已过期，请重新选择主机。',
@@ -465,7 +465,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
             const SizedBox(height: 12),
             const _Notice(
               icon: Icons.developer_mode,
-              text: '开发测试：Host 可配置固定 6 位 Setup 码，也可临时生成。App 不再导入 JSON。',
+              text: '开发测试：Host 可配置固定 $setupCodeDigits 位 Setup 码，也可临时生成。App 不再导入 JSON。',
               color: Color(0xFF24222D),
             ),
             const SizedBox(height: 12),
@@ -513,7 +513,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           const SizedBox(height: 8),
           Text(
             '已连接 ${_selectedNearbyHost?.name ?? 'Eidolon Host'}。'
-            '请输入这台 Host 配置或临时生成的 6 位开发码。',
+            '请输入这台 Host 配置或临时生成的 $setupCodeDigits 位开发码。',
           ),
           const SizedBox(height: 20),
           TextField(
@@ -525,16 +525,16 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
             autofillHints: const [AutofillHints.oneTimeCode],
             inputFormatters: [
               FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(6),
+              LengthLimitingTextInputFormatter(setupCodeDigits),
             ],
-            maxLength: 6,
+            maxLength: setupCodeDigits,
             textAlign: TextAlign.center,
             style: Theme.of(
               context,
             ).textTheme.headlineMedium?.copyWith(letterSpacing: 10),
             decoration: const InputDecoration(
-              labelText: '6 位 Setup 码',
-              hintText: '000000',
+              labelText: '$setupCodeDigits 位 Setup 码',
+              hintText: '00000000',
               counterText: '',
               border: OutlineInputBorder(),
             ),

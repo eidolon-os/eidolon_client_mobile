@@ -82,7 +82,7 @@ void main() {
 
     final claimed = await service.claim(
       hosts.single,
-      setupCode: '123456',
+      setupCode: '12345678',
       controllerName: 'My Pad',
     );
 
@@ -96,7 +96,7 @@ void main() {
     );
     final payload = jsonDecode(claimRequest!.body) as Map<String, dynamic>;
     expect(payload['commissioning_id'], '123e4567-e89b-42d3-a456-426614174000');
-    expect(payload['setup_code'], '123456');
+    expect(payload['setup_code'], '12345678');
     expect((payload['controller'] as Map)['controller_id'], _controllerId);
     expect(claimed.hostId, validHostId);
     expect(claimed.controllerId, _controllerId);
@@ -108,7 +108,7 @@ void main() {
 
   test('ignores unsigned, production and expired LAN candidates', () async {
     final expired = Map<String, dynamic>.from(validCommissioningEndpoint)
-      ..['development_setup'] = {
+      ..['setup_session'] = {
         'commissioning_id': '123e4567-e89b-42d3-a456-426614174000',
         'expires_at': '2026-08-05T00:00:00Z',
       };
@@ -122,7 +122,7 @@ void main() {
         'https://192.168.1.25:9002' => '{invalid',
         'https://192.168.1.26:9002' => jsonEncode({
             ...validCommissioningEndpoint,
-            'development_setup': null,
+            'setup_session': null,
           }),
         _ => jsonEncode(expired),
       },

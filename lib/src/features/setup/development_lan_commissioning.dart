@@ -87,10 +87,10 @@ class DevelopmentLanCommissioning {
     required String controllerName,
   }) async {
     _requireDebugBuild();
-    if (!RegExp(r'^[0-9]{6}$').hasMatch(setupCode)) {
+    if (!setupCodePattern.hasMatch(setupCode)) {
       throw const CommissioningRequestException(
         'invalid_setup_code',
-        '请输入 6 位 Setup 码',
+        '请输入 $setupCodeDigits 位 Setup 码',
       );
     }
     final normalizedName = controllerName.trim();

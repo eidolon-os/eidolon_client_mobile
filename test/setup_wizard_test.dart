@@ -227,7 +227,7 @@ void main() {
     expect(find.text('输入 Setup 码'), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('development-setup-code')),
-      '123456',
+      '12345678',
     );
     await tester.tap(find.byKey(const Key('authenticate-setup-code')));
     await tester.pumpAndSettle();
@@ -286,7 +286,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('development-setup-code')),
-      '123456',
+      '12345678',
     );
     await tester.tap(find.byKey(const Key('authenticate-setup-code')));
     await tester.pumpAndSettle();

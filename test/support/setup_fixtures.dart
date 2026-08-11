@@ -11,10 +11,10 @@ const validCommissioningEndpoint = <String, dynamic>{
   'host_public_key': validHostPublicKey,
   'reset_epoch': 0,
   'tls_spki_fingerprint': 'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
-  'development_setup': {
+  'setup_session': {
     'commissioning_id': '123e4567-e89b-42d3-a456-426614174000',
     'expires_at': '2026-08-05T00:30:00Z',
   },
   'signature':
-      'zPwdDDmKr7BJwT2rJ1OxFe8iphQHldiNIGtkm9DObtEi9g35uFH1ECwnUQlJSRcj3HKBNmk5qGzo9N5nrpTTDw',
+      'BaABOuhs4MSn9aYco-oKwTpnz0DA5MVIUe9Lnwfsfd83-qRhigOLL4MIWvmp-DUPQV6OqQyypxuS7iq2EkkbDA',
 };

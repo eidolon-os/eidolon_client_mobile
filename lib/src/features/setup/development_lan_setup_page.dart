@@ -98,7 +98,7 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
           children: [
             const Text(
               '仅限 Debug：mDNS 只发现候选，App 仍会验证 Host 签名并 pin TLS。'
-              '请先在 Host 上生成短期 6 位 Setup 码。',
+              '请先在 Host 上生成短期 $setupCodeDigits 位 Setup 码。',
             ),
             const SizedBox(height: 16),
             if (_hosts.isEmpty)
@@ -132,11 +132,11 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
                 keyboardType: TextInputType.number,
                 inputFormatters: [
                   FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(6),
+                  LengthLimitingTextInputFormatter(setupCodeDigits),
                 ],
-                maxLength: 6,
+                maxLength: setupCodeDigits,
                 decoration: const InputDecoration(
-                  labelText: '6 位 Setup 码',
+                  labelText: '$setupCodeDigits 位 Setup 码',
                   counterText: '',
                   border: OutlineInputBorder(),
                 ),
