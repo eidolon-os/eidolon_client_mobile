@@ -18,21 +18,46 @@ final _host = ManagedHost(
   claimedAt: DateTime.parse('2026-08-05T00:20:00Z'),
 );
 
+final _target = DeviceOnboardingTarget(
+  hubId: 'eidolon-hub-abc',
+  descriptorUri: Uri.parse(
+    'https://eidolon-hub-abc.local:8443/api/device-onboarding/v1/descriptor',
+  ),
+  tlsSpkiFingerprint: 'sha256:${'A' * 43}',
+  hubCertificate: '-----BEGIN CERTIFICATE-----\nMIIBdummy\n-----END CERTIFICATE-----\n',
+);
+
 class _FakeLegacyHotspotProvisioning implements LegacyHotspotProvisioningPort {
   var permissionGranted = true;
   var openCalls = 0;
   var closeCalls = 0;
   DeviceWifiCredentials? configured;
+  DeviceOnboardingTarget? commissionedTarget;
   LegacyHotspotProvisioningException? configurationFailure;
 
   @override
   Future<void> close() async => closeCalls += 1;
 
   @override
-  Future<void> configureNetwork(DeviceWifiCredentials credentials) async {
+  Future<CommissionableDevice> identify() async => const CommissionableDevice(
+        deviceId: '24:ec:4a:52:f3:54',
+        board: 'esp-box-3',
+        deviceKind: 'esp-box-3',
+      );
+
+  @override
+  Future<CommissionedDevice> commission({
+    required DeviceOnboardingTarget target,
+    DeviceWifiCredentials? credentials,
+  }) async {
     final failure = configurationFailure;
     if (failure != null) throw failure;
+    commissionedTarget = target;
     configured = credentials;
+    return CommissionedDevice(
+      deviceId: '24:ec:4a:52:f3:54',
+      hubId: target.hubId,
+    );
   }
 
   @override
@@ -58,22 +83,25 @@ class _FakeLegacyHotspotProvisioning implements LegacyHotspotProvisioningPort {
 
 void main() {
   testWidgets(
-      'legacy device flow configures Wi-Fi without claiming or admitting Device',
+      'setup hands the device its network and its Host, then claims it',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    final claimed = <String>[];
     final provisioning = _FakeLegacyHotspotProvisioning();
     await tester.pumpWidget(
       MaterialApp(
         home: LegacyHotspotProvisioningPage(
           host: _host,
+          loadTarget: () async => _target,
+          onCommissioned: (deviceId) async => claimed.add(deviceId),
           provisioning: provisioning,
         ),
       ),
     );
 
-    expect(find.text('开发配网'), findsOneWidget);
-    expect(find.textContaining('不会把设备认领'), findsOneWidget);
+    expect(find.text('添加设备'), findsOneWidget);
+    expect(find.textContaining('设备之后只信任这台主机'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('connect-device-hotspot')));
     await tester.pumpAndSettle();
@@ -89,9 +117,11 @@ void main() {
 
     expect(provisioning.configured?.ssid, 'Home WiFi');
     expect(provisioning.configured?.password, 'not-persisted');
-    expect(find.text('开发配网完成'), findsOneWidget);
-    expect(find.textContaining('尚未被认领'), findsOneWidget);
-    expect(find.text('设备已添加'), findsNothing);
+    // Trust travelled with the network, and the claim followed without asking
+    // the person to confirm the same device a second time.
+    expect(provisioning.commissionedTarget?.hubId, 'eidolon-hub-abc');
+    expect(claimed, ['24:ec:4a:52:f3:54']);
+    expect(find.text('设备已添加'), findsOneWidget);
     expect(provisioning.closeCalls, 1);
   });
 
@@ -99,6 +129,7 @@ void main() {
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    final claimed = <String>[];
     final provisioning = _FakeLegacyHotspotProvisioning()
       ..configurationFailure = const LegacyHotspotProvisioningException(
         code: 'WIFI_CONFIGURATION_REJECTED',
@@ -108,6 +139,8 @@ void main() {
       MaterialApp(
         home: LegacyHotspotProvisioningPage(
           host: _host,
+          loadTarget: () async => _target,
+          onCommissioned: (deviceId) async => claimed.add(deviceId),
           provisioning: provisioning,
         ),
       ),

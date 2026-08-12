@@ -13,6 +13,9 @@ enum _LegacyHotspotStep {
   connecting,
   credentials,
   configuring,
+  // The device has what it needs and is on its way to the Host; the Owner's
+  // device is waiting for it to arrive so it can finish the claim.
+  claiming,
   complete
 }
 
@@ -20,10 +23,22 @@ class LegacyHotspotProvisioningPage extends StatefulWidget {
   const LegacyHotspotProvisioningPage({
     super.key,
     required this.host,
+    required this.loadTarget,
+    required this.onCommissioned,
     this.provisioning,
   });
 
   final ManagedHost host;
+
+  /// The Host this device is being given, read from the Local API while the
+  /// Controller session is still authenticated — before the phone leaves the
+  /// home network for the device's own hotspot.
+  final Future<DeviceOnboardingTarget> Function() loadTarget;
+
+  /// Finish the setup once the device accepted it: the person confirmed this
+  /// device by commissioning it, so nothing asks them to approve it again.
+  final Future<void> Function(String deviceId) onCommissioned;
+
   final LegacyHotspotProvisioningPort? provisioning;
 
   @override
@@ -37,6 +52,8 @@ class _LegacyHotspotProvisioningPageState
   final _ssid = TextEditingController();
   final _password = TextEditingController();
   var _step = _LegacyHotspotStep.introduction;
+  DeviceOnboardingTarget? _target;
+  CommissionableDevice? _device;
   var _networks = const <DeviceWifiNetwork>[];
   String? _selectedSsid;
   String? _error;
@@ -44,7 +61,8 @@ class _LegacyHotspotProvisioningPageState
 
   bool get _busy =>
       _step == _LegacyHotspotStep.connecting ||
-      _step == _LegacyHotspotStep.configuring;
+      _step == _LegacyHotspotStep.configuring ||
+      _step == _LegacyHotspotStep.claiming;
 
   @override
   void initState() {
@@ -75,10 +93,16 @@ class _LegacyHotspotProvisioningPageState
           message: '没有“附近的 Wi-Fi 设备”权限，无法连接设备热点',
         );
       }
+      // Read the Host while the phone is still on the home network: once it
+      // moves to the device's hotspot the Local API is out of reach.
+      final target = await widget.loadTarget();
       final networks = await _provisioning.openAndScan();
+      final device = await _provisioning.identify();
       if (!mounted) return;
       final first = networks.firstOrNull;
       setState(() {
+        _target = target;
+        _device = device;
         _networks = networks;
         _selectedSsid = first?.ssid;
         _ssid.text = first?.ssid ?? '';
@@ -114,11 +138,16 @@ class _LegacyHotspotProvisioningPageState
       _error = null;
     });
     try {
-      await _provisioning.configureNetwork(
-        DeviceWifiCredentials(ssid: ssid, password: password),
+      final target = _target ?? await widget.loadTarget();
+      final commissioned = await _provisioning.commission(
+        target: target,
+        credentials: DeviceWifiCredentials(ssid: ssid, password: password),
       );
       _password.clear();
       await _provisioning.close();
+      if (!mounted) return;
+      setState(() => _step = _LegacyHotspotStep.claiming);
+      await widget.onCommissioned(commissioned.deviceId);
       if (!mounted) return;
       setState(() => _step = _LegacyHotspotStep.complete);
     } catch (error) {
@@ -171,7 +200,12 @@ class _LegacyHotspotProvisioningPageState
                         title: '连接设备配网热点',
                         body: '请在系统窗口中选择名称以 Xiaozhi- 开头的热点。',
                       ),
+                    _LegacyHotspotStep.claiming => const _Progress(
+                        title: '等待设备连上主机',
+                        body: '设备已经收到网络和主机身份，正在上线。它出现后会自动完成认领。',
+                      ),
                     _LegacyHotspotStep.credentials => _CredentialsForm(
+                        device: _device,
                         networks: _networks,
                         selectedSsid: _selectedSsid,
                         ssid: _ssid,
@@ -222,23 +256,25 @@ class _DevelopmentBoundaryCard extends StatelessWidget {
               Row(
                 children: [
                   Icon(
-                    Icons.science_outlined,
-                    color: Theme.of(context).colorScheme.error,
+                    Icons.add_link,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    '开发配网',
+                    '添加设备',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ],
               ),
               const SizedBox(height: 10),
               Text(
-                '当前兼容设备的热点没有产品身份证明。这一步只配置 Wi-Fi，不会把设备认领或添加到 ${host.displayName}。',
+                '这一步把家庭 Wi-Fi 和 ${host.displayName} 的身份一起交给设备：'
+                '设备之后只信任这台主机。你在这里的确认就是这次授权，'
+                '设备上线后会自动完成认领。',
               ),
               const SizedBox(height: 8),
               Text(
-                '请只在受控开发环境使用；家庭 Wi-Fi 凭据会发送给当前选中的开放配网热点。',
+                '手机会临时加入设备自己的热点，凭据只发给它，不会离开这条连接。',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
@@ -304,6 +340,7 @@ class _Progress extends StatelessWidget {
 
 class _CredentialsForm extends StatelessWidget {
   const _CredentialsForm({
+    required this.device,
     required this.networks,
     required this.selectedSsid,
     required this.ssid,
@@ -315,6 +352,9 @@ class _CredentialsForm extends StatelessWidget {
     required this.onReconnect,
   });
 
+  /// Which device this is about to set up, so the person can tell that the
+  /// hotspot they joined belongs to the thing in front of them.
+  final CommissionableDevice? device;
   final List<DeviceWifiNetwork> networks;
   final String? selectedSsid;
   final TextEditingController ssid;
@@ -333,6 +373,14 @@ class _CredentialsForm extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text('选择家庭 Wi-Fi', style: Theme.of(context).textTheme.titleLarge),
+              if (device case final found?) ...[
+                const SizedBox(height: 6),
+                Text(
+                  '正在设置：${found.board.isEmpty ? found.deviceKind : found.board} · ${found.deviceId}',
+                  key: const Key('commissionable-device'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
               const SizedBox(height: 8),
               Text(
                 networks.isEmpty ? '设备没有扫描到网络，可以手动输入。' : '以下网络由设备扫描，不是手机的扫描结果。',
@@ -427,20 +475,14 @@ class _Completed extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                '开发配网完成',
+                '设备已添加',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
               const SizedBox(height: 12),
-              const Text(
-                '设备已确认加入 Wi-Fi。当前固件没有返回可验证的设备身份，因此 App 还不能确认它是哪一台设备。',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
               Text(
-                '它尚未被认领，也尚未添加到 ${host.displayName}。',
+                '设备已加入家庭 Wi-Fi，认得 ${host.displayName}，并且已经完成认领。',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
               const SizedBox(height: 20),
               FilledButton(

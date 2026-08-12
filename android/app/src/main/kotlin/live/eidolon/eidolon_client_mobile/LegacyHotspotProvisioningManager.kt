@@ -37,6 +37,9 @@ class LegacyHotspotProvisioningManager(
         private const val TAG = "EidolonDeviceSetup"
         private const val AP_SSID_PREFIX = "Xiaozhi-"
         private const val ENDPOINT = "http://192.168.4.1"
+        // Commissioning is Eidolon's own contract and runs beside the vendor
+        // captive portal rather than inside it, so it answers on its own port.
+        private const val COMMISSIONING_ENDPOINT = "http://192.168.4.1:8266"
         private const val MAX_RESPONSE_BYTES = 64 * 1024
         private const val NETWORK_SELECTION_TIMEOUT_MS = 120_000
     }
@@ -272,14 +275,119 @@ class LegacyHotspotProvisioningManager(
         return strongestBySsid.values.sortedByDescending { it.getValue("signalStrength") as Int }
     }
 
+    /** What device is on the other end of this hotspot. */
+    fun identify(result: MethodChannel.Result) {
+        val network = boundNetwork
+        if (network == null) {
+            result.error(
+                "HOTSPOT_NOT_CONNECTED",
+                "Connect to the device hotspot before identifying it",
+                null,
+            )
+            return
+        }
+        executor.execute {
+            try {
+                val payload = JSONObject(
+                    request(
+                        network = network,
+                        path = "/identity",
+                        method = "GET",
+                        body = null,
+                        readTimeoutMs = 10_000,
+                        endpoint = COMMISSIONING_ENDPOINT,
+                    )
+                )
+                val identity = mapOf(
+                    "deviceId" to payload.getString("device_id"),
+                    "board" to payload.optString("board"),
+                    "deviceKind" to payload.optString("device_kind"),
+                )
+                mainHandler.post { result.success(identity) }
+            } catch (error: Exception) {
+                mainHandler.post { failure(result, error, "DEVICE_IDENTITY") }
+            }
+        }
+    }
+
+    /**
+     * Hand the device the Host it belongs to, and the network to reach it on.
+     *
+     * One act: a device that joined a network without knowing which Host to
+     * trust would have nothing it could safely talk to there.
+     */
+    fun commission(
+        hubId: String,
+        hubCertificate: String,
+        ssid: String?,
+        password: String?,
+        result: MethodChannel.Result,
+    ) {
+        val network = boundNetwork
+        if (network == null) {
+            result.error(
+                "HOTSPOT_NOT_CONNECTED",
+                "Connect to the device hotspot before commissioning it",
+                null,
+            )
+            return
+        }
+        executor.execute {
+            try {
+                val document = JSONObject()
+                    .put("schema_version", 1)
+                    .put("hub_id", hubId)
+                    .put("hub_certificate", hubCertificate)
+                if (ssid != null) {
+                    document.put(
+                        "wifi",
+                        JSONObject().put("ssid", ssid).put("password", password ?: ""),
+                    )
+                }
+                val response = request(
+                    network = network,
+                    path = "/commission",
+                    method = "POST",
+                    body = document.toString().toByteArray(StandardCharsets.UTF_8),
+                    // The device answers only once it has joined the network,
+                    // so this waits as long as the vendor Wi-Fi submission does.
+                    readTimeoutMs = 75_000,
+                    endpoint = COMMISSIONING_ENDPOINT,
+                )
+                val payload = JSONObject(response)
+                val commissioned = mapOf(
+                    "deviceId" to payload.getString("device_id"),
+                    "hubId" to payload.getString("hub_id"),
+                )
+                mainHandler.post { result.success(commissioned) }
+            } catch (error: Exception) {
+                mainHandler.post { failure(result, error, "COMMISSIONING") }
+            }
+        }
+    }
+
+    private fun failure(result: MethodChannel.Result, error: Exception, stage: String) {
+        val transport = error is IOException
+        result.error(
+            if (transport) "${stage}_UNREACHABLE" else "${stage}_REJECTED",
+            if (transport) {
+                "与设备的连接中断，请靠近设备后重试"
+            } else {
+                error.message ?: "设备拒绝了这次设置"
+            },
+            null,
+        )
+    }
+
     private fun request(
         network: Network,
         path: String,
         method: String,
         body: ByteArray?,
         readTimeoutMs: Int,
+        endpoint: String = ENDPOINT,
     ): String {
-        val connection = network.openConnection(URL(ENDPOINT + path)) as HttpURLConnection
+        val connection = network.openConnection(URL(endpoint + path)) as HttpURLConnection
         try {
             connection.requestMethod = method
             connection.connectTimeout = 5_000

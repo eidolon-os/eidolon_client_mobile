@@ -43,6 +43,9 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
       MaterialPageRoute(
         builder: (_) => LegacyHotspotProvisioningPage(
           host: widget.controller.host,
+          loadTarget: widget.controller.deviceOnboardingTarget,
+          onCommissioned: (deviceId) =>
+              widget.controller.claimCommissionedDevice(deviceId: deviceId),
           provisioning: widget.deviceProvisioning,
         ),
       ),

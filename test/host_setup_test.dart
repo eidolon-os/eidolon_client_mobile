@@ -351,7 +351,9 @@ void main() {
 
     expect(find.byKey(const Key('change-host-network')), findsOneWidget);
     expect(find.byKey(const Key('connect-local-host')), findsOneWidget);
-    expect(find.byKey(const Key('add-device-development')), findsOneWidget);
+    // Setting a device up hands it this Host's identity, which needs the
+    // Owner session the shell does not have.
+    expect(find.byKey(const Key('add-device-needs-session')), findsOneWidget);
     expect(
       find.byKey(const Key('manage-controllers-unavailable')),
       findsOneWidget,

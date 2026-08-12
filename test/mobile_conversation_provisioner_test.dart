@@ -316,6 +316,7 @@ final _target = DeviceOnboardingTarget(
     'https://eidolon.example/api/device-onboarding/v1/descriptor',
   ),
   tlsSpkiFingerprint: _fingerprint,
+  hubCertificate: '-----BEGIN CERTIFICATE-----\\nMIIBdummy\\n-----END CERTIFICATE-----\\n',
 );
 
 const _descriptor = {

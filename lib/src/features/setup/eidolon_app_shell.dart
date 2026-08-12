@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
 import '../device_setup/device_setup_ports.dart';
-import '../device_setup/legacy_hotspot_provisioning_page.dart';
 import '../host_setup/host_local_connection_page.dart';
 import 'commissioning_transport.dart';
 import 'change_network_page.dart';
@@ -304,19 +303,11 @@ class _HostDetailPage extends StatelessWidget {
             const SizedBox(height: 20),
             Text('设备', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            _ManagementEntry.available(
-              key: const Key('add-device-development'),
+            _ManagementEntry.unavailable(
+              key: const Key('add-device-needs-session'),
               icon: Icons.developer_board_outlined,
-              title: '设备配网',
-              subtitle: '开发入口：为兼容设备配置 Wi-Fi；暂不代表认领',
-              onTap: () => Navigator.of(context).push<void>(
-                MaterialPageRoute(
-                  builder: (_) => LegacyHotspotProvisioningPage(
-                    host: host,
-                    provisioning: deviceProvisioning,
-                  ),
-                ),
-              ),
+              title: '添加设备',
+              subtitle: '设置一台设备要把这台主机的身份交给它，请先打开我的 Eidolon',
             ),
             _ManagementEntry.unavailable(
               key: const Key('manage-controllers-unavailable'),

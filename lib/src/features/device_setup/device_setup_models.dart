@@ -84,16 +84,58 @@ class DeviceWifiCredentials {
   final String password;
 }
 
+/// A device answering on its own setup hotspot, before it belongs to anyone.
+class CommissionableDevice {
+  const CommissionableDevice({
+    required this.deviceId,
+    required this.board,
+    required this.deviceKind,
+  });
+
+  final String deviceId;
+  final String board;
+  final String deviceKind;
+
+  factory CommissionableDevice.fromPlatform(Map<Object?, Object?> value) =>
+      CommissionableDevice(
+        deviceId: _boundedPlatformString(value, 'deviceId', maxLength: 128),
+        board: _boundedPlatformString(value, 'board', maxLength: 96, minLength: 0),
+        deviceKind:
+            _boundedPlatformString(value, 'deviceKind', maxLength: 96, minLength: 0),
+      );
+}
+
+/// What the device confirmed it accepted. The identity is echoed back so the
+/// Owner's device can recognise the enrollment this device is about to create.
+class CommissionedDevice {
+  const CommissionedDevice({required this.deviceId, required this.hubId});
+
+  final String deviceId;
+  final String hubId;
+
+  factory CommissionedDevice.fromPlatform(Map<Object?, Object?> value) =>
+      CommissionedDevice(
+        deviceId: _boundedPlatformString(value, 'deviceId', maxLength: 128),
+        hubId: _boundedPlatformString(value, 'hubId', maxLength: 128),
+      );
+}
+
 class DeviceOnboardingTarget {
   const DeviceOnboardingTarget({
     required this.hubId,
     required this.descriptorUri,
     required this.tlsSpkiFingerprint,
+    required this.hubCertificate,
   });
 
   final String hubId;
   final Uri descriptorUri;
   final String tlsSpkiFingerprint;
+
+  /// The Host's own certificate, carried to a device being set up. A device
+  /// cannot obtain it from anywhere it could already trust, so the Owner
+  /// delivers it.
+  final String hubCertificate;
 
   factory DeviceOnboardingTarget.fromJson(Map<String, dynamic> value) {
     if (value['operation'] != 'local.device-onboarding-target' ||
@@ -108,10 +150,15 @@ class DeviceOnboardingTarget {
     if (!RegExp(r'^sha256:[A-Za-z0-9_-]{43}$').hasMatch(fingerprint)) {
       throw const FormatException('Local API 返回了无效的 Hub TLS 身份');
     }
+    final certificate = _boundedWireString(value, 'hub_certificate', 8192);
+    if (!certificate.startsWith('-----BEGIN CERTIFICATE-----')) {
+      throw const FormatException('Local API 返回了无效的 Hub 证书');
+    }
     return DeviceOnboardingTarget(
       hubId: _boundedWireString(value, 'hub_id', 128),
       descriptorUri: _checkpointHttpsUri(value, 'descriptor_uri'),
       tlsSpkiFingerprint: fingerprint,
+      hubCertificate: certificate,
     );
   }
 }
@@ -377,6 +424,9 @@ class DeviceSetupCheckpoint {
         'hub_id': onboardingTarget.hubId,
         'descriptor_uri': onboardingTarget.descriptorUri.toString(),
         'tls_spki_fingerprint': onboardingTarget.tlsSpkiFingerprint,
+        // Public material, and the checkpoint must be able to resume a setup
+        // without a second round-trip to the Host.
+        'hub_certificate': onboardingTarget.hubCertificate,
         'device_id': deviceId,
         'enrollment_id': enrollmentId,
         'companion_id': companionId,
@@ -418,6 +468,7 @@ class DeviceSetupCheckpoint {
         hubId: _boundedWireString(value, 'hub_id', 128),
         descriptorUri: _checkpointHttpsUri(value, 'descriptor_uri'),
         tlsSpkiFingerprint: _checkpointFingerprint(value),
+        hubCertificate: _boundedWireString(value, 'hub_certificate', 8192),
       ),
       deviceId: _optionalCheckpointString(value, 'device_id'),
       enrollmentId: _optionalCheckpointString(value, 'enrollment_id'),
@@ -433,6 +484,21 @@ class DeviceSetupCheckpoint {
                 ),
     );
   }
+}
+
+String _boundedPlatformString(
+  Map<Object?, Object?> value,
+  String key, {
+  int minLength = 1,
+  required int maxLength,
+}) {
+  final result = value[key];
+  if (result is! String ||
+      result.length < minLength ||
+      result.length > maxLength) {
+    throw FormatException('设备返回的 $key 无效');
+  }
+  return result;
 }
 
 String _requiredCheckpointString(Map<String, dynamic> value, String key) {

@@ -133,7 +133,8 @@ void main() {
         descriptorUri: Uri.parse('https://hub.local/onboarding'),
         tlsSpkiFingerprint:
             'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
-      ),
+  hubCertificate: '-----BEGIN CERTIFICATE-----\\nMIIBdummy\\n-----END CERTIFICATE-----\\n',
+),
       companionId: 'companion-1',
     );
 
@@ -171,7 +172,8 @@ void main() {
         descriptorUri: Uri.parse('https://hub.local/onboarding'),
         tlsSpkiFingerprint:
             'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
-      ),
+  hubCertificate: '-----BEGIN CERTIFICATE-----\\nMIIBdummy\\n-----END CERTIFICATE-----\\n',
+),
     );
     expect(failed.provisioningState, DeviceProvisioningState.networkConfigured);
     expect(failed.admissionState, DeviceAdmissionState.failed);
@@ -221,7 +223,8 @@ void main() {
         descriptorUri: Uri.parse('https://hub.local/onboarding'),
         tlsSpkiFingerprint:
             'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
-      ),
+  hubCertificate: '-----BEGIN CERTIFICATE-----\\nMIIBdummy\\n-----END CERTIFICATE-----\\n',
+),
     );
 
     expect(result.provisioningState, DeviceProvisioningState.failed);

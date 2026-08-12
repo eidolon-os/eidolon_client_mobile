@@ -16,9 +16,9 @@ class LegacyHotspotProvisioningException implements Exception {
   String toString() => message;
 }
 
-/// Android adapter for the current ESP32 `Xiaozhi-*` + `/scan` + `/submit`
-/// development contract. Product provisioning must use
-/// [DeviceProvisioningTransport] instead.
+/// Android adapter for a device's own setup hotspot: the vendor `Xiaozhi-*`
+/// portal supplies the scan, and Eidolon's commissioning endpoint beside it
+/// takes the Host this device is being given.
 class PlatformLegacyHotspotProvisioning
     implements LegacyHotspotProvisioningPort {
   const PlatformLegacyHotspotProvisioning();
@@ -57,18 +57,55 @@ class PlatformLegacyHotspotProvisioning
   }
 
   @override
-  Future<void> configureNetwork(DeviceWifiCredentials credentials) async {
+  Future<CommissionableDevice> identify() async {
     try {
       final response = await _channel.invokeMapMethod<Object?, Object?>(
-        'submitLegacyHotspotWifi',
-        {'ssid': credentials.ssid, 'password': credentials.password},
+        'identifyDeviceOnHotspot',
       );
-      if (response?['success'] != true) {
+      if (response == null) {
         throw const LegacyHotspotProvisioningException(
-          code: 'configuration_rejected',
-          message: '设备未确认网络配置成功',
+          code: 'invalid_response',
+          message: '设备没有回应它的身份',
         );
       }
+      return CommissionableDevice.fromPlatform(response);
+    } on PlatformException catch (error) {
+      throw LegacyHotspotProvisioningException(
+        code: error.code,
+        message: _platformMessage(error),
+      );
+    }
+  }
+
+  @override
+  Future<CommissionedDevice> commission({
+    required DeviceOnboardingTarget target,
+    DeviceWifiCredentials? credentials,
+  }) async {
+    try {
+      final response = await _channel.invokeMapMethod<Object?, Object?>(
+        'commissionDeviceOnHotspot',
+        {
+          'hubId': target.hubId,
+          'hubCertificate': target.hubCertificate,
+          if (credentials != null) 'ssid': credentials.ssid,
+          if (credentials != null) 'password': credentials.password,
+        },
+      );
+      if (response == null) {
+        throw const LegacyHotspotProvisioningException(
+          code: 'invalid_response',
+          message: '设备没有确认这次设置',
+        );
+      }
+      final commissioned = CommissionedDevice.fromPlatform(response);
+      if (commissioned.hubId != target.hubId) {
+        throw const LegacyHotspotProvisioningException(
+          code: 'commissioned_other_hub',
+          message: '设备确认的主机与本次设置不一致',
+        );
+      }
+      return commissioned;
     } on PlatformException catch (error) {
       throw LegacyHotspotProvisioningException(
         code: error.code,

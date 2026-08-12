@@ -248,6 +248,42 @@ class HostProductController extends ChangeNotifier {
     return _deviceAdmissionRepository.listPending();
   }
 
+  /// The Host this Owner's devices are being set up for.
+  Future<DeviceOnboardingTarget> deviceOnboardingTarget() =>
+      _deviceAdmissionRepository.fetchTarget();
+
+  /// Finish setting up a device that was just commissioned by this Controller.
+  ///
+  /// The person already confirmed this device when they handed it the Host, so
+  /// they are not asked to approve it a second time. The device still has to
+  /// boot, join the network and enroll, which is why this waits for it to
+  /// appear rather than assuming it already has.
+  Future<DeviceAdmissionProgress> claimCommissionedDevice({
+    required String deviceId,
+    Duration timeout = const Duration(seconds: 90),
+    Duration interval = const Duration(seconds: 3),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (true) {
+      final pending = await listPendingDeviceEnrollments();
+      final match = pending
+          .where((enrollment) => enrollment.deviceId == deviceId)
+          .firstOrNull;
+      if (match != null) {
+        return approveDeviceEnrollment(
+          requestId: 'device-commissioned-$deviceId',
+          deviceId: deviceId,
+        );
+      }
+      if (!DateTime.now().isBefore(deadline)) {
+        throw HostControllerAuthorizationException(
+          '设备还没有连上主机；等它上线后可以在设备页认领它',
+        );
+      }
+      await Future<void>.delayed(interval);
+    }
+  }
+
   Future<DeviceAdmissionProgress> approveDeviceEnrollment({
     required String requestId,
     required String deviceId,

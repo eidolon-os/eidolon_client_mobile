@@ -131,6 +131,15 @@ class MainActivity : FlutterActivity() {
                     call.argument<String>("password") ?: error("password is required"),
                     result,
                 )
+                "identifyDeviceOnHotspot" -> legacyHotspotProvisioning.identify(result)
+                "commissionDeviceOnHotspot" -> legacyHotspotProvisioning.commission(
+                    call.argument<String>("hubId") ?: error("hubId is required"),
+                    call.argument<String>("hubCertificate")
+                        ?: error("hubCertificate is required"),
+                    call.argument<String>("ssid"),
+                    call.argument<String>("password"),
+                    result,
+                )
                 "closeLegacyHotspotProvisioning" -> {
                     legacyHotspotProvisioning.close()
                     result.success(null)
