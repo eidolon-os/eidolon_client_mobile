@@ -106,40 +106,166 @@ void main() {
     expect(config.status, HubConfigStatus.waitingBinding);
     expect(requests, hasLength(2));
   });
+
+  test('an enrolled device hands off again after its pickup window passed',
+      () async {
+    // The window that was set when the owner approved this device says nothing
+    // about whether it may open another conversation today. Re-enrolling is
+    // what the Hub refuses, so the device must not try.
+    final expectedRevision = await canonicalManifestRevision(
+      mobileBodyManifest,
+    );
+    final security = _Security(
+      enrollmentId: _enrollmentId,
+      retrievalExpiresAt: DateTime.utc(2026, 8, 8),
+    );
+    final requests = <http.Request>[];
+    final provisioner = _provisioner(
+      security,
+      _hubClient(
+        security,
+        requests,
+        handoffResponse: _handoffResponse(expectedRevision),
+      ),
+    );
+
+    final config = await provisioner.provision();
+
+    expect(config.status, HubConfigStatus.active);
+    expect(security.cleared, 0);
+    expect(
+      requests.map((request) => '${request.method} ${request.url.path}'),
+      [
+        'GET /api/device-onboarding/v1/descriptor',
+        'POST /api/device-onboarding/v1/enrollments/$_enrollmentId/handoff',
+      ],
+    );
+  });
+
+  test('an enrollment the Hub no longer knows is discarded and replaced',
+      () async {
+    final expectedRevision = await canonicalManifestRevision(
+      mobileBodyManifest,
+    );
+    final security = _Security(enrollmentId: 'enrollment_stale_0123456789abc');
+    final requests = <http.Request>[];
+    final provisioner = _provisioner(
+      security,
+      _hubClient(
+        security,
+        requests,
+        handoffResponse: http.Response('enrollment not found', 404),
+        freshHandoffResponse: _handoffResponse(expectedRevision),
+      ),
+    );
+
+    final config = await provisioner.provision();
+
+    expect(config.status, HubConfigStatus.active);
+    expect(security.cleared, 1);
+    expect(
+      requests.map((request) => '${request.method} ${request.url.path}'),
+      [
+        'GET /api/device-onboarding/v1/descriptor',
+        'POST /api/device-onboarding/v1/enrollments/'
+            'enrollment_stale_0123456789abc/handoff',
+        'POST /api/device-onboarding/v1/enrollments',
+        'POST /api/device-onboarding/v1/enrollments/$_enrollmentId/handoff',
+      ],
+    );
+  });
+
+  test('a device the Host already holds asks the owner to remove it', () async {
+    final security = _Security();
+    final requests = <http.Request>[];
+    final provisioner = _provisioner(
+      security,
+      _hubClient(
+        security,
+        requests,
+        handoffResponse: http.Response('must not hand off', 500),
+        enrollmentResponse: http.Response('device is already enrolled', 409),
+      ),
+    );
+
+    await expectLater(
+      provisioner.provision(),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('请在管理端移除该设备'),
+        ),
+      ),
+    );
+  });
 }
+
+MobileConversationProvisioner _provisioner(
+  _Security security,
+  HubOnboardingClient hubClient,
+) =>
+    MobileConversationProvisioner(
+      loadTarget: () async => _target,
+      approveAdmission: ({
+        required requestId,
+        required deviceId,
+      }) async =>
+          DeviceAdmissionProgress(
+        requestId: requestId,
+        deviceId: deviceId,
+        ownerId: 'owner-1',
+        state: DeviceAdmissionState.ready,
+        completedStage: 'companion-attached',
+        companionId: 'companion-1',
+      ),
+      platform: _Platform(),
+      security: security,
+      hubClient: hubClient,
+      clock: () => DateTime.utc(2026, 8, 9),
+    );
 
 HubOnboardingClient _hubClient(
   _Security security,
   List<http.Request> requests, {
   required http.Response handoffResponse,
-}) =>
-    HubOnboardingClient(
-      security: security,
-      clientFactory: (fingerprint) {
-        expect(fingerprint, _fingerprint);
-        return MockClient((request) async {
-          requests.add(request);
-          if (request.method == 'GET') {
-            return http.Response(jsonEncode(_descriptor), 200);
-          }
-          final body = jsonDecode(request.body) as Map<String, dynamic>;
-          if (body['operation'] == 'device.enrollment') {
-            return http.Response(
-              jsonEncode({
-                'operation': 'device.enrollment-received',
-                'request_id': 'mobile-enroll-1',
-                'enrollment_id': _enrollmentId,
-                'device_id': 'mobile-android-test',
-                'lifecycle_state': 'pending-approval',
-                'retrieval_expires_at_ms': 1893456000000,
-              }),
-              200,
-            );
-          }
-          return handoffResponse;
-        });
-      },
-    );
+  http.Response? freshHandoffResponse,
+  http.Response? enrollmentResponse,
+}) {
+  var enrolled = false;
+  return HubOnboardingClient(
+    security: security,
+    clientFactory: (fingerprint) {
+      expect(fingerprint, _fingerprint);
+      return MockClient((request) async {
+        requests.add(request);
+        if (request.method == 'GET') {
+          return http.Response(jsonEncode(_descriptor), 200);
+        }
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        if (body['operation'] == 'device.enrollment') {
+          enrolled = true;
+          return enrollmentResponse ??
+              http.Response(
+                jsonEncode({
+                  'operation': 'device.enrollment-received',
+                  'request_id': 'mobile-enroll-1',
+                  'enrollment_id': _enrollmentId,
+                  'device_id': 'mobile-android-test',
+                  'lifecycle_state': 'pending-approval',
+                  'retrieval_expires_at_ms': 1893456000000,
+                }),
+                200,
+              );
+        }
+        if (enrolled && freshHandoffResponse != null) {
+          return freshHandoffResponse;
+        }
+        return handoffResponse;
+      });
+    },
+  );
+}
 
 http.Response _handoffResponse(String manifestRevision) {
   final binding = utf8.encode(
@@ -212,21 +338,36 @@ class _Platform extends PlatformBridge {
 }
 
 class _Security implements MobileBodySecurity {
+  _Security({this.enrollmentId, this.retrievalExpiresAt});
+
+  String? enrollmentId;
+  DateTime? retrievalExpiresAt;
+  int cleared = 0;
+
   @override
   Future<DeviceEnrollmentMaterial> loadOrCreateMaterial(String hubId) async =>
-      const DeviceEnrollmentMaterial(
+      DeviceEnrollmentMaterial(
         enrollmentRequestId: 'mobile-enroll-1',
         handoffRequestId: 'mobile-handoff-1',
         retrievalToken: _retrievalToken,
+        enrollmentId: enrollmentId,
+        retrievalExpiresAt: retrievalExpiresAt,
       );
 
   @override
-  Future<void> clearMaterial(String hubId) async {}
+  Future<void> clearMaterial(String hubId) async {
+    cleared += 1;
+    enrollmentId = null;
+    retrievalExpiresAt = null;
+  }
 
   @override
   Future<void> saveEnrollmentReceipt({
     required String hubId,
     required String enrollmentId,
     required DateTime retrievalExpiresAt,
-  }) async {}
+  }) async {
+    this.enrollmentId = enrollmentId;
+    this.retrievalExpiresAt = retrievalExpiresAt;
+  }
 }

@@ -66,23 +66,36 @@ class MobileConversationProvisioner implements ConversationProvisioner {
     _lastTarget = target;
     final descriptor = await _hubClient.fetchDescriptor(target);
     final identity = await _platform.getDeviceIdentity();
-    var material = await _security.loadOrCreateMaterial(target.hubId);
+    final material = await _security.loadOrCreateMaterial(target.hubId);
 
-    if (_isExpired(material)) {
+    try {
+      return await _admitAndHandoff(target, descriptor, material, identity);
+    } on HubOnboardingRequestException catch (error) {
+      if (!_enrollmentIsGone(error)) rethrow;
+      // The Hub no longer recognises this enrollment — the pickup window
+      // closed before anyone approved it, or the record is gone. Only the
+      // Hub saying so justifies discarding local material; a local clock
+      // reading "expired" does not, because an approved device stays in
+      // service and re-enrolling one is refused.
       await _security.clearMaterial(target.hubId);
-      material = await _security.loadOrCreateMaterial(target.hubId);
+      final fresh = await _security.loadOrCreateMaterial(target.hubId);
+      return _admitAndHandoff(target, descriptor, fresh, identity);
     }
+  }
 
+  Future<HubConfig> _admitAndHandoff(
+    VerifiedHubTarget target,
+    HubOnboardingDescriptor descriptor,
+    DeviceEnrollmentMaterial material,
+    DeviceIdentity identity,
+  ) async {
     var enrollmentId = material.enrollmentId;
     if (enrollmentId == null) {
-      final receipt = await _hubClient.enroll(
+      final receipt = await _enroll(
         target: target,
         descriptor: descriptor,
         material: material,
         deviceId: identity.deviceId,
-        displayName: 'Eidolon Mobile',
-        deviceKind: 'mobile-android',
-        manifest: mobileBodyManifest,
       );
       enrollmentId = receipt.enrollmentId;
     }
@@ -143,12 +156,34 @@ class MobileConversationProvisioner implements ConversationProvisioner {
     }
   }
 
-  bool _isExpired(DeviceEnrollmentMaterial material) {
-    final expiresAt = material.retrievalExpiresAt;
-    return material.enrollmentId != null &&
-        expiresAt != null &&
-        !expiresAt.isAfter(_clock().toUtc());
+  Future<HubEnrollmentReceipt> _enroll({
+    required VerifiedHubTarget target,
+    required HubOnboardingDescriptor descriptor,
+    required DeviceEnrollmentMaterial material,
+    required String deviceId,
+  }) async {
+    try {
+      return await _hubClient.enroll(
+        target: target,
+        descriptor: descriptor,
+        material: material,
+        deviceId: deviceId,
+        displayName: 'Eidolon Mobile',
+        deviceKind: 'mobile-android',
+        manifest: mobileBodyManifest,
+      );
+    } on HubOnboardingRequestException catch (error) {
+      if (error.statusCode != 409) rethrow;
+      // The Host still holds this device, but this phone no longer has the
+      // material that proves it is that device. Only the owner can resolve
+      // that, by removing the device so it can be added again.
+      throw StateError('这台设备已在 Host 上登记，但本机凭据已失效；请在管理端移除该设备后重新添加');
+    }
   }
+
+  bool _enrollmentIsGone(HubOnboardingRequestException error) =>
+      error.operation == 'Device handoff' &&
+      (error.statusCode == 404 || error.statusCode == 410);
 
   Future<String> _approvalRequestId({
     required String hubId,
