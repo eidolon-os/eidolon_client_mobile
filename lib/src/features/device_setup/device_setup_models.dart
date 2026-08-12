@@ -231,6 +231,55 @@ class DeviceAdmissionProgress {
   }
 }
 
+enum DeviceRemovalState { revoked, removed, failed }
+
+/// What removing a device accomplished on the Host.
+///
+/// [DeviceRemovalState.revoked] means the grant is gone — the device is off —
+/// but the Host still lists it, so the removal is worth retrying.
+class DeviceRemovalProgress {
+  const DeviceRemovalProgress({
+    required this.requestId,
+    required this.deviceId,
+    required this.ownerId,
+    required this.state,
+    required this.completedStage,
+    this.retryable = false,
+  });
+
+  final String requestId;
+  final String deviceId;
+  final String ownerId;
+  final DeviceRemovalState state;
+  final String completedStage;
+  final bool retryable;
+
+  factory DeviceRemovalProgress.fromJson(Map<String, dynamic> value) {
+    if (value['operation'] != 'local.device-removal-progress' ||
+        value['contract_version'] != '1') {
+      throw const FormatException('Local API 返回了无效的设备移除状态');
+    }
+    final state = switch (value['state']) {
+      'revoked' => DeviceRemovalState.revoked,
+      'removed' => DeviceRemovalState.removed,
+      'failed' => DeviceRemovalState.failed,
+      _ => throw const FormatException('Local API 返回了未知的设备移除状态'),
+    };
+    final retryable = value['retryable'];
+    if (retryable is! bool) {
+      throw const FormatException('Local API 返回了无效的设备重试状态');
+    }
+    return DeviceRemovalProgress(
+      requestId: _boundedWireString(value, 'request_id', 128),
+      deviceId: _boundedWireString(value, 'device_id', 128),
+      ownerId: _boundedWireString(value, 'owner_id', 64),
+      state: state,
+      completedStage: _boundedWireString(value, 'completed_stage', 64),
+      retryable: retryable,
+    );
+  }
+}
+
 class DeviceSetupFailure {
   const DeviceSetupFailure({
     required this.stage,

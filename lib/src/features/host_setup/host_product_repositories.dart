@@ -50,6 +50,19 @@ class HostDevicesRepository {
           accessToken: accessToken,
         ),
       );
+
+  Future<DeviceRemovalProgress> remove({
+    required String requestId,
+    required String deviceId,
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.removeDevice(
+          baseUrl,
+          accessToken: accessToken,
+          requestId: requestId,
+          deviceId: deviceId,
+        ),
+      );
 }
 
 class HostServicesRepository {

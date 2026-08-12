@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../device_setup/device_setup_models.dart';
 import '../device_setup/device_setup_ports.dart';
 import '../device_setup/device_admission_page.dart';
 import '../device_setup/legacy_hotspot_provisioning_page.dart';
@@ -116,7 +117,11 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
           ] else ...[
             const SizedBox(height: 16),
             ...inventory.devices.map(
-              (device) => _MountedDeviceCard(device: device),
+              (device) => _MountedDeviceCard(
+                device: device,
+                onRemove: (deviceId) =>
+                    controller.removeDevice(deviceId: deviceId),
+              ),
             ),
           ],
           const SizedBox(height: 24),
@@ -168,9 +173,10 @@ class _InventoryMeaningCard extends StatelessWidget {
 }
 
 class _MountedDeviceCard extends StatelessWidget {
-  const _MountedDeviceCard({required this.device});
+  const _MountedDeviceCard({required this.device, required this.onRemove});
 
   final MountedDevice device;
+  final Future<DeviceRemovalProgress> Function(String deviceId) onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -203,7 +209,10 @@ class _MountedDeviceCard extends StatelessWidget {
         trailing: Chip(label: Text(label)),
         onTap: () => Navigator.of(context).push<void>(
           MaterialPageRoute(
-            builder: (_) => MountedDeviceDetailPage(device: device),
+            builder: (_) => MountedDeviceDetailPage(
+              device: device,
+              onRemove: onRemove,
+            ),
           ),
         ),
       ),
@@ -211,13 +220,77 @@ class _MountedDeviceCard extends StatelessWidget {
   }
 }
 
-class MountedDeviceDetailPage extends StatelessWidget {
-  const MountedDeviceDetailPage({super.key, required this.device});
+class MountedDeviceDetailPage extends StatefulWidget {
+  const MountedDeviceDetailPage({
+    super.key,
+    required this.device,
+    required this.onRemove,
+  });
 
   final MountedDevice device;
+  final Future<DeviceRemovalProgress> Function(String deviceId) onRemove;
+
+  @override
+  State<MountedDeviceDetailPage> createState() =>
+      _MountedDeviceDetailPageState();
+}
+
+class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
+  bool _removing = false;
+  String? _notice;
+
+  Future<void> _confirmRemoval() async {
+    final device = widget.device;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('confirm-device-removal'),
+        title: const Text('移除这台设备？'),
+        content: const Text(
+          '主机会撤销它的授权并从当前 Owner 卸载。这台设备会立即失去访问，'
+          '之后需要重新认领才能再次使用。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const Key('confirm-device-removal-action'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('移除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _removing = true;
+      _notice = null;
+    });
+    try {
+      final progress = await widget.onRemove(device.deviceId);
+      if (!mounted) return;
+      if (progress.state == DeviceRemovalState.removed) {
+        Navigator.of(context).pop();
+        return;
+      }
+      setState(() {
+        _notice = progress.state == DeviceRemovalState.revoked
+            ? '授权已撤销，设备已经无法访问；卸载尚未完成，可以再试一次。'
+            : '移除未完成，可以再试一次。';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _notice = '移除未完成：$error');
+    } finally {
+      if (mounted) setState(() => _removing = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final device = widget.device;
     final stateLabel = switch (device.admissionState) {
       MountedDeviceAdmissionState.ready => '已接入',
       MountedDeviceAdmissionState.mounted => '待关联 Companion',
@@ -265,6 +338,36 @@ class MountedDeviceDetailPage extends StatelessWidget {
           const SizedBox(height: 12),
           const Text(
             '这里展示主机权威确认的挂载关系，不代表设备当前在线。在线状态需要独立的运行时遥测投影。',
+          ),
+          const SizedBox(height: 24),
+          if (_notice case final notice?) ...[
+            Card(
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(notice, key: const Key('device-removal-notice')),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          OutlinedButton.icon(
+            key: const Key('remove-mounted-device'),
+            onPressed: _removing ? null : _confirmRemoval,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            icon: _removing
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.link_off),
+            label: const Text('移除设备'),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '移除后这台设备立即失去访问。它也是设备重新添加的前提：主机不会为已经持有的设备重复登记。',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
       ),

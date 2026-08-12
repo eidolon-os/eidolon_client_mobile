@@ -258,6 +258,27 @@ class LocalApiClient {
     );
   }
 
+  Future<DeviceRemovalProgress> removeDevice(
+    String baseUrl, {
+    required String accessToken,
+    required String requestId,
+    required String deviceId,
+  }) async {
+    final response = await _httpClient
+        .post(
+          _deviceRemovalUri(baseUrl, deviceId),
+          headers: _authorizedHeaders(accessToken, json: true),
+          body: jsonEncode({
+            'contract_version': '1',
+            'request_id': _boundedId(requestId, 'request ID'),
+          }),
+        )
+        .timeout(timeout);
+    return DeviceRemovalProgress.fromJson(
+      _decodeResponse(response, operation: 'Device removal'),
+    );
+  }
+
   Future<HostServiceInventory> fetchHostServices(
     String baseUrl, {
     required String accessToken,
@@ -312,6 +333,14 @@ class LocalApiClient {
         normalized,
         operation,
       ],
+    );
+  }
+
+  static Uri _deviceRemovalUri(String baseUrl, String deviceId) {
+    final normalized = _boundedId(deviceId, 'device ID');
+    final base = parseBaseUri(baseUrl);
+    return base.replace(
+      pathSegments: ['api', 'local', 'v1', 'devices', normalized, 'removal'],
     );
   }
 
