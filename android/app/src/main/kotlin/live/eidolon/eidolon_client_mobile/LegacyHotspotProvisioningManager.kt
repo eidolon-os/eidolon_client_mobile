@@ -277,7 +277,7 @@ class LegacyHotspotProvisioningManager(
 
     /** What device is on the other end of this hotspot. */
     fun identify(result: MethodChannel.Result) {
-        val network = boundNetwork
+        val network = synchronized(lock) { activeNetwork }
         if (network == null) {
             result.error(
                 "HOTSPOT_NOT_CONNECTED",
@@ -323,7 +323,7 @@ class LegacyHotspotProvisioningManager(
         password: String?,
         result: MethodChannel.Result,
     ) {
-        val network = boundNetwork
+        val network = synchronized(lock) { activeNetwork }
         if (network == null) {
             result.error(
                 "HOTSPOT_NOT_CONNECTED",
