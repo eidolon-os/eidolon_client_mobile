@@ -9,7 +9,6 @@ Map<String, dynamic> _inventory() => {
           'device_id': 'device-1',
           'admission_state': 'ready',
           'mount': {
-            'state': 'active',
             'revision': 2,
             'attached_companion_id': 'companion-1',
             'updated_at': '2026-08-09T08:10:00Z',
@@ -49,6 +48,32 @@ void main() {
     final expanded = _inventory()..['owner_id'] = 'must-not-be-exposed';
     expect(
       () => MountedDeviceInventory.fromJson(expanded),
+      throwsFormatException,
+    );
+
+    final withMountState = _inventory();
+    final stateful =
+        (withMountState['devices'] as List).single as Map<String, dynamic>;
+    stateful['mount'] = {
+      ...(stateful['mount'] as Map<String, dynamic>),
+      'state': 'active',
+    };
+    expect(
+      () => MountedDeviceInventory.fromJson(withMountState),
+      throwsFormatException,
+    );
+  });
+
+  test('rejects the inactive state removal used to leave in the list', () {
+    final removed = _inventory();
+    final device = (removed['devices'] as List).single as Map<String, dynamic>;
+    device['admission_state'] = 'inactive';
+    device['mount'] = {
+      ...(device['mount'] as Map<String, dynamic>),
+      'attached_companion_id': null,
+    };
+    expect(
+      () => MountedDeviceInventory.fromJson(removed),
       throwsFormatException,
     );
   });

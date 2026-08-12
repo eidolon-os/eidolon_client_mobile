@@ -1,20 +1,17 @@
-enum MountedDeviceAdmissionState { mounted, ready, inactive }
+enum MountedDeviceAdmissionState { mounted, ready }
 
 class MountedDeviceMount {
   const MountedDeviceMount({
-    required this.active,
     required this.revision,
     required this.attachedCompanionId,
     required this.updatedAt,
   });
 
   factory MountedDeviceMount.fromJson(Map<String, dynamic> value) {
-    final rawState = value['state'];
     final revision = value['revision'];
     final companionId = value['attached_companion_id'];
     final rawUpdatedAt = value['updated_at'];
-    if (value.length != 4 ||
-        (rawState != 'active' && rawState != 'inactive') ||
+    if (value.length != 3 ||
         revision is! int ||
         revision < 1 ||
         (companionId != null &&
@@ -29,14 +26,12 @@ class MountedDeviceMount {
       throw const FormatException('设备挂载时间缺少时区');
     }
     return MountedDeviceMount(
-      active: rawState == 'active',
       revision: revision,
       attachedCompanionId: companionId as String?,
       updatedAt: updatedAt,
     );
   }
 
-  final bool active;
   final int revision;
   final String? attachedCompanionId;
   final DateTime updatedAt;
@@ -64,15 +59,11 @@ class MountedDevice {
     final state = switch (rawState) {
       'mounted' => MountedDeviceAdmissionState.mounted,
       'ready' => MountedDeviceAdmissionState.ready,
-      'inactive' => MountedDeviceAdmissionState.inactive,
       _ => throw const FormatException('Local API 返回了未知的设备状态'),
     };
     final mount = MountedDeviceMount.fromJson(
       Map<String, dynamic>.from(rawMount),
     );
-    if ((state == MountedDeviceAdmissionState.inactive) == mount.active) {
-      throw const FormatException('设备状态与挂载状态不一致');
-    }
     if (state == MountedDeviceAdmissionState.ready &&
         mount.attachedCompanionId == null) {
       throw const FormatException('Ready 设备没有关联 Companion');

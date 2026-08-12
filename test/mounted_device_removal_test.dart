@@ -8,7 +8,6 @@ MountedDevice _device() => MountedDevice.fromJson({
       'device_id': 'mobile-android-0123456789abcdef',
       'admission_state': 'ready',
       'mount': {
-        'state': 'active',
         'revision': 2,
         'attached_companion_id': 'companion-1',
         'updated_at': '2026-08-12T08:10:00Z',

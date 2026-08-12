@@ -193,10 +193,6 @@ class _MountedDeviceCard extends StatelessWidget {
           '待关联 Companion',
           Theme.of(context).colorScheme.tertiary,
         ),
-      MountedDeviceAdmissionState.inactive => (
-          '已停用',
-          Theme.of(context).colorScheme.outline,
-        ),
     };
     return Card(
       child: ListTile(
@@ -297,7 +293,6 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
     final stateLabel = switch (device.admissionState) {
       MountedDeviceAdmissionState.ready => '已接入',
       MountedDeviceAdmissionState.mounted => '待关联 Companion',
-      MountedDeviceAdmissionState.inactive => '已停用',
     };
     final companionId = device.mount.attachedCompanionId;
     return Scaffold(

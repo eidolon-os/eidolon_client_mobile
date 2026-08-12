@@ -166,7 +166,6 @@ Map<String, dynamic> _deviceInventory({bool withReadyDevice = false}) => {
                 'device_id': 'device-waveshare-1',
                 'admission_state': 'ready',
                 'mount': {
-                  'state': 'active',
                   'revision': 2,
                   'attached_companion_id': 'companion_primary',
                   'updated_at': '2026-08-09T08:10:00Z',

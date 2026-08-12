@@ -114,8 +114,10 @@ Mobile 的 Devices 页应复用这些 read model 和前向恢复语义，但不�
 当前已落地的第一段日常读模型是 Controller-authenticated
 `GET /api/local/v1/devices`，响应明确声明 `coverage=mounted-devices`。Local API
 从 Controller principal 推导 Owner，经 Admin 的独立 loopback service credential 只读取
-Kernel mount，并剔除 `owner_id`、request ID 和 fingerprint。Mobile 因此可以安全展示
-已挂载设备、Companion attachment、revision 和 active/inactive，但不得据此推断设备在线。
+Kernel mount，并剔除 `owner_id`、request ID 和 fingerprint。列表只包含活跃挂载：
+被移除的设备在 Kernel 留下的非活跃挂载行是下次接入所需的 revision 来源，不是 Owner 的
+成员关系。Mobile 因此可以安全展示已挂载设备、Companion attachment 和 revision，
+但不得据此推断设备在线。
 Hub pending enrollment 和 directory metadata 不会被伪装成该列表的一部分；它们要等安全
 pairing/admission proof 契约落地后再合并为下一版产品投影。
 
