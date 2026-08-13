@@ -260,29 +260,19 @@ class HostProductController extends ChangeNotifier {
   /// appear rather than assuming it already has.
   Future<DeviceAdmissionProgress> claimCommissionedDevice({
     required String deviceId,
-    Duration timeout = const Duration(seconds: 90),
-    Duration interval = const Duration(seconds: 3),
-  }) async {
-    final deadline = DateTime.now().add(timeout);
-    while (true) {
-      final pending = await listPendingDeviceEnrollments();
-      final match = pending
-          .where((enrollment) => enrollment.deviceId == deviceId)
-          .firstOrNull;
-      if (match != null) {
-        return approveDeviceEnrollment(
+    Duration timeout = commissionedClaimTimeout,
+    Duration interval = commissionedClaimInterval,
+  }) =>
+      claimWhenBothEndsAreBack(
+        deviceId: deviceId,
+        listPending: listPendingDeviceEnrollments,
+        approve: () => approveDeviceEnrollment(
           requestId: 'device-commissioned-$deviceId',
           deviceId: deviceId,
-        );
-      }
-      if (!DateTime.now().isBefore(deadline)) {
-        throw HostControllerAuthorizationException(
-          '设备还没有连上主机；等它上线后可以在设备页认领它',
-        );
-      }
-      await Future<void>.delayed(interval);
-    }
-  }
+        ),
+        timeout: timeout,
+        interval: interval,
+      );
 
   Future<DeviceAdmissionProgress> approveDeviceEnrollment({
     required String requestId,
@@ -500,3 +490,74 @@ class HostProductController extends ChangeNotifier {
     super.dispose();
   }
 }
+
+/// How long a just-commissioned device is given to finish arriving.
+///
+/// It has to leave the setup access point, join the network it was given (up to
+/// 25s before the firmware gives up on it), find the Host and enroll — while
+/// the phone is separately finding its own way back onto the home network. This
+/// is the sum of two waits, neither of which this side controls, so it is set
+/// well above what either takes rather than at the edge of what both do.
+const commissionedClaimTimeout = Duration(seconds: 150);
+const commissionedClaimInterval = Duration(seconds: 3);
+
+/// Wait for a commissioned device to reach the Host, then claim it.
+///
+/// Both ends are still finding their way back when this starts. The phone has
+/// just let go of the device's access point, and Android does not hand the home
+/// network back in the same breath — the first call after that handover reaches
+/// nothing at all. Treating that as a failed setup is what reported success as
+/// failure: the device was already commissioned and about to enroll.
+///
+/// So an unreachable Host is one of the things being waited for, alongside a
+/// device that has not enrolled yet. What is *not* waited on is a Host that
+/// answered: a refusal is something it decided, and it gets to say so at once.
+@visibleForTesting
+Future<DeviceAdmissionProgress> claimWhenBothEndsAreBack({
+  required String deviceId,
+  required Future<List<PendingDeviceEnrollment>> Function() listPending,
+  required Future<DeviceAdmissionProgress> Function() approve,
+  Duration timeout = commissionedClaimTimeout,
+  Duration interval = commissionedClaimInterval,
+  DateTime Function() clock = DateTime.now,
+  Future<void> Function(Duration) sleep = _sleep,
+}) async {
+  final deadline = clock().add(timeout);
+  // Which of the two waits is still outstanding, because they are different
+  // things to tell the person.
+  var hostOutOfReach = false;
+  while (true) {
+    try {
+      final pending = await listPending();
+      hostOutOfReach = false;
+      if (pending.any((enrollment) => enrollment.deviceId == deviceId)) {
+        return approve();
+      }
+    } on PinnedHttpException catch (error) {
+      if (!_hostMayNotBeBackYet(error)) rethrow;
+      hostOutOfReach = true;
+    }
+    if (!clock().isBefore(deadline)) {
+      throw HostControllerAuthorizationException(
+        hostOutOfReach
+            ? '手机还没有回到家庭 Wi-Fi，暂时联系不上主机；'
+                '设备已经配好，回到设备页就能认领它'
+            : '设备还没有连上主机；等它上线后可以在设备页认领它',
+      );
+    }
+    await sleep(interval);
+  }
+}
+
+Future<void> _sleep(Duration duration) => Future<void>.delayed(duration);
+
+/// Whether this failure is the transport being absent rather than the Host
+/// having an answer. A pinned channel that could not be opened, timed out, or
+/// broke mid-flight never reached the Host; anything else did.
+bool _hostMayNotBeBackYet(PinnedHttpException error) => switch (error.kind) {
+      PinnedHttpFailureKind.unreachable ||
+      PinnedHttpFailureKind.timeout ||
+      PinnedHttpFailureKind.io =>
+        true,
+      _ => false,
+    };
