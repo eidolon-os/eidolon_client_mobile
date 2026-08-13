@@ -15,13 +15,21 @@ import 'workspace_models.dart';
 import 'workspace_runtime_models.dart';
 
 class LocalApiRequestException implements Exception {
-  const LocalApiRequestException(this.message, {this.statusCode});
+  const LocalApiRequestException(this.message, {this.statusCode, this.reason});
 
   final String message;
   final int? statusCode;
 
+  /// What the Host said when it refused, when it said anything.
+  ///
+  /// A status code alone cannot separate "another Owner already holds this
+  /// device" from "an authority behind the Host refused it", so a screen keyed
+  /// on the code alone has to offer one guess for both. The Host knows which it
+  /// was, and grades its answer before sending it; this is that answer.
+  final String? reason;
+
   @override
-  String toString() => message;
+  String toString() => reason == null ? message : '$message：$reason';
 }
 
 class LocalApiClient {
@@ -390,6 +398,7 @@ class LocalApiClient {
       throw LocalApiRequestException(
         '$operation 返回 HTTP ${response.statusCode}',
         statusCode: response.statusCode,
+        reason: _refusalReason(response),
       );
     }
     final decoded = jsonDecode(utf8.decode(response.bodyBytes));
@@ -397,6 +406,25 @@ class LocalApiClient {
       throw FormatException('Local API $operation 不是 JSON object');
     }
     return decoded;
+  }
+
+  /// The Host's own account of a refusal, when it sent one.
+  ///
+  /// Dropping this is how a Host that knew exactly why it refused could only
+  /// ever be shown as a status code. Only a plain string is taken: request
+  /// validation answers with a list of field errors, which is for a developer
+  /// reading the Host, not for a screen.
+  static String? _refusalReason(http.Response response) {
+    try {
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decoded is! Map<String, dynamic>) return null;
+      final detail = decoded['detail'];
+      if (detail is! String) return null;
+      final reason = detail.trim();
+      return reason.isEmpty || reason.length > 300 ? null : reason;
+    } on FormatException {
+      return null;
+    }
   }
 
   void close() {

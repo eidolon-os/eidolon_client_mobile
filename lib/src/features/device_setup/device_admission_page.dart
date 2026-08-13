@@ -98,8 +98,14 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage> {
     return 'device-approval-$suffix';
   }
 
+  /// Prefer whatever the Host said over this screen's guess at it.
+  ///
+  /// Guessing from the status code alone is how a refusal the Host could
+  /// explain became "刷新列表" — advice that never helps when the refusal is not
+  /// about the list. When the Host names a reason, that reason is the message.
   String _message(Object error) => switch (error) {
         HostControllerAuthorizationException() => error.message,
+        LocalApiRequestException(reason: final reason?) => '主机拒绝了这次认领：$reason',
         LocalApiRequestException(statusCode: 404) => '当前主机尚未提供设备认领接口，请先更新主机。',
         LocalApiRequestException(statusCode: 409) =>
           '设备状态已变化。请刷新列表，确认设备尚未被其他 Owner 认领。',
