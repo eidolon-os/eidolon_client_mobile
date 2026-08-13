@@ -105,7 +105,7 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage> {
   /// about the list. When the Host names a reason, that reason is the message.
   String _message(Object error) => switch (error) {
         HostControllerAuthorizationException() => error.message,
-        LocalApiRequestException(reason: final reason?) => '主机拒绝了这次认领：$reason',
+        LocalApiRequestException(reason: final reason?) => reason,
         LocalApiRequestException(statusCode: 404) => '当前主机尚未提供设备认领接口，请先更新主机。',
         LocalApiRequestException(statusCode: 409) =>
           '设备状态已变化。请刷新列表，确认设备尚未被其他 Owner 认领。',

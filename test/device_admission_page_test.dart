@@ -94,7 +94,7 @@ void main() {
               throw const LocalApiRequestException(
             'Device admission 返回 HTTP 409',
             statusCode: 409,
-            reason: 'the Host no longer holds this device',
+            reason: '主机上已经没有这台设备了。',
           ),
         ),
       ),
@@ -108,7 +108,7 @@ void main() {
     final error = tester.widget<Text>(
       find.byKey(const Key('device-admission-error')),
     );
-    expect(error.data, contains('the Host no longer holds this device'));
+    expect(error.data, contains('主机上已经没有这台设备了'));
     expect(error.data, isNot(contains('请刷新列表')));
   });
 }
