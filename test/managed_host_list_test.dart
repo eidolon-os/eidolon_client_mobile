@@ -5,9 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 const _liveId = 'ehost-980046b6704894461dfb';
 const _staleId = 'ehost-c8217384281c23284cc9';
-final _now = DateTime.utc(2026, 8, 13, 14);
 
-ManagedHost _host(String hostId, {DateTime? lastConnectedAt}) => ManagedHost(
+ManagedHost _host(String hostId) => ManagedHost(
       hostId: hostId,
       hostPublicKey: 'p' * 43,
       hostFingerprint: 'sha256:${'f' * 43}',
@@ -15,7 +14,6 @@ ManagedHost _host(String hostId, {DateTime? lastConnectedAt}) => ManagedHost(
       controllerId: 'ectrl-0123456789abcdefabcd',
       displayName: 'Eidolon-${hostId.substring(hostId.length - 6)}',
       claimedAt: DateTime.utc(2026, 8, 9),
-      lastConnectedAt: lastConnectedAt,
     );
 
 /// The entry sits at the bottom of a long detail page, which a ListView has not
@@ -33,34 +31,7 @@ Future<void> _tapForget(WidgetTester tester) async {
 }
 
 void main() {
-  group('what the list says about a saved Host', () {
-    test('separates the one still answering from what a reinstall left', () {
-      // Reinstalling a Host mints it a new identity, so one machine can leave
-      // several entries behind. Their names come from those identities, so they
-      // read almost identically — this line is what tells them apart.
-      final live = _host(_liveId, lastConnectedAt: _now.subtract(
-        const Duration(minutes: 5),
-      ));
-      final lastWeek = _host(_staleId, lastConnectedAt: DateTime.utc(2026, 8, 9));
-      final longGone = _host(_staleId, lastConnectedAt: DateTime.utc(2026, 6, 9));
-
-      expect(hostReachabilityLine(live, now: _now), '刚刚连接过');
-      expect(hostReachabilityLine(lastWeek, now: _now), '4 天前连接过');
-      expect(hostReachabilityLine(longGone, now: _now), '上次连接 2026-06-09');
-    });
-
-    test('says there is no record rather than implying the Host is gone', () {
-      // Entries saved before the App kept this record were all reachable once,
-      // or they could not have been claimed. Claiming otherwise would be a
-      // guess dressed as a fact.
-      final line = hostReachabilityLine(_host(_staleId), now: _now);
-
-      expect(line, contains('尚未记录过连接'));
-      expect(line, contains('2026-08-09'));
-    });
-  });
-
-  group('forgetting a Host on this phone', () {
+  group('no longer managing a Host from this phone', () {
     testWidgets('needs an explicit confirmation and then leaves the page',
         (tester) async {
       final registry = InMemoryHostRegistry([

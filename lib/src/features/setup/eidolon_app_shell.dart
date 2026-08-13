@@ -208,14 +208,7 @@ class _HostsPage extends StatelessWidget {
                 contentPadding: const EdgeInsets.all(18),
                 leading: const CircleAvatar(child: Icon(Icons.memory)),
                 title: Text(host.displayName),
-                // Reinstalling a Host gives it a new identity, so this list can
-                // hold several entries for one machine. "已保存" was true of
-                // every one of them and told the person nothing about which to
-                // open; when it was last reached does.
-                subtitle: Text(
-                  key: Key('managed-host-subtitle-${host.hostId}'),
-                  hostReachabilityLine(host),
-                ),
+                subtitle: const Text('主机已保存'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
                   await Navigator.of(context).push<void>(
@@ -349,8 +342,8 @@ class _HostDetailPage extends StatelessWidget {
             _ManagementEntry.available(
               key: const Key('forget-managed-host'),
               icon: Icons.delete_outline,
-              title: '从这台手机移除',
-              subtitle: '只清掉本机保存的这条记录，不会改动主机本身',
+              title: '不再管理这台主机',
+              subtitle: '这台手机会忘记它；主机本身不受影响',
               destructive: true,
               onTap: () => _confirmForget(context),
             ),
@@ -385,31 +378,6 @@ class _HostDetailPage extends StatelessWidget {
     await onHostRemoved(host.hostId);
     if (context.mounted) Navigator.of(context).pop();
   }
-}
-
-/// What this list can honestly say about a saved Host without going to look.
-///
-/// Every entry here was reachable once, or it could not have been claimed.
-/// What separates the one that still answers from the ones a reinstall left
-/// behind is when it was last reached — so that is what the line says, and it
-/// says plainly when there is no such record rather than implying the Host is
-/// gone.
-String hostReachabilityLine(ManagedHost host, {DateTime? now}) {
-  final reachedAt = host.lastConnectedAt;
-  if (reachedAt == null) {
-    return '认领于 ${_day(host.claimedAt)} · 尚未记录过连接';
-  }
-  final elapsed = (now ?? DateTime.now()).toUtc().difference(reachedAt);
-  if (elapsed.inMinutes < 60) return '刚刚连接过';
-  if (elapsed.inHours < 24) return '${elapsed.inHours} 小时前连接过';
-  if (elapsed.inDays < 30) return '${elapsed.inDays} 天前连接过';
-  return '上次连接 ${_day(reachedAt)}';
-}
-
-String _day(DateTime value) {
-  final local = value.toLocal();
-  return '${local.year}-${local.month.toString().padLeft(2, '0')}-'
-      '${local.day.toString().padLeft(2, '0')}';
 }
 
 class _ManagementEntry extends StatelessWidget {

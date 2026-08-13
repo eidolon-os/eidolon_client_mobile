@@ -13,7 +13,6 @@ class ManagedHost {
     required this.displayName,
     required this.claimedAt,
     this.tlsSpkiFingerprint,
-    this.lastConnectedAt,
   });
 
   factory ManagedHost.fromJson(Map<String, dynamic> value) => ManagedHost(
@@ -30,7 +29,6 @@ class ManagedHost {
         tlsSpkiFingerprint: _optionalTlsFingerprint(
           value['tls_spki_fingerprint'],
         ),
-        lastConnectedAt: _optionalTimestamp(value['last_connected_at']),
       );
 
   final String hostId;
@@ -42,22 +40,7 @@ class ManagedHost {
   final DateTime claimedAt;
   final String? tlsSpkiFingerprint;
 
-  /// When this phone last reached this Host, or null while it never has since
-  /// the App started keeping the record.
-  ///
-  /// Reinstalling a Host mints it a new identity, so a list of saved Hosts can
-  /// hold several entries for one machine, of which at most one is alive. They
-  /// are indistinguishable by name — the name is derived from the identity —
-  /// and the person is left choosing between them. This is the fact that tells
-  /// them apart, and it earns its accuracy by being written only when a
-  /// connection actually succeeded.
-  final DateTime? lastConnectedAt;
-
-  ManagedHost copyWith({
-    String? tlsSpkiFingerprint,
-    DateTime? lastConnectedAt,
-  }) =>
-      ManagedHost(
+  ManagedHost copyWith({String? tlsSpkiFingerprint}) => ManagedHost(
         hostId: hostId,
         hostPublicKey: hostPublicKey,
         hostFingerprint: hostFingerprint,
@@ -66,7 +49,6 @@ class ManagedHost {
         displayName: displayName,
         claimedAt: claimedAt,
         tlsSpkiFingerprint: tlsSpkiFingerprint ?? this.tlsSpkiFingerprint,
-        lastConnectedAt: lastConnectedAt ?? this.lastConnectedAt,
       );
 
   Map<String, dynamic> toJson() => {
@@ -79,15 +61,7 @@ class ManagedHost {
         'claimed_at': claimedAt.toUtc().toIso8601String(),
         if (tlsSpkiFingerprint != null)
           'tls_spki_fingerprint': tlsSpkiFingerprint,
-        if (lastConnectedAt != null)
-          'last_connected_at': lastConnectedAt!.toUtc().toIso8601String(),
       };
-}
-
-DateTime? _optionalTimestamp(Object? value) {
-  if (value == null) return null;
-  if (value is! String) throw const FormatException('Invalid Host timestamp');
-  return DateTime.parse(value).toUtc();
 }
 
 String? _optionalTlsFingerprint(Object? value) {

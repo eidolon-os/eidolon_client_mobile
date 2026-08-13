@@ -29,10 +29,8 @@ class HostProductController extends ChangeNotifier {
     ControllerKeyBridge? controllerKeys,
     LocalApiDiscovery? discovery,
     LocalApiClientFactory? localApiClientFactory,
-    DateTime Function() clock = DateTime.now,
   })  : _host = host,
         _onHostUpdated = onHostUpdated,
-        _now = clock,
         _session = HostProductSession(
           host: host,
           transport: transport,
@@ -48,7 +46,6 @@ class HostProductController extends ChangeNotifier {
 
   ManagedHost _host;
   final ManagedHostUpdater _onHostUpdated;
-  final DateTime Function() _now;
   final HostProductSession _session;
   late final HostWorkspaceRepository _workspaceRepository;
   late final HostDevicesRepository _devicesRepository;
@@ -92,19 +89,17 @@ class HostProductController extends ChangeNotifier {
     _clearProductState();
     _notify();
     try {
+      final previousFingerprint = _host.tlsSpkiFingerprint;
       final connectedHost = await _session.connect(
         onProgress: (message) {
           _progress = message;
           _notify();
         },
       );
-      // Reaching a Host is the only evidence that it is still there, and a
-      // list of saved Hosts has no other way to say which of them is. Recorded
-      // here rather than at any earlier step, because everything before this
-      // point is an attempt.
-      final reached = connectedHost.copyWith(lastConnectedAt: _now());
-      await _onHostUpdated(reached);
-      _host = reached;
+      if (connectedHost.tlsSpkiFingerprint != previousFingerprint) {
+        await _onHostUpdated(connectedHost);
+      }
+      _host = connectedHost;
       _connection = _session.connection;
       _progress = null;
       await _loadProductState();
