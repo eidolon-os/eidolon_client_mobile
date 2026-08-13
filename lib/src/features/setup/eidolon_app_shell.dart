@@ -96,6 +96,10 @@ class _EidolonAppShellState extends State<EidolonAppShell> {
         await _load();
       },
       onRefresh: _load,
+      onHostRemoved: (hostId) async {
+        await _registry.remove(hostId);
+        await _load();
+      },
       setupTransport: widget.setupTransport,
       controllerKeys: widget.controllerKeys,
       deviceProvisioning: widget.deviceProvisioning,
@@ -162,6 +166,7 @@ class _HostsPage extends StatelessWidget {
     required this.onAdd,
     required this.onHostUpdated,
     required this.onRefresh,
+    required this.onHostRemoved,
     this.setupTransport,
     this.controllerKeys,
     this.deviceProvisioning,
@@ -172,6 +177,7 @@ class _HostsPage extends StatelessWidget {
   final VoidCallback onAdd;
   final ManagedHostUpdater onHostUpdated;
   final Future<void> Function() onRefresh;
+  final Future<void> Function(String hostId) onHostRemoved;
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
   final LegacyHotspotProvisioningPort? deviceProvisioning;
@@ -202,7 +208,14 @@ class _HostsPage extends StatelessWidget {
                 contentPadding: const EdgeInsets.all(18),
                 leading: const CircleAvatar(child: Icon(Icons.memory)),
                 title: Text(host.displayName),
-                subtitle: Text('主机已保存 · ${host.hostId}'),
+                // Reinstalling a Host gives it a new identity, so this list can
+                // hold several entries for one machine. "已保存" was true of
+                // every one of them and told the person nothing about which to
+                // open; when it was last reached does.
+                subtitle: Text(
+                  key: Key('managed-host-subtitle-${host.hostId}'),
+                  hostReachabilityLine(host),
+                ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
                   await Navigator.of(context).push<void>(
@@ -210,6 +223,7 @@ class _HostsPage extends StatelessWidget {
                       builder: (_) => _HostDetailPage(
                         host: host,
                         onHostUpdated: onHostUpdated,
+                        onHostRemoved: onHostRemoved,
                         setupTransport: setupTransport,
                         controllerKeys: controllerKeys,
                         deviceProvisioning: deviceProvisioning,
@@ -230,6 +244,7 @@ class _HostDetailPage extends StatelessWidget {
   const _HostDetailPage({
     required this.host,
     required this.onHostUpdated,
+    required this.onHostRemoved,
     this.setupTransport,
     this.controllerKeys,
     this.deviceProvisioning,
@@ -238,6 +253,7 @@ class _HostDetailPage extends StatelessWidget {
 
   final ManagedHost host;
   final ManagedHostUpdater onHostUpdated;
+  final Future<void> Function(String hostId) onHostRemoved;
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
   final LegacyHotspotProvisioningPort? deviceProvisioning;
@@ -330,9 +346,70 @@ class _HostDetailPage extends StatelessWidget {
               subtitle: '需要先实现主机侧限时物理恢复通道',
               destructive: true,
             ),
+            _ManagementEntry.available(
+              key: const Key('forget-managed-host'),
+              icon: Icons.delete_outline,
+              title: '从这台手机移除',
+              subtitle: '只清掉本机保存的这条记录，不会改动主机本身',
+              destructive: true,
+              onTap: () => _confirmForget(context),
+            ),
           ],
         ),
       );
+
+  Future<void> _confirmForget(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('confirm-forget-host'),
+        title: Text('移除 ${host.displayName}？'),
+        content: const Text(
+          '这只会让这台手机忘记它。主机上的 Owner、设备和数据都不受影响；'
+          '如果它还在，可以重新设置一次把它加回来。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const Key('confirm-forget-host-action'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('移除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    await onHostRemoved(host.hostId);
+    if (context.mounted) Navigator.of(context).pop();
+  }
+}
+
+/// What this list can honestly say about a saved Host without going to look.
+///
+/// Every entry here was reachable once, or it could not have been claimed.
+/// What separates the one that still answers from the ones a reinstall left
+/// behind is when it was last reached — so that is what the line says, and it
+/// says plainly when there is no such record rather than implying the Host is
+/// gone.
+String hostReachabilityLine(ManagedHost host, {DateTime? now}) {
+  final reachedAt = host.lastConnectedAt;
+  if (reachedAt == null) {
+    return '认领于 ${_day(host.claimedAt)} · 尚未记录过连接';
+  }
+  final elapsed = (now ?? DateTime.now()).toUtc().difference(reachedAt);
+  if (elapsed.inMinutes < 60) return '刚刚连接过';
+  if (elapsed.inHours < 24) return '${elapsed.inHours} 小时前连接过';
+  if (elapsed.inDays < 30) return '${elapsed.inDays} 天前连接过';
+  return '上次连接 ${_day(reachedAt)}';
+}
+
+String _day(DateTime value) {
+  final local = value.toLocal();
+  return '${local.year}-${local.month.toString().padLeft(2, '0')}-'
+      '${local.day.toString().padLeft(2, '0')}';
 }
 
 class _ManagementEntry extends StatelessWidget {
@@ -342,9 +419,9 @@ class _ManagementEntry extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required VoidCallback onTap,
+    this.destructive = false,
   })  : _onTap = onTap,
-        _unavailable = false,
-        destructive = false;
+        _unavailable = false;
 
   const _ManagementEntry.unavailable({
     super.key,
