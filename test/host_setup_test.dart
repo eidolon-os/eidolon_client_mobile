@@ -228,6 +228,47 @@ void main() {
     ]);
   });
 
+  test('only a reason the Host tagged for the person becomes one', () async {
+    // A bare string detail is a diagnostic naming authorities and contracts,
+    // written for whoever reads the Host. Reading it as the Owner's reason is
+    // how showing what the Host said turns into leaking what it knows, so it
+    // has to leave `reason` unset and let the screen use its own words.
+    Future<LocalApiRequestException> refuse(Object detail) async {
+      final client = LocalApiClient(
+        httpClient: MockClient((request) async => http.Response(
+              jsonEncode({'detail': detail}),
+              409,
+              headers: const {'content-type': 'application/json'},
+            )),
+      );
+      try {
+        await client.approveDeviceEnrollment(
+          'https://eidolon.local:9002',
+          accessToken: validHostChallenge,
+          requestId: 'device-approval-1',
+          deviceId: '24:ec:4a:52:f3:54',
+        );
+      } on LocalApiRequestException catch (error) {
+        return error;
+      } finally {
+        client.close();
+      }
+      fail('a refused claim must not be reported as success');
+    }
+
+    final tagged = await refuse({'reason': '主机上已经没有这台设备了。'});
+    final diagnostic =
+        await refuse('Admin Device admission response violated its contract');
+    final fieldErrors = await refuse([
+      {'loc': ['body', 'request_id'], 'msg': 'string does not match regex'},
+    ]);
+
+    expect(tagged.reason, '主机上已经没有这台设备了。');
+    expect(tagged.statusCode, 409);
+    expect(diagnostic.reason, isNull);
+    expect(fieldErrors.reason, isNull);
+  });
+
   test('LocalApiClient lists and explicitly approves pending enrollments',
       () async {
     final requests = <http.Request>[];

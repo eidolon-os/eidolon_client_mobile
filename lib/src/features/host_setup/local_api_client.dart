@@ -408,20 +408,24 @@ class LocalApiClient {
     return decoded;
   }
 
-  /// The Host's own account of a refusal, when it sent one.
+  /// The Host's own account of a refusal, when it wrote one for the person.
   ///
   /// Dropping this is how a Host that knew exactly why it refused could only
-  /// ever be shown as a status code. Only a plain string is taken: request
-  /// validation answers with a list of field errors, which is for a developer
-  /// reading the Host, not for a screen.
+  /// ever be shown as a status code. Only a tagged `{"reason": ...}` counts: a
+  /// bare string detail is a diagnostic naming authorities and contracts, and a
+  /// list is request validation naming fields — both are written for whoever
+  /// reads the Host, and neither belongs on a screen. Taking those too is how
+  /// showing the Host's words turns into leaking its internals.
   static String? _refusalReason(http.Response response) {
     try {
       final decoded = jsonDecode(utf8.decode(response.bodyBytes));
       if (decoded is! Map<String, dynamic>) return null;
       final detail = decoded['detail'];
-      if (detail is! String) return null;
-      final reason = detail.trim();
-      return reason.isEmpty || reason.length > 300 ? null : reason;
+      if (detail is! Map<String, dynamic>) return null;
+      final reason = detail['reason'];
+      if (reason is! String) return null;
+      final trimmed = reason.trim();
+      return trimmed.isEmpty || trimmed.length > 300 ? null : trimmed;
     } on FormatException {
       return null;
     }
