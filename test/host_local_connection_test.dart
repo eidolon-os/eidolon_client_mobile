@@ -421,7 +421,9 @@ void main() {
     expect(find.byKey(const Key('local-connection-error')), findsNothing);
     expect(find.byKey(const Key('workspace-runtime-error')), findsOneWidget);
     expect(find.textContaining('日常运行状态暂时不可用'), findsOneWidget);
-    expect(find.text('已创建'), findsNWidgets(3));
+    // The Host card carries the Eidolon as one row now; what it has been and
+    // what is connected to it live on its own page.
+    expect(find.text('已创建'), findsNWidgets(2));
   });
 
   testWidgets('ready Workspace shows only Kernel-confirmed mounted devices',
@@ -637,13 +639,13 @@ void main() {
     // they are built from: the Companion by its own name, and its persona by
     // the thing someone actually wonders about — how it has changed.
     expect(find.text('Eidolon'), findsOneWidget);
-    expect(find.text('它的变化'), findsOneWidget);
+    expect(find.byKey(const Key('workspace-companion')), findsOneWidget);
     expect(find.textContaining('genome'), findsNothing);
     expect(find.text('Memory Workspace'), findsOneWidget);
     // The genome version used to be printed here. It said nothing to the
     // person it was printed at, and what it stood for now has a page.
     expect(find.textContaining('v2'), findsNothing);
-    expect(find.text('运行中'), findsNWidgets(3));
+    expect(find.text('运行中'), findsNWidgets(2));
     expect(find.byKey(const Key('workspace-runtime-error')), findsNothing);
     expect(find.text('我的 Eidolon'), findsOneWidget);
     await tester.tap(find.byKey(const Key('finish-workspace-setup')));

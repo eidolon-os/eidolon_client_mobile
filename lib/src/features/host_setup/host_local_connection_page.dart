@@ -7,6 +7,7 @@ import '../setup/commissioning_transport.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/host_registry.dart';
 import 'host_product_controller.dart';
+import 'companion_page.dart';
 import 'managed_controllers_page.dart';
 import 'persona_history_page.dart';
 import 'host_product_session.dart';
@@ -150,6 +151,30 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     }
   }
 
+  /// Open the Eidolon itself. A Host is a machine someone owns; this is who
+  /// they talk to, and it had been living as rows on the machine's card.
+  Future<void> _openCompanion() {
+    final runtime = _controller.workspaceRuntime;
+    if (runtime == null) return Future<void>.value();
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => AnimatedBuilder(
+          animation: _controller,
+          builder: (_, __) {
+            final current = _controller.workspaceRuntime;
+            if (current == null) return const SizedBox.shrink();
+            return CompanionPage(
+              runtime: current,
+              devices: _controller.devices,
+              onRename: _renameCompanion,
+              onOpenHistory: _openPersonaHistory,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> _openPersonaHistory() {
     final runtime = _controller.workspaceRuntime;
     if (runtime == null) return Future<void>.value();
@@ -246,6 +271,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               onReconnect: _controller.connect,
               onRenameCompanion: _renameCompanion,
               onOpenPersona: _openPersonaHistory,
+              onOpenCompanion: _openCompanion,
               onChangeNetwork: _openNetworkChange,
             ),
             if ((_controller.workspace?.isReady ?? false) &&
@@ -401,6 +427,7 @@ class _WorkspaceCard extends StatelessWidget {
     required this.onChangeNetwork,
     required this.onRenameCompanion,
     required this.onOpenPersona,
+    required this.onOpenCompanion,
   });
 
   final HostProductController controller;
@@ -412,6 +439,7 @@ class _WorkspaceCard extends StatelessWidget {
   final Future<void> Function() onChangeNetwork;
   final VoidCallback onRenameCompanion;
   final VoidCallback onOpenPersona;
+  final VoidCallback onOpenCompanion;
 
   @override
   Widget build(BuildContext context) {
@@ -567,7 +595,7 @@ class _WorkspaceCard extends StatelessWidget {
             const SizedBox(height: 12),
             _WorkspaceResourceStatus(
               key: const Key('workspace-companion'),
-              onRename: runtime == null ? null : onRenameCompanion,
+              onOpen: runtime == null ? null : onOpenCompanion,
               icon: Icons.face_retouching_natural,
               // The name its Owner gave it, which is what they typed at setup
               // and had never been shown back to them. The identifier is what
@@ -578,21 +606,7 @@ class _WorkspaceCard extends StatelessWidget {
               statusLabel: runtime == null ? '已创建' : '运行中',
               detail: runtime == null
                   ? 'Workspace 已创建'
-                  : '运行身份 ${_shortId(runtime.primaryCompanion.companionId)}',
-            ),
-            _WorkspaceResourceStatus(
-              key: const Key('workspace-persona'),
-              icon: Icons.psychology_alt_outlined,
-              // 'Persona' and 'v1 · …d92d1_origin' described how a Companion
-              // is built, at a person who wanted to know how it has changed.
-              // The genome version is not a fact about their Eidolon; the
-              // history is, and it is one tap away.
-              label: '它的变化',
-              statusLabel: runtime == null ? '已创建' : '运行中',
-              detail: runtime == null
-                  ? 'Workspace 已创建'
-                  : '看看它变成过什么样，也可以让它回到之前',
-              onOpen: runtime == null ? null : onOpenPersona,
+                  : '打开它的页面：改名、它的变化、连到它的设备',
             ),
             _WorkspaceResourceStatus(
               icon: Icons.auto_stories_outlined,
@@ -732,7 +746,6 @@ class _WorkspaceResourceStatus extends StatelessWidget {
     required this.label,
     required this.detail,
     required this.statusLabel,
-    this.onRename,
     this.onOpen,
   });
 
@@ -740,11 +753,6 @@ class _WorkspaceResourceStatus extends StatelessWidget {
   final String label;
   final String detail;
   final String statusLabel;
-
-  /// Offered only where the label is a name somebody chose. Renaming an
-  /// Eidolon is not an administrative operation buried in a settings list —
-  /// it is done to the name, where the name is.
-  final VoidCallback? onRename;
 
   /// Offered where the row stands for something with more behind it than a
   /// status. Tapping goes there; the row is not itself the whole story.
@@ -772,13 +780,6 @@ class _WorkspaceResourceStatus extends StatelessWidget {
                 onPressed: onOpen,
                 tooltip: '它的变化',
                 icon: const Icon(Icons.chevron_right),
-              ),
-            if (onRename != null)
-              IconButton(
-                key: const Key('rename-companion'),
-                onPressed: onRename,
-                tooltip: '改名',
-                icon: const Icon(Icons.edit_outlined, size: 18),
               ),
             Icon(
               Icons.check_circle_outline,
