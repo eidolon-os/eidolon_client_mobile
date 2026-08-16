@@ -8,6 +8,7 @@ import '../setup/controller_key_bridge.dart';
 import '../setup/host_registry.dart';
 import 'host_product_controller.dart';
 import 'managed_controllers_page.dart';
+import 'persona_history_page.dart';
 import 'host_product_session.dart';
 import 'host_system_page.dart';
 import 'local_api_discovery.dart';
@@ -149,6 +150,29 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     }
   }
 
+  Future<void> _openPersonaHistory() {
+    final runtime = _controller.workspaceRuntime;
+    if (runtime == null) return Future<void>.value();
+    final companion = runtime.primaryCompanion;
+    final name = companion.displayName.isNotEmpty
+        ? companion.displayName
+        : '它';
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => PersonaHistoryPage(
+          companionName: name,
+          loadHistory: () => _controller.personaHistory(
+            companionId: companion.companionId,
+          ),
+          restore: (chapterId) => _controller.restorePersona(
+            companionId: companion.companionId,
+            chapterId: chapterId,
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _openControllers() => Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => ManagedControllersPage(
@@ -221,6 +245,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               onSetupComplete: widget.onSetupComplete,
               onReconnect: _controller.connect,
               onRenameCompanion: _renameCompanion,
+              onOpenPersona: _openPersonaHistory,
               onChangeNetwork: _openNetworkChange,
             ),
             if ((_controller.workspace?.isReady ?? false) &&
@@ -375,6 +400,7 @@ class _WorkspaceCard extends StatelessWidget {
     required this.onReconnect,
     required this.onChangeNetwork,
     required this.onRenameCompanion,
+    required this.onOpenPersona,
   });
 
   final HostProductController controller;
@@ -385,6 +411,7 @@ class _WorkspaceCard extends StatelessWidget {
   final Future<void> Function() onReconnect;
   final Future<void> Function() onChangeNetwork;
   final VoidCallback onRenameCompanion;
+  final VoidCallback onOpenPersona;
 
   @override
   Widget build(BuildContext context) {
@@ -554,12 +581,18 @@ class _WorkspaceCard extends StatelessWidget {
                   : '运行身份 ${_shortId(runtime.primaryCompanion.companionId)}',
             ),
             _WorkspaceResourceStatus(
+              key: const Key('workspace-persona'),
               icon: Icons.psychology_alt_outlined,
-              label: 'Persona',
+              // 'Persona' and 'v1 · …d92d1_origin' described how a Companion
+              // is built, at a person who wanted to know how it has changed.
+              // The genome version is not a fact about their Eidolon; the
+              // history is, and it is one tap away.
+              label: '它的变化',
               statusLabel: runtime == null ? '已创建' : '运行中',
               detail: runtime == null
                   ? 'Workspace 已创建'
-                  : 'v${runtime.persona.version} · ${_shortId(runtime.persona.genomeId)}',
+                  : '看看它变成过什么样，也可以让它回到之前',
+              onOpen: runtime == null ? null : onOpenPersona,
             ),
             _WorkspaceResourceStatus(
               icon: Icons.auto_stories_outlined,
@@ -700,6 +733,7 @@ class _WorkspaceResourceStatus extends StatelessWidget {
     required this.detail,
     required this.statusLabel,
     this.onRename,
+    this.onOpen,
   });
 
   final IconData icon;
@@ -711,6 +745,10 @@ class _WorkspaceResourceStatus extends StatelessWidget {
   /// Eidolon is not an administrative operation buried in a settings list —
   /// it is done to the name, where the name is.
   final VoidCallback? onRename;
+
+  /// Offered where the row stands for something with more behind it than a
+  /// status. Tapping goes there; the row is not itself the whole story.
+  final VoidCallback? onOpen;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -728,6 +766,13 @@ class _WorkspaceResourceStatus extends StatelessWidget {
                 ],
               ),
             ),
+            if (onOpen != null)
+              IconButton(
+                key: const Key('open-persona-history'),
+                onPressed: onOpen,
+                tooltip: '它的变化',
+                icon: const Icon(Icons.chevron_right),
+              ),
             if (onRename != null)
               IconButton(
                 key: const Key('rename-companion'),

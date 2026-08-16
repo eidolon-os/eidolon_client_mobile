@@ -12,6 +12,7 @@ import 'controller_grant_models.dart';
 import 'controller_session.dart';
 import 'host_models.dart';
 import 'host_service_models.dart';
+import 'persona_history_models.dart';
 import 'workspace_models.dart';
 import 'workspace_runtime_models.dart';
 
@@ -312,6 +313,48 @@ class LocalApiClient {
       throw const FormatException('主机没有返回新的名称');
     }
     return name;
+  }
+
+  Future<PersonaHistory> fetchPersonaHistory(
+    String baseUrl, {
+    required String accessToken,
+    required String companionId,
+  }) async {
+    final response = await _httpClient
+        .get(
+          parseBaseUri(baseUrl).resolve(
+            '/api/local/v1/companions/${Uri.encodeComponent(companionId)}/persona',
+          ),
+          headers: _authorizedHeaders(accessToken),
+        )
+        .timeout(timeout);
+    return PersonaHistory.fromJson(
+      _decodeResponse(response, operation: 'Persona history'),
+    );
+  }
+
+  Future<PersonaHistory> restorePersona(
+    String baseUrl, {
+    required String accessToken,
+    required String companionId,
+    required String chapterId,
+  }) async {
+    final response = await _httpClient
+        .post(
+          parseBaseUri(baseUrl).resolve(
+            '/api/local/v1/companions/${Uri.encodeComponent(companionId)}'
+            '/persona-restorations',
+          ),
+          headers: _authorizedHeaders(accessToken, json: true),
+          body: jsonEncode({
+            'contract_version': '1',
+            'chapter_id': chapterId,
+          }),
+        )
+        .timeout(timeout);
+    return PersonaHistory.fromJson(
+      _decodeResponse(response, operation: 'Persona restoration'),
+    );
   }
 
   Future<List<ControllerGrant>> fetchControllers(

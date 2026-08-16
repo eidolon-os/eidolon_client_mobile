@@ -141,6 +141,7 @@ Map<String, dynamic> _workspaceRuntime() => {
       },
       'primary_companion': {
         'companion_id': 'companion_primary',
+        'display_name': 'Eidolon',
         'lifecycle_state': 'active',
       },
       'persona': {
@@ -632,10 +633,16 @@ void main() {
     await tester.tap(find.byKey(const Key('retry-workspace-runtime')));
     await tester.pumpAndSettle();
 
-    expect(find.text('主 Companion'), findsOneWidget);
-    expect(find.text('Persona'), findsOneWidget);
+    // The rows are named for what they are to a person, not for the parts
+    // they are built from: the Companion by its own name, and its persona by
+    // the thing someone actually wonders about — how it has changed.
+    expect(find.text('Eidolon'), findsOneWidget);
+    expect(find.text('它的变化'), findsOneWidget);
+    expect(find.textContaining('genome'), findsNothing);
     expect(find.text('Memory Workspace'), findsOneWidget);
-    expect(find.textContaining('v2'), findsOneWidget);
+    // The genome version used to be printed here. It said nothing to the
+    // person it was printed at, and what it stood for now has a page.
+    expect(find.textContaining('v2'), findsNothing);
     expect(find.text('运行中'), findsNWidgets(3));
     expect(find.byKey(const Key('workspace-runtime-error')), findsNothing);
     expect(find.text('我的 Eidolon'), findsOneWidget);

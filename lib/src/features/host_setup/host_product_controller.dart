@@ -15,6 +15,7 @@ import 'host_product_repositories.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
 import 'local_api_client.dart';
+import 'persona_history_models.dart';
 import 'local_api_discovery.dart';
 import 'pinned_http_client.dart';
 import 'workspace_models.dart';
@@ -239,6 +240,24 @@ class HostProductController extends ChangeNotifier {
       displayName: displayName,
     );
     await refreshWorkspace();
+  }
+
+  /// What this Eidolon has been.
+  Future<PersonaHistory> personaHistory({required String companionId}) =>
+      _companionRepository.personaHistory(companionId: companionId);
+
+  /// Make it the way it was then, and re-read the workspace so what is shown
+  /// afterwards is what the Host now says it is.
+  Future<PersonaHistory> restorePersona({
+    required String companionId,
+    required String chapterId,
+  }) async {
+    final history = await _companionRepository.restorePersona(
+      companionId: companionId,
+      chapterId: chapterId,
+    );
+    await refreshWorkspace();
+    return history;
   }
 
   /// Which phones hold this Host, as the Host says.

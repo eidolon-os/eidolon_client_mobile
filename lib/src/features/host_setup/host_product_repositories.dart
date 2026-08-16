@@ -2,6 +2,7 @@ import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
 import '../device_setup/device_setup_ports.dart';
 import 'controller_grant_models.dart';
+import 'persona_history_models.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
 import 'workspace_models.dart';
@@ -70,6 +71,28 @@ class HostCompanionRepository {
   HostCompanionRepository(this._session);
 
   final HostProductSession _session;
+
+  Future<PersonaHistory> personaHistory({required String companionId}) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.fetchPersonaHistory(
+          baseUrl,
+          accessToken: accessToken,
+          companionId: companionId,
+        ),
+      );
+
+  Future<PersonaHistory> restorePersona({
+    required String companionId,
+    required String chapterId,
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.restorePersona(
+          baseUrl,
+          accessToken: accessToken,
+          companionId: companionId,
+          chapterId: chapterId,
+        ),
+      );
 
   Future<String> rename({
     required String companionId,
