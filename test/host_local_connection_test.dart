@@ -481,7 +481,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('mounted-device-detail')), findsOneWidget);
-    expect(find.text('设备详情'), findsOneWidget);
+    // The page is titled by the device it is about, not by what kind of page
+    // it is — that was the last screen naming a thing after its own machinery.
+    expect(find.text('设备详情'), findsNothing);
+    expect(find.byKey(const Key('mounted-device-detail')), findsOneWidget);
     expect(find.textContaining('不代表设备当前在线'), findsOneWidget);
   });
 

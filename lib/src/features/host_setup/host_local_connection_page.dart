@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../naming/ask_for_a_name.dart';
+
 import '../device_management/mounted_devices_page.dart';
 import '../device_setup/device_setup_ports.dart';
 import '../setup/change_network_page.dart';
@@ -106,38 +108,16 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     final runtime = _controller.workspaceRuntime;
     if (runtime == null) return;
     final companion = runtime.primaryCompanion;
-    final field = TextEditingController(text: companion.displayName);
-    final chosen = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        key: const Key('rename-companion-dialog'),
-        title: const Text('这个 Eidolon 叫什么？'),
-        content: TextField(
-          key: const Key('companion-name-field'),
-          controller: field,
-          autofocus: true,
-          maxLength: 128,
-          decoration: const InputDecoration(hintText: '给它起个名字'),
-          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            key: const Key('confirm-companion-name'),
-            onPressed: () => Navigator.of(dialogContext).pop(field.text),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
+    final name = await askForAName(
+      context,
+      question: '这个 Eidolon 叫什么？',
+      hint: '给它起个名字',
+      current: companion.displayName,
+      dialogKey: const Key('rename-companion-dialog'),
+      fieldKey: const Key('companion-name-field'),
+      confirmKey: const Key('confirm-companion-name'),
     );
-    field.dispose();
-    final name = chosen?.trim();
-    // Cancelling and clearing the box are both "leave it alone": a name is not
-    // something this screen may take away.
-    if (name == null || name.isEmpty || !mounted) return;
+    if (name == null || !mounted) return;
     try {
       await _controller.renameCompanion(
         companionId: companion.companionId,

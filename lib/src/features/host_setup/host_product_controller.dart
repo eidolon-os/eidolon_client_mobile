@@ -15,8 +15,8 @@ import 'host_product_repositories.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
 import 'local_api_client.dart';
-import 'persona_history_models.dart';
 import 'local_api_discovery.dart';
+import 'persona_history_models.dart';
 import 'pinned_http_client.dart';
 import 'workspace_models.dart';
 import 'workspace_runtime_models.dart';
@@ -46,6 +46,7 @@ class HostProductController extends ChangeNotifier {
     _hostServicesRepository = HostServicesRepository(_session);
     _controllerGrantRepository = HostControllerGrantRepository(_session);
     _companionRepository = HostCompanionRepository(_session);
+    _deviceNamingRepository = HostDeviceNamingRepository(_session);
   }
 
   ManagedHost _host;
@@ -57,6 +58,7 @@ class HostProductController extends ChangeNotifier {
   late final HostServicesRepository _hostServicesRepository;
   late final HostControllerGrantRepository _controllerGrantRepository;
   late final HostCompanionRepository _companionRepository;
+  late final HostDeviceNamingRepository _deviceNamingRepository;
 
   bool _connecting = false;
   bool _workspaceBusy = false;
@@ -225,6 +227,22 @@ class HostProductController extends ChangeNotifier {
 
   Future<HostServiceInventory> listHostServices() =>
       _hostServicesRepository.list();
+
+  /// Name one of this Owner's devices.
+  ///
+  /// The inventory is re-read afterwards for the same reason the Companion's
+  /// is: the Host is what a thing is called, and a screen editing its own copy
+  /// would show a name the Host might not have accepted.
+  Future<void> renameDevice({
+    required String deviceId,
+    required String displayName,
+  }) async {
+    await _deviceNamingRepository.rename(
+      deviceId: deviceId,
+      displayName: displayName,
+    );
+    await refreshDevices();
+  }
 
   /// Name this Owner's Eidolon.
   ///

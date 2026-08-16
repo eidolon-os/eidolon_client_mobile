@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../device_setup/device_setup_models.dart';
+import '../naming/ask_for_a_name.dart';
 import '../device_setup/device_setup_ports.dart';
 import '../device_setup/device_admission_page.dart';
 import '../device_setup/legacy_hotspot_provisioning_page.dart';
@@ -124,6 +125,10 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
                 device: device,
                 onRemove: (deviceId) =>
                     controller.removeDevice(deviceId: deviceId),
+                onRename: (deviceId, displayName) => controller.renameDevice(
+                  deviceId: deviceId,
+                  displayName: displayName,
+                ),
               ),
             ),
           ],
@@ -176,10 +181,15 @@ class _InventoryMeaningCard extends StatelessWidget {
 }
 
 class _MountedDeviceCard extends StatelessWidget {
-  const _MountedDeviceCard({required this.device, required this.onRemove});
+  const _MountedDeviceCard({
+    required this.device,
+    required this.onRemove,
+    required this.onRename,
+  });
 
   final MountedDevice device;
   final Future<DeviceRemovalProgress> Function(String deviceId) onRemove;
+  final Future<void> Function(String deviceId, String displayName)? onRename;
 
   @override
   Widget build(BuildContext context) {
@@ -221,10 +231,17 @@ class MountedDeviceDetailPage extends StatefulWidget {
     super.key,
     required this.device,
     required this.onRemove,
+    this.onRename,
   });
 
   final MountedDevice device;
   final Future<DeviceRemovalProgress> Function(String deviceId) onRemove;
+
+  /// Naming is done to the name, where the name is — the same rule the
+  /// Eidolon's own page follows. A device arrives calling itself after its
+  /// board, so two of the same one are indistinguishable until someone says
+  /// which is which.
+  final Future<void> Function(String deviceId, String displayName)? onRename;
 
   @override
   State<MountedDeviceDetailPage> createState() =>
@@ -234,6 +251,28 @@ class MountedDeviceDetailPage extends StatefulWidget {
 class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
   bool _removing = false;
   String? _notice;
+
+  Future<void> _renameDevice() async {
+    final rename = widget.onRename;
+    if (rename == null) return;
+    final name = await askForAName(
+      context,
+      question: '这台设备叫什么？',
+      hint: '比如「客厅的音箱」',
+      current: widget.device.displayName,
+      dialogKey: const Key('rename-device-dialog'),
+      fieldKey: const Key('device-name-field'),
+      confirmKey: const Key('confirm-device-name'),
+    );
+    if (name == null || !mounted) return;
+    try {
+      await rename(widget.device.deviceId, name);
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _notice = '改名没有完成：$error');
+    }
+  }
 
   Future<void> _confirmRemoval() async {
     final device = widget.device;
@@ -293,7 +332,18 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
     };
     return Scaffold(
       key: const Key('mounted-device-detail'),
-      appBar: AppBar(title: const Text('设备详情')),
+      appBar: AppBar(
+        title: Text(device.label),
+        actions: [
+          if (widget.onRename != null)
+            IconButton(
+              key: const Key('rename-device'),
+              onPressed: _removing ? null : _renameDevice,
+              tooltip: '改名',
+              icon: const Icon(Icons.edit_outlined),
+            ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
@@ -369,9 +419,4 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
       ),
     );
   }
-}
-
-String _shortId(String value) {
-  if (value.length <= 16) return value;
-  return '…${value.substring(value.length - 12)}';
 }

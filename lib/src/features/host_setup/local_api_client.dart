@@ -357,6 +357,29 @@ class LocalApiClient {
     );
   }
 
+  Future<MountedDevice> renameDevice(
+    String baseUrl, {
+    required String accessToken,
+    required String deviceId,
+    required String displayName,
+  }) async {
+    final response = await _httpClient
+        .patch(
+          parseBaseUri(baseUrl).resolve(
+            '/api/local/v1/devices/${Uri.encodeComponent(deviceId)}',
+          ),
+          headers: _authorizedHeaders(accessToken, json: true),
+          body: jsonEncode({
+            'contract_version': '1',
+            'display_name': displayName,
+          }),
+        )
+        .timeout(timeout);
+    return MountedDevice.fromJson(
+      _decodeResponse(response, operation: 'Device rename'),
+    );
+  }
+
   Future<List<ControllerGrant>> fetchControllers(
     String baseUrl, {
     required String accessToken,

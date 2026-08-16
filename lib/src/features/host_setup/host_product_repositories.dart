@@ -41,6 +41,25 @@ class HostWorkspaceRepository {
       );
 }
 
+class HostDeviceNamingRepository {
+  HostDeviceNamingRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<MountedDevice> rename({
+    required String deviceId,
+    required String displayName,
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.renameDevice(
+          baseUrl,
+          accessToken: accessToken,
+          deviceId: deviceId,
+          displayName: displayName,
+        ),
+      );
+}
+
 class HostDevicesRepository {
   const HostDevicesRepository(this._session);
 
