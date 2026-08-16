@@ -9,6 +9,7 @@ import '../setup/host_registry.dart';
 import '../setup/setup_models.dart';
 import '../setup/setup_trust.dart';
 import 'controller_session.dart';
+import 'host_locator.dart';
 import 'host_models.dart';
 import 'local_api_client.dart';
 import 'local_api_discovery.dart';
@@ -58,16 +59,18 @@ class HostProductSession {
     ControllerKeyBridge? controllerKeys,
     LocalApiDiscovery? discovery,
     LocalApiClientFactory? clientFactory,
+    HostLocator? locator,
   })  : _host = host,
         _transport = transport ?? PlatformBleCommissioningTransport(),
         _controllerKeys = controllerKeys ?? PlatformControllerKeyBridge(),
-        _discovery = discovery ?? PlatformLocalApiDiscovery(),
+        _locator = locator ??
+            HostLocator.standard(discovery ?? PlatformLocalApiDiscovery()),
         _clientFactory = clientFactory ?? _platformClientFactory;
 
   ManagedHost _host;
   final CommissioningTransport _transport;
   final ControllerKeyBridge _controllerKeys;
-  final LocalApiDiscovery _discovery;
+  final HostLocator _locator;
   final LocalApiClientFactory _clientFactory;
 
   LocalApiEndpoint? _endpoint;
@@ -106,9 +109,10 @@ class HostProductSession {
     // already claimed should not become unreachable because one mechanism went
     // quiet. Nothing is trusted for being remembered: each candidate still has
     // to prove it is this Host before a word is said to it.
-    final endpoints = await _reachableCandidates();
+    final candidates = await _locator.locate(_host);
     Object? lastFailure;
-    for (final endpoint in endpoints) {
+    for (final candidate in candidates) {
+      final endpoint = candidate.endpoint;
       final client = _clientFactory(_host.tlsSpkiFingerprint!);
       try {
         final overview = await client.fetchHost(endpoint.baseUrl);
@@ -135,41 +139,14 @@ class HostProductSession {
     throw const LocalApiRequestException('局域网中没有兼容的 Eidolon 主机');
   }
 
-  /// Every address worth trying for this Host, remembered one first.
+  /// Runs a typed Local API operation, recovering once from either of the two
+  /// things that go stale on their own: the session, and the address.
   ///
-  /// Discovery failing is not fatal while an address is remembered: it means
-  /// this network did not carry the announcement, not that the Host is gone.
-  Future<List<LocalApiEndpoint>> _reachableCandidates() async {
-    final candidates = <String, LocalApiEndpoint>{};
-    Object? discoveryFailure;
-    try {
-      for (final endpoint in await _discovery.discover()) {
-        candidates[endpoint.baseUrl] = endpoint;
-      }
-    } catch (error) {
-      discoveryFailure = error;
-    }
-    // Discovery goes first and stays authoritative: a Host that moved is found
-    // at its new address, and the remembered one is stale by definition. Memory
-    // is what remains when discovery answers with nothing at all.
-    final remembered = _host.lastKnownBaseUrl;
-    if (remembered != null) {
-      candidates.putIfAbsent(
-        remembered,
-        () => LocalApiEndpoint(
-          instanceName: 'remembered',
-          baseUrl: remembered,
-          ipAddress: Uri.parse(remembered).host,
-          contractVersion: '1',
-        ),
-      );
-    }
-    if (candidates.isEmpty && discoveryFailure != null) throw discoveryFailure;
-    return candidates.values.toList(growable: false);
-  }
-
-  /// Runs a typed Local API operation and performs one bounded re-authentication
-  /// when the short-lived Controller session has expired.
+  /// A Host that answered and refused has decided something, and that travels
+  /// straight back. A Host that did not answer at all has decided nothing —
+  /// it moved, or this phone did — so the address is found again and the
+  /// operation is retried, which is the whole of "the network changed" as far
+  /// as the person is concerned.
   Future<T> execute<T>(LocalApiOperation<T> operation) async {
     _ensureOpen();
     final endpoint = _endpoint;
@@ -181,10 +158,49 @@ class HostProductSession {
       return await _executeOnce(operation, endpoint, session);
     } on LocalApiRequestException catch (error) {
       if (error.statusCode != 401) rethrow;
+      await _reauthenticate();
+      return _executeOnce(operation, _endpoint!, _controllerSession!);
+    } on PinnedHttpException catch (error) {
+      if (!_hostDidNotAnswer(error)) rethrow;
+      await _relocate();
+      return _executeOnce(operation, _endpoint!, _controllerSession!);
     }
+  }
 
-    await _reauthenticate();
-    return _executeOnce(operation, _endpoint!, _controllerSession!);
+  /// Whether the Host was never reached, as opposed to having answered.
+  ///
+  /// Only the absence of an answer means the address may be wrong. A refusal,
+  /// a broken pin, a malformed reply — those all came from something that was
+  /// there, and re-locating would hide what it said.
+  static bool _hostDidNotAnswer(PinnedHttpException error) =>
+      switch (error.kind) {
+        PinnedHttpFailureKind.unreachable ||
+        PinnedHttpFailureKind.timeout ||
+        PinnedHttpFailureKind.io =>
+          true,
+        _ => false,
+      };
+
+  /// Find this Host again and re-establish the conversation, in place.
+  ///
+  /// Nothing above this layer learns that it happened: repositories never held
+  /// an address, and the operation they asked for is simply carried out.
+  Future<void> _relocate() async {
+    _endpoint = null;
+    _overview = null;
+    _controllerSession = null;
+    await connect();
+  }
+
+  /// Forget where the Host was, without touching who it is.
+  ///
+  /// Called when this phone's own connectivity changed: the address may still
+  /// be correct, but nothing about it can be assumed any more, and paying one
+  /// timeout to discover that is worse than looking again.
+  void invalidateLocation() {
+    _endpoint = null;
+    _overview = null;
+    _controllerSession = null;
   }
 
   Future<T> _executeOnce<T>(
