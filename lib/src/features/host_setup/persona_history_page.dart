@@ -173,6 +173,11 @@ class _PersonaHistoryPageState extends State<PersonaHistoryPage> {
             ...history.chapters.map(
               (chapter) => _ChapterCard(
                 chapter: chapter,
+                // The oldest entry is not a change, it is where it started.
+                // Whatever was recorded there is a creation note written by
+                // whatever created it, and reading it out as "what changed"
+                // would be showing machinery again.
+                isBeginning: chapter == history.chapters.last,
                 onRestore: _busy || chapter.isCurrent
                     ? null
                     : () => _confirmRestore(chapter),
@@ -185,9 +190,14 @@ class _PersonaHistoryPageState extends State<PersonaHistoryPage> {
 }
 
 class _ChapterCard extends StatelessWidget {
-  const _ChapterCard({required this.chapter, required this.onRestore});
+  const _ChapterCard({
+    required this.chapter,
+    required this.isBeginning,
+    required this.onRestore,
+  });
 
   final PersonaChapter chapter;
+  final bool isBeginning;
   final VoidCallback? onRestore;
 
   @override
@@ -215,12 +225,14 @@ class _ChapterCard extends StatelessWidget {
               // Nothing was recorded, and nothing is put in its place. Saying
               // "personality updated" would be this screen inventing a reason
               // on its behalf, which is worse than admitting the gap.
-              chapter.whatChanged.isNotEmpty
-                  ? chapter.whatChanged
-                  : restored != null
-                      ? '回到了更早的样子'
-                      : '这次变化没有留下说明',
-              style: chapter.whatChanged.isEmpty
+              isBeginning
+                  ? '它刚来的时候'
+                  : chapter.whatChanged.isNotEmpty
+                      ? chapter.whatChanged
+                      : restored != null
+                          ? '回到了更早的样子'
+                          : '这次变化没有留下说明',
+              style: !isBeginning && chapter.whatChanged.isEmpty
                   ? Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.outline,
                       )

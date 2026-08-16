@@ -56,7 +56,10 @@ void main() {
     // honest; "人格已更新" would be filler dressed as meaning.
     await _open(tester);
 
-    expect(find.text('这次变化没有留下说明'), findsOneWidget);
+    // The oldest entry is where it started, not a change that lost its note:
+    // whatever a creation flow wrote there is machinery, not its own words.
+    expect(find.text('它刚来的时候'), findsOneWidget);
+    expect(find.textContaining('Initial persona genome'), findsNothing);
   });
 
   testWidgets('there is nothing to approve, only somewhere to go back to',
