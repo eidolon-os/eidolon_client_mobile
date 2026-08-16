@@ -752,4 +752,30 @@ void main() {
     expect(find.textContaining('主机已重置或不再授权'), findsOneWidget);
     expect(find.byKey(const Key('workspace-setup')), findsNothing);
   });
+
+  testWidgets('how the Host was found is not printed at the person',
+      (tester) async {
+    // Locating gained sources beyond discovery, and their internal labels
+    // began appearing on screen as 服务：remembered. Where the Host answered
+    // is a fact about their Host; which mechanism found it is a fact about
+    // this App, and the person is not the one who should be reading it.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(),
+          onHostUpdated: (_) async {},
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(_hostOverview()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('服务：'), findsNothing);
+    expect(find.textContaining('remembered'), findsNothing);
+    expect(find.textContaining('published'), findsNothing);
+    expect(find.textContaining('Host IP：'), findsOneWidget);
+  });
 }

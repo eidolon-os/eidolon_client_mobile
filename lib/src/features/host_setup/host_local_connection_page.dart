@@ -343,7 +343,12 @@ class _ConnectedHostCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
-              Text('服务：${connection.endpoint.instanceName}'),
+              // How the Host was located is not shown. It was the mDNS
+              // instance name here, which was already developer detail, and
+              // once locating gained other means it started printing their
+              // internal labels — 服务：remembered — at a person. Where it
+              // answered is a fact about their Host; which mechanism found it
+              // is a fact about this App.
               Text('Host IP：${connection.endpoint.ipAddress}'),
               Text('Controller：${connection.controllerId}'),
               Text('本次管理会话有效至 ${_localTime(connection.sessionExpiresAt)}'),
