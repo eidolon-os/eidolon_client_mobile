@@ -101,6 +101,16 @@ class MountedDevice {
   /// name is missing or when two devices share one.
   final String deviceKind;
 
+  /// The line under the name: what kind of thing it is, or the tail of its
+  /// identifier when the kind would only repeat the name — which is what
+  /// happens when a device reports its board as its name, as an ESP32 does.
+  String get detail {
+    if (deviceKind.isNotEmpty && deviceKind != displayName) return deviceKind;
+    return deviceId.length <= 16
+        ? deviceId
+        : '…${deviceId.substring(deviceId.length - 12)}';
+  }
+
   /// How this device should be named on screen: what it is called, and
   /// failing that what it is, and failing that the tail of its identifier so
   /// there is at least something to read out when asking for help.

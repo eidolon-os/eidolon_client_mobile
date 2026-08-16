@@ -104,6 +104,26 @@ void main() {
       expect(device({}).label, '…:f3:54:aa:bb');
     });
 
+    test('the second line never repeats the first', () {
+      // An ESP32 reports its board as its name, so name and kind arrive equal.
+      // Printing it twice tells the person nothing and looks like a bug.
+      final board = MountedDevice.fromJson({
+        'device_id': '24:ec:4a:52:f3:54',
+        'display_name': 'esp-box-3',
+        'device_kind': 'esp-box-3',
+        'admission_state': 'mounted',
+        'mount': {
+          'revision': 1,
+          'attached_companion_id': null,
+          'updated_at': '2026-08-12T08:10:00Z',
+        },
+      });
+
+      expect(board.label, 'esp-box-3');
+      expect(board.detail, isNot('esp-box-3'));
+      expect(board.detail, contains('f3:54'));
+    });
+
     test('a Host that predates saying what a device is still parses', () {
       // Three fields then, five now. An App is routinely newer than the Host
       // beside it, and a device list that broke on the older one would make

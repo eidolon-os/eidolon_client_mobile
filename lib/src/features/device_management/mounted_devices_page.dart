@@ -199,14 +199,9 @@ class _MountedDeviceCard extends StatelessWidget {
         contentPadding: const EdgeInsets.all(16),
         leading: Icon(Icons.developer_board_outlined, color: color),
         title: Text(device.label),
-        // What it is, then what it is to this household. The revision is a
-        // fact about a mount record, and nobody reading this list is asking
-        // about a mount record.
-        subtitle: Text(
-          device.deviceKind.isNotEmpty && device.displayName.isNotEmpty
-              ? device.deviceKind
-              : _shortId(device.deviceId),
-        ),
+        // What kind of thing it is. The revision is a fact about a mount
+        // record, and nobody reading this list is asking about a mount record.
+        subtitle: Text(device.detail),
         trailing: Chip(label: Text(label)),
         onTap: () => Navigator.of(context).push<void>(
           MaterialPageRoute(
