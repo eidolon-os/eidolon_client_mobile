@@ -50,36 +50,6 @@ abstract interface class DeviceSetupCheckpointStore {
   Future<void> remove(String setupId);
 }
 
-/// Temporary adapter boundary for the current ESP32 captive-portal contract.
-///
-/// This port is intentionally narrower than [DeviceProvisioningTransport]: the
-/// legacy hotspot has no verifiable Device identity, onboarding destination or
-/// enrollment receipt. A successful call therefore means only that Wi-Fi was
-/// configured; it must never be promoted to Device admission/claim completion.
-abstract interface class LegacyHotspotProvisioningPort {
-  Future<bool> requestPermission();
-
-  /// Opens an OS-scoped connection to a nearby `Xiaozhi-*` configuration AP
-  /// and returns the networks scanned by that device.
-  Future<List<DeviceWifiNetwork>> openAndScan();
-
-  /// Which device is on the other end of the open hotspot session.
-  Future<CommissionableDevice> identify();
-
-  /// Hands the device the Host it belongs to, and optionally the network to
-  /// reach it on, over the already-open local hotspot session. Implementations
-  /// must not persist [credentials].
-  ///
-  /// Trust and network travel together because a device that joined a network
-  /// without knowing its Host has nothing it can safely talk to there.
-  Future<CommissionedDevice> commission({
-    required DeviceOnboardingTarget target,
-    DeviceWifiCredentials? credentials,
-  });
-
-  Future<void> close();
-}
-
 class InMemoryDeviceSetupCheckpointStore implements DeviceSetupCheckpointStore {
   final Map<String, DeviceSetupCheckpoint> _values = {};
 

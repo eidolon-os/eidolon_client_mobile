@@ -28,7 +28,7 @@ class EidolonMobileApp extends StatelessWidget {
   });
 
   final HostRegistry? hostRegistry;
-  final LegacyHotspotProvisioningPort? deviceProvisioning;
+  final DeviceProvisioningTransport? deviceProvisioning;
 
   @override
   Widget build(BuildContext context) {

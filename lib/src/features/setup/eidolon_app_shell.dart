@@ -22,7 +22,7 @@ class EidolonAppShell extends StatefulWidget {
   final HostRegistry? registry;
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
-  final LegacyHotspotProvisioningPort? deviceProvisioning;
+  final DeviceProvisioningTransport? deviceProvisioning;
   final HostConversationBuilder? conversationBuilder;
 
   @override
@@ -180,7 +180,7 @@ class _HostsPage extends StatelessWidget {
   final Future<void> Function(String hostId) onHostRemoved;
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
-  final LegacyHotspotProvisioningPort? deviceProvisioning;
+  final DeviceProvisioningTransport? deviceProvisioning;
   final HostConversationBuilder? conversationBuilder;
 
   @override
@@ -249,7 +249,7 @@ class _HostDetailPage extends StatelessWidget {
   final Future<void> Function(String hostId) onHostRemoved;
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
-  final LegacyHotspotProvisioningPort? deviceProvisioning;
+  final DeviceProvisioningTransport? deviceProvisioning;
   final HostConversationBuilder? conversationBuilder;
 
   @override

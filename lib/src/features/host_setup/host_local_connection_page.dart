@@ -45,7 +45,7 @@ class HostLocalConnectionPage extends StatefulWidget {
   final ControllerKeyBridge? controllerKeys;
   final LocalApiDiscovery? discovery;
   final LocalApiClientFactory? localApiClientFactory;
-  final LegacyHotspotProvisioningPort? deviceProvisioning;
+  final DeviceProvisioningTransport? deviceProvisioning;
   final HostConversationBuilder? conversationBuilder;
   final bool setupContinuation;
   final VoidCallback? onSetupComplete;
