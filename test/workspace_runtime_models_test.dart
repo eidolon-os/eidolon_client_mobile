@@ -85,4 +85,49 @@ void main() {
       isFalse,
     );
   });
+
+  group('the name its Owner gave this Eidolon', () {
+    test('is read when the Host can say it', () {
+      final companion = PrimaryCompanionRuntime.fromJson({
+        'companion_id': 'c_683f963f54885e86892416894c9d92d1',
+        'display_name': '小忆',
+        'lifecycle_state': 'active',
+      });
+
+      expect(companion.displayName, '小忆');
+    });
+
+    test('is absent, not invented, on a Host that predates it', () {
+      // An App is routinely newer than the Host beside it. The older document
+      // has to parse, and what is missing stays missing — showing an
+      // identifier where a name belongs is the thing this exists to stop.
+      final companion = PrimaryCompanionRuntime.fromJson({
+        'companion_id': 'c_683f963f54885e86892416894c9d92d1',
+        'lifecycle_state': 'active',
+      });
+
+      expect(companion.displayName, isEmpty);
+      expect(companion.companionId, 'c_683f963f54885e86892416894c9d92d1');
+    });
+
+    test('a shape the Host is not supposed to send is still refused', () {
+      expect(
+        () => PrimaryCompanionRuntime.fromJson({
+          'companion_id': 'c_1',
+          'display_name': 42,
+          'lifecycle_state': 'active',
+        }),
+        throwsA(isA<FormatException>()),
+      );
+      expect(
+        () => PrimaryCompanionRuntime.fromJson({
+          'companion_id': 'c_1',
+          'display_name': '小忆',
+          'lifecycle_state': 'active',
+          'unexpected': true,
+        }),
+        throwsA(isA<FormatException>()),
+      );
+    });
+  });
 }

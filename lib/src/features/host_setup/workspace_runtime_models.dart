@@ -1,18 +1,37 @@
 import 'workspace_models.dart';
 
 class PrimaryCompanionRuntime {
-  const PrimaryCompanionRuntime({required this.companionId});
+  const PrimaryCompanionRuntime({
+    required this.companionId,
+    required this.displayName,
+  });
 
   factory PrimaryCompanionRuntime.fromJson(Map<String, dynamic> value) {
-    if (value.length != 2 || value['lifecycle_state'] != 'active') {
+    // A Host that predates answering with the name sends two fields; one that
+    // does sends three. Both are this contract — an App is routinely newer
+    // than the Host beside it, and refusing the older document would make
+    // every addition on the Host a broken screen here.
+    if (value.length < 2 ||
+        value.length > 3 ||
+        value['lifecycle_state'] != 'active') {
       throw const FormatException('Local API 返回了无效的主 Companion runtime');
+    }
+    final name = value['display_name'];
+    if (name != null && name is! String) {
+      throw const FormatException('Local API 返回了无效的 Companion 名称');
     }
     return PrimaryCompanionRuntime(
       companionId: _resourceId(value, 'companion_id'),
+      displayName: (name as String?)?.trim() ?? '',
     );
   }
 
   final String companionId;
+
+  /// What the Owner calls this Eidolon, or empty on a Host that cannot say.
+  /// Empty is left empty: an identifier is not a name, and showing one where a
+  /// name belongs is what this exists to stop.
+  final String displayName;
 }
 
 class PersonaRuntime {

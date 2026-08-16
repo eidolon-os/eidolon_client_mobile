@@ -482,7 +482,12 @@ class _WorkspaceCard extends StatelessWidget {
             const SizedBox(height: 12),
             _WorkspaceResourceStatus(
               icon: Icons.face_retouching_natural,
-              label: '主 Companion',
+              // The name its Owner gave it, which is what they typed at setup
+              // and had never been shown back to them. The identifier is what
+              // remains when the Host cannot say.
+              label: runtime?.primaryCompanion.displayName.isNotEmpty ?? false
+                  ? runtime!.primaryCompanion.displayName
+                  : '主 Companion',
               statusLabel: runtime == null ? '已创建' : '运行中',
               detail: runtime == null
                   ? 'Workspace 已创建'
