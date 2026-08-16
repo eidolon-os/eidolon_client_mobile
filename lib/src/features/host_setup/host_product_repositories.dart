@@ -66,6 +66,25 @@ class HostDevicesRepository {
       );
 }
 
+class HostCompanionRepository {
+  HostCompanionRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<String> rename({
+    required String companionId,
+    required String displayName,
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.renameCompanion(
+          baseUrl,
+          accessToken: accessToken,
+          companionId: companionId,
+          displayName: displayName,
+        ),
+      );
+}
+
 class HostControllerGrantRepository {
   HostControllerGrantRepository(this._session);
 

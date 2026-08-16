@@ -288,6 +288,32 @@ class LocalApiClient {
     );
   }
 
+  Future<String> renameCompanion(
+    String baseUrl, {
+    required String accessToken,
+    required String companionId,
+    required String displayName,
+  }) async {
+    final response = await _httpClient
+        .patch(
+          parseBaseUri(baseUrl).resolve(
+            '/api/local/v1/companions/${Uri.encodeComponent(companionId)}',
+          ),
+          headers: _authorizedHeaders(accessToken, json: true),
+          body: jsonEncode({
+            'contract_version': '1',
+            'display_name': displayName,
+          }),
+        )
+        .timeout(timeout);
+    final document = _decodeResponse(response, operation: 'Companion rename');
+    final name = document['display_name'];
+    if (name is! String || name.isEmpty) {
+      throw const FormatException('主机没有返回新的名称');
+    }
+    return name;
+  }
+
   Future<List<ControllerGrant>> fetchControllers(
     String baseUrl, {
     required String accessToken,

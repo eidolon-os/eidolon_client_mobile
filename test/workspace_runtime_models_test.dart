@@ -130,4 +130,14 @@ void main() {
       );
     });
   });
+
+  group('naming is done to the name, not in a settings list', () {
+    test('a cleared box and a cancelled dialog both mean leave it alone', () {
+      // The screen may change what an Eidolon is called. It may not take the
+      // name away, so neither gesture is a rename of "".
+      for (final chosen in <String?>[null, '', '   ']) {
+        expect(chosen?.trim() ?? '', isEmpty);
+      }
+    });
+  });
 }

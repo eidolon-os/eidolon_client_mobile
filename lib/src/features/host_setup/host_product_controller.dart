@@ -44,6 +44,7 @@ class HostProductController extends ChangeNotifier {
     _deviceAdmissionRepository = HostDeviceAdmissionRepository(_session);
     _hostServicesRepository = HostServicesRepository(_session);
     _controllerGrantRepository = HostControllerGrantRepository(_session);
+    _companionRepository = HostCompanionRepository(_session);
   }
 
   ManagedHost _host;
@@ -54,6 +55,7 @@ class HostProductController extends ChangeNotifier {
   late final HostDeviceAdmissionRepository _deviceAdmissionRepository;
   late final HostServicesRepository _hostServicesRepository;
   late final HostControllerGrantRepository _controllerGrantRepository;
+  late final HostCompanionRepository _companionRepository;
 
   bool _connecting = false;
   bool _workspaceBusy = false;
@@ -222,6 +224,22 @@ class HostProductController extends ChangeNotifier {
 
   Future<HostServiceInventory> listHostServices() =>
       _hostServicesRepository.list();
+
+  /// Name this Owner's Eidolon.
+  ///
+  /// The runtime view is re-read afterwards rather than patched here: the Host
+  /// is what a Companion is called, and a screen that edited its own copy
+  /// would show a name the Host might not have accepted.
+  Future<void> renameCompanion({
+    required String companionId,
+    required String displayName,
+  }) async {
+    await _companionRepository.rename(
+      companionId: companionId,
+      displayName: displayName,
+    );
+    await refreshWorkspace();
+  }
 
   /// Which phones hold this Host, as the Host says.
   Future<List<ControllerGrant>> listControllers() =>

@@ -99,6 +99,56 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     if (mounted) await _controller.connect();
   }
 
+  /// Ask what this Eidolon should be called, and tell the Host.
+  Future<void> _renameCompanion() async {
+    final runtime = _controller.workspaceRuntime;
+    if (runtime == null) return;
+    final companion = runtime.primaryCompanion;
+    final field = TextEditingController(text: companion.displayName);
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('rename-companion-dialog'),
+        title: const Text('这个 Eidolon 叫什么？'),
+        content: TextField(
+          key: const Key('companion-name-field'),
+          controller: field,
+          autofocus: true,
+          maxLength: 128,
+          decoration: const InputDecoration(hintText: '给它起个名字'),
+          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const Key('confirm-companion-name'),
+            onPressed: () => Navigator.of(dialogContext).pop(field.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    field.dispose();
+    final name = chosen?.trim();
+    // Cancelling and clearing the box are both "leave it alone": a name is not
+    // something this screen may take away.
+    if (name == null || name.isEmpty || !mounted) return;
+    try {
+      await _controller.renameCompanion(
+        companionId: companion.companionId,
+        displayName: name,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('改名没有完成：$error')),
+      );
+    }
+  }
+
   Future<void> _openControllers() => Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => ManagedControllersPage(
@@ -170,6 +220,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               setupContinuation: widget.setupContinuation,
               onSetupComplete: widget.onSetupComplete,
               onReconnect: _controller.connect,
+              onRenameCompanion: _renameCompanion,
               onChangeNetwork: _openNetworkChange,
             ),
             if ((_controller.workspace?.isReady ?? false) &&
@@ -318,6 +369,7 @@ class _WorkspaceCard extends StatelessWidget {
     required this.onSetupComplete,
     required this.onReconnect,
     required this.onChangeNetwork,
+    required this.onRenameCompanion,
   });
 
   final HostProductController controller;
@@ -327,6 +379,7 @@ class _WorkspaceCard extends StatelessWidget {
   final VoidCallback? onSetupComplete;
   final Future<void> Function() onReconnect;
   final Future<void> Function() onChangeNetwork;
+  final VoidCallback onRenameCompanion;
 
   @override
   Widget build(BuildContext context) {
@@ -481,6 +534,8 @@ class _WorkspaceCard extends StatelessWidget {
             Text('你好，${workspace.owner!.displayName}。'),
             const SizedBox(height: 12),
             _WorkspaceResourceStatus(
+              key: const Key('workspace-companion'),
+              onRename: runtime == null ? null : onRenameCompanion,
               icon: Icons.face_retouching_natural,
               // The name its Owner gave it, which is what they typed at setup
               // and had never been shown back to them. The identifier is what
@@ -634,16 +689,23 @@ class _DevicesSummaryCard extends StatelessWidget {
 
 class _WorkspaceResourceStatus extends StatelessWidget {
   const _WorkspaceResourceStatus({
+    super.key,
     required this.icon,
     required this.label,
     required this.detail,
     required this.statusLabel,
+    this.onRename,
   });
 
   final IconData icon;
   final String label;
   final String detail;
   final String statusLabel;
+
+  /// Offered only where the label is a name somebody chose. Renaming an
+  /// Eidolon is not an administrative operation buried in a settings list —
+  /// it is done to the name, where the name is.
+  final VoidCallback? onRename;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -661,6 +723,13 @@ class _WorkspaceResourceStatus extends StatelessWidget {
                 ],
               ),
             ),
+            if (onRename != null)
+              IconButton(
+                key: const Key('rename-companion'),
+                onPressed: onRename,
+                tooltip: '改名',
+                icon: const Icon(Icons.edit_outlined, size: 18),
+              ),
             Icon(
               Icons.check_circle_outline,
               size: 18,
