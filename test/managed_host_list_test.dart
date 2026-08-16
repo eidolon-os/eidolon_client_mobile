@@ -88,4 +88,83 @@ void main() {
 
     expect((await registry.load()).map((host) => host.hostId), [_liveId]);
   });
+
+  group('what this phone calls a Host', () {
+    testWidgets('a new name is kept, and the Host is never asked', (
+      tester,
+    ) async {
+      final registry = InMemoryHostRegistry([_host(_liveId)]);
+      await tester.pumpWidget(
+        MaterialApp(home: EidolonAppShell(registry: registry)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Eidolon-461dfb'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('rename-host')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('host-name-field')),
+        '  书房那台  ',
+      );
+      await tester.tap(find.byKey(const Key('confirm-host-name')));
+      await tester.pumpAndSettle();
+
+      final saved = (await registry.load()).single;
+      expect(saved.displayName, '书房那台');
+      // Renaming is a note this phone keeps. Nothing about the Host itself —
+      // its identity, its key, when it was claimed — moves with the name.
+      expect(saved.hostId, _liveId);
+      expect(saved.controllerId, 'ectrl-0123456789abcdefabcd');
+      expect(saved.claimedAt, DateTime.utc(2026, 8, 9));
+      expect(find.text('书房那台'), findsWidgets);
+    });
+
+    testWidgets('cancelling and clearing the box both leave it alone', (
+      tester,
+    ) async {
+      final registry = InMemoryHostRegistry([_host(_liveId)]);
+      await tester.pumpWidget(
+        MaterialApp(home: EidolonAppShell(registry: registry)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Eidolon-461dfb'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('rename-host')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect((await registry.load()).single.displayName, 'Eidolon-461dfb');
+
+      await tester.tap(find.byKey(const Key('rename-host')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('host-name-field')), '   ');
+      await tester.tap(find.byKey(const Key('confirm-host-name')));
+      await tester.pumpAndSettle();
+      expect((await registry.load()).single.displayName, 'Eidolon-461dfb');
+    });
+
+    testWidgets('identifiers are still there, just not the headline', (
+      tester,
+    ) async {
+      final registry = InMemoryHostRegistry([_host(_liveId)]);
+      await tester.pumpWidget(
+        MaterialApp(home: EidolonAppShell(registry: registry)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Eidolon-461dfb'));
+      await tester.pumpAndSettle();
+      expect(find.text(_liveId), findsNothing);
+
+      await tester.dragUntilVisible(
+        find.byKey(const Key('host-technical-identity')),
+        find.byType(Scrollable).last,
+        const Offset(0, -300),
+      );
+      await tester.tap(find.byKey(const Key('host-technical-identity')));
+      await tester.pumpAndSettle();
+      expect(find.text(_liveId), findsOneWidget);
+    });
+  });
 }

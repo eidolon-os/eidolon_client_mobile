@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../naming/ask_for_a_name.dart';
 import 'package:flutter/foundation.dart';
 
 import '../device_setup/device_setup_ports.dart';
@@ -233,7 +235,7 @@ class _HostsPage extends StatelessWidget {
       );
 }
 
-class _HostDetailPage extends StatelessWidget {
+class _HostDetailPage extends StatefulWidget {
   const _HostDetailPage({
     required this.host,
     required this.onHostUpdated,
@@ -253,23 +255,80 @@ class _HostDetailPage extends StatelessWidget {
   final HostConversationBuilder? conversationBuilder;
 
   @override
+  State<_HostDetailPage> createState() => _HostDetailPageState();
+}
+
+class _HostDetailPageState extends State<_HostDetailPage> {
+  late ManagedHost host = widget.host;
+
+  CommissioningTransport? get setupTransport => widget.setupTransport;
+  ControllerKeyBridge? get controllerKeys => widget.controllerKeys;
+  DeviceProvisioningTransport? get deviceProvisioning =>
+      widget.deviceProvisioning;
+  HostConversationBuilder? get conversationBuilder => widget.conversationBuilder;
+  ManagedHostUpdater get onHostUpdated => widget.onHostUpdated;
+  Future<void> Function(String hostId) get onHostRemoved =>
+      widget.onHostRemoved;
+
+  /// What this Host is called is this phone's to decide.
+  ///
+  /// A Host names itself after its own identifier, so a second one looks like
+  /// the first with different hex. The name lives in this phone's registry
+  /// rather than on the Host, and that is the whole story: nothing is asked of
+  /// the Host, and nothing about it changes.
+  Future<void> _renameHost() async {
+    final name = await askForAName(
+      context,
+      question: '这台主机叫什么？',
+      hint: '比如「书房那台」',
+      current: host.displayName,
+      dialogKey: const Key('rename-host-dialog'),
+      fieldKey: const Key('host-name-field'),
+      confirmKey: const Key('confirm-host-name'),
+    );
+    if (name == null || name == host.displayName) return;
+    final renamed = host.copyWith(displayName: name);
+    await onHostUpdated(renamed);
+    if (mounted) setState(() => host = renamed);
+  }
+
+  @override
   Widget build(BuildContext context) => Scaffold(
         key: const Key('managed-host-detail'),
-        appBar: AppBar(title: Text(host.displayName)),
+        appBar: AppBar(
+          title: Text(host.displayName),
+          actions: [
+            IconButton(
+              key: const Key('rename-host'),
+              onPressed: _renameHost,
+              tooltip: '改名',
+              icon: const Icon(Icons.edit_outlined),
+            ),
+          ],
+        ),
         body: ListView(
           padding: const EdgeInsets.all(20),
           children: [
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Text('主机身份', style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 12),
-                    SelectableText(host.hostId),
-                    const SizedBox(height: 4),
-                    Text('Controller：${host.controllerId}'),
+                    const CircleAvatar(radius: 24, child: Icon(Icons.memory)),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            host.displayName,
+                            style: Theme.of(context).textTheme.headlineSmall,
+                          ),
+                          const SizedBox(height: 4),
+                          const Text('这台手机管理着它'),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -348,6 +407,27 @@ class _HostDetailPage extends StatelessWidget {
               subtitle: '这台手机会忘记它；主机本身不受影响',
               destructive: true,
               onTap: () => _confirmForget(context),
+            ),
+            const SizedBox(height: 20),
+            // Kept, but no longer the first thing about a Host. These are what
+            // one machine is called by other machines; an Owner needs them
+            // when something has gone wrong, and never before that.
+            Card(
+              child: ExpansionTile(
+                key: const Key('host-technical-identity'),
+                leading: const Icon(Icons.fingerprint),
+                title: const Text('技术信息'),
+                subtitle: const Text('出问题时用得上'),
+                childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('主机 ID', style: Theme.of(context).textTheme.labelMedium),
+                  SelectableText(host.hostId),
+                  const SizedBox(height: 8),
+                  Text('Controller', style: Theme.of(context).textTheme.labelMedium),
+                  SelectableText(host.controllerId),
+                ],
+              ),
             ),
           ],
         ),
