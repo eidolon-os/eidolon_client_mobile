@@ -124,18 +124,24 @@ class _PersonaHistoryPageState extends State<PersonaHistoryPage> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const Card(
+          Card(
             child: Padding(
-              padding: EdgeInsets.all(18),
+              padding: const EdgeInsets.all(18),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.auto_awesome_outlined),
-                  SizedBox(width: 12),
+                  const Icon(Icons.auto_awesome_outlined),
+                  const SizedBox(width: 12),
                   Expanded(
+                    // Written to be true now and true later. It says what
+                    // happens when it changes, not that it is changing —
+                    // because today nothing in the runtime proposes an
+                    // evolution, and a page promising growth that is not
+                    // happening is worse than a page that waits for it.
                     child: Text(
-                      '它会随着相处慢慢变化，不需要你批准。'
-                      '这里是它变成过的样子；如果某次变化你不喜欢，可以让它回到之前。',
+                      '它变化的时候不需要你批准。'
+                      '这里是它变成过的样子；如果某次变化你不喜欢，可以让它回到之前。'
+                      '${_stillTheSame(history) ? '\n\n目前它还是刚来时的样子。' : ''}',
                     ),
                   ),
                 ],
@@ -256,6 +262,10 @@ class _ChapterCard extends StatelessWidget {
     );
   }
 }
+
+/// Whether this Eidolon has only ever been one thing.
+bool _stillTheSame(PersonaHistory? history) =>
+    history != null && history.chapters.length == 1;
 
 String _day(DateTime value) {
   final local = value.toLocal();

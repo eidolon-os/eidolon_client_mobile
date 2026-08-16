@@ -124,6 +124,37 @@ void main() {
     expect(find.byKey(const Key('persona-history-empty')), findsNothing);
   });
 
+  testWidgets('does not promise growth that is not happening yet',
+      (tester) async {
+    // Nothing in the runtime proposes an evolution today: the machinery is
+    // built and wired, and no product path ever triggers it. A page saying
+    // 它会慢慢变化 would be promising something the product does not do.
+    await _open(
+      tester,
+      history: PersonaHistory.fromJson({
+        'companion_id': 'c_1',
+        'chapters': [
+          {
+            'chapter_id': 'g_1',
+            'changed_at': '2026-08-09T08:00:00Z',
+            'what_changed': '',
+            'restored_from': null,
+            'is_current': true,
+          },
+        ],
+      }),
+    );
+
+    expect(find.textContaining('目前它还是刚来时的样子'), findsOneWidget);
+    expect(find.textContaining('它变化的时候不需要你批准'), findsOneWidget);
+  });
+
+  testWidgets('and stops saying it once it has changed', (tester) async {
+    await _open(tester);
+
+    expect(find.textContaining('目前它还是刚来时的样子'), findsNothing);
+  });
+
   group('what the Host says and what the screen may add', () {
     test('a chapter carries no version, hash or schema to leak', () {
       final chapter = _history().chapters.first;
@@ -147,3 +178,4 @@ void main() {
     });
   });
 }
+
