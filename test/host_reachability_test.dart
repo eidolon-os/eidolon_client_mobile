@@ -15,22 +15,24 @@ import 'support/host_session_fixtures.dart';
 /// The scenarios 已认领主机的可达性架构.md §4 requires to be invisible.
 void main() {
   group('an address is the most perishable thing the App holds', () {
-    test('a Host that moved is found where it moved to', () async {
-      // Announcement beats memory: the remembered address is stale by
-      // definition once something answers the announcement.
+    test('what answered the announcement is offered before what was remembered',
+        () async {
+      // A Host that moved is found where it moved to; the remembered address
+      // is stale by definition once something answers now.
       final locator = HostLocator([
         _Source(HostAddressEvidence.announced, ['https://192.168.3.206:9002']),
         const RememberedAddressSource(),
       ]);
 
-      final located = await locator.locate(
-        hostFixture(lastKnownBaseUrl: 'https://192.168.100.15:9002'),
-      );
+      final tiers = await locator
+          .locate(hostFixture(lastKnownBaseUrl: 'https://192.168.100.15:9002'))
+          .toList();
 
-      expect(located.first.endpoint.baseUrl, 'https://192.168.3.206:9002');
-      expect(located.first.evidence, HostAddressEvidence.announced);
-      // The stale one is still worth trying if the fresh one does not answer.
-      expect(located.length, 2);
+      expect(tiers.first.single.endpoint.baseUrl, 'https://192.168.3.206:9002');
+      expect(tiers.first.single.evidence, HostAddressEvidence.announced);
+      // Still offered, but only after the fresher one has failed to answer:
+      // later is deferred, never skipped.
+      expect(tiers.last.single.evidence, HostAddressEvidence.remembered);
     });
 
     test('silence on one means is not silence everywhere', () async {
@@ -41,11 +43,31 @@ void main() {
         const RememberedAddressSource(),
       ]);
 
-      final located = await locator.locate(
-        hostFixture(lastKnownBaseUrl: 'https://192.168.3.206:9002'),
-      );
+      final tiers = await locator
+          .locate(hostFixture(lastKnownBaseUrl: 'https://192.168.3.206:9002'))
+          .toList();
 
-      expect(located.single.evidence, HostAddressEvidence.remembered);
+      expect(tiers.single.single.evidence, HostAddressEvidence.remembered);
+    });
+
+    test('a costly means is not consulted while a cheap one has answers',
+        () async {
+      // Reading the Host's own statement costs a permission, a scan and a
+      // connection. Paying that when an announcement already answered would
+      // make every connection slower for a case that did not arise.
+      var published = 0;
+      final locator = HostLocator([
+        _Source(HostAddressEvidence.announced, ['https://192.168.3.206:9002']),
+        PublishedAddressSource((_) async {
+          published += 1;
+          return ['https://192.168.3.206:9002'];
+        }),
+      ]);
+
+      final first = await locator.locate(hostFixture()).first;
+
+      expect(first.single.evidence, HostAddressEvidence.announced);
+      expect(published, 0);
     });
 
     test('when nothing was learned at all, the first reason travels', () async {
@@ -55,7 +77,7 @@ void main() {
       ]);
 
       await expectLater(
-        locator.locate(hostFixture()),
+        locator.locate(hostFixture()).toList(),
         throwsA(isA<StateError>()),
       );
     });

@@ -63,14 +63,22 @@ class HostProductSession {
   })  : _host = host,
         _transport = transport ?? PlatformBleCommissioningTransport(),
         _controllerKeys = controllerKeys ?? PlatformControllerKeyBridge(),
-        _locator = locator ??
-            HostLocator.standard(discovery ?? PlatformLocalApiDiscovery()),
-        _clientFactory = clientFactory ?? _platformClientFactory;
+        _clientFactory = clientFactory ?? _platformClientFactory {
+    // Built here rather than in the initializer list because the last resort
+    // is this session's own BLE read: when nothing on the network answered,
+    // the Host is asked directly where it is.
+    _locator = locator ??
+        HostLocator.standard(
+          discovery ?? PlatformLocalApiDiscovery(),
+          readPublished: (_) async =>
+              (await _readEndpointOverBle()).localApiBaseUrls,
+        );
+  }
 
   ManagedHost _host;
   final CommissioningTransport _transport;
   final ControllerKeyBridge _controllerKeys;
-  final HostLocator _locator;
+  late final HostLocator _locator;
   final LocalApiClientFactory _clientFactory;
 
   LocalApiEndpoint? _endpoint;
@@ -103,37 +111,48 @@ class HostProductSession {
     }
 
     onProgress?.call('正在同一局域网中查找主机');
-    // Where it answered last time is tried alongside whatever discovery finds.
-    // Multicast does not reach every phone on every network — same Wi-Fi, same
-    // subnet, ping fine, and nothing discovered — and a Host this phone has
-    // already claimed should not become unreachable because one mechanism went
-    // quiet. Nothing is trusted for being remembered: each candidate still has
-    // to prove it is this Host before a word is said to it.
-    final candidates = await _locator.locate(_host);
+    // Each means of learning where the Host is, cheapest first, and the next
+    // one only when nothing in the last could be reached. Multicast does not
+    // reach every phone on every network — same Wi-Fi, same subnet, ping fine,
+    // and nothing discovered — so a Host this phone has already claimed asks
+    // its way through the alternatives instead of stopping there. Nothing is
+    // trusted for having been remembered or published: every candidate proves
+    // it is this Host before a word is said to it.
     Object? lastFailure;
-    for (final candidate in candidates) {
-      final endpoint = candidate.endpoint;
-      final client = _clientFactory(_host.tlsSpkiFingerprint!);
-      try {
-        final overview = await client.fetchHost(endpoint.baseUrl);
-        _verifyHost(overview);
-        final controllerSession = await _authenticate(
-          client,
-          endpoint,
-          overview,
-        );
-        _endpoint = endpoint;
-        _overview = overview;
-        _controllerSession = controllerSession;
-        if (_host.lastKnownBaseUrl != endpoint.baseUrl) {
-          _host = _host.copyWith(lastKnownBaseUrl: endpoint.baseUrl);
+    await for (final tier in _locator.locate(_host)) {
+      // Whether anything at these addresses said anything at all. Something
+      // that answered and was refused has told us where the Host is not, which
+      // is knowledge; moving on to a costlier means because of it would ask the
+      // person for a permission and a scan on account of an impostor. Only
+      // silence is a reason to keep looking.
+      var answered = false;
+      for (final candidate in tier) {
+        final endpoint = candidate.endpoint;
+        final client = _clientFactory(_host.tlsSpkiFingerprint!);
+        try {
+          final overview = await client.fetchHost(endpoint.baseUrl);
+          _verifyHost(overview);
+          final controllerSession = await _authenticate(
+            client,
+            endpoint,
+            overview,
+          );
+          _endpoint = endpoint;
+          _overview = overview;
+          _controllerSession = controllerSession;
+          if (_host.lastKnownBaseUrl != endpoint.baseUrl) {
+            _host = _host.copyWith(lastKnownBaseUrl: endpoint.baseUrl);
+          }
+          return _host;
+        } catch (error) {
+          lastFailure = error;
+          answered |=
+              !(error is PinnedHttpException && _hostDidNotAnswer(error));
+        } finally {
+          client.close();
         }
-        return _host;
-      } catch (error) {
-        lastFailure = error;
-      } finally {
-        client.close();
       }
+      if (answered) break;
     }
     if (lastFailure != null) throw lastFailure;
     throw const LocalApiRequestException('局域网中没有兼容的 Eidolon 主机');
@@ -239,7 +258,7 @@ class HostProductSession {
                 error.statusCode == 404 ||
                 error.statusCode == 409
             ? '主机已重置或不再授权这台管理设备。请让持有主机的人执行 Controller Reset，'
-                  '然后像首次开箱一样重新连接；主机数据不会丢失。'
+                '然后像首次开箱一样重新连接；主机数据不会丢失。'
             : '管理会话已失效，且暂时无法重新认证。请重新连接主机。',
       );
     } on SetupTrustException catch (error) {
@@ -292,6 +311,12 @@ class HostProductSession {
   }
 
   Future<ManagedHost> _readTlsIdentityOverBle() async {
+    final endpoint = await _readEndpointOverBle();
+    return _host.copyWith(tlsSpkiFingerprint: endpoint.tlsSpkiFingerprint);
+  }
+
+  /// Read this Host's own signed statement about itself, from beside it.
+  Future<CommissioningEndpoint> _readEndpointOverBle() async {
     if (!await _transport.requestPermission()) {
       throw const CommissioningRequestException(
         'permission_denied',
@@ -319,9 +344,7 @@ class HostProductSession {
           hostPublicKey: _host.hostPublicKey,
           bleServiceUuid: _host.bleServiceUuid,
         );
-        return _host.copyWith(
-          tlsSpkiFingerprint: endpoint.tlsSpkiFingerprint,
-        );
+        return endpoint;
       } on SetupTrustException {
         // Nearby Hosts are candidates until their signed identity matches.
       } on FormatException {

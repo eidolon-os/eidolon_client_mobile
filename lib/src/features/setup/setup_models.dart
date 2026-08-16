@@ -80,6 +80,7 @@ class CommissioningEndpoint {
     required this.bleServiceUuid,
     required this.tlsSpkiFingerprint,
     required this.developmentSetup,
+    required this.localApiBaseUrls,
   });
 
   static const defaultServiceUuid = 'f6a147b7-abef-57c3-973f-e3a17c6ef0ab';
@@ -93,6 +94,12 @@ class CommissioningEndpoint {
     'setup_session',
     'signature',
   };
+
+  /// Keys a Host may send and this App understands, but which a Host that has
+  /// not been updated will not send. An App is routinely newer than the Host it
+  /// is talking to, so an addition to a signed document has to be additive:
+  /// absent means the Host cannot say, not that the document is wrong.
+  static const _optionalKeys = <String>{'local_api_base_urls'};
   static final _uuidPattern = RegExp(
     r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
   );
@@ -129,8 +136,10 @@ class CommissioningEndpoint {
       throw const SetupTrustException('附近主机返回了无效的身份数据');
     }
     if (decoded is! Map<String, dynamic> ||
-        decoded.length != _keys.length ||
-        !decoded.keys.every(_keys.contains)) {
+        !_keys.every(decoded.containsKey) ||
+        !decoded.keys.every(
+          (key) => _keys.contains(key) || _optionalKeys.contains(key),
+        )) {
       throw const SetupTrustException('附近主机的身份数据与 v1 契约不一致');
     }
     final contractVersion = _requiredJsonString(decoded, 'contract_version');
@@ -181,7 +190,22 @@ class CommissioningEndpoint {
       bleServiceUuid: expectedServiceUuid,
       tlsSpkiFingerprint: fingerprint,
       developmentSetup: developmentSetup,
+      localApiBaseUrls: _publishedBaseUrls(decoded['local_api_base_urls']),
     );
+  }
+
+  static List<String> _publishedBaseUrls(Object? value) {
+    // A Host that has not been told where it answers publishes nothing rather
+    // than a guess, and an entry that is not a usable HTTPS origin is dropped
+    // rather than carried to the point of use.
+    if (value is! List) return const [];
+    return value
+        .whereType<String>()
+        .where((url) {
+          final uri = Uri.tryParse(url);
+          return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
+        })
+        .toList(growable: false);
   }
 
   final String hostId;
@@ -191,6 +215,13 @@ class CommissioningEndpoint {
   final String bleServiceUuid;
   final String tlsSpkiFingerprint;
   final DevelopmentSetupSession? developmentSetup;
+
+  /// Where this Host says it answers, told over a channel that does not need
+  /// the network to carry announcements — which is the one moment a phone
+  /// cannot learn it any other way. Inside the signature, so it cannot be
+  /// substituted; still only a place to look, since whatever answers there
+  /// proves its identity like anything else.
+  final List<String> localApiBaseUrls;
 }
 
 class DevelopmentSetupSession {
