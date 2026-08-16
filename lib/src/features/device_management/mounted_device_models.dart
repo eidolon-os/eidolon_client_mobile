@@ -40,6 +40,8 @@ class MountedDeviceMount {
 class MountedDevice {
   const MountedDevice({
     required this.deviceId,
+    required this.displayName,
+    required this.deviceKind,
     required this.admissionState,
     required this.mount,
   });
@@ -48,7 +50,14 @@ class MountedDevice {
     final deviceId = value['device_id'];
     final rawState = value['admission_state'];
     final rawMount = value['mount'];
-    if (value.length != 3 ||
+    final rawName = value['display_name'];
+    final rawKind = value['device_kind'];
+    // Three fields on a Host that predates saying what a device is, five on
+    // one that says it. An App is routinely newer than the Host beside it.
+    if (value.length < 3 ||
+        value.length > 5 ||
+        (rawName != null && rawName is! String) ||
+        (rawKind != null && rawKind is! String) ||
         deviceId is! String ||
         deviceId.isEmpty ||
         deviceId.length > 128 ||
@@ -74,12 +83,35 @@ class MountedDevice {
     }
     return MountedDevice(
       deviceId: deviceId,
+      displayName: (rawName as String?)?.trim() ?? '',
+      deviceKind: (rawKind as String?)?.trim() ?? '',
       admissionState: state,
       mount: mount,
     );
   }
 
   final String deviceId;
+
+  /// What this device is called, or empty when the Host could not say. Empty
+  /// stays empty: an identifier is what someone falls back to when nobody
+  /// will tell them what a thing is, not a substitute for its name.
+  final String displayName;
+
+  /// What kind of thing it is — esp32-box3, a phone. Useful exactly when the
+  /// name is missing or when two devices share one.
+  final String deviceKind;
+
+  /// How this device should be named on screen: what it is called, and
+  /// failing that what it is, and failing that the tail of its identifier so
+  /// there is at least something to read out when asking for help.
+  String get label {
+    if (displayName.isNotEmpty) return displayName;
+    if (deviceKind.isNotEmpty) return deviceKind;
+    return deviceId.length <= 16
+        ? deviceId
+        : '…${deviceId.substring(deviceId.length - 12)}';
+  }
+
   final MountedDeviceAdmissionState admissionState;
   final MountedDeviceMount mount;
 }

@@ -183,7 +183,6 @@ class _MountedDeviceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final companionId = device.mount.attachedCompanionId;
     final (label, color) = switch (device.admissionState) {
       MountedDeviceAdmissionState.ready => (
           '已接入',
@@ -199,11 +198,14 @@ class _MountedDeviceCard extends StatelessWidget {
         key: Key('mounted-device-${device.deviceId}'),
         contentPadding: const EdgeInsets.all(16),
         leading: Icon(Icons.developer_board_outlined, color: color),
-        title: Text(_shortId(device.deviceId)),
+        title: Text(device.label),
+        // What it is, then what it is to this household. The revision is a
+        // fact about a mount record, and nobody reading this list is asking
+        // about a mount record.
         subtitle: Text(
-          companionId != null
-              ? 'Companion ${_shortId(companionId)} · revision ${device.mount.revision}'
-              : 'revision ${device.mount.revision}',
+          device.deviceKind.isNotEmpty && device.displayName.isNotEmpty
+              ? device.deviceKind
+              : _shortId(device.deviceId),
         ),
         trailing: Chip(label: Text(label)),
         onTap: () => Navigator.of(context).push<void>(
@@ -294,7 +296,6 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
       MountedDeviceAdmissionState.ready => '已接入',
       MountedDeviceAdmissionState.mounted => '待关联 Companion',
     };
-    final companionId = device.mount.attachedCompanionId;
     return Scaffold(
       key: const Key('mounted-device-detail'),
       appBar: AppBar(title: const Text('设备详情')),
@@ -322,9 +323,11 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
                 ),
                 ListTile(
                   title: const Text('关联 Companion'),
-                  subtitle: companionId == null
-                      ? const Text('尚未关联')
-                      : SelectableText(companionId),
+                  subtitle: Text(
+                    device.mount.attachedCompanionId == null
+                        ? '尚未关联'
+                        : '已关联',
+                  ),
                 ),
                 ListTile(
                   title: const Text('最后更新'),

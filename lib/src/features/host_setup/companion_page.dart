@@ -115,7 +115,7 @@ class CompanionPage extends StatelessWidget {
                 child: ListTile(
                   key: Key('companion-device-${device.deviceId}'),
                   leading: const Icon(Icons.developer_board_outlined),
-                  title: Text(_shortId(device.deviceId)),
+                  title: Text(device.label),
                   // What it is to this Eidolon, not what state a mount is in:
                   // a device attached to it is somewhere it can be spoken to.
                   subtitle: const Text('可以通过它和你说话'),
@@ -126,9 +126,4 @@ class CompanionPage extends StatelessWidget {
       ),
     );
   }
-}
-
-String _shortId(String value) {
-  if (value.length <= 16) return value;
-  return '…${value.substring(value.length - 12)}';
 }

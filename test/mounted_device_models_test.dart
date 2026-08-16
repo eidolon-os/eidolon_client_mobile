@@ -77,4 +77,49 @@ void main() {
       throwsFormatException,
     );
   });
+
+  group('a device is named, not enumerated', () {
+    test('by what it is called, then what it is, then its tail', () {
+      MountedDevice device(Map<String, dynamic> extra) =>
+          MountedDevice.fromJson({
+            'device_id': '24:ec:4a:52:f3:54:aa:bb',
+            'admission_state': 'mounted',
+            'mount': {
+              'revision': 1,
+              'attached_companion_id': null,
+              'updated_at': '2026-08-12T08:10:00Z',
+            },
+            ...extra,
+          });
+
+      expect(
+        device({'display_name': '客厅的 Box-3', 'device_kind': 'esp32-box3'})
+            .label,
+        '客厅的 Box-3',
+      );
+      // No name yet: what kind of thing it is still beats a hex string.
+      expect(device({'device_kind': 'esp32-box3'}).label, 'esp32-box3');
+      // Nothing at all: the tail, so there is something to read out when
+      // asking for help — and never invented into a name.
+      expect(device({}).label, '…:f3:54:aa:bb');
+    });
+
+    test('a Host that predates saying what a device is still parses', () {
+      // Three fields then, five now. An App is routinely newer than the Host
+      // beside it, and a device list that broke on the older one would make
+      // every addition there someone's outage.
+      final device = MountedDevice.fromJson({
+        'device_id': 'device-1',
+        'admission_state': 'mounted',
+        'mount': {
+          'revision': 1,
+          'attached_companion_id': null,
+          'updated_at': '2026-08-12T08:10:00Z',
+        },
+      });
+
+      expect(device.displayName, isEmpty);
+      expect(device.deviceKind, isEmpty);
+    });
+  });
 }
