@@ -289,6 +289,33 @@ class LocalApiClient {
     );
   }
 
+  /// Tell the Host what this person is called.
+  ///
+  /// No Owner is named: the session already says whose it is, and the Host
+  /// refuses to be told otherwise.
+  Future<String> renameOwner(
+    String baseUrl, {
+    required String accessToken,
+    required String displayName,
+  }) async {
+    final response = await _httpClient
+        .patch(
+          parseBaseUri(baseUrl).resolve('/api/local/v1/owner'),
+          headers: _authorizedHeaders(accessToken, json: true),
+          body: jsonEncode({
+            'contract_version': '1',
+            'display_name': displayName,
+          }),
+        )
+        .timeout(timeout);
+    final document = _decodeResponse(response, operation: 'Owner rename');
+    final name = document['display_name'];
+    if (name is! String || name.isEmpty) {
+      throw const FormatException('主机没有返回新的名称');
+    }
+    return name;
+  }
+
   Future<String> renameCompanion(
     String baseUrl, {
     required String accessToken,

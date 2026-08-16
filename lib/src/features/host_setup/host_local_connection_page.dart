@@ -103,6 +103,30 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     if (mounted) await _controller.connect();
   }
 
+  /// Ask what this person should be called, and tell the Host.
+  Future<void> _renameOwner() async {
+    final owner = _controller.workspace?.owner;
+    if (owner == null) return;
+    final name = await askForAName(
+      context,
+      question: '你叫什么？',
+      hint: '它会这样称呼你',
+      current: owner.displayName,
+      dialogKey: const Key('rename-owner-dialog'),
+      fieldKey: const Key('owner-name-field'),
+      confirmKey: const Key('confirm-owner-name'),
+    );
+    if (name == null || !mounted) return;
+    try {
+      await _controller.renameOwner(displayName: name);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('改名没有完成：$error')),
+      );
+    }
+  }
+
   /// Ask what this Eidolon should be called, and tell the Host.
   Future<void> _renameCompanion() async {
     final runtime = _controller.workspaceRuntime;
@@ -252,6 +276,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               onRenameCompanion: _renameCompanion,
               onOpenPersona: _openPersonaHistory,
               onOpenCompanion: _openCompanion,
+              onRenameOwner: _renameOwner,
               onChangeNetwork: _openNetworkChange,
             ),
             if ((_controller.workspace?.isReady ?? false) &&
@@ -408,6 +433,7 @@ class _WorkspaceCard extends StatelessWidget {
     required this.onRenameCompanion,
     required this.onOpenPersona,
     required this.onOpenCompanion,
+    required this.onRenameOwner,
   });
 
   final HostProductController controller;
@@ -420,6 +446,9 @@ class _WorkspaceCard extends StatelessWidget {
   final VoidCallback onRenameCompanion;
   final VoidCallback onOpenPersona;
   final VoidCallback onOpenCompanion;
+
+  /// Null until the Host has a Workspace to name anyone in.
+  final VoidCallback? onRenameOwner;
 
   @override
   Widget build(BuildContext context) {
@@ -571,7 +600,20 @@ class _WorkspaceCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            Text('你好，${workspace.owner!.displayName}。'),
+            Row(
+              children: [
+                Expanded(
+                  child: Text('你好，${workspace.owner!.displayName}。'),
+                ),
+                if (onRenameOwner != null)
+                  IconButton(
+                    key: const Key('rename-owner'),
+                    onPressed: onRenameOwner,
+                    tooltip: '改名',
+                    icon: const Icon(Icons.edit_outlined),
+                  ),
+              ],
+            ),
             const SizedBox(height: 12),
             _WorkspaceResourceStatus(
               key: const Key('workspace-companion'),

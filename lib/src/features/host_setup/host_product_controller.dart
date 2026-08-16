@@ -46,6 +46,7 @@ class HostProductController extends ChangeNotifier {
     _hostServicesRepository = HostServicesRepository(_session);
     _controllerGrantRepository = HostControllerGrantRepository(_session);
     _companionRepository = HostCompanionRepository(_session);
+    _ownerRepository = HostOwnerRepository(_session);
     _deviceNamingRepository = HostDeviceNamingRepository(_session);
   }
 
@@ -58,6 +59,7 @@ class HostProductController extends ChangeNotifier {
   late final HostServicesRepository _hostServicesRepository;
   late final HostControllerGrantRepository _controllerGrantRepository;
   late final HostCompanionRepository _companionRepository;
+  late final HostOwnerRepository _ownerRepository;
   late final HostDeviceNamingRepository _deviceNamingRepository;
 
   bool _connecting = false;
@@ -257,6 +259,15 @@ class HostProductController extends ChangeNotifier {
       companionId: companionId,
       displayName: displayName,
     );
+    await refreshWorkspace();
+  }
+
+  /// Name the person this Host answers to.
+  ///
+  /// Nothing identifies them in the request: the session does. As with the
+  /// Companion, the runtime view is re-read rather than patched here.
+  Future<void> renameOwner({required String displayName}) async {
+    await _ownerRepository.rename(displayName: displayName);
     await refreshWorkspace();
   }
 

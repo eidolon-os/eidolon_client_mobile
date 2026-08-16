@@ -1,6 +1,5 @@
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_device_models.dart';
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_devices_page.dart';
-import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

@@ -127,6 +127,21 @@ class HostCompanionRepository {
       );
 }
 
+/// The person this Host answers to.
+class HostOwnerRepository {
+  HostOwnerRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<String> rename({required String displayName}) => _session.execute(
+        (client, baseUrl, accessToken) => client.renameOwner(
+          baseUrl,
+          accessToken: accessToken,
+          displayName: displayName,
+        ),
+      );
+}
+
 class HostControllerGrantRepository {
   HostControllerGrantRepository(this._session);
 

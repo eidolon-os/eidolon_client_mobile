@@ -176,6 +176,12 @@ Map<String, dynamic> _deviceInventory({bool withReadyDevice = false}) => {
           : [],
     };
 
+/// A Host answers in bytes, and a name is not necessarily latin1 — which is
+/// what `http.Response(String, …)` assumes. The product reads bodyBytes as
+/// UTF-8; a fake that cannot even encode 曼森 fails where the Host would not.
+http.Response _jsonResponse(Object body, [int status = 200]) =>
+    http.Response.bytes(utf8.encode(jsonEncode(body)), status);
+
 LocalApiClient _clientFor(
   Map<String, dynamic> overview, {
   int workspaceStatusCode = 200,
@@ -184,9 +190,25 @@ LocalApiClient _clientFor(
   int devicesStatusCode = 200,
   bool withReadyDevice = false,
   PinnedHttpFailureKind? workspaceTransportFailure,
-}) =>
-    LocalApiClient(
+  List<String>? ownerRenames,
+}) {
+  // The Host is the authority on what anyone is called, so this fake keeps the
+  // name it was last told and answers later reads with it — a client that
+  // painted its own copy would pass a test the product would fail.
+  var ownerName = 'Manson';
+  return LocalApiClient(
       httpClient: MockClient((request) async {
+        if (request.url.path == '/api/local/v1/owner') {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          ownerName = body['display_name']! as String;
+          ownerRenames?.add(ownerName);
+          return _jsonResponse({
+            'operation': 'local.owner-name',
+            'contract_version': '1',
+            'owner_id': 'owner_primary',
+            'display_name': ownerName,
+          });
+        }
         if (request.url.path == '/api/local/v1/host') {
           return http.Response(jsonEncode(overview), 200);
         }
@@ -233,8 +255,7 @@ LocalApiClient _clientFor(
           if (workspaceStatusCode != 200) {
             return http.Response('', workspaceStatusCode);
           }
-          return http.Response(
-            jsonEncode(
+          return _jsonResponse(
               workspaceReady
                   ? {
                       'contract_version': '1',
@@ -242,7 +263,7 @@ LocalApiClient _clientFor(
                       'state': 'ready',
                       'owner': {
                         'owner_id': 'owner_primary',
-                        'display_name': 'Manson',
+                        'display_name': ownerName,
                         'lifecycle_state': 'active',
                       },
                       'workspace': {
@@ -259,8 +280,6 @@ LocalApiClient _clientFor(
                       'owner': null,
                       'workspace': null,
                     },
-            ),
-            200,
           );
         }
         if (request.url.path == '/api/local/v1/workspace/runtime') {
@@ -280,7 +299,8 @@ LocalApiClient _clientFor(
         }
         return http.Response('', 404);
       }),
-    );
+  );
+}
 
 void main() {
   testWidgets(
@@ -793,5 +813,90 @@ void main() {
     expect(find.textContaining('remembered'), findsNothing);
     expect(find.textContaining('published'), findsNothing);
     expect(find.textContaining('Host IP：'), findsOneWidget);
+  });
+
+  testWidgets('a person can correct the name they gave at first use', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final renames = <String>[];
+    // One Host, so one fake: a factory that built a fresh one per call would
+    // forget the name it was just told.
+    final host = _clientFor(
+      _hostOverview(workspaceState: 'ready'),
+      workspaceReady: true,
+      ownerRenames: renames,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => host,
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('你好，Manson。'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('rename-owner')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('owner-name-field')),
+      '  曼森  ',
+    );
+    await tester.tap(find.byKey(const Key('confirm-owner-name')));
+    await tester.pumpAndSettle();
+
+    expect(renames, ['曼森']);
+    // Shown because the Host said so afterwards, not because the screen
+    // assumed the write took.
+    expect(find.text('你好，曼森。'), findsOneWidget);
+  });
+
+  testWidgets('cancelling and clearing the box both leave a person named', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final renames = <String>[];
+    // One Host, so one fake: a factory that built a fresh one per call would
+    // forget the name it was just told.
+    final host = _clientFor(
+      _hostOverview(workspaceState: 'ready'),
+      workspaceReady: true,
+      ownerRenames: renames,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => host,
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('rename-owner')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('rename-owner')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('owner-name-field')), '   ');
+    await tester.tap(find.byKey(const Key('confirm-owner-name')));
+    await tester.pumpAndSettle();
+
+    expect(renames, isEmpty);
+    expect(find.text('你好，Manson。'), findsOneWidget);
   });
 }
