@@ -319,10 +319,12 @@ class _HostDetailPage extends StatelessWidget {
               subtitle: '设置一台设备要把这台主机的身份交给它，请先打开我的 Eidolon',
             ),
             _ManagementEntry.unavailable(
-              key: const Key('manage-controllers-unavailable'),
+              key: const Key('manage-controllers-needs-session'),
               icon: Icons.admin_panel_settings_outlined,
               title: '管理手机',
-              subtitle: '需要先实现 Host Controller Grant 管理协议',
+              // The Host has answered this for a while; what this page lacks is
+              // a session, the same thing 添加设备 lacks here.
+              subtitle: '查看、添加或撤销管理这台主机的手机，请先打开我的 Eidolon',
             ),
             const SizedBox(height: 20),
             Text(

@@ -10,6 +10,7 @@ import '../setup/controller_key_bridge.dart';
 import '../setup/host_registry.dart';
 import '../setup/setup_models.dart';
 import '../setup/setup_trust.dart';
+import 'controller_grant_models.dart';
 import 'host_product_repositories.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
@@ -42,6 +43,7 @@ class HostProductController extends ChangeNotifier {
     _devicesRepository = HostDevicesRepository(_session);
     _deviceAdmissionRepository = HostDeviceAdmissionRepository(_session);
     _hostServicesRepository = HostServicesRepository(_session);
+    _controllerGrantRepository = HostControllerGrantRepository(_session);
   }
 
   ManagedHost _host;
@@ -51,6 +53,7 @@ class HostProductController extends ChangeNotifier {
   late final HostDevicesRepository _devicesRepository;
   late final HostDeviceAdmissionRepository _deviceAdmissionRepository;
   late final HostServicesRepository _hostServicesRepository;
+  late final HostControllerGrantRepository _controllerGrantRepository;
 
   bool _connecting = false;
   bool _workspaceBusy = false;
@@ -216,6 +219,26 @@ class HostProductController extends ChangeNotifier {
 
   Future<HostServiceInventory> listHostServices() =>
       _hostServicesRepository.list();
+
+  /// Which phones hold this Host, as the Host says.
+  Future<List<ControllerGrant>> listControllers() =>
+      _controllerGrantRepository.list();
+
+  /// Open a window in which one more phone may claim this Host.
+  ///
+  /// Asked for by a phone that already holds it, so the Host is never left
+  /// deciding on its own who may join.
+  Future<ControllerInvitation> inviteController({
+    Duration ttl = const Duration(minutes: 10),
+  }) =>
+      _controllerGrantRepository.invite(ttl: ttl);
+
+  /// Withdraw one phone's authority over this Host.
+  Future<void> revokeController({required String controllerId}) =>
+      _controllerGrantRepository.revoke(controllerId: controllerId);
+
+  /// The phone this App is running on, as this Host knows it.
+  String get controllerId => _host.controllerId;
 
   /// [expectedRevision] must be the revision the caller displayed, so that a
   /// screen showing stale state loses the race instead of silently winning it.

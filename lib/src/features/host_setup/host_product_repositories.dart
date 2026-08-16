@@ -1,6 +1,7 @@
 import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
 import '../device_setup/device_setup_ports.dart';
+import 'controller_grant_models.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
 import 'workspace_models.dart';
@@ -61,6 +62,36 @@ class HostDevicesRepository {
           accessToken: accessToken,
           requestId: requestId,
           deviceId: deviceId,
+        ),
+      );
+}
+
+class HostControllerGrantRepository {
+  HostControllerGrantRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<List<ControllerGrant>> list() => _session.execute(
+        (client, baseUrl, accessToken) => client.fetchControllers(
+          baseUrl,
+          accessToken: accessToken,
+        ),
+      );
+
+  Future<ControllerInvitation> invite({required Duration ttl}) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.inviteController(
+          baseUrl,
+          accessToken: accessToken,
+          ttl: ttl,
+        ),
+      );
+
+  Future<void> revoke({required String controllerId}) => _session.execute(
+        (client, baseUrl, accessToken) => client.revokeController(
+          baseUrl,
+          accessToken: accessToken,
+          controllerId: controllerId,
         ),
       );
 }

@@ -7,6 +7,7 @@ import '../setup/commissioning_transport.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/host_registry.dart';
 import 'host_product_controller.dart';
+import 'managed_controllers_page.dart';
 import 'host_product_session.dart';
 import 'host_system_page.dart';
 import 'local_api_discovery.dart';
@@ -98,6 +99,18 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     if (mounted) await _controller.connect();
   }
 
+  Future<void> _openControllers() => Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => ManagedControllersPage(
+            thisControllerId: _controller.controllerId,
+            loadControllers: _controller.listControllers,
+            invite: _controller.inviteController,
+            revoke: (controllerId) =>
+                _controller.revokeController(controllerId: controllerId),
+          ),
+        ),
+      );
+
   Future<void> _openDevices() => Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => MountedDevicesPage(
@@ -175,6 +188,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               _DevicesSummaryCard(
                 controller: _controller,
                 onOpen: _openDevices,
+                onOpenControllers: _openControllers,
               ),
             ],
           ] else if (_controller.connectionError case final error?) ...[
@@ -554,10 +568,12 @@ class _DevicesSummaryCard extends StatelessWidget {
   const _DevicesSummaryCard({
     required this.controller,
     required this.onOpen,
+    required this.onOpenControllers,
   });
 
   final HostProductController controller;
   final VoidCallback onOpen;
+  final VoidCallback onOpenControllers;
 
   @override
   Widget build(BuildContext context) {
@@ -596,6 +612,13 @@ class _DevicesSummaryCard extends StatelessWidget {
               onPressed: onOpen,
               icon: const Icon(Icons.arrow_forward),
               label: const Text('打开设备管理'),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              key: const Key('open-managed-controllers'),
+              onPressed: onOpenControllers,
+              icon: const Icon(Icons.phonelink_lock_outlined),
+              label: const Text('管理手机'),
             ),
           ],
         ),

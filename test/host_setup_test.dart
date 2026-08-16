@@ -395,8 +395,10 @@ void main() {
     // Setting a device up hands it this Host's identity, which needs the
     // Owner session the shell does not have.
     expect(find.byKey(const Key('add-device-needs-session')), findsOneWidget);
+    // Managing the phones that hold this Host needs that same session; the
+    // Host itself has been able to answer for a while.
     expect(
-      find.byKey(const Key('manage-controllers-unavailable')),
+      find.byKey(const Key('manage-controllers-needs-session')),
       findsOneWidget,
     );
     await tester.drag(find.byType(ListView), const Offset(0, -420));
