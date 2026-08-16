@@ -13,6 +13,7 @@ class ManagedHost {
     required this.displayName,
     required this.claimedAt,
     this.tlsSpkiFingerprint,
+    this.lastKnownBaseUrl,
   });
 
   factory ManagedHost.fromJson(Map<String, dynamic> value) => ManagedHost(
@@ -29,6 +30,7 @@ class ManagedHost {
         tlsSpkiFingerprint: _optionalTlsFingerprint(
           value['tls_spki_fingerprint'],
         ),
+        lastKnownBaseUrl: _optionalBaseUrl(value['last_known_base_url']),
       );
 
   final String hostId;
@@ -40,7 +42,21 @@ class ManagedHost {
   final DateTime claimedAt;
   final String? tlsSpkiFingerprint;
 
-  ManagedHost copyWith({String? tlsSpkiFingerprint}) => ManagedHost(
+  /// Where this Host answered last time, kept so finding it again does not
+  /// depend on one mechanism working.
+  ///
+  /// Discovery is how a Host is *found*; it was also the only way to reach one
+  /// already known. On a network that does not carry multicast to this phone —
+  /// same Wi-Fi, same subnet, ping fine — that left a claimed Host unreachable
+  /// with nothing to try. This is a hint, never an authority: whatever answers
+  /// still has to prove it is this Host before anything is said to it.
+  final String? lastKnownBaseUrl;
+
+  ManagedHost copyWith({
+    String? tlsSpkiFingerprint,
+    String? lastKnownBaseUrl,
+  }) =>
+      ManagedHost(
         hostId: hostId,
         hostPublicKey: hostPublicKey,
         hostFingerprint: hostFingerprint,
@@ -49,6 +65,7 @@ class ManagedHost {
         displayName: displayName,
         claimedAt: claimedAt,
         tlsSpkiFingerprint: tlsSpkiFingerprint ?? this.tlsSpkiFingerprint,
+        lastKnownBaseUrl: lastKnownBaseUrl ?? this.lastKnownBaseUrl,
       );
 
   Map<String, dynamic> toJson() => {
@@ -61,7 +78,17 @@ class ManagedHost {
         'claimed_at': claimedAt.toUtc().toIso8601String(),
         if (tlsSpkiFingerprint != null)
           'tls_spki_fingerprint': tlsSpkiFingerprint,
+        if (lastKnownBaseUrl != null) 'last_known_base_url': lastKnownBaseUrl,
       };
+}
+
+String? _optionalBaseUrl(Object? value) {
+  if (value == null) return null;
+  final uri = value is String ? Uri.tryParse(value) : null;
+  if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+    throw const FormatException('Invalid Host base URL');
+  }
+  return value as String;
 }
 
 String? _optionalTlsFingerprint(Object? value) {

@@ -100,7 +100,13 @@ class HostProductSession {
     }
 
     onProgress?.call('正在同一局域网中查找主机');
-    final endpoints = await _discovery.discover();
+    // Where it answered last time is tried alongside whatever discovery finds.
+    // Multicast does not reach every phone on every network — same Wi-Fi, same
+    // subnet, ping fine, and nothing discovered — and a Host this phone has
+    // already claimed should not become unreachable because one mechanism went
+    // quiet. Nothing is trusted for being remembered: each candidate still has
+    // to prove it is this Host before a word is said to it.
+    final endpoints = await _reachableCandidates();
     Object? lastFailure;
     for (final endpoint in endpoints) {
       final client = _clientFactory(_host.tlsSpkiFingerprint!);
@@ -115,6 +121,9 @@ class HostProductSession {
         _endpoint = endpoint;
         _overview = overview;
         _controllerSession = controllerSession;
+        if (_host.lastKnownBaseUrl != endpoint.baseUrl) {
+          _host = _host.copyWith(lastKnownBaseUrl: endpoint.baseUrl);
+        }
         return _host;
       } catch (error) {
         lastFailure = error;
@@ -124,6 +133,39 @@ class HostProductSession {
     }
     if (lastFailure != null) throw lastFailure;
     throw const LocalApiRequestException('局域网中没有兼容的 Eidolon 主机');
+  }
+
+  /// Every address worth trying for this Host, remembered one first.
+  ///
+  /// Discovery failing is not fatal while an address is remembered: it means
+  /// this network did not carry the announcement, not that the Host is gone.
+  Future<List<LocalApiEndpoint>> _reachableCandidates() async {
+    final candidates = <String, LocalApiEndpoint>{};
+    Object? discoveryFailure;
+    try {
+      for (final endpoint in await _discovery.discover()) {
+        candidates[endpoint.baseUrl] = endpoint;
+      }
+    } catch (error) {
+      discoveryFailure = error;
+    }
+    // Discovery goes first and stays authoritative: a Host that moved is found
+    // at its new address, and the remembered one is stale by definition. Memory
+    // is what remains when discovery answers with nothing at all.
+    final remembered = _host.lastKnownBaseUrl;
+    if (remembered != null) {
+      candidates.putIfAbsent(
+        remembered,
+        () => LocalApiEndpoint(
+          instanceName: 'remembered',
+          baseUrl: remembered,
+          ipAddress: Uri.parse(remembered).host,
+          contractVersion: '1',
+        ),
+      );
+    }
+    if (candidates.isEmpty && discoveryFailure != null) throw discoveryFailure;
+    return candidates.values.toList(growable: false);
   }
 
   /// Runs a typed Local API operation and performs one bounded re-authentication

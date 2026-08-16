@@ -92,14 +92,17 @@ class HostProductController extends ChangeNotifier {
     _clearProductState();
     _notify();
     try {
-      final previousFingerprint = _host.tlsSpkiFingerprint;
+      final previous = _host;
       final connectedHost = await _session.connect(
         onProgress: (message) {
           _progress = message;
           _notify();
         },
       );
-      if (connectedHost.tlsSpkiFingerprint != previousFingerprint) {
+      // The address it answered on is worth keeping for the same reason the
+      // fingerprint is: next time, it is one less thing that has to be found.
+      if (connectedHost.tlsSpkiFingerprint != previous.tlsSpkiFingerprint ||
+          connectedHost.lastKnownBaseUrl != previous.lastKnownBaseUrl) {
         await _onHostUpdated(connectedHost);
       }
       _host = connectedHost;

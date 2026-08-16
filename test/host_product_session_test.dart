@@ -274,4 +274,60 @@ void main() {
     expect(sessionCreates, 2);
     expect(workspaceCalls, 2);
   });
+
+  test('a Host already claimed stays reachable when discovery finds nothing',
+      () async {
+    // Same Wi-Fi, same subnet, the Host answering on its address — and not one
+    // multicast announcement reaching this phone. Discovery is how a Host is
+    // found; it must not also be the only way to reach one already known.
+    final discovery = _Discovery([_endpoint('192.168.3.206')]);
+    final session = HostProductSession(
+      host: _host(),
+      transport: _NoopTransport(),
+      controllerKeys: _ControllerKeys(),
+      discovery: discovery,
+      clientFactory: (_) => LocalApiClient(httpClient: _workingClient()),
+    );
+    addTearDown(session.close);
+
+    final connected = await session.connect();
+    expect(connected.lastKnownBaseUrl, contains('192.168.3.206'));
+
+    // The announcement stops arriving; the Host has not moved.
+    discovery.endpoints = [];
+    final again = HostProductSession(
+      host: connected,
+      transport: _NoopTransport(),
+      controllerKeys: _ControllerKeys(),
+      discovery: discovery,
+      clientFactory: (_) => LocalApiClient(httpClient: _workingClient()),
+    );
+    addTearDown(again.close);
+
+    await again.connect();
+
+    expect(again.connection?.endpoint.ipAddress, '192.168.3.206');
+  });
+
+  test('a remembered address is a hint, not an authority', () async {
+    // It goes through the same identity check as anything discovery turns up:
+    // whatever answers there must still prove it is this Host.
+    final discovery = _Discovery([]);
+    final session = HostProductSession(
+      host: _host().copyWith(lastKnownBaseUrl: 'https://192.168.3.206:9002'),
+      transport: _NoopTransport(),
+      controllerKeys: _ControllerKeys(),
+      discovery: discovery,
+      clientFactory: (_) => LocalApiClient(
+        httpClient: _workingClient(overviewResetEpoch: 3),
+      ),
+    );
+    addTearDown(session.close);
+
+    await expectLater(
+      session.connect(),
+      throwsA(isA<HostControllerAuthorizationException>()),
+    );
+    expect(session.connection, isNull);
+  });
 }
