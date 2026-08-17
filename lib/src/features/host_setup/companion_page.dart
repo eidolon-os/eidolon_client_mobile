@@ -19,6 +19,7 @@ class CompanionPage extends StatelessWidget {
     required this.devices,
     required this.onRename,
     required this.onOpenHistory,
+    this.onOpenRecollections,
     this.face,
     this.onChangeFace,
     this.onClearFace,
@@ -31,6 +32,9 @@ class CompanionPage extends StatelessWidget {
   final MountedDeviceInventory? devices;
   final VoidCallback onRename;
   final VoidCallback onOpenHistory;
+
+  /// Null on a Host too old to be asked what it remembers.
+  final VoidCallback? onOpenRecollections;
 
   /// What it looks like, when it looks like anything yet.
   final Uint8List? face;
@@ -125,6 +129,18 @@ class CompanionPage extends StatelessWidget {
                       onTap: onClearFace,
                     ),
                 ],
+              ),
+            ),
+          const SizedBox(height: 16),
+          if (onOpenRecollections != null)
+            Card(
+              child: ListTile(
+                key: const Key('companion-open-recollections'),
+                leading: const Icon(Icons.menu_book_outlined),
+                title: const Text('它记得什么'),
+                subtitle: const Text('问问看,它记住的东西留在这台主机上'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: onOpenRecollections,
               ),
             ),
           const SizedBox(height: 16),

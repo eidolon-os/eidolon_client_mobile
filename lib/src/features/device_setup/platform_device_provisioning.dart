@@ -20,6 +20,15 @@ import 'device_setup_ports.dart';
 /// network the Owner chose is what takes that session down.
 typedef PendingEnrollmentLookup = Future<List<PendingDeviceEnrollment>> Function();
 
+/// Whether the Host already holds this device, whatever state it is in.
+///
+/// Asking only the pending list would be asking whether the device is waiting to
+/// be approved, which a device the Host already admitted never is again. Setting
+/// up a device that already belongs here is an ordinary thing to do — after a
+/// reflash, or to move it to another network — and it must not look like a device
+/// that never arrived.
+typedef AdmittedDeviceLookup = Future<bool> Function(String deviceId);
+
 class DeviceProvisioningTransportException implements Exception {
   const DeviceProvisioningTransportException(this.code, this.message);
 
@@ -33,11 +42,13 @@ class DeviceProvisioningTransportException implements Exception {
 class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
   PlatformDeviceProvisioning({
     required PendingEnrollmentLookup loadPendingEnrollments,
+    required AdmittedDeviceLookup isAlreadyAdmitted,
     MethodChannel? channel,
     Duration enrollmentTimeout = const Duration(minutes: 3),
     Duration enrollmentInterval = const Duration(seconds: 3),
     DateTime Function()? clock,
   })  : _loadPendingEnrollments = loadPendingEnrollments,
+        _isAlreadyAdmitted = isAlreadyAdmitted,
         _channel =
             channel ?? const MethodChannel('live.eidolon.mobile/platform'),
         _enrollmentTimeout = enrollmentTimeout,
@@ -45,6 +56,7 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
         _clock = clock ?? DateTime.now;
 
   final PendingEnrollmentLookup _loadPendingEnrollments;
+  final AdmittedDeviceLookup _isAlreadyAdmitted;
   final MethodChannel _channel;
   final Duration _enrollmentTimeout;
   final Duration _enrollmentInterval;
@@ -155,6 +167,7 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
       channel: _channel,
       descriptor: _parseDescriptor(raw, now: _clock()),
       loadPendingEnrollments: _loadPendingEnrollments,
+      isAlreadyAdmitted: _isAlreadyAdmitted,
       enrollmentTimeout: _enrollmentTimeout,
       enrollmentInterval: _enrollmentInterval,
       clock: _clock,
@@ -173,17 +186,20 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
     required MethodChannel channel,
     required this.descriptor,
     required PendingEnrollmentLookup loadPendingEnrollments,
+    required AdmittedDeviceLookup isAlreadyAdmitted,
     required Duration enrollmentTimeout,
     required Duration enrollmentInterval,
     required DateTime Function() clock,
   })  : _channel = channel,
         _loadPendingEnrollments = loadPendingEnrollments,
+        _isAlreadyAdmitted = isAlreadyAdmitted,
         _enrollmentTimeout = enrollmentTimeout,
         _enrollmentInterval = enrollmentInterval,
         _clock = clock;
 
   final MethodChannel _channel;
   final PendingEnrollmentLookup _loadPendingEnrollments;
+  final AdmittedDeviceLookup _isAlreadyAdmitted;
   final Duration _enrollmentTimeout;
   final Duration _enrollmentInterval;
   final DateTime Function() _clock;
@@ -229,6 +245,12 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
       'ssid': credentials.ssid,
       'password': credentials.password,
     });
+
+    // The device is leaving its own access point to join the network it was just
+    // given, so this session is over whether or not anyone closes it. Letting go
+    // now is what puts the phone back on the Host's network — and the next thing
+    // asked is a question only the Host can answer.
+    await _channel.invokeMethod<void>('closeProvisioningSession');
   }
 
   void _requireAcceptedHandover(String? raw, {required String expectedHubId}) {
@@ -277,7 +299,15 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
   Future<DeviceEnrollmentReceipt> awaitEnrollment() async {
     final deadline = _clock().add(_enrollmentTimeout);
     while (true) {
-      final pending = await _loadPendingEnrollments();
+      // The phone is rejoining the Host's network as this begins, so the first
+      // attempts can fail for reasons that say nothing about the device. Only
+      // the deadline decides that it did not enrol.
+      List<PendingDeviceEnrollment> pending;
+      try {
+        pending = await _loadPendingEnrollments();
+      } catch (_) {
+        pending = const <PendingDeviceEnrollment>[];
+      }
       for (final entry in pending) {
         if (entry.deviceId == descriptor.deviceId) {
           return DeviceEnrollmentReceipt(
@@ -289,6 +319,19 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
             lifecycleState: 'pending-approval',
           );
         }
+      }
+      // A device the Host already holds has arrived, it is simply not waiting to
+      // be approved a second time.
+      try {
+        if (await _isAlreadyAdmitted(descriptor.deviceId)) {
+          return DeviceEnrollmentReceipt(
+            deviceId: descriptor.deviceId,
+            enrollmentId: '',
+            lifecycleState: 'approved',
+          );
+        }
+      } catch (_) {
+        // Same handover as above: the phone may still be rejoining.
       }
       if (!_clock().isBefore(deadline)) {
         throw const DeviceProvisioningTransportException(

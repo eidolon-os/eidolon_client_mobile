@@ -6,6 +6,7 @@ import '../device_setup/device_setup_ports.dart';
 import 'companion_face_models.dart';
 import 'controller_grant_models.dart';
 import 'persona_history_models.dart';
+import 'recollection_models.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
 import 'workspace_models.dart';
@@ -165,6 +166,23 @@ class HostCompanionRepository {
           accessToken: accessToken,
           companionId: companionId,
           displayName: displayName,
+        ),
+      );
+}
+
+/// What this Eidolon remembers.
+class HostRecollectionsRepository {
+  HostRecollectionsRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<Recollections> search({required String query, int limit = 10}) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.fetchRecollections(
+          baseUrl,
+          accessToken: accessToken,
+          query: query,
+          limit: limit,
         ),
       );
 }

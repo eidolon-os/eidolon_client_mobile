@@ -131,7 +131,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
     await _run(() async {
       setState(() {
         _step = _Step.working;
-        _progress = '正在把网络和 Host 交给设备';
+        _progress = '正在把网络和 Host 交给设备,然后等它在主机上登记';
       });
       final target = _target;
       if (target == null) {

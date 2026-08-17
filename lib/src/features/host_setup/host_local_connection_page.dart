@@ -16,6 +16,7 @@ import 'host_product_controller.dart';
 import 'companion_page.dart';
 import 'managed_controllers_page.dart';
 import 'persona_history_page.dart';
+import 'recollections_page.dart';
 import 'host_product_session.dart';
 import 'workspace_runtime_models.dart';
 import 'host_system_page.dart';
@@ -191,6 +192,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               devices: _controller.devices,
               onRename: _renameCompanion,
               onOpenHistory: _openPersonaHistory,
+              onOpenRecollections: () => _openRecollections(current),
               face: _controller.companionFace,
               onChangeFace: () => _changeCompanionFace(current),
               onClearFace: _controller.companionFace == null
@@ -198,6 +200,19 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                   : () => _clearCompanionFace(current),
             );
           },
+        ),
+      ),
+    );
+  }
+
+  /// Ask this Eidolon what it remembers.
+  Future<void> _openRecollections(WorkspaceRuntime runtime) {
+    final name = runtime.primaryCompanion.displayName;
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => RecollectionsPage(
+          companionName: name.isNotEmpty ? name : '它',
+          onSearch: (query) => _controller.recollections(query: query),
         ),
       ),
     );

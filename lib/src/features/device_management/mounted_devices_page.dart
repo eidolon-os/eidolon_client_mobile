@@ -51,6 +51,12 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
     final transport = widget.deviceProvisioning ??
         PlatformDeviceProvisioning(
           loadPendingEnrollments: admission.listPending,
+          isAlreadyAdmitted: (deviceId) async {
+            await widget.controller.refreshDevices();
+            final inventory = widget.controller.devices;
+            return inventory != null &&
+                inventory.devices.any((device) => device.deviceId == deviceId);
+          },
         );
     await Navigator.of(context).push<void>(
       MaterialPageRoute(

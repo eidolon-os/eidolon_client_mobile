@@ -17,6 +17,7 @@ import 'host_service_models.dart';
 import 'local_api_client.dart';
 import 'local_api_discovery.dart';
 import 'persona_history_models.dart';
+import 'recollection_models.dart';
 import 'pinned_http_client.dart';
 import 'workspace_models.dart';
 import 'workspace_runtime_models.dart';
@@ -47,6 +48,7 @@ class HostProductController extends ChangeNotifier {
     _controllerGrantRepository = HostControllerGrantRepository(_session);
     _companionRepository = HostCompanionRepository(_session);
     _ownerRepository = HostOwnerRepository(_session);
+    _recollectionsRepository = HostRecollectionsRepository(_session);
     _deviceNamingRepository = HostDeviceNamingRepository(_session);
   }
 
@@ -60,6 +62,7 @@ class HostProductController extends ChangeNotifier {
   late final HostControllerGrantRepository _controllerGrantRepository;
   late final HostCompanionRepository _companionRepository;
   late final HostOwnerRepository _ownerRepository;
+  late final HostRecollectionsRepository _recollectionsRepository;
   late final HostDeviceNamingRepository _deviceNamingRepository;
 
   bool _connecting = false;
@@ -323,6 +326,14 @@ class HostProductController extends ChangeNotifier {
     await _ownerRepository.rename(displayName: displayName);
     await refreshWorkspace();
   }
+
+  /// Ask it what it remembers about something.
+  ///
+  /// Not held on this controller: unlike the face or the name, an answer here
+  /// belongs to one question someone just asked, and keeping the last one
+  /// would show it again beside the next question.
+  Future<Recollections> recollections({required String query}) =>
+      _recollectionsRepository.search(query: query);
 
   /// What this Eidolon has been.
   Future<PersonaHistory> personaHistory({required String companionId}) =>

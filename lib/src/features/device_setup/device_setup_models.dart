@@ -85,40 +85,6 @@ class DeviceWifiCredentials {
 }
 
 /// A device answering on its own setup hotspot, before it belongs to anyone.
-class CommissionableDevice {
-  const CommissionableDevice({
-    required this.deviceId,
-    required this.board,
-    required this.deviceKind,
-  });
-
-  final String deviceId;
-  final String board;
-  final String deviceKind;
-
-  factory CommissionableDevice.fromPlatform(Map<Object?, Object?> value) =>
-      CommissionableDevice(
-        deviceId: _boundedPlatformString(value, 'deviceId', maxLength: 128),
-        board: _boundedPlatformString(value, 'board', maxLength: 96, minLength: 0),
-        deviceKind:
-            _boundedPlatformString(value, 'deviceKind', maxLength: 96, minLength: 0),
-      );
-}
-
-/// What the device confirmed it accepted. The identity is echoed back so the
-/// Owner's device can recognise the enrollment this device is about to create.
-class CommissionedDevice {
-  const CommissionedDevice({required this.deviceId, required this.hubId});
-
-  final String deviceId;
-  final String hubId;
-
-  factory CommissionedDevice.fromPlatform(Map<Object?, Object?> value) =>
-      CommissionedDevice(
-        deviceId: _boundedPlatformString(value, 'deviceId', maxLength: 128),
-        hubId: _boundedPlatformString(value, 'hubId', maxLength: 128),
-      );
-}
 
 class DeviceOnboardingTarget {
   const DeviceOnboardingTarget({
@@ -486,20 +452,6 @@ class DeviceSetupCheckpoint {
   }
 }
 
-String _boundedPlatformString(
-  Map<Object?, Object?> value,
-  String key, {
-  int minLength = 1,
-  required int maxLength,
-}) {
-  final result = value[key];
-  if (result is! String ||
-      result.length < minLength ||
-      result.length > maxLength) {
-    throw FormatException('设备返回的 $key 无效');
-  }
-  return result;
-}
 
 String _requiredCheckpointString(Map<String, dynamic> value, String key) {
   final result = value[key];
