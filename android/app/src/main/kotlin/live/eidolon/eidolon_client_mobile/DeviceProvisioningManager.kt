@@ -5,6 +5,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import android.net.wifi.WifiNetworkSpecifier
 import android.net.wifi.ScanResult
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -92,10 +97,16 @@ class DeviceProvisioningManager(
          */
         private const val FRESH_SCAN_MILLIS = 30_000L
         private const val SCAN_TIMEOUT_MILLIS = 15_000L
+
+        /** How long to wait for the phone to actually be on the device's network. */
+        private const val JOIN_TIMEOUT_MILLIS = 60_000
     }
 
     private val provisioning: ESPProvisionManager =
         ESPProvisionManager.getInstance(context.applicationContext)
+    private val connectivity = context.applicationContext
+        .getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private val lock = Any()
     private var device: ESPDevice? = null
     private var connectResult: PendingResult? = null
@@ -265,6 +276,17 @@ class DeviceProvisioningManager(
 
     /**
      * Join a device's setup network, authenticate, and read what it says it is.
+     *
+     * The joining is done here rather than left to the vendor client, and the
+     * reason is a real failure: a device's setup network has no route to the
+     * internet, Android notices within about twelve seconds, and moves the
+     * phone back to a network that has one — in the middle of the handshake.
+     * The device saw the phone arrive, start authenticating, and leave.
+     *
+     * So the network is requested as local-only and *held* for as long as the
+     * session lasts. That is what tells Android this network is wanted despite
+     * having nothing behind it. The same discipline was already in this app
+     * once, in the path this one replaced.
      */
     fun open(transportId: String, result: MethodChannel.Result) {
         synchronized(lock) {
@@ -278,20 +300,80 @@ class DeviceProvisioningManager(
             }
             releaseDeviceLocked()
             subscribeLocked()
-
-            val espDevice = provisioning.createESPDevice(
-                ESPConstants.TransportType.TRANSPORT_SOFTAP,
-                ESPConstants.SecurityType.SECURITY_2,
-            )
-            espDevice.userName = SECURITY_USERNAME
-            espDevice.proofOfPossession = SECURITY_PASSPHRASE
-            espDevice.deviceName = transportId
-            device = espDevice
             connectResult = PendingResult(result)
-            // Open network: an unprovisioned device cannot hold a secret that
-            // the phone approaching it for the first time would already know.
-            espDevice.connectWiFiDevice(transportId, "")
         }
+        joinDeviceNetwork(transportId)
+    }
+
+    private fun joinDeviceNetwork(transportId: String) {
+        val pending = synchronized(lock) { connectResult } ?: return
+        val request = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            // Without this, Android validates the network, finds no internet
+            // behind it, and drops it — which is exactly what happened.
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .setNetworkSpecifier(
+                WifiNetworkSpecifier.Builder().setSsid(transportId).build(),
+            )
+            .build()
+
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                Log.i(TAG, "Joined the device's setup network")
+                // Every request this process makes now goes over the device's
+                // network. Released as soon as the credentials are handed over,
+                // because the next thing this app asks is asked of the Host.
+                connectivity.bindProcessToNetwork(network)
+                mainHandler.post { startSession(transportId, pending) }
+            }
+
+            override fun onUnavailable() {
+                Log.w(TAG, "The device's setup network was not joined")
+                mainHandler.post {
+                    failConnection(
+                        pending,
+                        "DEVICE_UNREACHABLE",
+                        "Could not join the device's setup network",
+                    )
+                }
+            }
+
+            override fun onLost(network: Network) {
+                Log.w(TAG, "The device's setup network went away")
+                mainHandler.post {
+                    failConnection(
+                        pending,
+                        "DEVICE_DISCONNECTED",
+                        "The device's setup network went away",
+                    )
+                }
+            }
+        }
+        synchronized(lock) { networkCallback = callback }
+        try {
+            connectivity.requestNetwork(request, callback, JOIN_TIMEOUT_MILLIS)
+        } catch (error: SecurityException) {
+            Log.e(TAG, "Android refused the local-only network request", error)
+            failConnection(
+                pending,
+                "WIFI_PERMISSION_DENIED",
+                error.message ?: "Android refused the device network request",
+            )
+        }
+    }
+
+    private fun startSession(transportId: String, pending: PendingResult) {
+        val espDevice = provisioning.createESPDevice(
+            ESPConstants.TransportType.TRANSPORT_SOFTAP,
+            ESPConstants.SecurityType.SECURITY_2,
+        )
+        espDevice.userName = SECURITY_USERNAME
+        espDevice.proofOfPossession = SECURITY_PASSPHRASE
+        espDevice.deviceName = transportId
+        synchronized(lock) { device = espDevice }
+        // The phone is already on the device's network and stays there, so this
+        // is the variant that authenticates rather than the one that joins.
+        espDevice.connectWiFiDevice()
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
@@ -548,6 +630,17 @@ class DeviceProvisioningManager(
     }
 
     private fun releaseDeviceLocked() {
+        networkCallback?.let { callback ->
+            try {
+                connectivity.unregisterNetworkCallback(callback)
+            } catch (error: IllegalArgumentException) {
+                Log.w(TAG, "The device network request was already gone", error)
+            }
+        }
+        networkCallback = null
+        // Give the phone its own network back before anything else is asked of
+        // it — the Host is not on the device's access point.
+        connectivity.bindProcessToNetwork(null)
         device?.let { espDevice ->
             try {
                 // Also what releases the process from the device's network.
