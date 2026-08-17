@@ -350,4 +350,36 @@ void main() {
       'wifi.confirm',
     ]);
   });
+
+  testWidgets('the progress bar counts what the person does, not our phases', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SetupWizardPage(
+          transport: _FakeCommissioningTransport(),
+          controllerKeys: _FakeControllerKeyBridge(),
+          clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
+          onComplete: (_) {},
+        ),
+      ),
+    );
+
+    // Three things happen here and one waits on the other side. 认领 is the
+    // phone and the Host talking to each other and 主机接入 is the outcome of
+    // that conversation; listing them beside "choose a Wi-Fi network" made
+    // setup look half again as long as it is, while the naming step that
+    // actually follows went unmentioned.
+    // The row itself, exactly: three things done here and the one waiting
+    // after. Not 认领 (the phone and the Host talking to each other) and not
+    // 主机接入 (the outcome of that conversation) — listing those made setup
+    // look half again as long as it is, while the naming step that actually
+    // follows went unmentioned.
+    expect(
+      find.text('选一台主机  ·  输入 Setup 码  ·  连上 Wi-Fi  ·  起名字'),
+      findsOneWidget,
+    );
+  });
 }
