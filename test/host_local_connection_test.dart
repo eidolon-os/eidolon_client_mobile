@@ -668,7 +668,11 @@ void main() {
     expect(find.text('Eidolon'), findsOneWidget);
     expect(find.byKey(const Key('workspace-companion')), findsOneWidget);
     expect(find.textContaining('genome'), findsNothing);
-    expect(find.text('Memory Workspace'), findsOneWidget);
+    // Named for what it is to the person, not for the subsystem that holds
+    // it — and never by the realm identifier, which nobody can act on.
+    expect(find.text('Memory Workspace'), findsNothing);
+    expect(find.text('它的记忆'), findsOneWidget);
+    expect(find.textContaining('realm_primary'), findsNothing);
     // The genome version used to be printed here. It said nothing to the
     // person it was printed at, and what it stood for now has a page.
     expect(find.textContaining('v2'), findsNothing);

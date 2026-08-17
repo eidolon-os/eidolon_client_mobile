@@ -700,11 +700,15 @@ class _WorkspaceCard extends StatelessWidget {
             ),
             _WorkspaceResourceStatus(
               icon: Icons.auto_stories_outlined,
-              label: 'Memory Workspace',
+              label: '它的记忆',
               statusLabel: runtime == null ? '已创建' : '运行中',
+              // Not the realm identifier. That line was the only thing this
+              // row ever said, and it named a thing an Owner cannot open,
+              // search or act on — an identifier standing in for the fact
+              // that there is nothing here to show yet.
               detail: runtime == null
-                  ? 'Workspace 已创建'
-                  : '运行空间 ${_shortId(runtime.memoryWorkspace.realmId)}',
+                  ? '已经为它准备好'
+                  : '它记住的东西留在这台主机上,没有离开过',
             ),
             if (controller.workspaceRuntimeError case final error?) ...[
               const SizedBox(height: 12),
@@ -883,10 +887,6 @@ class _WorkspaceResourceStatus extends StatelessWidget {
       );
 }
 
-String _shortId(String value) {
-  if (value.length <= 16) return value;
-  return '…${value.substring(value.length - 12)}';
-}
 
 String _localTime(DateTime value) {
   final local = value.toLocal();
