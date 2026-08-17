@@ -257,7 +257,7 @@ class _NowCard extends StatelessWidget {
                 inventory.devices.isEmpty
                     ? '还没有设备挂在它上面。'
                     : '${inventory.devices.length} 台设备挂在它上面：'
-                        '${inventory.devices.map(_deviceLabel).join('、')}',
+                        '${inventory.devices.map((item) => item.label).join('、')}',
                 key: const Key('mission-control-devices'),
               )
             else
@@ -271,10 +271,6 @@ class _NowCard extends StatelessWidget {
     );
   }
 
-  /// The name its Owner gave it. A device the Host could not name is counted
-  /// but not recited as an identifier.
-  static String _deviceLabel(MountedDevice device) =>
-      device.displayName.isNotEmpty ? device.displayName : '一台未命名的设备';
 }
 
 class _MomentTile extends StatelessWidget {

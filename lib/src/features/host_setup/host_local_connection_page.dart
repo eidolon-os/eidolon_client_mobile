@@ -15,6 +15,7 @@ import 'face_picker.dart';
 import 'host_product_controller.dart';
 import 'companion_page.dart';
 import 'managed_controllers_page.dart';
+import 'mission_control_page.dart';
 import 'persona_history_page.dart';
 import 'recollections_page.dart';
 import 'host_product_session.dart';
@@ -297,6 +298,20 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         ),
       );
 
+  /// What this Host is doing, and what happened on it lately.
+  Future<void> _openMissionControl() => Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => MissionControlPage(
+            loadActivity: _controller.activity,
+            listServices: _controller.listHostServices,
+            // What the Host already said, rather than asking again: this
+            // screen is a place to look, not a second opinion.
+            devices: _controller.devices,
+            devicesError: _controller.devicesError,
+          ),
+        ),
+      );
+
   Future<void> _openDevices() => Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => MountedDevicesPage(
@@ -337,6 +352,11 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
           ] else if (connection != null) ...[
             _ConnectedHostCard(
               connection: connection,
+              // Offered only once there is an Owner for the history to belong
+              // to. Before that there is nothing this screen could be about.
+              onOpenActivity: (_controller.workspace?.isReady ?? false)
+                  ? _openMissionControl
+                  : null,
               onOpenSystem: () => Navigator.of(context).push<void>(
                 MaterialPageRoute(
                   builder: (_) => HostSystemPage(
@@ -452,10 +472,14 @@ class _ConnectedHostCard extends StatelessWidget {
   const _ConnectedHostCard({
     required this.connection,
     required this.onOpenSystem,
+    this.onOpenActivity,
   });
 
   final HostProductConnection connection;
   final VoidCallback onOpenSystem;
+
+  /// Null until this Host has an Owner whose devices could have a history.
+  final VoidCallback? onOpenActivity;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -492,6 +516,15 @@ class _ConnectedHostCard extends StatelessWidget {
               Text('Controller：${connection.controllerId}'),
               Text('本次管理会话有效至 ${_localTime(connection.sessionExpiresAt)}'),
               const SizedBox(height: 12),
+              if (onOpenActivity case final open?) ...[
+                FilledButton.tonalIcon(
+                  key: const Key('open-mission-control'),
+                  onPressed: open,
+                  icon: const Icon(Icons.timeline),
+                  label: const Text('主机动态'),
+                ),
+                const SizedBox(height: 8),
+              ],
               OutlinedButton.icon(
                 key: const Key('open-host-system-status'),
                 onPressed: onOpenSystem,

@@ -127,7 +127,11 @@ class HostActivity {
 /// The device is named. Where the Host could not name it, the sentence says
 /// "一台设备" rather than reciting an identifier at someone.
 String hostMomentSentence(HostMoment moment) {
-  final name = moment.deviceName.isNotEmpty ? moment.deviceName : '一台设备';
+  final name = switch (moment) {
+    HostMoment(deviceName: final given) when given.isNotEmpty => given,
+    HostMoment(deviceKind: final kind) when kind.isNotEmpty => kind,
+    _ => '一台设备',
+  };
   final byOwner = moment.actor == HostMomentActor.owner;
   return switch (moment.kind) {
     HostMomentKind.deviceKnocked => '$name 敲了门',
