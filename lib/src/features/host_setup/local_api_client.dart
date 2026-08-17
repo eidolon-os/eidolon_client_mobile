@@ -16,6 +16,7 @@ import 'controller_grant_models.dart';
 import 'controller_session.dart';
 import 'host_models.dart';
 import 'host_service_models.dart';
+import 'host_vitals_models.dart';
 import 'persona_history_models.dart';
 import 'workspace_models.dart';
 import 'workspace_runtime_models.dart';
@@ -595,6 +596,22 @@ class LocalApiClient {
         .timeout(timeout);
     return HostActivity.fromJson(
       _decodeResponse(response, operation: 'Host activity'),
+    );
+  }
+
+  /// How the machine is doing: disk, memory, load, temperature, uptime.
+  Future<HostVitals> fetchHostVitals(
+    String baseUrl, {
+    required String accessToken,
+  }) async {
+    final response = await _httpClient
+        .get(
+          parseBaseUri(baseUrl).resolve('/api/local/v1/host/vitals'),
+          headers: _authorizedHeaders(accessToken),
+        )
+        .timeout(timeout);
+    return HostVitals.fromJson(
+      _decodeResponse(response, operation: 'Host vitals'),
     );
   }
 

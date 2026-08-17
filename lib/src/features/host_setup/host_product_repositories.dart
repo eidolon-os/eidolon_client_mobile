@@ -10,6 +10,7 @@ import 'persona_history_models.dart';
 import 'recollection_models.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
+import 'host_vitals_models.dart';
 import 'workspace_models.dart';
 import 'workspace_runtime_models.dart';
 
@@ -252,6 +253,13 @@ class HostServicesRepository {
   const HostServicesRepository(this._session);
 
   final HostProductSession _session;
+
+  Future<HostVitals> vitals() => _session.execute(
+        (client, baseUrl, accessToken) => client.fetchHostVitals(
+          baseUrl,
+          accessToken: accessToken,
+        ),
+      );
 
   Future<HostServiceInventory> list() => _session.execute(
         (client, baseUrl, accessToken) => client.fetchHostServices(

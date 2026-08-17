@@ -364,6 +364,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                     connection: connection,
                     listServices: _controller.listHostServices,
                     changeService: _controller.changeHostService,
+                    readVitals: _controller.hostVitals,
                   ),
                 ),
               ),

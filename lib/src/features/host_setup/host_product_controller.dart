@@ -15,6 +15,7 @@ import 'controller_grant_models.dart';
 import 'host_product_repositories.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
+import 'host_vitals_models.dart';
 import 'local_api_client.dart';
 import 'local_api_discovery.dart';
 import 'persona_history_models.dart';
@@ -235,6 +236,11 @@ class HostProductController extends ChangeNotifier {
 
   Future<HostServiceInventory> listHostServices() =>
       _hostServicesRepository.list();
+
+  /// How the machine is doing. Read when someone opens the page that shows
+  /// it, not held here: a temperature from five minutes ago is not a
+  /// temperature, and nothing else on this controller needs it.
+  Future<HostVitals> hostVitals() => _hostServicesRepository.vitals();
 
   /// What has happened to this Owner's devices lately.
   ///

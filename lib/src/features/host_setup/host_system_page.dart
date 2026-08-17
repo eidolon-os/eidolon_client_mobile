@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import '../setup/host_registry.dart';
 import 'host_models.dart';
 import 'host_product_session.dart';
+import 'dart:async';
+
 import 'host_service_models.dart';
+import 'host_vitals_models.dart';
 
 typedef HostServiceLister = Future<HostServiceInventory> Function();
 typedef HostServiceChanger = Future<HostServiceChange> Function({
@@ -19,6 +22,7 @@ class HostSystemPage extends StatelessWidget {
     required this.connection,
     this.listServices,
     this.changeService,
+    this.readVitals,
   });
 
   final ManagedHost host;
@@ -28,6 +32,9 @@ class HostSystemPage extends StatelessWidget {
   /// renders its status instead of failing the whole page.
   final HostServiceLister? listServices;
   final HostServiceChanger? changeService;
+
+  /// Null on a Host too old to be asked how it is doing.
+  final Future<HostVitals> Function()? readVitals;
 
   @override
   Widget build(BuildContext context) {
@@ -40,6 +47,10 @@ class HostSystemPage extends StatelessWidget {
         children: [
           _StatusHeader(state: state),
           const SizedBox(height: 16),
+          if (readVitals case final read?) ...[
+            _HostVitalsCard(readVitals: read),
+            const SizedBox(height: 16),
+          ],
           _SectionCard(
             title: '本地连接',
             children: [
@@ -393,4 +404,119 @@ String _dateTime(DateTime value) {
   String two(int number) => number.toString().padLeft(2, '0');
   return '${local.year}-${two(local.month)}-${two(local.day)} '
       '${two(local.hour)}:${two(local.minute)}';
+}
+
+/// How the machine itself is doing.
+///
+/// The Host has already phrased every reading and already decided which ones
+/// are worth acting on; this draws that and adds nothing. Deciding here as
+/// well would put one judgement in two places, and the day they disagree the
+/// screen and the Host would each be telling the truth about a different rule.
+class _HostVitalsCard extends StatefulWidget {
+  const _HostVitalsCard({required this.readVitals});
+
+  final Future<HostVitals> Function() readVitals;
+
+  @override
+  State<_HostVitalsCard> createState() => _HostVitalsCardState();
+}
+
+class _HostVitalsCardState extends State<_HostVitalsCard> {
+  HostVitals? _vitals;
+  String? _error;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final vitals = await widget.readVitals();
+      if (mounted) setState(() => _vitals = vitals);
+    } catch (error) {
+      // Not an empty list of readings: "the Host did not answer" and "the
+      // Host is fine" must not look the same.
+      if (mounted) setState(() => _error = '没能读到主机状态：$error');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vitals = _vitals;
+    return Card(
+      key: const Key('host-vitals-card'),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '这台机器',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                IconButton(
+                  key: const Key('refresh-host-vitals'),
+                  onPressed: _loading ? null : _load,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: LinearProgressIndicator(),
+              )
+            else if (_error case final error?)
+              Text(error, key: const Key('host-vitals-error'))
+            else if (vitals != null)
+              ...vitals.vitals.map(
+                (vital) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      _concernDot(context, vital),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(vital.name)),
+                      Text(
+                        vital.reading,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _concernDot(BuildContext context, HostVital vital) {
+    final colors = Theme.of(context).colorScheme;
+    // A reading the Host could not take gets its own mark. Drawing it green
+    // would say the machine is fine on exactly the evidence we do not have.
+    if (vital.isUnavailable) {
+      return Icon(Icons.help_outline, size: 16, color: colors.outline);
+    }
+    return switch (vital.concern) {
+      VitalConcern.act => Icon(Icons.error, size: 16, color: colors.error),
+      VitalConcern.watch =>
+        Icon(Icons.warning_amber, size: 16, color: colors.tertiary),
+      VitalConcern.none =>
+        Icon(Icons.check_circle, size: 16, color: colors.primary),
+    };
+  }
 }
