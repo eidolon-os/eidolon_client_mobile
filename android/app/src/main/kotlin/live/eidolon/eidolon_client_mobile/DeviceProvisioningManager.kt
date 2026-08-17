@@ -78,6 +78,9 @@ class DeviceProvisioningManager(
 
         private const val TRANSPORT_KIND = "softap"
 
+        /** The smallest thing that is not nothing. See its use below. */
+        private val EMPTY_REQUEST = "{}".toByteArray(StandardCharsets.UTF_8)
+
         /**
          * How old a scan may be and still count as an answer.
          *
@@ -325,7 +328,13 @@ class DeviceProvisioningManager(
         }
         espDevice.sendDataToCustomEndPoint(
             DESCRIPTOR_ENDPOINT,
-            ByteArray(0),
+            // Asking nothing still has to be said with something. protocomm
+            // encrypts every payload, and a zero-length one fails inside the
+            // security layer before the device's own handler is reached — so
+            // the device cannot answer, and cannot say why either. The
+            // descriptor endpoint ignores what it is sent; it only has to be
+            // sent something.
+            EMPTY_REQUEST,
             object : ResponseListener {
                 override fun onSuccess(response: ByteArray?) {
                     val descriptor = response?.toString(StandardCharsets.UTF_8).orEmpty()
@@ -345,10 +354,21 @@ class DeviceProvisioningManager(
                 override fun onFailure(error: Exception?) {
                     Log.w(TAG, "The device did not answer the descriptor endpoint", error)
                     mainHandler.post {
+                        // Carried through rather than replaced by a sentence.
+                        // Three different faults have already ended here — a
+                        // permission, a dangling pointer on the device, an
+                        // empty payload — and every one of them read as "the
+                        // device did not answer", which sent the search to the
+                        // one place that was never at fault.
                         failConnection(
                             pending,
                             "DESCRIPTOR_UNAVAILABLE",
-                            error?.message ?: "The device did not say what it is",
+                            listOfNotNull(
+                                error?.javaClass?.simpleName,
+                                error?.message,
+                            ).joinToString(": ").ifEmpty {
+                                "The device did not say what it is"
+                            },
                         )
                     }
                 }

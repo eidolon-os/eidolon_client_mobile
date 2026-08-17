@@ -80,8 +80,12 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
       'DEVICE_UNREACHABLE' =>
         '连不上这台设备。它的设置窗口可能已经超时,按一下它的按键再试。',
       'DEVICE_DISCONNECTED' => '设备中断了这次设置。请再试一次。',
-      'DESCRIPTOR_EMPTY' || 'DESCRIPTOR_UNAVAILABLE' => '设备没有说明自己是什么。',
-      'TRUST_UNANSWERED' => '设备没有回应它是否接受了这台 Host。',
+      // The detail is kept. This one sentence has stood in front of three
+      // unrelated faults so far, none of them the device's silence.
+      'DESCRIPTOR_EMPTY' || 'DESCRIPTOR_UNAVAILABLE' =>
+        _withDetail('没能读到设备的说明', error),
+      'TRUST_UNANSWERED' =>
+        _withDetail('设备没有回应它是否接受了这台 Host', error),
       'DEVICE_REFUSED_NETWORK' || 'NETWORK_REJECTED' =>
         '设备没有接受这个网络,请确认 Wi-Fi 名称和密码。',
       _ => error.message ?? '设置设备时出错了。',
@@ -90,6 +94,11 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
       error.code.toLowerCase(),
       message,
     );
+  }
+
+  static String _withDetail(String sentence, PlatformException error) {
+    final detail = error.message?.trim();
+    return detail == null || detail.isEmpty ? '$sentence。' : '$sentence:$detail';
   }
 
   @override
