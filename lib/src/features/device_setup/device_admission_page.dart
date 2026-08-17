@@ -78,7 +78,7 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage> {
     });
     try {
       final progress = await widget.onApprove(
-        requestId: await _requestId(selected.deviceId),
+        requestId: await _requestId(selected),
         deviceId: selected.deviceId,
       );
       if (!mounted) return;
@@ -90,9 +90,23 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage> {
     }
   }
 
-  Future<String> _requestId(String deviceId) async {
+  /// Name this approval, not this device.
+  ///
+  /// The Host reads a repeated id as the same act again, which is what makes a
+  /// second tap harmless. But an id derived from the Host and the device alone is
+  /// the same forever, so approving a device that was removed and came back
+  /// looked like a replay of the approval it was given months ago — and was
+  /// refused, with advice to remove the device that had just been re-added.
+  ///
+  /// The enrolment's own moment is what separates one approval from the next: a
+  /// device that enrolled again brings a new one, while every retry of this tap
+  /// brings the same.
+  Future<String> _requestId(PendingDeviceEnrollment enrollment) async {
     final digest = await Sha256().hash(
-      utf8.encode('${widget.hostId}\n$deviceId'),
+      utf8.encode(
+        '${widget.hostId}\n${enrollment.deviceId}\n'
+        '${enrollment.enrolledAt.toUtc().toIso8601String()}',
+      ),
     );
     final suffix = base64UrlEncode(digest.bytes).replaceAll('=', '');
     return 'device-approval-$suffix';
