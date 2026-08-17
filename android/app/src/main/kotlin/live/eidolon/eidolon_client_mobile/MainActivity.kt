@@ -49,13 +49,13 @@ class MainActivity : FlutterActivity() {
         private const val DEVICE_ID_NAMESPACE = "eidolon-mobile-android-v1"
         private const val MIC_REQUEST_CODE = 7001
         private const val BLE_REQUEST_CODE = 7002
-        private const val WIFI_PROVISIONING_REQUEST_CODE = 7003
+        private const val DEVICE_PROVISIONING_REQUEST_CODE = 7003
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var permissionResult: MethodChannel.Result? = null
     private var bluetoothPermissionResult: MethodChannel.Result? = null
-    private var wifiProvisioningPermissionResult: MethodChannel.Result? = null
+    private var deviceProvisioningPermissionResult: MethodChannel.Result? = null
     private var discoveryListener: NsdManager.DiscoveryListener? = null
     private val serviceInfoCallbacks = mutableSetOf<NsdManager.ServiceInfoCallback>()
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -66,8 +66,8 @@ class MainActivity : FlutterActivity() {
     private val deviceEnrollmentMaterialStore by lazy {
         DeviceEnrollmentMaterialStore(applicationContext)
     }
-    private val legacyHotspotProvisioning by lazy {
-        LegacyHotspotProvisioningManager(applicationContext, mainHandler)
+    private val deviceProvisioning by lazy {
+        DeviceProvisioningManager(applicationContext, mainHandler)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -113,35 +113,35 @@ class MainActivity : FlutterActivity() {
                 "pinnedHttpsRequest" -> pinnedHttpsClient.request(call, result)
                 "requestMicrophonePermission" -> requestMicrophonePermission(result)
                 "requestBluetoothPermissions" -> requestBluetoothPermissions(result)
-                "requestWifiProvisioningPermission" ->
-                    requestWifiProvisioningPermission(result)
-                "openLegacyHotspotProvisioning" -> {
-                    if (!hasWifiProvisioningPermission()) {
+                "requestDeviceProvisioningPermission" ->
+                    requestDeviceProvisioningPermission(result)
+                "discoverProvisionableDevices" -> {
+                    if (!hasDeviceProvisioningPermission()) {
                         result.error(
                             "WIFI_PERMISSION_DENIED",
                             "Nearby Wi-Fi permission is required",
                             null,
                         )
                     } else {
-                        legacyHotspotProvisioning.open(result)
+                        deviceProvisioning.discover(result)
                     }
                 }
-                "submitLegacyHotspotWifi" -> legacyHotspotProvisioning.submit(
+                "openProvisioningSession" -> deviceProvisioning.open(
+                    call.argument<String>("transportId") ?: error("transportId is required"),
+                    result,
+                )
+                "provisioningScanNetworks" -> deviceProvisioning.scanNetworks(result)
+                "provisioningHandOverTrust" -> deviceProvisioning.handOverTrust(
+                    call.argument<String>("payloadJson") ?: error("payloadJson is required"),
+                    result,
+                )
+                "provisioningConfigureNetwork" -> deviceProvisioning.configureNetwork(
                     call.argument<String>("ssid") ?: error("ssid is required"),
                     call.argument<String>("password") ?: error("password is required"),
                     result,
                 )
-                "identifyDeviceOnHotspot" -> legacyHotspotProvisioning.identify(result)
-                "commissionDeviceOnHotspot" -> legacyHotspotProvisioning.commission(
-                    call.argument<String>("hubId") ?: error("hubId is required"),
-                    call.argument<String>("hubCertificate")
-                        ?: error("hubCertificate is required"),
-                    call.argument<String>("ssid"),
-                    call.argument<String>("password"),
-                    result,
-                )
-                "closeLegacyHotspotProvisioning" -> {
-                    legacyHotspotProvisioning.close()
+                "closeProvisioningSession" -> {
+                    deviceProvisioning.close()
                     result.success(null)
                 }
                 "scanSetupHosts" -> scanSetupHosts(
@@ -327,7 +327,7 @@ class MainActivity : FlutterActivity() {
         requestPermissions(requiredBluetoothPermissions(), BLE_REQUEST_CODE)
     }
 
-    private fun requiredWifiProvisioningPermissions(): Array<String> = when {
+    private fun requiredDeviceProvisioningPermissions(): Array<String> = when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ->
             arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES)
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
@@ -335,12 +335,12 @@ class MainActivity : FlutterActivity() {
         else -> emptyArray()
     }
 
-    private fun hasWifiProvisioningPermission(): Boolean =
-        requiredWifiProvisioningPermissions().all {
+    private fun hasDeviceProvisioningPermission(): Boolean =
+        requiredDeviceProvisioningPermissions().all {
             checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
         }
 
-    private fun requestWifiProvisioningPermission(result: MethodChannel.Result) {
+    private fun requestDeviceProvisioningPermission(result: MethodChannel.Result) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             result.error(
                 "WIFI_UNSUPPORTED",
@@ -349,18 +349,18 @@ class MainActivity : FlutterActivity() {
             )
             return
         }
-        if (hasWifiProvisioningPermission()) {
+        if (hasDeviceProvisioningPermission()) {
             result.success(true)
             return
         }
-        if (wifiProvisioningPermissionResult != null) {
+        if (deviceProvisioningPermissionResult != null) {
             result.error("PERMISSION_BUSY", "A Wi-Fi permission request is already active", null)
             return
         }
-        wifiProvisioningPermissionResult = result
+        deviceProvisioningPermissionResult = result
         requestPermissions(
-            requiredWifiProvisioningPermissions(),
-            WIFI_PROVISIONING_REQUEST_CODE,
+            requiredDeviceProvisioningPermissions(),
+            DEVICE_PROVISIONING_REQUEST_CODE,
         )
     }
 
@@ -376,14 +376,14 @@ class MainActivity : FlutterActivity() {
             )
             bluetoothPermissionResult = null
         }
-        if (requestCode == WIFI_PROVISIONING_REQUEST_CODE) {
-            val pending = wifiProvisioningPermissionResult
-            wifiProvisioningPermissionResult = null
+        if (requestCode == DEVICE_PROVISIONING_REQUEST_CODE) {
+            val pending = deviceProvisioningPermissionResult
+            deviceProvisioningPermissionResult = null
             // The package permission state is authoritative. Some Android
             // variants update the Nearby Devices app-op asynchronously or
             // return an empty grantResults array for an already-granted group.
             mainHandler.post {
-                pending?.success(hasWifiProvisioningPermission())
+                pending?.success(hasDeviceProvisioningPermission())
             }
         }
     }
@@ -679,7 +679,7 @@ class MainActivity : FlutterActivity() {
         finishSetupScan()
         commissioningManager?.close()
         commissioningManager = null
-        legacyHotspotProvisioning.destroy()
+        deviceProvisioning.destroy()
         pinnedHttpsClient.close()
         discoveryListener?.let {
             try { (getSystemService(Context.NSD_SERVICE) as NsdManager).stopServiceDiscovery(it) } catch (_: Exception) { }
@@ -697,8 +697,8 @@ class MainActivity : FlutterActivity() {
         permissionResult = null
         bluetoothPermissionResult?.success(false)
         bluetoothPermissionResult = null
-        wifiProvisioningPermissionResult?.success(false)
-        wifiProvisioningPermissionResult = null
+        deviceProvisioningPermissionResult?.success(false)
+        deviceProvisioningPermissionResult = null
         super.onDestroy()
     }
 

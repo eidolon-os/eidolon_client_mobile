@@ -2,6 +2,11 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // Espressif publishes its provisioning client here and nowhere else.
+        // The protocol it speaks — protocomm with SRP6a Security2 — is not
+        // something to reimplement by reading a spec: it is the vendor's own
+        // client for the vendor's own firmware.
+        maven { url = uri("https://jitpack.io") }
     }
 }
 
