@@ -52,6 +52,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
   DeviceProvisioningSession? _session;
   List<DeviceWifiNetwork> _networks = const [];
   DeviceWifiNetwork? _network;
+  DeviceOnboardingTarget? _target;
   String? _error;
   String? _progress;
   bool _busy = false;
@@ -89,6 +90,12 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
         if (!await widget.transport.requestPermission()) {
           throw Exception('设置设备需要「附近设备」权限。');
         }
+        // The Host is read while this phone is still on the Host's network.
+        // Opening a session moves the phone onto the device's own access point,
+        // where the Host is not reachable at all — asking for it there failed
+        // every setup after the device had already answered for itself, which
+        // pointed the search at the device rather than at this ordering.
+        _target ??= await widget.loadTarget();
         final found = await widget.transport.discover();
         if (found.isEmpty) {
           throw Exception(
@@ -126,7 +133,10 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
         _step = _Step.working;
         _progress = '正在把网络和 Host 交给设备';
       });
-      final target = await widget.loadTarget();
+      final target = _target;
+      if (target == null) {
+        throw Exception('还没有读到这台 Host 的信息,请退回上一步重新查找设备。');
+      }
       final coordinator = DeviceSetupCoordinator(
         // The session is already open, so the coordinator is handed a transport
         // that returns it rather than opening a second one against the same
