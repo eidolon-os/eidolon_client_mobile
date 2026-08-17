@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.location.LocationManager
 import android.net.wifi.ScanResult
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -141,6 +142,14 @@ class DeviceProvisioningManager(
             pending.error("WIFI_DISABLED", "Wi-Fi is switched off")
             return
         }
+        // Holding the permission is not the same as the service being on, and
+        // Android withholds scan results for either reason without saying
+        // which. Untangled here, because the two are fixed in different
+        // places and neither of them is the device.
+        if (!isLocationEnabled()) {
+            pending.error("LOCATION_SERVICES_OFF", "Location services are switched off")
+            return
+        }
         synchronized(lock) {
             if (scanReceiver != null) {
                 pending.error("DEVICE_SCAN_BUSY", "A device scan is already running")
@@ -226,6 +235,18 @@ class DeviceProvisioningManager(
             return
         }
         pending.success(candidates)
+    }
+
+    private fun isLocationEnabled(): Boolean {
+        val manager = context.applicationContext
+            .getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            manager.isLocationEnabled
+        } else {
+            manager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        }
     }
 
     private fun ageMillis(result: ScanResult): Long =

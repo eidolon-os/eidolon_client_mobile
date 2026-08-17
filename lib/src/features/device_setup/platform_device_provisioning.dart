@@ -68,6 +68,11 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
   static Never _translate(PlatformException error) {
     final message = switch (error.code) {
       'WIFI_DISABLED' => '请先打开手机的 Wi-Fi,设置设备要通过它。',
+      // Android will not tell an app what is nearby unless location is on,
+      // whatever permissions it holds. Nothing here reads a location, but the
+      // scan does not happen without it.
+      'LOCATION_SERVICES_OFF' =>
+        '请打开手机的定位开关。Android 不打开它就不让应用看到附近的设备。',
       'DEVICE_SCAN_STALE' =>
         '手机刚才没能重新扫描一次,所以还不知道附近有什么。稍等几秒再试一次。',
       'DEVICE_SCAN_BUSY' => '正在扫描,请稍候。',

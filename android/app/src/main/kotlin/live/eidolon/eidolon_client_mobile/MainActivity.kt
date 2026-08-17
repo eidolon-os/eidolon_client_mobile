@@ -328,8 +328,16 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun requiredDeviceProvisioningPermissions(): Array<String> = when {
+        // Both, not one or the other: NEARBY_WIFI_DEVICES is what lets this
+        // app talk to a device over Wi-Fi, and ACCESS_FINE_LOCATION is what
+        // lets it see that the device is there at all. Asking for only the
+        // first gave a scan that returned nothing, on a phone standing next
+        // to a device that was broadcasting.
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ->
-            arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES)
+            arrayOf(
+                Manifest.permission.NEARBY_WIFI_DEVICES,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+            )
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
             arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         else -> emptyArray()
