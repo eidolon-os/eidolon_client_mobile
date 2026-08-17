@@ -57,8 +57,7 @@ void main() {
 
     expect(config.status, HubConfigStatus.active);
     expect(config.registrationId, 'channel-mobile-1');
-    expect(config.active.roomName, 'mobile-voice');
-    expect(config.control?.roomName, 'mobile-control');
+    expect(config.session.roomName, 'mobile-channel');
     expect(config.sampleRate, 16000);
     expect(config.channels, 1);
     expect(approvedDeviceId, 'mobile-android-test');
@@ -270,18 +269,12 @@ HubOnboardingClient _hubClient(
 http.Response _handoffResponse(String manifestRevision) {
   final binding = utf8.encode(
     jsonEncode({
-      'schema_version': 1,
-      'active': {
+      'schema_version': 2,
+      'session': {
         'server_url': 'wss://livekit.example',
-        'token': 'voice-token',
+        'token': 'channel-token',
         'identity': 'mobile-android-test',
-        'room_name': 'mobile-voice',
-      },
-      'control': {
-        'server_url': 'wss://livekit.example',
-        'token': 'control-token',
-        'identity': 'mobile-android-test',
-        'room_name': 'mobile-control',
+        'room_name': 'mobile-channel',
       },
       'audio': {'sample_rate': 16000, 'channels': 1},
     }),

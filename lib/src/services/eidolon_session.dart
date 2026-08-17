@@ -8,11 +8,16 @@ import '../avatar/avatar_stage.dart';
 import '../models/hub_models.dart';
 import '../protocol/eidolon_protocol.dart';
 
+/// One channel, held for as long as this client is enrolled.
+///
+/// There used to be two rooms: a control room the client lived in and a voice
+/// room it joined to have a conversation. Connecting was therefore how it asked
+/// to be heard, and disconnecting was how it stopped — which meant every
+/// conversation began by building a room and ended by tearing one down. Now the
+/// connection stands still and the client says which it wants.
 class EidolonSession {
-  Room? _controlRoom;
-  Room? _voiceRoom;
-  EventsListener<RoomEvent>? _controlListener;
-  EventsListener<RoomEvent>? _voiceListener;
+  Room? _room;
+  EventsListener<RoomEvent>? _listener;
 
   final _dataController = StreamController<SessionData>.broadcast();
   final _stateController = StreamController<SessionState>.broadcast();
@@ -23,110 +28,115 @@ class EidolonSession {
   Stream<SessionState> get stateEvents => _stateController.stream;
   Stream<VideoTrack?> get remoteVideo => _videoController.stream;
 
-  bool get isControlConnected =>
-      _controlRoom?.connectionState == ConnectionState.connected;
-  bool get isVoiceConnected =>
-      _voiceRoom?.connectionState == ConnectionState.connected;
+  bool get isConnected => _room?.connectionState == ConnectionState.connected;
 
-  Future<void> connectControl(RoomConfig config) async {
-    await disconnectControl();
-    if (!config.usable) throw StateError('Control room config is incomplete');
-    final room = Room();
-    final listener = room.createListener();
-    _wireRoom(listener, SessionPlane.control);
-    _controlRoom = room;
-    _controlListener = listener;
-    _stateController.add(SessionState(SessionPlane.control, 'connecting'));
-    await room.connect(config.serverUrl, config.token);
-    _stateController.add(SessionState(SessionPlane.control, 'connected'));
-  }
+  static const _capture = AudioCaptureOptions(
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    voiceIsolation: true,
+    typingNoiseDetection: true,
+    stopAudioCaptureOnMute: false,
+  );
 
-  Future<void> connectVoice(RoomConfig config) async {
-    await disconnectVoice();
-    if (!config.usable) throw StateError('Voice room config is incomplete');
-    const capture = AudioCaptureOptions(
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-      voiceIsolation: true,
-      typingNoiseDetection: true,
-      stopAudioCaptureOnMute: false,
-    );
+  Future<void> connect(RoomConfig config) async {
+    await disconnect();
+    if (!config.usable) throw StateError('Channel config is incomplete');
     final room = Room(
       roomOptions: const RoomOptions(
         adaptiveStream: true,
         dynacast: true,
-        defaultAudioCaptureOptions: capture,
+        defaultAudioCaptureOptions: _capture,
       ),
     );
     final listener = room.createListener();
-    _wireRoom(listener, SessionPlane.voice);
-    _voiceRoom = room;
-    _voiceListener = listener;
+    _wireRoom(listener);
+    _room = room;
+    _listener = listener;
     room.registerTextStreamHandler(transcriptionTopic,
         (reader, identity) async {
       final payload = await reader.readAll();
-      _dataController
-          .add(SessionData(SessionPlane.voice, transcriptionTopic, payload));
+      _dataController.add(SessionData(transcriptionTopic, payload));
     });
     // LiveKit Agents may create this stream for session lifecycle data. ESP32
     // deliberately drains it; doing the same prevents backpressure here.
     room.registerTextStreamHandler(agentSessionTopic, (reader, identity) async {
       await reader.readAll();
     });
-    _stateController.add(SessionState(SessionPlane.voice, 'connecting'));
+    _stateController.add(const SessionState('connecting'));
     await room.connect(config.serverUrl, config.token);
-    await room.localParticipant?.setMicrophoneEnabled(
-      true,
-      audioCaptureOptions: capture,
-    );
+    // The microphone stays closed until there is a conversation to speak into.
+    // Connecting is no longer a request to be listened to.
     await room.setSpeakerOn(true);
-    _stateController.add(SessionState(SessionPlane.voice, 'connected'));
+    _stateController.add(const SessionState('connected'));
   }
 
-  void _wireRoom(
-    EventsListener<RoomEvent> listener,
-    SessionPlane plane,
-  ) {
+  /// Ask to be served. The agent, its models and its metered speech services
+  /// are what this starts, so it is said explicitly rather than implied by
+  /// being connected.
+  Future<void> openSession() async {
+    await _publishSessionRequest(sessionOpenType);
+    await _room?.localParticipant
+        ?.setMicrophoneEnabled(true, audioCaptureOptions: _capture);
+  }
+
+  /// Say the conversation is over. The channel stays exactly as it is.
+  Future<void> closeSession() async {
+    await _room?.localParticipant?.setMicrophoneEnabled(false);
+    _videoController.add(null);
+    await _publishSessionRequest(sessionCloseType);
+  }
+
+  Future<void> _publishSessionRequest(String type) async {
+    final participant = _room?.localParticipant;
+    if (participant == null) throw StateError('Channel is not connected');
+    await participant.publishData(
+      Uint8List.fromList(utf8.encode(jsonEncode({
+        'schema_v': 1,
+        'type': type,
+      }))),
+      reliable: true,
+      topic: sessionControlTopic,
+    );
+  }
+
+  void _wireRoom(EventsListener<RoomEvent> listener) {
     listener
       ..on<DataReceivedEvent>((event) {
         final topic = event.topic ?? '';
         _dataController.add(
-          SessionData(
-              plane, topic, utf8.decode(event.data, allowMalformed: true)),
+          SessionData(topic, utf8.decode(event.data, allowMalformed: true)),
         );
       })
       ..on<TrackSubscribedEvent>((event) {
         // Only the avatar worker's video track drives the stage — never a stray
-        // video publisher on the voice room.
-        if (plane == SessionPlane.voice &&
-            event.track is VideoTrack &&
+        // video publisher on the channel.
+        if (event.track is VideoTrack &&
             isAvatarIdentity(event.participant.identity)) {
           _videoController.add(event.track as VideoTrack);
         }
       })
       ..on<TrackUnsubscribedEvent>((event) {
-        if (plane == SessionPlane.voice &&
-            event.track is VideoTrack &&
+        if (event.track is VideoTrack &&
             isAvatarIdentity(event.participant.identity)) {
           _videoController.add(null);
         }
       })
       ..on<RoomDisconnectedEvent>((event) {
-        _stateController.add(SessionState(plane, 'disconnected'));
-        if (plane == SessionPlane.voice) _videoController.add(null);
+        _stateController.add(const SessionState('disconnected'));
+        _videoController.add(null);
       })
       ..on<RoomReconnectingEvent>((event) {
-        _stateController.add(SessionState(plane, 'reconnecting'));
+        _stateController.add(const SessionState('reconnecting'));
       })
       ..on<RoomReconnectedEvent>((event) {
-        _stateController.add(SessionState(plane, 'connected'));
+        _stateController.add(const SessionState('connected'));
       });
   }
 
   Future<void> publishControl(String payload) async {
-    final participant = _controlRoom?.localParticipant;
-    if (participant == null) throw StateError('Control room is not connected');
+    final participant = _room?.localParticipant;
+    if (participant == null) throw StateError('Channel is not connected');
     await participant.publishData(
       Uint8List.fromList(utf8.encode(payload)),
       reliable: true,
@@ -139,7 +149,7 @@ class EidolonSession {
     required bool agentSpeaking,
     bool reliable = false,
   }) async {
-    final participant = _voiceRoom?.localParticipant;
+    final participant = _room?.localParticipant;
     if (participant == null) return;
     final payload = jsonEncode({
       'schema_v': 1,
@@ -160,50 +170,37 @@ class EidolonSession {
   }
 
   Future<void> setMicrophoneEnabled(bool enabled) async {
-    await _voiceRoom?.localParticipant?.setMicrophoneEnabled(enabled);
+    await _room?.localParticipant?.setMicrophoneEnabled(enabled);
   }
 
-  Future<void> disconnectVoice() async {
+  Future<void> disconnect() async {
     _videoController.add(null);
-    _voiceRoom?.unregisterTextStreamHandler(transcriptionTopic);
-    _voiceRoom?.unregisterTextStreamHandler(agentSessionTopic);
-    await _voiceRoom?.disconnect();
-    await _voiceRoom?.dispose();
-    await _voiceListener?.dispose();
-    _voiceRoom = null;
-    _voiceListener = null;
-  }
-
-  Future<void> disconnectControl() async {
-    await _controlRoom?.disconnect();
-    await _controlRoom?.dispose();
-    await _controlListener?.dispose();
-    _controlRoom = null;
-    _controlListener = null;
+    _room?.unregisterTextStreamHandler(transcriptionTopic);
+    _room?.unregisterTextStreamHandler(agentSessionTopic);
+    await _room?.disconnect();
+    await _room?.dispose();
+    await _listener?.dispose();
+    _room = null;
+    _listener = null;
   }
 
   Future<void> dispose() async {
-    await disconnectVoice();
-    await disconnectControl();
+    await disconnect();
     await _dataController.close();
     await _stateController.close();
     await _videoController.close();
   }
 }
 
-enum SessionPlane { control, voice }
-
 class SessionData {
-  const SessionData(this.plane, this.topic, this.payload);
+  const SessionData(this.topic, this.payload);
 
-  final SessionPlane plane;
   final String topic;
   final String payload;
 }
 
 class SessionState {
-  const SessionState(this.plane, this.state);
+  const SessionState(this.state);
 
-  final SessionPlane plane;
   final String state;
 }

@@ -13,12 +13,11 @@ void main() {
     serverUrl: 'ws://hub.local:7880',
     token: 'token',
     identity: 'mobile-test',
-    roomName: 'mobile-test-control',
+    roomName: 'mobile-test-channel',
   );
   const active = HubConfig(
     status: HubConfigStatus.active,
-    active: room,
-    control: room,
+    session: room,
   );
   const hub = HubService(
     instanceName: 'Test Hub',
@@ -39,11 +38,11 @@ void main() {
       ..config = active
       ..phase = ClientPhase.ready;
 
-    session.emit(const SessionState(SessionPlane.control, 'reconnecting'));
-    await _waitUntil(() => session.connectControlCalls == 1);
+    session.emit(const SessionState('reconnecting'));
+    await _waitUntil(() => session.connectCalls == 1);
 
     expect(hubClient.registerCalls, 1);
-    expect(session.connectControlCalls, 1);
+    expect(session.connectCalls, 1);
     expect(controller.controlConnection, ChannelConnectionState.connected);
     expect(controller.phase, ClientPhase.ready);
 
@@ -63,7 +62,7 @@ void main() {
       ..phase = ClientPhase.ready;
 
     controller.onAppResumed();
-    await _waitUntil(() => session.connectControlCalls == 1);
+    await _waitUntil(() => session.connectCalls == 1);
 
     expect(hubClient.registerCalls, 1);
     expect(controller.controlConnection, ChannelConnectionState.connected);
@@ -86,7 +85,7 @@ void main() {
     expect(provisioner.calls, 1);
     expect(controller.hub?.api, 'device-onboarding-v1');
     expect(controller.phase, ClientPhase.ready);
-    expect(session.connectControlCalls, 1);
+    expect(session.connectCalls, 1);
     controller.dispose();
   });
 }
@@ -144,24 +143,24 @@ class _FakePlatform extends PlatformBridge {
 
 class _FakeSession extends EidolonSession {
   final _states = StreamController<SessionState>.broadcast();
-  bool _controlConnected = false;
-  int connectControlCalls = 0;
+  bool _connected = false;
+  int connectCalls = 0;
 
   @override
   Stream<SessionState> get stateEvents => _states.stream;
 
   @override
-  bool get isControlConnected => _controlConnected;
+  bool get isConnected => _connected;
 
   void emit(SessionState state) {
     _states.add(state);
   }
 
   @override
-  Future<void> connectControl(RoomConfig config) async {
-    connectControlCalls += 1;
-    _controlConnected = true;
-    emit(const SessionState(SessionPlane.control, 'connected'));
+  Future<void> connect(RoomConfig config) async {
+    connectCalls += 1;
+    _connected = true;
+    emit(const SessionState('connected'));
   }
 
   @override

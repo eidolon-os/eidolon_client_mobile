@@ -66,11 +66,14 @@ class RoomConfig {
       );
 }
 
+/// What this client was granted: one channel it holds for as long as it is
+/// enrolled. It used to be two — a control room it lived in and a voice room it
+/// visited — and whether anyone was listening was read from which one it stood
+/// in. The channel no longer moves, so the client says so instead.
 class HubConfig {
   const HubConfig({
     required this.status,
-    required this.active,
-    this.control,
+    required this.session,
     this.registrationId = '',
     this.deviceFingerprint = '',
     this.sampleRate = 16000,
@@ -78,8 +81,7 @@ class HubConfig {
   });
 
   final HubConfigStatus status;
-  final RoomConfig active;
-  final RoomConfig? control;
+  final RoomConfig session;
   final String registrationId;
   final String deviceFingerprint;
   final int sampleRate;
@@ -92,12 +94,9 @@ class HubConfig {
     final config = json['config'] as Map<String, dynamic>;
     final audio = config['audio'] as Map<String, dynamic>? ?? const {};
     final device = json['device'] as Map<String, dynamic>? ?? const {};
-    final control = config['control'];
     return HubConfig(
       status: HubConfigStatus.parse(json['status'] as String?),
-      active: RoomConfig.fromJson(config),
-      control:
-          control is Map<String, dynamic> ? RoomConfig.fromJson(control) : null,
+      session: RoomConfig.fromJson(config),
       registrationId: json['registration_id'] as String? ?? '',
       deviceFingerprint: device['fingerprint'] as String? ?? '',
       sampleRate: audio['sample_rate'] as int? ?? 16000,

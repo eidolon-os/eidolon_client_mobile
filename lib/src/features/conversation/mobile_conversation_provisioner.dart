@@ -11,7 +11,7 @@ import 'hub_onboarding_models.dart';
 import 'mobile_body_security.dart';
 
 const mobileLiveKitBindingFormat =
-    'application/vnd.eidolon.livekit-device+json;v=1';
+    'application/vnd.eidolon.livekit-session+json;v=2';
 
 typedef DeviceOnboardingTargetLoader = Future<DeviceOnboardingTarget>
     Function();
@@ -220,8 +220,7 @@ class MobileConversationProvisioner implements ConversationProvisioner {
       final binding = _decodeBinding(assignment.opaqueBinding);
       return HubConfig(
         status: HubConfigStatus.active,
-        active: binding.active,
-        control: binding.control,
+        session: binding.session,
         registrationId: assignment.channelId,
         deviceFingerprint: identity.fingerprint,
         sampleRate: binding.sampleRate,
@@ -242,7 +241,7 @@ class MobileConversationProvisioner implements ConversationProvisioner {
       throw const FormatException('Provider 返回了无效的 Mobile LiveKit binding');
     }
     final value = Map<String, dynamic>.from(decoded);
-    if (value['schema_version'] != 1 || value['audio'] is! Map) {
+    if (value['schema_version'] != 2 || value['audio'] is! Map) {
       throw const FormatException('Provider 返回了不兼容的 Mobile LiveKit binding');
     }
     final audio = Map<String, dynamic>.from(value['audio'] as Map);
@@ -257,8 +256,7 @@ class MobileConversationProvisioner implements ConversationProvisioner {
       throw const FormatException('Provider 返回了无效的音频参数');
     }
     return _MobileLiveKitBinding(
-      active: _room(value, 'active'),
-      control: _room(value, 'control'),
+      session: _room(value, 'session'),
       sampleRate: sampleRate,
       channels: channels,
     );
@@ -310,7 +308,7 @@ class MobileConversationProvisioner implements ConversationProvisioner {
   }) =>
       HubConfig(
         status: status,
-        active: const RoomConfig(
+        session: const RoomConfig(
           serverUrl: '',
           token: '',
           identity: '',
@@ -322,14 +320,12 @@ class MobileConversationProvisioner implements ConversationProvisioner {
 
 class _MobileLiveKitBinding {
   const _MobileLiveKitBinding({
-    required this.active,
-    required this.control,
+    required this.session,
     required this.sampleRate,
     required this.channels,
   });
 
-  final RoomConfig active;
-  final RoomConfig control;
+  final RoomConfig session;
   final int sampleRate;
   final int channels;
 }

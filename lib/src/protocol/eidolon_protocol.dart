@@ -7,6 +7,13 @@ const sessionControlTopic = 'eidolon.session_control';
 const transcriptionTopic = 'lk.transcription';
 const agentSessionTopic = 'lk.agent.session';
 
+/// Client → server, on [sessionControlTopic]: the other direction of the topic
+/// `session_end` arrives on. A client holds its channel open for as long as it
+/// is enrolled, so being connected no longer says whether it wants to be heard.
+/// Statements of desired state — saying one twice means it once.
+const sessionOpenType = 'session_open';
+const sessionCloseType = 'session_close';
+
 const controlOpRoomJoin = 'room.join';
 const sessionIntentField = 'session_intent';
 const sessionIntentUserInitiated = 'user_initiated';
