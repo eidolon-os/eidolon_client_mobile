@@ -114,10 +114,12 @@ class MobileConversationProvisioner implements ConversationProvisioner {
       deviceId: identity.deviceId,
       requestId: requestId,
     );
-    if (progress.state == DeviceAdmissionState.failed) {
-      throw StateError('移动设备接入未完成：${progress.completedStage}');
+    if (progress.outcome == ActOutcome.refused) {
+      // The Host decided. Repeating gets the same answer, so this stops here
+      // and says how far it got rather than looping.
+      throw StateError('移动设备接入被拒绝：${progress.stoppedAfter}');
     }
-    if (progress.state != DeviceAdmissionState.ready) {
+    if (progress.outcome != ActOutcome.done) {
       return _waitingConfig(identity);
     }
 

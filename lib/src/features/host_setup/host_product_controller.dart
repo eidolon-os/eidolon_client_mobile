@@ -10,6 +10,7 @@ import '../setup/controller_key_bridge.dart';
 import '../setup/host_registry.dart';
 import '../setup/setup_models.dart';
 import '../setup/setup_trust.dart';
+import 'activity_models.dart';
 import 'controller_grant_models.dart';
 import 'host_product_repositories.dart';
 import 'host_product_session.dart';
@@ -49,6 +50,7 @@ class HostProductController extends ChangeNotifier {
     _companionRepository = HostCompanionRepository(_session);
     _ownerRepository = HostOwnerRepository(_session);
     _recollectionsRepository = HostRecollectionsRepository(_session);
+    _activityRepository = HostActivityRepository(_session);
     _deviceNamingRepository = HostDeviceNamingRepository(_session);
   }
 
@@ -63,6 +65,7 @@ class HostProductController extends ChangeNotifier {
   late final HostCompanionRepository _companionRepository;
   late final HostOwnerRepository _ownerRepository;
   late final HostRecollectionsRepository _recollectionsRepository;
+  late final HostActivityRepository _activityRepository;
   late final HostDeviceNamingRepository _deviceNamingRepository;
 
   bool _connecting = false;
@@ -232,6 +235,14 @@ class HostProductController extends ChangeNotifier {
 
   Future<HostServiceInventory> listHostServices() =>
       _hostServicesRepository.list();
+
+  /// What has happened to this Owner's devices lately.
+  ///
+  /// Asked for when someone opens the screen that shows it, and never cached
+  /// here: a history read once and held would keep answering with the moment
+  /// this app last looked, which is the question nobody asked.
+  Future<HostActivity> activity({int limit = 50}) =>
+      _activityRepository.list(limit: limit);
 
   /// Name one of this Owner's devices.
   ///
@@ -445,7 +456,7 @@ class HostProductController extends ChangeNotifier {
       deviceId: deviceId,
       companionId: workspace.workspace?.primaryCompanionId,
     );
-    if (progress.state == DeviceAdmissionState.ready) {
+    if (progress.outcome == ActOutcome.done) {
       await refreshDevices();
     }
     return progress;

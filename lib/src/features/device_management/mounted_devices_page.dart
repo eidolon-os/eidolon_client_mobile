@@ -324,14 +324,22 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
     try {
       final progress = await widget.onRemove(device.deviceId);
       if (!mounted) return;
-      if (progress.state == DeviceRemovalState.removed) {
+      if (progress.outcome == ActOutcome.done) {
         Navigator.of(context).pop();
         return;
       }
       setState(() {
-        _notice = progress.state == DeviceRemovalState.revoked
-            ? '授权已撤销，设备已经无法访问；卸载尚未完成，可以再试一次。'
-            : '移除未完成，可以再试一次。';
+        _notice = switch (progress) {
+          // Half done, and the half that matters is done: the device cannot
+          // reach anything any more.
+          _ when progress.onlyTheGrantIsGone =>
+            '授权已撤销，设备已经无法访问；卸载尚未完成，可以再试一次。',
+          _ when progress.outcome == ActOutcome.unfinished =>
+            '移除未完成，可以再试一次。',
+          // The Host decided. Offering "try again" here would be offering
+          // something that can only fail the same way.
+          _ => '主机拒绝了这次移除。',
+        };
       });
     } catch (error) {
       if (!mounted) return;

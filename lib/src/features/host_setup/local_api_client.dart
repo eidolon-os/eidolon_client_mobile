@@ -9,6 +9,7 @@ import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/setup_trust.dart';
+import 'activity_models.dart';
 import 'companion_face_models.dart';
 import 'recollection_models.dart';
 import 'controller_grant_models.dart';
@@ -574,6 +575,27 @@ class LocalApiClient {
         )
         .timeout(timeout);
     _decodeResponse(response, operation: 'Controller revocation');
+  }
+
+  /// What has happened to this Owner's devices lately.
+  ///
+  /// No Owner is named: the session already says whose Host this is.
+  Future<HostActivity> fetchActivity(
+    String baseUrl, {
+    required String accessToken,
+    int limit = 50,
+  }) async {
+    final response = await _httpClient
+        .get(
+          parseBaseUri(baseUrl).resolve('/api/local/v1/activity').replace(
+            queryParameters: {'limit': '$limit'},
+          ),
+          headers: _authorizedHeaders(accessToken),
+        )
+        .timeout(timeout);
+    return HostActivity.fromJson(
+      _decodeResponse(response, operation: 'Host activity'),
+    );
   }
 
   Future<HostServiceInventory> fetchHostServices(

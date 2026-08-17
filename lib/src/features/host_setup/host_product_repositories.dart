@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
 import '../device_setup/device_setup_ports.dart';
+import 'activity_models.dart';
 import 'companion_face_models.dart';
 import 'controller_grant_models.dart';
 import 'persona_history_models.dart';
@@ -228,6 +229,21 @@ class HostControllerGrantRepository {
           baseUrl,
           accessToken: accessToken,
           controllerId: controllerId,
+        ),
+      );
+}
+
+/// What has happened on this Host lately.
+class HostActivityRepository {
+  const HostActivityRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<HostActivity> list({int limit = 50}) => _session.execute(
+        (client, baseUrl, accessToken) => client.fetchActivity(
+          baseUrl,
+          accessToken: accessToken,
+          limit: limit,
         ),
       );
 }

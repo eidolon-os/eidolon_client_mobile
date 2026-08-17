@@ -134,7 +134,7 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage> {
   @override
   Widget build(BuildContext context) {
     final progress = _progress;
-    final ready = progress?.state == DeviceAdmissionState.ready;
+    final ready = progress?.outcome == ActOutcome.done;
     return Scaffold(
       key: const Key('device-admission-page'),
       appBar: AppBar(
@@ -308,13 +308,16 @@ class _ProgressCard extends StatelessWidget {
   Widget build(BuildContext context) => Card(
         child: ListTile(
           leading: const Icon(Icons.sync),
-          title: Text(switch (progress.state) {
-            DeviceAdmissionState.approved => 'Hub 已批准，正在挂载',
-            DeviceAdmissionState.binding => '正在绑定 Companion',
-            DeviceAdmissionState.failed => '接入未完成',
-            _ => '正在接入',
+          // One sentence about what to do, and the internal hand-off it
+          // stopped at kept as a technical detail beneath it. This card used
+          // to name the hand-off in its title, which told a person the shape
+          // of our authority sequence instead of telling them anything.
+          title: Text(switch (progress.outcome) {
+            ActOutcome.done => '已接入',
+            ActOutcome.unfinished => '还没完成，可以再试一次',
+            ActOutcome.refused => '主机拒绝了这次接入',
           }),
-          subtitle: Text('已完成：${progress.completedStage}'),
+          subtitle: Text('停在：${progress.stoppedAfter}'),
         ),
       );
 }

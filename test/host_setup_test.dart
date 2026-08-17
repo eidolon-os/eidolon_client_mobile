@@ -300,10 +300,9 @@ void main() {
             'request_id': 'device-approval-1',
             'device_id': 'esp32-device-1',
             'owner_id': 'owner_primary',
-            'state': 'ready',
-            'completed_stage': 'companion-attached',
+            'outcome': 'done',
+            'stopped_after': 'companion-attached',
             'companion_id': 'companion_primary',
-            'retryable': false,
           }),
           200,
         );
@@ -323,7 +322,7 @@ void main() {
     );
 
     expect(pending.single.deviceId, 'esp32-device-1');
-    expect(progress.state, DeviceAdmissionState.ready);
+    expect(progress.outcome, ActOutcome.done);
     expect(requests.map((request) => '${request.method} ${request.url.path}'), [
       'GET /api/local/v1/device-enrollments/pending',
       'POST /api/local/v1/device-enrollments/esp32-device-1/approval',

@@ -96,8 +96,8 @@ class _FakeAdmission implements DeviceAdmissionPort {
       requestId: requestId,
       deviceId: deviceId,
       ownerId: 'owner-1',
-      state: DeviceAdmissionState.ready,
-      completedStage: 'companion-attached',
+      outcome: ActOutcome.done,
+      stoppedAfter: 'companion-attached',
       companionId: companionId,
     );
   }
