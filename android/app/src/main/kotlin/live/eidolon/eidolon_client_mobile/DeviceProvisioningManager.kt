@@ -1,7 +1,14 @@
 package live.eidolon.eidolon_client_mobile
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.net.wifi.ScanResult
+import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.Handler
+import android.os.SystemClock
 import android.util.Log
 import com.espressif.provisioning.DeviceConnectionEvent
 import com.espressif.provisioning.ESPConstants
@@ -69,6 +76,18 @@ class DeviceProvisioningManager(
         private const val TRUST_ENDPOINT = "eidolon-trust"
 
         private const val TRANSPORT_KIND = "softap"
+
+        /**
+         * How old a scan may be and still count as an answer.
+         *
+         * Android throttles how often an app may ask for a fresh Wi-Fi scan,
+         * and when it refuses it hands back whatever it last saw — which can
+         * be from before the device in front of the person was even switched
+         * on. An empty list from a stale cache is not "there is nothing
+         * there"; it is "nobody looked".
+         */
+        private const val FRESH_SCAN_MILLIS = 30_000L
+        private const val SCAN_TIMEOUT_MILLIS = 15_000L
     }
 
     private val provisioning: ESPProvisionManager =
@@ -104,39 +123,121 @@ class DeviceProvisioningManager(
         val isAnswered: Boolean get() = answered.get()
     }
 
-    /** Nearby devices offering to be set up, newest scan each time. */
+    private val wifi: WifiManager =
+        context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+    private var scanReceiver: BroadcastReceiver? = null
+
+    /**
+     * Nearby devices offering to be set up.
+     *
+     * The scan is driven here rather than left to the vendor client, for one
+     * reason: this has to be able to tell "the phone looked and there was
+     * nothing" apart from "the phone would not look". They arrive as the same
+     * empty list, and only the first of them means what the screen would say.
+     */
     fun discover(result: MethodChannel.Result) {
         val pending = PendingResult(result)
-        provisioning.searchWiFiEspDevices(
-            AP_PREFIX,
-            object : WiFiScanListener {
-                override fun onWifiListReceived(points: ArrayList<WiFiAccessPoint>?) {
-                    val candidates = (points ?: arrayListOf())
-                        .mapNotNull { point ->
-                            val ssid = point.wifiName?.takeIf { it.isNotEmpty() }
-                                ?: return@mapNotNull null
-                            mapOf(
-                                "transportId" to ssid,
-                                "displayName" to ssid,
-                                "transportKind" to TRANSPORT_KIND,
-                                "signalStrength" to point.rssi,
-                            )
-                        }
-                    mainHandler.post { pending.success(candidates) }
-                }
+        if (!wifi.isWifiEnabled) {
+            pending.error("WIFI_DISABLED", "Wi-Fi is switched off")
+            return
+        }
+        synchronized(lock) {
+            if (scanReceiver != null) {
+                pending.error("DEVICE_SCAN_BUSY", "A device scan is already running")
+                return
+            }
+        }
 
-                override fun onWiFiScanFailed(error: Exception?) {
-                    Log.w(TAG, "Scanning for setup networks failed", error)
-                    mainHandler.post {
-                        pending.error(
-                            "DEVICE_SCAN_FAILED",
-                            error?.message ?: "Scanning for devices failed",
-                        )
-                    }
-                }
-            },
-        )
+        val timeout = Runnable { finishScan(pending) }
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                mainHandler.removeCallbacks(timeout)
+                finishScan(pending)
+            }
+        }
+        synchronized(lock) { scanReceiver = receiver }
+        val filter = IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.applicationContext.registerReceiver(
+                receiver,
+                filter,
+                Context.RECEIVER_NOT_EXPORTED,
+            )
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            context.applicationContext.registerReceiver(receiver, filter)
+        }
+
+        val started = wifi.startScan()
+        Log.i(TAG, "Asked for a Wi-Fi scan; the platform said $started")
+        // Even a refused request is followed here rather than answered now: the
+        // system may still publish results, and what is already cached may be
+        // recent enough to count.
+        mainHandler.postDelayed(timeout, SCAN_TIMEOUT_MILLIS)
     }
+
+    private fun finishScan(pending: PendingResult) {
+        if (pending.isAnswered) return
+        synchronized(lock) {
+            scanReceiver?.let {
+                try {
+                    context.applicationContext.unregisterReceiver(it)
+                } catch (error: IllegalArgumentException) {
+                    Log.w(TAG, "The scan receiver was already gone", error)
+                }
+            }
+            scanReceiver = null
+        }
+        val results = try {
+            wifi.scanResults
+        } catch (error: SecurityException) {
+            pending.error(
+                "WIFI_PERMISSION_DENIED",
+                error.message ?: "Nearby Wi-Fi permission is required",
+            )
+            return
+        }
+        val freshest = results.minOfOrNull { ageMillis(it) }
+        val candidates = results
+            .filter { it.ssidText().startsWith(AP_PREFIX) }
+            .map { point ->
+                mapOf(
+                    "transportId" to point.ssidText(),
+                    "displayName" to point.ssidText(),
+                    "transportKind" to TRANSPORT_KIND,
+                    "signalStrength" to point.level,
+                )
+            }
+        Log.i(
+            TAG,
+            "Scan carried ${results.size} network(s), freshest ${freshest}ms old, " +
+                "${candidates.size} of them offering setup",
+        )
+        if (candidates.isEmpty() &&
+            (freshest == null || freshest > FRESH_SCAN_MILLIS)
+        ) {
+            // Nothing was found, and nothing was looked at either. Saying "no
+            // devices" here would send a person to check a device that is
+            // sitting right there, waiting, in setup mode.
+            pending.error(
+                "DEVICE_SCAN_STALE",
+                "The phone did not scan just now",
+            )
+            return
+        }
+        pending.success(candidates)
+    }
+
+    private fun ageMillis(result: ScanResult): Long =
+        SystemClock.elapsedRealtime() - result.timestamp / 1000
+
+    @Suppress("DEPRECATION")
+    private fun ScanResult.ssidText(): String =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            wifiSsid?.toString()?.trim('"').orEmpty().ifEmpty { SSID.orEmpty() }
+        } else {
+            SSID.orEmpty()
+        }
 
     /**
      * Join a device's setup network, authenticate, and read what it says it is.
@@ -383,6 +484,14 @@ class DeviceProvisioningManager(
 
     fun destroy() {
         synchronized(lock) {
+            scanReceiver?.let {
+                try {
+                    context.applicationContext.unregisterReceiver(it)
+                } catch (error: IllegalArgumentException) {
+                    Log.w(TAG, "The scan receiver was already gone", error)
+                }
+            }
+            scanReceiver = null
             releaseDeviceLocked()
             if (subscribed) {
                 EventBus.getDefault().unregister(this)

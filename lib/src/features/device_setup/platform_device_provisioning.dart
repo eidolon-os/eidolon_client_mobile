@@ -59,20 +59,57 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
     }
   }
 
+  /// Say what the phone said, in words a person can act on.
+  ///
+  /// A platform failure carries a code because the Android half knows things
+  /// this half cannot see — that Wi-Fi is off, that the system refused to scan.
+  /// Letting the raw exception reach the screen would put a Java class name in
+  /// front of someone holding a device that is sitting there waiting.
+  static Never _translate(PlatformException error) {
+    final message = switch (error.code) {
+      'WIFI_DISABLED' => '请先打开手机的 Wi-Fi,设置设备要通过它。',
+      'DEVICE_SCAN_STALE' =>
+        '手机刚才没能重新扫描一次,所以还不知道附近有什么。稍等几秒再试一次。',
+      'DEVICE_SCAN_BUSY' => '正在扫描,请稍候。',
+      'WIFI_PERMISSION_DENIED' => '设置设备需要「附近设备」权限。',
+      'DEVICE_UNREACHABLE' =>
+        '连不上这台设备。它的设置窗口可能已经超时,按一下它的按键再试。',
+      'DEVICE_DISCONNECTED' => '设备中断了这次设置。请再试一次。',
+      'DESCRIPTOR_EMPTY' || 'DESCRIPTOR_UNAVAILABLE' => '设备没有说明自己是什么。',
+      'TRUST_UNANSWERED' => '设备没有回应它是否接受了这台 Host。',
+      'DEVICE_REFUSED_NETWORK' || 'NETWORK_REJECTED' =>
+        '设备没有接受这个网络,请确认 Wi-Fi 名称和密码。',
+      _ => error.message ?? '设置设备时出错了。',
+    };
+    throw DeviceProvisioningTransportException(
+      error.code.toLowerCase(),
+      message,
+    );
+  }
+
   @override
   Future<bool> requestPermission() async {
     _requireAndroid();
-    return await _channel
-            .invokeMethod<bool>('requestDeviceProvisioningPermission') ??
-        false;
+    try {
+      return await _channel
+              .invokeMethod<bool>('requestDeviceProvisioningPermission') ??
+          false;
+    } on PlatformException catch (error) {
+      _translate(error);
+    }
   }
 
   @override
   Future<List<DeviceProvisioningCandidate>> discover() async {
     _requireAndroid();
-    final raw = await _channel.invokeListMethod<Object?>(
-      'discoverProvisionableDevices',
-    );
+    final List<Object?>? raw;
+    try {
+      raw = await _channel.invokeListMethod<Object?>(
+        'discoverProvisionableDevices',
+      );
+    } on PlatformException catch (error) {
+      _translate(error);
+    }
     return (raw ?? const <Object?>[])
         .map((item) => _candidateFromPlatform(
               Map<Object?, Object?>.from(item! as Map),
@@ -85,10 +122,15 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
     DeviceProvisioningCandidate candidate,
   ) async {
     _requireAndroid();
-    final raw = await _channel.invokeMethod<String>(
-      'openProvisioningSession',
-      {'transportId': candidate.transportId},
-    );
+    final String? raw;
+    try {
+      raw = await _channel.invokeMethod<String>(
+        'openProvisioningSession',
+        {'transportId': candidate.transportId},
+      );
+    } on PlatformException catch (error) {
+      _translate(error);
+    }
     if (raw == null || raw.isEmpty) {
       throw const DeviceProvisioningTransportException(
         'descriptor_missing',

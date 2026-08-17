@@ -305,4 +305,64 @@ void main() {
       throwsA(isA<DeviceProvisioningTransportException>()),
     );
   });
+
+  group('what the phone said, said to a person', () {
+    test('a refused scan is not reported as an empty room', () async {
+      final transport = PlatformDeviceProvisioning(
+        loadPendingEnrollments: () async => const [],
+        channel: _failing('DEVICE_SCAN_STALE', 'The phone did not scan'),
+      );
+
+      await expectLater(
+        transport.discover(),
+        throwsA(
+          isA<DeviceProvisioningTransportException>()
+              // "Nothing is there" and "nobody looked" are the same empty
+              // list underneath, and only one of them should send a person
+              // back to check the device.
+              .having((e) => e.message, 'message', contains('没能重新扫描')),
+        ),
+      );
+    });
+
+    test('Wi-Fi being off is said plainly', () async {
+      final transport = PlatformDeviceProvisioning(
+        loadPendingEnrollments: () async => const [],
+        channel: _failing('WIFI_DISABLED', 'Wi-Fi is switched off'),
+      );
+
+      await expectLater(
+        transport.discover(),
+        throwsA(
+          isA<DeviceProvisioningTransportException>()
+              .having((e) => e.message, 'message', contains('打开手机的 Wi-Fi')),
+        ),
+      );
+    });
+
+    test('a platform failure never reaches the screen as a class name',
+        () async {
+      final transport = PlatformDeviceProvisioning(
+        loadPendingEnrollments: () async => const [],
+        channel: _failing('SOMETHING_NEW', '设备暂时不可用'),
+      );
+
+      await expectLater(
+        transport.discover(),
+        throwsA(
+          isA<DeviceProvisioningTransportException>()
+              .having((e) => e.toString(), 'toString', '设备暂时不可用'),
+        ),
+      );
+    });
+  });
+}
+
+MethodChannel _failing(String code, String message) {
+  const channel = MethodChannel('live.eidolon.mobile/platform');
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(channel, (call) async {
+    throw PlatformException(code: code, message: message);
+  });
+  return channel;
 }
