@@ -48,11 +48,13 @@ void main() {
 
   PlatformDeviceProvisioning build({
     PendingEnrollmentLookup? loadPending,
+    AdmittedDeviceLookup? isAlreadyAdmitted,
     Duration timeout = const Duration(minutes: 3),
   }) =>
       PlatformDeviceProvisioning(
         loadPendingEnrollments:
             loadPending ?? () async => const <PendingDeviceEnrollment>[],
+        isAlreadyAdmitted: isAlreadyAdmitted ?? (_) async => false,
         enrollmentTimeout: timeout,
         enrollmentInterval: Duration.zero,
         clock: () => now,
@@ -291,6 +293,28 @@ void main() {
     );
   });
 
+  test('counts a device the Host already holds as having arrived', () async {
+    // Setting up a device that already belongs here — after a reflash, or to
+    // move it to another network — must not look like a device that never came.
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'openProvisioningSession') return descriptorJson();
+      return null;
+    });
+    final session = await build(
+      isAlreadyAdmitted: (deviceId) async => deviceId == '10:51:db:7e:24:44',
+    ).open(
+      const DeviceProvisioningCandidate(
+        transportId: 't',
+        displayName: 'd',
+        transportKind: 'softap',
+        trust: DeviceProvisioningTrust.developmentTofu,
+      ),
+    );
+    final receipt = await session.awaitEnrollment();
+    expect(receipt.deviceId, '10:51:db:7e:24:44');
+    expect(receipt.lifecycleState, 'approved');
+  });
+
   test('refuses a discovered candidate it cannot identify', () async {
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'discoverProvisionableDevices') {
@@ -310,6 +334,7 @@ void main() {
     test('a refused scan is not reported as an empty room', () async {
       final transport = PlatformDeviceProvisioning(
         loadPendingEnrollments: () async => const [],
+        isAlreadyAdmitted: (_) async => false,
         channel: _failing('DEVICE_SCAN_STALE', 'The phone did not scan'),
       );
 
@@ -328,6 +353,7 @@ void main() {
     test('Wi-Fi being off is said plainly', () async {
       final transport = PlatformDeviceProvisioning(
         loadPendingEnrollments: () async => const [],
+        isAlreadyAdmitted: (_) async => false,
         channel: _failing('WIFI_DISABLED', 'Wi-Fi is switched off'),
       );
 
@@ -344,6 +370,7 @@ void main() {
         () async {
       final transport = PlatformDeviceProvisioning(
         loadPendingEnrollments: () async => const [],
+        isAlreadyAdmitted: (_) async => false,
         channel: _failing('SOMETHING_NEW', '设备暂时不可用'),
       );
 
