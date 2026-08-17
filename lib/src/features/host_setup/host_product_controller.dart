@@ -262,6 +262,59 @@ class HostProductController extends ChangeNotifier {
     await refreshWorkspace();
   }
 
+  /// What this Eidolon looks like, as the Host last answered.
+  ///
+  /// The picture is held here rather than fetched by whoever is drawing it: a
+  /// screen that re-read a photograph on every rebuild would spend a
+  /// megabyte to show what it already had. It is re-read when the Host says
+  /// the face changed — which is what the hash beside it is for.
+  Uint8List? get companionFace => _companionFace;
+  Uint8List? _companionFace;
+  String? _companionFaceSha256;
+
+  Future<void> loadCompanionFace({required String companionId}) async {
+    final state = await _companionRepository.faceState(
+      companionId: companionId,
+    );
+    if (_disposed) return;
+    if (!state.hasFace) {
+      _companionFace = null;
+      _companionFaceSha256 = null;
+      _notify();
+      return;
+    }
+    if (state.matches(_companionFaceSha256) && _companionFace != null) return;
+    final face = await _companionRepository.face(companionId: companionId);
+    if (_disposed) return;
+    _companionFace = face;
+    _companionFaceSha256 = state.sha256;
+    _notify();
+  }
+
+  Future<void> setCompanionFace({
+    required String companionId,
+    required Uint8List face,
+  }) async {
+    final state = await _companionRepository.setFace(
+      companionId: companionId,
+      face: face,
+    );
+    if (_disposed) return;
+    // Shown from what was sent, and only because the Host accepted it and
+    // said so with the same hash.
+    _companionFace = state.hasFace ? face : null;
+    _companionFaceSha256 = state.sha256;
+    _notify();
+  }
+
+  Future<void> clearCompanionFace({required String companionId}) async {
+    await _companionRepository.clearFace(companionId: companionId);
+    if (_disposed) return;
+    _companionFace = null;
+    _companionFaceSha256 = null;
+    _notify();
+  }
+
   /// Name the person this Host answers to.
   ///
   /// Nothing identifies them in the request: the session does. As with the

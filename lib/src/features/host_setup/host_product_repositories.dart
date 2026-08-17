@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
 import '../device_setup/device_setup_ports.dart';
+import 'companion_face_models.dart';
 import 'controller_grant_models.dart';
 import 'persona_history_models.dart';
 import 'host_product_session.dart';
@@ -110,6 +113,45 @@ class HostCompanionRepository {
           accessToken: accessToken,
           companionId: companionId,
           chapterId: chapterId,
+        ),
+      );
+
+  Future<CompanionFaceState> faceState({required String companionId}) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.fetchCompanionFaceState(
+          baseUrl,
+          accessToken: accessToken,
+          companionId: companionId,
+        ),
+      );
+
+  Future<Uint8List?> face({required String companionId}) => _session.execute(
+        (client, baseUrl, accessToken) => client.fetchCompanionFace(
+          baseUrl,
+          accessToken: accessToken,
+          companionId: companionId,
+        ),
+      );
+
+  Future<CompanionFaceState> setFace({
+    required String companionId,
+    required Uint8List face,
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.setCompanionFace(
+          baseUrl,
+          accessToken: accessToken,
+          companionId: companionId,
+          face: face,
+        ),
+      );
+
+  Future<CompanionFaceState> clearFace({required String companionId}) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.clearCompanionFace(
+          baseUrl,
+          accessToken: accessToken,
+          companionId: companionId,
         ),
       );
 

@@ -11,6 +11,11 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.6.0
+  # Choosing the picture an Eidolon wears. Asked to hand back a bounded JPEG
+  # rather than the original: the face is a conditioning image for a digital
+  # human, so a phone camera's full-resolution photograph is both useless to it
+  # and larger than the pinned transport will carry.
+  image_picker: ^1.1.2
   livekit_client: ^2.8.1
   # Plays the companion's offline-generated idle-loop clip (served by hub) as the
   # resting placeholder — an mp4 over HTTP, which LiveKit's VideoTrackRenderer

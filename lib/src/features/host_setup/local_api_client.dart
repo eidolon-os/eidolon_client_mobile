@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:math';
 
 import 'package:http/http.dart' as http;
@@ -8,6 +9,7 @@ import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/setup_trust.dart';
+import 'companion_face_models.dart';
 import 'controller_grant_models.dart';
 import 'controller_session.dart';
 import 'host_models.dart';
@@ -293,6 +295,95 @@ class LocalApiClient {
   ///
   /// No Owner is named: the session already says whose it is, and the Host
   /// refuses to be told otherwise.
+  /// Whether this Eidolon has a face, and which one.
+  ///
+  /// Asked before the face itself, and cheap enough to ask on every refresh:
+  /// the answer is a hash, so a screen learns its picture is stale without
+  /// carrying a second picture over to compare.
+  Future<CompanionFaceState> fetchCompanionFaceState(
+    String baseUrl, {
+    required String accessToken,
+    required String companionId,
+  }) async {
+    final response = await _httpClient
+        .get(
+          parseBaseUri(baseUrl).resolve(
+            '/api/local/v1/companions/${Uri.encodeComponent(companionId)}'
+            '/face-state',
+          ),
+          headers: _authorizedHeaders(accessToken),
+        )
+        .timeout(timeout);
+    return CompanionFaceState.fromJson(
+      _decodeResponse(response, operation: 'Companion face state'),
+    );
+  }
+
+  /// The face itself, or null when this Eidolon has none.
+  Future<Uint8List?> fetchCompanionFace(
+    String baseUrl, {
+    required String accessToken,
+    required String companionId,
+  }) async {
+    final response = await _httpClient
+        .get(
+          parseBaseUri(baseUrl).resolve(
+            '/api/local/v1/companions/${Uri.encodeComponent(companionId)}/face',
+          ),
+          headers: _authorizedHeaders(accessToken),
+        )
+        .timeout(timeout);
+    if (response.statusCode == 204) return null;
+    if (response.statusCode != 200) {
+      throw LocalApiRequestException(
+        '主机没有给出这张脸',
+        statusCode: response.statusCode,
+      );
+    }
+    return response.bodyBytes;
+  }
+
+  Future<CompanionFaceState> setCompanionFace(
+    String baseUrl, {
+    required String accessToken,
+    required String companionId,
+    required Uint8List face,
+  }) async {
+    final response = await _httpClient
+        .put(
+          parseBaseUri(baseUrl).resolve(
+            '/api/local/v1/companions/${Uri.encodeComponent(companionId)}/face',
+          ),
+          headers: {
+            ..._authorizedHeaders(accessToken),
+            'content-type': 'image/jpeg',
+          },
+          body: face,
+        )
+        .timeout(timeout);
+    return CompanionFaceState.fromJson(
+      _decodeResponse(response, operation: 'Companion face'),
+    );
+  }
+
+  Future<CompanionFaceState> clearCompanionFace(
+    String baseUrl, {
+    required String accessToken,
+    required String companionId,
+  }) async {
+    final response = await _httpClient
+        .delete(
+          parseBaseUri(baseUrl).resolve(
+            '/api/local/v1/companions/${Uri.encodeComponent(companionId)}/face',
+          ),
+          headers: _authorizedHeaders(accessToken),
+        )
+        .timeout(timeout);
+    return CompanionFaceState.fromJson(
+      _decodeResponse(response, operation: 'Companion face'),
+    );
+  }
+
   Future<String> renameOwner(
     String baseUrl, {
     required String accessToken,

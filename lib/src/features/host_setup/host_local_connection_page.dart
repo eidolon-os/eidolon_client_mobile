@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../naming/ask_for_a_name.dart';
@@ -8,11 +11,13 @@ import '../setup/change_network_page.dart';
 import '../setup/commissioning_transport.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/host_registry.dart';
+import 'face_picker.dart';
 import 'host_product_controller.dart';
 import 'companion_page.dart';
 import 'managed_controllers_page.dart';
 import 'persona_history_page.dart';
 import 'host_product_session.dart';
+import 'workspace_runtime_models.dart';
 import 'host_system_page.dart';
 import 'local_api_discovery.dart';
 import 'workspace_models.dart';
@@ -37,6 +42,7 @@ class HostLocalConnectionPage extends StatefulWidget {
     this.conversationBuilder,
     this.setupContinuation = false,
     this.onSetupComplete,
+    this.facePicker,
   }) : assert(!setupContinuation || onSetupComplete != null);
 
   final ManagedHost host;
@@ -47,6 +53,10 @@ class HostLocalConnectionPage extends StatefulWidget {
   final LocalApiClientFactory? localApiClientFactory;
   final DeviceProvisioningTransport? deviceProvisioning;
   final HostConversationBuilder? conversationBuilder;
+
+  /// Where the picture an Eidolon wears comes from. The gallery, unless a
+  /// test says otherwise.
+  final FacePicker? facePicker;
   final bool setupContinuation;
   final VoidCallback? onSetupComplete;
 
@@ -160,6 +170,15 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   Future<void> _openCompanion() {
     final runtime = _controller.workspaceRuntime;
     if (runtime == null) return Future<void>.value();
+    // Asked for as the page opens rather than with the rest of the workspace:
+    // a photograph is worth fetching when someone is about to look at it.
+    unawaited(
+      _controller
+          .loadCompanionFace(
+            companionId: runtime.primaryCompanion.companionId,
+          )
+          .catchError((Object _) {}),
+    );
     return Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => AnimatedBuilder(
@@ -172,11 +191,60 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               devices: _controller.devices,
               onRename: _renameCompanion,
               onOpenHistory: _openPersonaHistory,
+              face: _controller.companionFace,
+              onChangeFace: () => _changeCompanionFace(current),
+              onClearFace: _controller.companionFace == null
+                  ? null
+                  : () => _clearCompanionFace(current),
             );
           },
         ),
       ),
     );
+  }
+
+  /// Choose the picture this Eidolon wears.
+  ///
+  /// The picker is asked for a bounded JPEG rather than the original file. The
+  /// face is a conditioning image for a digital human — a camera's full
+  /// resolution is of no use to it, and would not fit through the pinned
+  /// transport that carries everything else this app says to its Host.
+  Future<void> _changeCompanionFace(WorkspaceRuntime runtime) async {
+    final Uint8List? bytes;
+    try {
+      bytes = await (widget.facePicker ?? const GalleryFacePicker()).pickFace();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('没能打开相册:$error')),
+      );
+      return;
+    }
+    if (bytes == null || !mounted) return;
+    try {
+      await _controller.setCompanionFace(
+        companionId: runtime.primaryCompanion.companionId,
+        face: bytes,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('这张照片没能用上:$error')),
+      );
+    }
+  }
+
+  Future<void> _clearCompanionFace(WorkspaceRuntime runtime) async {
+    try {
+      await _controller.clearCompanionFace(
+        companionId: runtime.primaryCompanion.companionId,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('没能拿掉这张脸:$error')),
+      );
+    }
   }
 
   Future<void> _openPersonaHistory() {
