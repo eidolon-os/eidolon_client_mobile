@@ -112,11 +112,30 @@ class DeviceOnboardingTarget {
     required this.descriptorUri,
     required this.tlsSpkiFingerprint,
     required this.hubCertificate,
+    this.hostAddress,
   });
 
   final String hubId;
   final Uri descriptorUri;
   final String tlsSpkiFingerprint;
+
+  /// The address the Host answered on when it handed this target over.
+  ///
+  /// Deliberately absent from the wire and from the checkpoint: it describes
+  /// one client's route to the Host at one moment, not the Hub. A device being
+  /// set up gets [descriptorUri] and finds the address itself, and a resumed
+  /// checkpoint asks the Host again rather than dialling a remembered address.
+  final String? hostAddress;
+
+  /// This target, as reached at [hostAddress].
+  DeviceOnboardingTarget reachedAt(String hostAddress) =>
+      DeviceOnboardingTarget(
+        hubId: hubId,
+        descriptorUri: descriptorUri,
+        tlsSpkiFingerprint: tlsSpkiFingerprint,
+        hubCertificate: hubCertificate,
+        hostAddress: hostAddress,
+      );
 
   /// The Host's own certificate, carried to a device being set up. A device
   /// cannot obtain it from anywhere it could already trust, so the Owner

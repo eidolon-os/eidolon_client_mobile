@@ -14,17 +14,33 @@ class VerifiedHubTarget {
     required this.hubId,
     required this.descriptorUri,
     required this.tlsSpkiFingerprint,
+    this.hostAddress,
   });
 
   final String hubId;
   final Uri descriptorUri;
   final String tlsSpkiFingerprint;
 
+  /// The address this Host answered on, where the client knows one.
+  ///
+  /// [descriptorUri] names the Hub; it does not say how to reach it. The name
+  /// is an mDNS one, and a client that cannot query mDNS has no way to turn it
+  /// into an address — so the address it already reached this Host on is used
+  /// instead. That is sound because the Hub runs on the Host that just handed
+  /// this target over: having answered at an address is proof its Hub is there
+  /// too. The pin, not the name, is what says the far end is the right one.
+  final String? hostAddress;
+
+  /// [uri] as it should be dialled, rather than as it is named.
+  Uri dial(Uri uri) =>
+      hostAddress == null ? uri : uri.replace(host: hostAddress);
+
   factory VerifiedHubTarget.fromDeviceTarget(DeviceOnboardingTarget target) =>
       VerifiedHubTarget(
         hubId: target.hubId,
         descriptorUri: target.descriptorUri,
         tlsSpkiFingerprint: target.tlsSpkiFingerprint,
+        hostAddress: target.hostAddress,
       );
 
   void validate() {

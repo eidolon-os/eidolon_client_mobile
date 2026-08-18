@@ -48,8 +48,8 @@ internal class PinnedHttpsClient(private val mainHandler: Handler) {
                     .associate { it.key.toString() to it.value.toString() }
                 validatePinnedHttpHeaders(headers)
 
-                val context = SSLContext.getInstance("TLS")
-                context.init(
+                val sslContext = SSLContext.getInstance("TLS")
+                sslContext.init(
                     null,
                     arrayOf<TrustManager>(PinnedSpkiTrustManager(expected)),
                     SecureRandom(),
@@ -57,7 +57,7 @@ internal class PinnedHttpsClient(private val mainHandler: Handler) {
                 val connectionUrl = preferIpv4WhenAvailable(url)
                 val connection = connectionUrl.openConnection() as HttpsURLConnection
                 try {
-                    connection.sslSocketFactory = context.socketFactory
+                    connection.sslSocketFactory = sslContext.socketFactory
                     // Local discovery returns an IP address, while the self-signed
                     // certificate is identified by the Host-signed SPKI pin. The
                     // pin is the endpoint authority; DNS hostname matching is not.
@@ -113,9 +113,22 @@ internal class PinnedHttpsClient(private val mainHandler: Handler) {
         executor.shutdownNow()
     }
 
+    /**
+     * Dial by address where one can be found, and by name where it cannot.
+     *
+     * The pin is the endpoint authority rather than the name, so preferring an
+     * address costs nothing. It is only a preference: a name that will not
+     * resolve here is left for the connection to attempt, because failing to
+     * find an address is not itself a reason to fail the request.
+     */
     private fun preferIpv4WhenAvailable(url: URL): URL {
-        val ipv4 = InetAddress.getAllByName(url.host).firstOrNull { it is Inet4Address }
-            ?: return url
+        val addresses = try {
+            InetAddress.getAllByName(url.host).toList()
+        } catch (error: Exception) {
+            Log.w("EidolonPinnedHttps", "Could not resolve ${url.host}: ${error.javaClass.simpleName}")
+            emptyList()
+        }
+        val ipv4 = addresses.firstOrNull { it is Inet4Address } ?: return url
         return URI(
             url.protocol,
             null,

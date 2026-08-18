@@ -125,6 +125,52 @@ void main() {
       ),
     );
   });
+
+  test('reaches the Hub at the address the Host answered on, not by its name',
+      () async {
+    // The Host names its Hub in mDNS. This client cannot query mDNS, so a
+    // request built from that name never leaves the phone. It dials the
+    // address the Host itself answered on instead — while the descriptor it
+    // gets back still has to match the Hub by name, which is what says the far
+    // end is the Hub the Host meant.
+    final requested = <Uri>[];
+    final client = HubOnboardingClient(
+      security: _Security(),
+      clientFactory: (_) => MockClient((request) async {
+        requested.add(request.url);
+        return http.Response(
+          jsonEncode(_descriptorJson),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    final descriptor = await client.fetchDescriptor(_reachedTarget);
+
+    expect(requested.single.host, '192.168.3.206');
+    expect(requested.single.path, '/api/device-onboarding/v1/descriptor');
+    expect(descriptor.descriptorUri.host, 'eidolon-hub.local');
+  });
+
+  test('a target with no known address is still dialled by name', () async {
+    final requested = <Uri>[];
+    final client = HubOnboardingClient(
+      security: _Security(),
+      clientFactory: (_) => MockClient((request) async {
+        requested.add(request.url);
+        return http.Response(
+          jsonEncode(_descriptorJson),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    await client.fetchDescriptor(_target);
+
+    expect(requested.single.host, 'eidolon-hub.local');
+  });
 }
 
 final _target = VerifiedHubTarget(
@@ -134,6 +180,14 @@ final _target = VerifiedHubTarget(
       host: 'eidolon-hub.local',
       path: '/api/device-onboarding/v1/descriptor'),
   tlsSpkiFingerprint: _fingerprint,
+);
+
+/// The same Hub, as handed over by a Host that answered on its address.
+final _reachedTarget = VerifiedHubTarget(
+  hubId: _target.hubId,
+  descriptorUri: _target.descriptorUri,
+  tlsSpkiFingerprint: _target.tlsSpkiFingerprint,
+  hostAddress: '192.168.3.206',
 );
 
 const _descriptorJson = {
