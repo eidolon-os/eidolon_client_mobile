@@ -174,7 +174,8 @@ void main() {
     );
   });
 
-  test('a device the Host already holds asks the owner to remove it', () async {
+  test('a device the Host already holds says where the remove control is',
+      () async {
     final security = _Security();
     final requests = <http.Request>[];
     final provisioner = _provisioner(
@@ -187,14 +188,16 @@ void main() {
       ),
     );
 
+    // Retrying asks the Host the same question and gets the same 409, so the
+    // person is told which control clears it — and told it where it is, since
+    // the device list only offers removal once a device is opened.
     await expectLater(
       provisioner.provision(),
       throwsA(
-        isA<StateError>().having(
-          (error) => error.message,
-          'message',
-          contains('请在管理端移除该设备'),
-        ),
+        isA<MobileProvisioningBlocked>()
+            .having((error) => error.message, 'message', contains('打开设备管理'))
+            .having((error) => error.message, 'message', contains('移除设备'))
+            .having((error) => error.detail, 'detail', contains('409')),
       ),
     );
   });

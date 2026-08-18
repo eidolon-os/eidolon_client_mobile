@@ -551,7 +551,7 @@ class _AgentStatePanel extends StatelessWidget {
       AgentTurnState.idle => (
           const Color(0xFF8A8AA0),
           Icons.hourglass_empty_rounded,
-          state.phase == ClientPhase.ready ? 'Control Room 待命' : '待命',
+          state.phase == ClientPhase.ready ? '通道在线 · 待命' : '待命',
         ),
     };
     final active = displayedTurn != AgentTurnState.idle;

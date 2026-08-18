@@ -7,6 +7,7 @@ import 'package:livekit_client/livekit_client.dart';
 
 import '../avatar/avatar_stage.dart';
 import '../features/conversation/conversation_provisioner.dart';
+import '../features/conversation/mobile_conversation_provisioner.dart';
 import '../models/client_ui_state.dart';
 import '../models/hub_models.dart';
 import '../platform/platform_bridge.dart';
@@ -764,6 +765,18 @@ class ClientController extends ChangeNotifier {
   }) {
     final details = exception.toString();
     final lower = details.toLowerCase();
+    if (exception is MobileProvisioningBlocked) {
+      // Answered before anything below gets to guess, because this failure
+      // already knows what it is: the Host has settled the matter, and the one
+      // thing not to offer is a retry that would ask it again.
+      return ClientFailure(
+        kind: ClientErrorKind.authorization,
+        title: exception.title,
+        message: exception.message,
+        technicalDetails: details,
+        retryable: false,
+      );
+    }
     if (lower.contains('microphone') ||
         lower.contains('麦克风') ||
         lower.contains('permission')) {
@@ -812,8 +825,8 @@ class ClientController extends ChangeNotifier {
     if (liveKitContext || lower.contains('livekit')) {
       return ClientFailure(
         kind: ClientErrorKind.liveKit,
-        title: '无法建立语音会话',
-        message: '控制连接仍会保持，可以再次尝试开始对话',
+        title: '无法开始这次对话',
+        message: '通道仍然在线，可以再次尝试开始对话',
         technicalDetails: details,
       );
     }
