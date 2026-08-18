@@ -22,6 +22,7 @@ import 'persona_history_models.dart';
 import 'recollection_models.dart';
 import 'pinned_http_client.dart';
 import 'workspace_models.dart';
+import 'network_changes.dart';
 import 'workspace_runtime_models.dart';
 
 typedef ManagedHostUpdater = Future<void> Function(ManagedHost host);
@@ -34,8 +35,10 @@ class HostProductController extends ChangeNotifier {
     ControllerKeyBridge? controllerKeys,
     LocalApiDiscovery? discovery,
     LocalApiClientFactory? localApiClientFactory,
+    NetworkChanges? networkChanges,
   })  : _host = host,
         _onHostUpdated = onHostUpdated,
+        _networkChanges = networkChanges ?? PlatformNetworkChanges(),
         _session = HostProductSession(
           host: host,
           transport: transport,
@@ -53,11 +56,18 @@ class HostProductController extends ChangeNotifier {
     _recollectionsRepository = HostRecollectionsRepository(_session);
     _activityRepository = HostActivityRepository(_session);
     _deviceNamingRepository = HostDeviceNamingRepository(_session);
+    // Where the Host was is only true for as long as this phone is on the
+    // network it learned it from. Watching for that keeps the recovery the
+    // session already does from costing a timeout first.
+    _networkSubscription =
+        _networkChanges.changes.listen((_) => _session.invalidateLocation());
   }
 
   ManagedHost _host;
   final ManagedHostUpdater _onHostUpdated;
   final HostProductSession _session;
+  final NetworkChanges _networkChanges;
+  StreamSubscription<void>? _networkSubscription;
   late final HostWorkspaceRepository _workspaceRepository;
   late final HostDevicesRepository _devicesRepository;
   late final HostDeviceAdmissionRepository _deviceAdmissionRepository;
@@ -659,6 +669,8 @@ class HostProductController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    unawaited(_networkSubscription?.cancel());
+    unawaited(_networkChanges.close());
     unawaited(_session.close());
     super.dispose();
   }

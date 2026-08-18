@@ -190,6 +190,65 @@ void main() {
       expect(session.connection, isNull);
       expect(session.host.hostId, hostFixture().hostId);
     });
+
+    test('an invalidated address is looked up again, not refused', () async {
+      var located = 0;
+      final session = HostProductSession(
+        host: hostFixture(),
+        transport: NoopTransport(),
+        controllerKeys: FakeControllerKeys(),
+        locator: HostLocator([
+          _Source.dynamic(HostAddressEvidence.announced, () {
+            located += 1;
+            return ['https://10.0.0.5:9002'];
+          }),
+        ]),
+        clientFactory: (_) =>
+            LocalApiClient(httpClient: MockClient(hostSessionResponse)),
+      );
+      addTearDown(session.close);
+      await session.connect();
+      expect(located, 1);
+
+      session.invalidateLocation();
+      await session.execute(
+        (client, baseUrl, token) =>
+            client.fetchWorkspace(baseUrl, accessToken: token),
+      );
+
+      // Clearing the address alone would be indistinguishable from never
+      // having connected, and the next thing the person did would be refused
+      // with "请先安全连接主机" — which would make the whole signal a
+      // regression rather than a saving.
+      expect(located, 2);
+      expect(session.connection, isNotNull);
+    });
+
+    test('an idle session is not disturbed by a network change', () async {
+      var located = 0;
+      final session = HostProductSession(
+        host: hostFixture(),
+        transport: NoopTransport(),
+        controllerKeys: FakeControllerKeys(),
+        locator: HostLocator([
+          _Source.dynamic(HostAddressEvidence.announced, () {
+            located += 1;
+            return ['https://10.0.0.5:9002'];
+          }),
+        ]),
+        clientFactory: (_) =>
+            LocalApiClient(httpClient: MockClient(hostSessionResponse)),
+      );
+      addTearDown(session.close);
+
+      // Nothing was connected, so there is nothing to invalidate. Without this
+      // the first operation after launch would relocate twice: once because it
+      // was told to, once because it had never connected.
+      session.invalidateLocation();
+      await session.connect();
+
+      expect(located, 1);
+    });
   });
 }
 

@@ -22,6 +22,7 @@ import 'host_product_session.dart';
 import 'workspace_runtime_models.dart';
 import 'host_system_page.dart';
 import 'local_api_discovery.dart';
+import 'network_changes.dart';
 import 'workspace_models.dart';
 
 export 'host_product_controller.dart' show ManagedHostUpdater;
@@ -40,6 +41,7 @@ class HostLocalConnectionPage extends StatefulWidget {
     this.controllerKeys,
     this.discovery,
     this.localApiClientFactory,
+    this.networkChanges,
     this.deviceProvisioning,
     this.conversationBuilder,
     this.setupContinuation = false,
@@ -53,6 +55,9 @@ class HostLocalConnectionPage extends StatefulWidget {
   final ControllerKeyBridge? controllerKeys;
   final LocalApiDiscovery? discovery;
   final LocalApiClientFactory? localApiClientFactory;
+
+  /// Injected in tests, where there is no phone to change networks.
+  final NetworkChanges? networkChanges;
   final DeviceProvisioningTransport? deviceProvisioning;
   final HostConversationBuilder? conversationBuilder;
 
@@ -82,6 +87,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       controllerKeys: widget.controllerKeys,
       discovery: widget.discovery,
       localApiClientFactory: widget.localApiClientFactory,
+      networkChanges: widget.networkChanges,
     )..addListener(_refresh);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _controller.connect();

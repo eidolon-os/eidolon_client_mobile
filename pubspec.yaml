@@ -7,6 +7,15 @@ environment:
   sdk: '>=3.6.0 <4.0.0'
 
 dependencies:
+  # Tells this phone when its own network changed, so a saved Host's address
+  # can be looked up again instead of being discovered stale by paying a
+  # timeout for it. Not a reachability check: what it reports is that the last
+  # address may no longer lead anywhere, never that the Host is gone.
+  #
+  # Already in the tree — livekit_client depends on it — so this is a direct
+  # constraint on something that was being shipped anyway, and it is pinned to
+  # livekit's major so the two cannot ask for different copies.
+  connectivity_plus: ^7.0.0
   cryptography: ^2.9.0
   flutter:
     sdk: flutter

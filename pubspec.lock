@@ -58,7 +58,7 @@ packages:
     source: hosted
     version: "1.19.1"
   connectivity_plus:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: connectivity_plus
       sha256: "25cebb79dfe304022550e0c3c893ae051ded07183d2607f7b88473cb3ade33cb"

@@ -85,6 +85,12 @@ class HostProductSession {
   HostOverview? _overview;
   LocalControllerSession? _controllerSession;
   bool _closed = false;
+  /// Whether where the Host was has stopped being something we may assume.
+  ///
+  /// Distinct from never having connected. Nothing about the Host changed —
+  /// this phone moved — so the next operation looks again instead of either
+  /// refusing or paying a timeout to discover what is already known.
+  bool _locationStale = false;
 
   ManagedHost get host => _host;
 
@@ -168,6 +174,7 @@ class HostProductSession {
   /// as the person is concerned.
   Future<T> execute<T>(LocalApiOperation<T> operation) async {
     _ensureOpen();
+    if (_locationStale) await _relocate();
     final endpoint = _endpoint;
     final session = _controllerSession;
     if (endpoint == null || session == null) {
@@ -208,6 +215,7 @@ class HostProductSession {
     _endpoint = null;
     _overview = null;
     _controllerSession = null;
+    _locationStale = false;
     await connect();
   }
 
@@ -217,9 +225,14 @@ class HostProductSession {
   /// be correct, but nothing about it can be assumed any more, and paying one
   /// timeout to discover that is worse than looking again.
   void invalidateLocation() {
+    if (_endpoint == null && !_locationStale) return;
     _endpoint = null;
     _overview = null;
     _controllerSession = null;
+    // Marked rather than merely cleared. Cleared alone is indistinguishable
+    // from never having connected, and the next operation would refuse with
+    // "请先安全连接主机" — turning a saving into a wall.
+    _locationStale = true;
   }
 
   Future<T> _executeOnce<T>(
