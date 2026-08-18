@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * access point.
  *
  * A device that has never been set up offers a Wi-Fi network named
- * `Eidolon-<mac tail>` and speaks Espressif's provisioning protocol on it —
+ * `eidolon-<mac tail>` and speaks Espressif's provisioning protocol on it —
  * protobuf over HTTP, inside an SRP6a-authenticated session (Security 2). That
  * protocol is not reimplemented here. It is the vendor's own wire format for
  * the vendor's own firmware, and the vendor's client is what talks it; this
@@ -66,7 +66,7 @@ class DeviceProvisioningManager(
         private const val TAG = "EidolonDeviceSetup"
 
         /** What an unprovisioned Eidolon device calls its setup network. */
-        private const val AP_PREFIX = "Eidolon-"
+        private const val AP_PREFIX = "eidolon-"
 
         /**
          * The Security 2 identity and passphrase for development builds.

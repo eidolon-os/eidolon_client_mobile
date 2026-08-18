@@ -70,8 +70,8 @@ void main() {
 
     final session = await build().open(
       const DeviceProvisioningCandidate(
-        transportId: 'Eidolon-7e2444',
-        displayName: 'Eidolon-7e2444',
+        transportId: 'eidolon-7e2444',
+        displayName: 'eidolon-7e2444',
         transportKind: 'softap',
         trust: DeviceProvisioningTrust.developmentTofu,
       ),
