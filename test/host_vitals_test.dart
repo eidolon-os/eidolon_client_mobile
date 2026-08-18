@@ -2,11 +2,11 @@ import 'package:eidolon_client_mobile/src/features/host_setup/host_vitals_models
 import 'package:flutter_test/flutter_test.dart';
 
 Map<String, dynamic> _document(List<Map<String, dynamic>> vitals) => {
-  'operation': 'local.host-vitals',
-  'contract_version': '1',
-  'observed_at': '2026-08-18T02:00:00Z',
-  'vitals': vitals,
-};
+      'operation': 'local.host-vitals',
+      'contract_version': '1',
+      'observed_at': '2026-08-18T02:00:00Z',
+      'vitals': vitals,
+    };
 
 void main() {
   test('a reading the Host could not take is its own state', () {

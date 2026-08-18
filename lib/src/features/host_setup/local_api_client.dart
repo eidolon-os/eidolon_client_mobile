@@ -555,7 +555,8 @@ class LocalApiClient {
   }) async {
     final response = await _httpClient
         .post(
-          parseBaseUri(baseUrl).resolve('/api/local/v1/controllers/invitations'),
+          parseBaseUri(baseUrl)
+              .resolve('/api/local/v1/controllers/invitations'),
           headers: _authorizedHeaders(accessToken, json: true),
           body: jsonEncode({'ttl_seconds': ttl.inSeconds}),
         )

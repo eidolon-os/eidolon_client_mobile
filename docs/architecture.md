@@ -53,7 +53,8 @@ Conversation 功能存在，不参与默认启动，也不在 Host Control 阶�
 
 以下能力来自原 Audio Demo，代码与测试继续保留：
 
-1. 通过 `_eidolon-hub._tcp.local.` 发现 Hub，并读取 `register_url`。
+1. 从已认证 Local API 取得 Owner bundle，并只接受其中与当前 Owner
+   Domain trust anchor 和签名目录一致的逻辑 Authority endpoint。
 2. 生成并持久化 P-256 设备身份，按 ESP32 相同的 canonical request 规则签名注册请求。
 3. 处理 `pending_approval`、`waiting_binding`、`active`、`revoked`、`unregistered` 状态。
 4. Active 后进入稳定的 LiveKit control room；手动或收到 `room.join` 后刷新 token 并进入 voice room。

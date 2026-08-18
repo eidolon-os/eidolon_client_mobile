@@ -3,6 +3,8 @@ import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_mod
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_ports.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/owner_domain_fixtures.dart';
+
 final _now = DateTime.parse('2026-08-07T10:00:00Z');
 
 const _candidate = DeviceProvisioningCandidate(
@@ -128,13 +130,7 @@ void main() {
         ssid: 'Home WiFi',
         password: 'secret-not-persisted',
       ),
-      onboardingTarget: DeviceOnboardingTarget(
-        hubId: 'hub-1',
-        descriptorUri: Uri.parse('https://hub.local/onboarding'),
-        tlsSpkiFingerprint:
-            'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
-  hubCertificate: '-----BEGIN CERTIFICATE-----\\nMIIBdummy\\n-----END CERTIFICATE-----\\n',
-),
+      onboardingTarget: deviceOnboardingTargetFixture(),
       companionId: 'companion-1',
     );
 
@@ -167,13 +163,7 @@ void main() {
       requestId: 'stable-request-1',
       candidate: _candidate,
       credentials: const DeviceWifiCredentials(ssid: 'Home', password: 'pw'),
-      onboardingTarget: DeviceOnboardingTarget(
-        hubId: 'hub-1',
-        descriptorUri: Uri.parse('https://hub.local/onboarding'),
-        tlsSpkiFingerprint:
-            'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
-  hubCertificate: '-----BEGIN CERTIFICATE-----\\nMIIBdummy\\n-----END CERTIFICATE-----\\n',
-),
+      onboardingTarget: deviceOnboardingTargetFixture(),
     );
     expect(failed.provisioningState, DeviceProvisioningState.networkConfigured);
     expect(failed.admissionState, DeviceAdmissionState.failed);
@@ -218,13 +208,7 @@ void main() {
       requestId: 'request-dev',
       candidate: candidate,
       credentials: const DeviceWifiCredentials(ssid: 'Home', password: 'pw'),
-      onboardingTarget: DeviceOnboardingTarget(
-        hubId: 'hub-1',
-        descriptorUri: Uri.parse('https://hub.local/onboarding'),
-        tlsSpkiFingerprint:
-            'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
-  hubCertificate: '-----BEGIN CERTIFICATE-----\\nMIIBdummy\\n-----END CERTIFICATE-----\\n',
-),
+      onboardingTarget: deviceOnboardingTargetFixture(),
     );
 
     expect(result.provisioningState, DeviceProvisioningState.failed);

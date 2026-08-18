@@ -5,10 +5,13 @@ import 'package:cryptography/cryptography.dart';
 import 'package:http/http.dart' as http;
 
 import '../host_setup/pinned_http_client.dart';
+import '../../generated/device_foundation_v1.dart';
 import 'hub_onboarding_models.dart';
 import 'mobile_body_security.dart';
 
-typedef HubPinnedClientFactory = http.Client Function(String fingerprint);
+typedef OwnerDomainClientFactory = http.Client Function(
+  String ownerRootCertificate,
+);
 
 class HubOnboardingRequestException implements Exception {
   const HubOnboardingRequestException({
@@ -28,48 +31,31 @@ class HubOnboardingRequestException implements Exception {
 class HubOnboardingClient {
   HubOnboardingClient({
     required MobileBodySecurity security,
-    HubPinnedClientFactory? clientFactory,
+    OwnerDomainClientFactory? clientFactory,
     this.timeout = const Duration(seconds: 8),
   })  : _security = security,
         _clientFactory = clientFactory ??
-            ((fingerprint) => PlatformPinnedHttpClient(
-                  tlsSpkiFingerprint: fingerprint,
+            ((ownerRootCertificate) => PlatformPinnedHttpClient.ownerDomain(
+                  ownerRootCertificate: ownerRootCertificate,
                 ));
 
   final MobileBodySecurity _security;
-  final HubPinnedClientFactory _clientFactory;
+  final OwnerDomainClientFactory _clientFactory;
   final Duration timeout;
 
-  Future<HubOnboardingDescriptor> fetchDescriptor(
-    VerifiedHubTarget target,
+  Future<OwnerDomainDescriptorV1> fetchDescriptor(
+    VerifiedOwnerDomainTarget target,
   ) async {
-    target.validate();
-    final response = await _send(
-      target,
-      operation: 'Hub descriptor',
-      uri: target.descriptorUri,
-      request: (client, uri) => client.get(
-        uri,
-        headers: const {'accept': 'application/json'},
-      ),
-    );
-    final value = _decode(response, operation: 'Hub descriptor');
-    final descriptor = HubOnboardingDescriptor.fromJson(value);
-    if (descriptor.hubId != target.hubId ||
-        descriptor.descriptorUri != target.descriptorUri ||
-        !_sameOrigin(descriptor.descriptorUri, descriptor.onboardingUri) ||
-        !_sameOrigin(descriptor.descriptorUri, descriptor.enrollmentUri)) {
-      throw const HubOnboardingRequestException(
-        operation: 'Hub descriptor',
-        message: 'Hub descriptor 与主机确认的 Hub 身份不一致',
-      );
-    }
-    return descriptor;
+    // The Controller already authenticated and verified this immutable signed
+    // directory.  Mobile resolves logical Authorities from it; it never turns
+    // the discovery URI or the current Host TLS leaf into persistent identity.
+    target.admissionEndpoint();
+    return target.descriptor;
   }
 
   Future<HubEnrollmentReceipt> enroll({
-    required VerifiedHubTarget target,
-    required HubOnboardingDescriptor descriptor,
+    required VerifiedOwnerDomainTarget target,
+    required OwnerDomainDescriptorV1 descriptor,
     required DeviceEnrollmentMaterial material,
     required String deviceId,
     required String displayName,
@@ -83,7 +69,7 @@ class HubOnboardingClient {
     final response = await _send(
       target,
       operation: 'Device enrollment',
-      uri: descriptor.enrollmentUri,
+      uri: _enrollmentsUri(target),
       request: (client, uri) => client.post(
         uri,
         headers: const {
@@ -113,7 +99,7 @@ class HubOnboardingClient {
       );
     }
     await _security.saveEnrollmentReceipt(
-      hubId: target.hubId,
+      ownerDomainId: target.ownerDomainId,
       enrollmentId: receipt.enrollmentId,
       retrievalExpiresAt: receipt.retrievalExpiresAt,
     );
@@ -121,17 +107,18 @@ class HubOnboardingClient {
   }
 
   Future<HubHandoffOutcome> handoff({
-    required VerifiedHubTarget target,
-    required HubOnboardingDescriptor descriptor,
+    required VerifiedOwnerDomainTarget target,
+    required OwnerDomainDescriptorV1 descriptor,
     required DeviceEnrollmentMaterial material,
     required String deviceId,
     required String enrollmentId,
   }) async {
     _validateDescriptorTarget(target, descriptor);
     _bounded(enrollmentId, 'enrollmentId', 128);
-    final handoffUri = descriptor.enrollmentUri.replace(
+    final enrollmentsUri = _enrollmentsUri(target);
+    final handoffUri = enrollmentsUri.replace(
       pathSegments: [
-        ...descriptor.enrollmentUri.pathSegments,
+        ...enrollmentsUri.pathSegments,
         enrollmentId,
         'handoff',
       ],
@@ -173,21 +160,20 @@ class HubOnboardingClient {
     return outcome;
   }
 
-  /// Issues [request] against [uri], dialled the way [target] says to.
-  ///
-  /// The URI goes through here rather than through each caller so that no
-  /// request can be built that reaches the network by name.
+  /// Issues [request] only through an endpoint authorized by the signed Owner
+  /// directory, with normal hostname verification against the portable Owner
+  /// root. Host addresses and leaf fingerprints are not identity inputs.
   Future<http.Response> _send(
-    VerifiedHubTarget target, {
+    VerifiedOwnerDomainTarget target, {
     required String operation,
     required Uri uri,
     required Future<http.Response> Function(http.Client client, Uri uri)
         request,
     Set<int> acceptedStatusCodes = const {200},
   }) async {
-    final client = _clientFactory(target.tlsSpkiFingerprint);
+    final client = _clientFactory(target.ownerRootCertificate);
     try {
-      final response = await request(client, target.dial(uri)).timeout(timeout);
+      final response = await request(client, uri).timeout(timeout);
       if (!acceptedStatusCodes.contains(response.statusCode)) {
         throw HubOnboardingRequestException(
           operation: operation,
@@ -203,9 +189,10 @@ class HubOnboardingClient {
       throw HubOnboardingRequestException(
         operation: operation,
         message: switch (error.kind) {
-          PinnedHttpFailureKind.secureChannel => 'Hub TLS 身份验证失败，已拒绝连接',
-          PinnedHttpFailureKind.timeout => 'Hub 响应超时',
-          PinnedHttpFailureKind.unreachable => '当前网络无法连接 Hub',
+          PinnedHttpFailureKind.secureChannel =>
+            'Owner Domain endpoint TLS 身份验证失败，已拒绝连接',
+          PinnedHttpFailureKind.timeout => 'Owner Domain endpoint 响应超时',
+          PinnedHttpFailureKind.unreachable => '当前网络无法连接 Owner Domain endpoint',
           _ => '$operation 失败：${error.message}',
         },
       );
@@ -251,18 +238,30 @@ class HubOnboardingClient {
   }
 
   void _validateDescriptorTarget(
-    VerifiedHubTarget target,
-    HubOnboardingDescriptor descriptor,
+    VerifiedOwnerDomainTarget target,
+    OwnerDomainDescriptorV1 descriptor,
   ) {
-    target.validate();
-    if (descriptor.hubId != target.hubId ||
-        descriptor.descriptorUri != target.descriptorUri ||
-        !_sameOrigin(descriptor.descriptorUri, descriptor.enrollmentUri)) {
+    if (descriptor.ownerDomainId != target.ownerDomainId ||
+        descriptor.directoryRevision != target.descriptor.directoryRevision ||
+        descriptor.signature != target.descriptor.signature) {
       throw const HubOnboardingRequestException(
-        operation: 'Hub descriptor',
-        message: 'Hub onboarding target 已变化，请重新连接主机',
+        operation: 'Owner Domain descriptor',
+        message: 'Owner Domain directory 已变化，请重新连接 Controller',
       );
     }
+    target.admissionEndpoint();
+  }
+
+  Uri _enrollmentsUri(VerifiedOwnerDomainTarget target) {
+    final base = target.admissionEndpoint().uri;
+    return base.replace(
+      pathSegments: [
+        ...base.pathSegments.where((segment) => segment.isNotEmpty),
+        'enrollments',
+      ],
+      query: null,
+      fragment: null,
+    );
   }
 }
 
@@ -298,11 +297,6 @@ Future<String> _sha256Label(String value) async {
       digest.bytes.map((item) => item.toRadixString(16).padLeft(2, '0')).join();
   return 'sha256:$hex';
 }
-
-bool _sameOrigin(Uri left, Uri right) =>
-    left.scheme == right.scheme &&
-    left.host.toLowerCase() == right.host.toLowerCase() &&
-    left.port == right.port;
 
 void _bounded(
   String value,

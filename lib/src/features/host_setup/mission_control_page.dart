@@ -270,7 +270,6 @@ class _NowCard extends StatelessWidget {
       ),
     );
   }
-
 }
 
 class _MomentTile extends StatelessWidget {

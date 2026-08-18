@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../generated/device_foundation_v1.dart';
+
 enum DeviceProvisioningTrust {
   /// Development-only discovery without a manufacturer-bound identity.
   developmentTofu,
@@ -108,62 +110,65 @@ class DeviceWifiCredentials {
 
 class DeviceOnboardingTarget {
   const DeviceOnboardingTarget({
-    required this.hubId,
-    required this.descriptorUri,
-    required this.tlsSpkiFingerprint,
-    required this.hubCertificate,
+    required this.ownerDomainId,
+    required this.ownerDomainDescriptor,
+    required this.ownerRootCertificate,
+    required this.authoritySigningCertificate,
     this.hostAddress,
   });
 
-  final String hubId;
-  final Uri descriptorUri;
-  final String tlsSpkiFingerprint;
+  final String ownerDomainId;
+  final OwnerDomainDescriptorV1 ownerDomainDescriptor;
+  final String ownerRootCertificate;
+  final String authoritySigningCertificate;
 
   /// The address the Host answered on when it handed this target over.
   ///
   /// Deliberately absent from the wire and from the checkpoint: it describes
-  /// one client's route to the Host at one moment, not the Hub. A device being
-  /// set up gets [descriptorUri] and finds the address itself, and a resumed
-  /// checkpoint asks the Host again rather than dialling a remembered address.
+  /// one client's route to a deployment at one moment, not the Owner Domain.
+  /// The signed descriptor is the durable fact.
   final String? hostAddress;
 
   /// This target, as reached at [hostAddress].
   DeviceOnboardingTarget reachedAt(String hostAddress) =>
       DeviceOnboardingTarget(
-        hubId: hubId,
-        descriptorUri: descriptorUri,
-        tlsSpkiFingerprint: tlsSpkiFingerprint,
-        hubCertificate: hubCertificate,
+        ownerDomainId: ownerDomainId,
+        ownerDomainDescriptor: ownerDomainDescriptor,
+        ownerRootCertificate: ownerRootCertificate,
+        authoritySigningCertificate: authoritySigningCertificate,
         hostAddress: hostAddress,
       );
-
-  /// The Host's own certificate, carried to a device being set up. A device
-  /// cannot obtain it from anywhere it could already trust, so the Owner
-  /// delivers it.
-  final String hubCertificate;
 
   factory DeviceOnboardingTarget.fromJson(Map<String, dynamic> value) {
     if (value['operation'] != 'local.device-onboarding-target' ||
         value['contract_version'] != '1') {
-      throw const FormatException('Local API 返回了无效的 Hub onboarding target');
+      throw const FormatException(
+        'Local API 返回了无效的 Owner Domain onboarding target',
+      );
     }
-    final fingerprint = _boundedWireString(
-      value,
-      'tls_spki_fingerprint',
-      71,
+    final rawDescriptor = value['owner_domain_descriptor'];
+    if (rawDescriptor is! Map) {
+      throw const FormatException('Local API 返回了无效的 Owner Domain descriptor');
+    }
+    final root = _boundedWireString(value, 'owner_root_certificate', 4096);
+    final authority =
+        _boundedWireString(value, 'authority_signing_certificate', 4096);
+    if (!root.startsWith('-----BEGIN CERTIFICATE-----') ||
+        !authority.startsWith('-----BEGIN CERTIFICATE-----')) {
+      throw const FormatException('Local API 返回了无效的 Owner Domain trust chain');
+    }
+    final descriptor = OwnerDomainDescriptorV1.fromJson(
+      Map<String, dynamic>.from(rawDescriptor),
     );
-    if (!RegExp(r'^sha256:[A-Za-z0-9_-]{43}$').hasMatch(fingerprint)) {
-      throw const FormatException('Local API 返回了无效的 Hub TLS 身份');
-    }
-    final certificate = _boundedWireString(value, 'hub_certificate', 8192);
-    if (!certificate.startsWith('-----BEGIN CERTIFICATE-----')) {
-      throw const FormatException('Local API 返回了无效的 Hub 证书');
+    final ownerDomainId = _boundedWireString(value, 'owner_domain_id', 128);
+    if (descriptor.ownerDomainId != ownerDomainId) {
+      throw const FormatException('Owner Domain descriptor 身份不一致');
     }
     return DeviceOnboardingTarget(
-      hubId: _boundedWireString(value, 'hub_id', 128),
-      descriptorUri: _checkpointHttpsUri(value, 'descriptor_uri'),
-      tlsSpkiFingerprint: fingerprint,
-      hubCertificate: certificate,
+      ownerDomainId: ownerDomainId,
+      ownerDomainDescriptor: descriptor,
+      ownerRootCertificate: root,
+      authoritySigningCertificate: authority,
     );
   }
 }
@@ -404,12 +409,12 @@ class DeviceSetupCheckpoint {
         'provisioning_state': provisioningState.name,
         'admission_state': admissionState.name,
         'updated_at': updatedAt.toUtc().toIso8601String(),
-        'hub_id': onboardingTarget.hubId,
-        'descriptor_uri': onboardingTarget.descriptorUri.toString(),
-        'tls_spki_fingerprint': onboardingTarget.tlsSpkiFingerprint,
-        // Public material, and the checkpoint must be able to resume a setup
-        // without a second round-trip to the Host.
-        'hub_certificate': onboardingTarget.hubCertificate,
+        'owner_domain_id': onboardingTarget.ownerDomainId,
+        'owner_domain_descriptor':
+            onboardingTarget.ownerDomainDescriptor.toJson(),
+        'owner_root_certificate': onboardingTarget.ownerRootCertificate,
+        'authority_signing_certificate':
+            onboardingTarget.authoritySigningCertificate,
         'device_id': deviceId,
         'enrollment_id': enrollmentId,
         'companion_id': companionId,
@@ -448,10 +453,16 @@ class DeviceSetupCheckpoint {
       admissionState: admission,
       updatedAt: updatedAt.toUtc(),
       onboardingTarget: DeviceOnboardingTarget(
-        hubId: _boundedWireString(value, 'hub_id', 128),
-        descriptorUri: _checkpointHttpsUri(value, 'descriptor_uri'),
-        tlsSpkiFingerprint: _checkpointFingerprint(value),
-        hubCertificate: _boundedWireString(value, 'hub_certificate', 8192),
+        ownerDomainId: _boundedWireString(value, 'owner_domain_id', 128),
+        ownerDomainDescriptor: OwnerDomainDescriptorV1.fromJson(
+          Map<String, dynamic>.from(
+            value['owner_domain_descriptor']! as Map,
+          ),
+        ),
+        ownerRootCertificate:
+            _boundedWireString(value, 'owner_root_certificate', 4096),
+        authoritySigningCertificate:
+            _boundedWireString(value, 'authority_signing_certificate', 4096),
       ),
       deviceId: _optionalCheckpointString(value, 'device_id'),
       enrollmentId: _optionalCheckpointString(value, 'enrollment_id'),
@@ -468,7 +479,6 @@ class DeviceSetupCheckpoint {
     );
   }
 }
-
 
 String _requiredCheckpointString(Map<String, dynamic> value, String key) {
   final result = value[key];
@@ -514,25 +524,4 @@ String? _optionalBoundedWireString(
 ) {
   if (value[key] == null) return null;
   return _boundedWireString(value, key, maxLength);
-}
-
-Uri _checkpointHttpsUri(Map<String, dynamic> value, String key) {
-  final raw = _boundedWireString(value, key, 2048);
-  final uri = Uri.tryParse(raw);
-  if (uri == null ||
-      uri.scheme != 'https' ||
-      uri.host.isEmpty ||
-      uri.userInfo.isNotEmpty ||
-      uri.fragment.isNotEmpty) {
-    throw FormatException('Invalid Device Setup $key');
-  }
-  return uri;
-}
-
-String _checkpointFingerprint(Map<String, dynamic> value) {
-  final fingerprint = _boundedWireString(value, 'tls_spki_fingerprint', 71);
-  if (!RegExp(r'^sha256:[A-Za-z0-9_-]{43}$').hasMatch(fingerprint)) {
-    throw const FormatException('Invalid Device Setup tls_spki_fingerprint');
-  }
-  return fingerprint;
 }

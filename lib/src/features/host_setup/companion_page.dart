@@ -53,9 +53,8 @@ class CompanionPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final companion = runtime.primaryCompanion;
-    final name = companion.displayName.isNotEmpty
-        ? companion.displayName
-        : '这个 Eidolon';
+    final name =
+        companion.displayName.isNotEmpty ? companion.displayName : '这个 Eidolon';
     final bound = _itsDevices;
     return Scaffold(
       key: const Key('companion-page'),
@@ -73,8 +72,7 @@ class CompanionPage extends StatelessWidget {
                     onTap: onChangeFace,
                     child: CircleAvatar(
                       radius: 26,
-                      foregroundImage:
-                          face == null ? null : MemoryImage(face!),
+                      foregroundImage: face == null ? null : MemoryImage(face!),
                       child: face == null
                           ? const Icon(Icons.face_retouching_natural)
                           : null,

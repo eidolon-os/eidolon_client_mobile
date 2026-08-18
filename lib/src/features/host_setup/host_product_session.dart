@@ -85,6 +85,7 @@ class HostProductSession {
   HostOverview? _overview;
   LocalControllerSession? _controllerSession;
   bool _closed = false;
+
   /// Whether where the Host was has stopped being something we may assume.
   ///
   /// Distinct from never having connected. Nothing about the Host changed —

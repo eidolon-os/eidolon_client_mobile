@@ -1,96 +1,47 @@
 import 'dart:convert';
 
 import '../device_setup/device_setup_models.dart';
+import '../../generated/device_foundation_v1.dart';
 
 enum HubDeviceLifecycle { pendingApproval, approved, revoked }
 
-/// Hub origin and TLS authority obtained through an authenticated Host session.
-///
-/// mDNS locates a Hub but is not a trust anchor. Product code must construct
-/// this value only after the Host Local API has bound the Hub ID, descriptor
-/// URI and SPKI fingerprint to the current Controller session.
-class VerifiedHubTarget {
-  const VerifiedHubTarget({
-    required this.hubId,
-    required this.descriptorUri,
-    required this.tlsSpkiFingerprint,
-    this.hostAddress,
+/// Owner-scoped route set obtained through an authenticated Controller session.
+class VerifiedOwnerDomainTarget {
+  const VerifiedOwnerDomainTarget({
+    required this.ownerDomainId,
+    required this.descriptor,
+    required this.ownerRootCertificate,
   });
 
-  final String hubId;
-  final Uri descriptorUri;
-  final String tlsSpkiFingerprint;
+  final String ownerDomainId;
+  final OwnerDomainDescriptorV1 descriptor;
+  final String ownerRootCertificate;
 
-  /// The address this Host answered on, where the client knows one.
-  ///
-  /// [descriptorUri] names the Hub; it does not say how to reach it. The name
-  /// is an mDNS one, and a client that cannot query mDNS has no way to turn it
-  /// into an address — so the address it already reached this Host on is used
-  /// instead. That is sound because the Hub runs on the Host that just handed
-  /// this target over: having answered at an address is proof its Hub is there
-  /// too. The pin, not the name, is what says the far end is the right one.
-  final String? hostAddress;
-
-  /// [uri] as it should be dialled, rather than as it is named.
-  Uri dial(Uri uri) =>
-      hostAddress == null ? uri : uri.replace(host: hostAddress);
-
-  factory VerifiedHubTarget.fromDeviceTarget(DeviceOnboardingTarget target) =>
-      VerifiedHubTarget(
-        hubId: target.hubId,
-        descriptorUri: target.descriptorUri,
-        tlsSpkiFingerprint: target.tlsSpkiFingerprint,
-        hostAddress: target.hostAddress,
+  factory VerifiedOwnerDomainTarget.fromDeviceTarget(
+    DeviceOnboardingTarget target,
+  ) =>
+      VerifiedOwnerDomainTarget(
+        ownerDomainId: target.ownerDomainId,
+        descriptor: target.ownerDomainDescriptor,
+        ownerRootCertificate: target.ownerRootCertificate,
       );
 
-  void validate() {
-    if (hubId.isEmpty || hubId.length > 128) {
-      throw const FormatException('Hub ID is invalid');
+  AuthorityEndpointV1 admissionEndpoint() {
+    if (descriptor.ownerDomainId != ownerDomainId) {
+      throw const FormatException(
+          'Owner Domain descriptor identity is invalid');
     }
-    _requireHttpsUri(descriptorUri, field: 'descriptor URI');
-    if (!RegExp(r'^sha256:[A-Za-z0-9_-]{43}$').hasMatch(tlsSpkiFingerprint)) {
-      throw const FormatException('Hub TLS SPKI fingerprint is invalid');
+    final endpoints = descriptor.endpoints
+        .where((item) =>
+            item.authority == 'admission' &&
+            item.logicalAudience == 'eidolon-admission' &&
+            item.transportProfile == 'https-json')
+        .toList(growable: false)
+      ..sort((left, right) => left.priority.compareTo(right.priority));
+    if (endpoints.isEmpty) {
+      throw const FormatException('Owner Domain has no Admission endpoint');
     }
-  }
-}
-
-class HubOnboardingDescriptor {
-  const HubOnboardingDescriptor({
-    required this.hubId,
-    required this.descriptorUri,
-    required this.onboardingUri,
-    required this.enrollmentUri,
-    required this.protocolVersions,
-  });
-
-  final String hubId;
-  final Uri descriptorUri;
-  final Uri onboardingUri;
-  final Uri enrollmentUri;
-  final List<int> protocolVersions;
-
-  factory HubOnboardingDescriptor.fromJson(Map<String, dynamic> value) {
-    if (value['schema_version'] != 1) {
-      throw const FormatException('Unsupported Hub descriptor schema');
-    }
-    final rawVersions = value['protocol_versions'];
-    if (rawVersions is! List ||
-        rawVersions.isEmpty ||
-        rawVersions.length > 8 ||
-        rawVersions.any((item) => item is! int)) {
-      throw const FormatException('Hub protocol versions are invalid');
-    }
-    final descriptor = HubOnboardingDescriptor(
-      hubId: _boundedString(value, 'hub_id', maxLength: 128),
-      descriptorUri: _httpsUri(value, 'descriptor_uri'),
-      onboardingUri: _httpsUri(value, 'device_onboarding_uri'),
-      enrollmentUri: _httpsUri(value, 'enrollment_uri'),
-      protocolVersions: List<int>.unmodifiable(rawVersions.cast<int>()),
-    );
-    if (!descriptor.protocolVersions.contains(1)) {
-      throw const FormatException('Hub does not support onboarding v1');
-    }
-    return descriptor;
+    return endpoints.first;
   }
 }
 
@@ -330,23 +281,6 @@ String _boundedString(
     throw FormatException('Hub field $key is invalid');
   }
   return result;
-}
-
-Uri _httpsUri(Map<String, dynamic> value, String key) {
-  final raw = _boundedString(value, key, maxLength: 2048);
-  final uri = Uri.tryParse(raw);
-  if (uri == null) throw FormatException('Hub field $key is invalid');
-  _requireHttpsUri(uri, field: key);
-  return uri;
-}
-
-void _requireHttpsUri(Uri uri, {required String field}) {
-  if (uri.scheme != 'https' ||
-      uri.host.isEmpty ||
-      uri.userInfo.isNotEmpty ||
-      uri.fragment.isNotEmpty) {
-    throw FormatException('Hub $field must be a plain HTTPS URI');
-  }
 }
 
 String _boundedPlatformString(

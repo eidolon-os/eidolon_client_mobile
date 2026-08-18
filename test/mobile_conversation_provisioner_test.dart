@@ -8,10 +8,12 @@ import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_mod
 import 'package:eidolon_client_mobile/src/models/hub_models.dart';
 import 'package:eidolon_client_mobile/src/platform/platform_bridge.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-const _fingerprint = 'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8';
+import 'support/owner_domain_fixtures.dart';
+
 const _enrollmentId = 'enrollment_abcdefghijklmnopqrstuvwx';
 const _retrievalToken = 'retrieval-token-abcdefghijklmnopqrstuvwxyz';
 
@@ -65,7 +67,6 @@ void main() {
     expect(
       requests.map((request) => '${request.method} ${request.url.path}'),
       [
-        'GET /api/device-onboarding/v1/descriptor',
         'POST /api/device-onboarding/v1/enrollments',
         'POST /api/device-onboarding/v1/enrollments/$_enrollmentId/handoff',
       ],
@@ -103,7 +104,7 @@ void main() {
     final config = await provisioner.provision();
 
     expect(config.status, HubConfigStatus.waitingBinding);
-    expect(requests, hasLength(2));
+    expect(requests, hasLength(1));
   });
 
   test('an enrolled device hands off again after its pickup window passed',
@@ -135,7 +136,6 @@ void main() {
     expect(
       requests.map((request) => '${request.method} ${request.url.path}'),
       [
-        'GET /api/device-onboarding/v1/descriptor',
         'POST /api/device-onboarding/v1/enrollments/$_enrollmentId/handoff',
       ],
     );
@@ -165,7 +165,6 @@ void main() {
     expect(
       requests.map((request) => '${request.method} ${request.url.path}'),
       [
-        'GET /api/device-onboarding/v1/descriptor',
         'POST /api/device-onboarding/v1/enrollments/'
             'enrollment_stale_0123456789abc/handoff',
         'POST /api/device-onboarding/v1/enrollments',
@@ -237,13 +236,10 @@ HubOnboardingClient _hubClient(
   var enrolled = false;
   return HubOnboardingClient(
     security: security,
-    clientFactory: (fingerprint) {
-      expect(fingerprint, _fingerprint);
+    clientFactory: (ownerRootCertificate) {
+      expect(ownerRootCertificate, ownerRootCertificateFixture);
       return MockClient((request) async {
         requests.add(request);
-        if (request.method == 'GET') {
-          return http.Response(jsonEncode(_descriptor), 200);
-        }
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         if (body['operation'] == 'device.enrollment') {
           enrolled = true;
@@ -306,25 +302,7 @@ http.Response _handoffResponse(String manifestRevision) {
   );
 }
 
-final _target = DeviceOnboardingTarget(
-  hubId: 'hub-local',
-  descriptorUri: Uri.parse(
-    'https://eidolon.example/api/device-onboarding/v1/descriptor',
-  ),
-  tlsSpkiFingerprint: _fingerprint,
-  hubCertificate: '-----BEGIN CERTIFICATE-----\\nMIIBdummy\\n-----END CERTIFICATE-----\\n',
-);
-
-const _descriptor = {
-  'schema_version': 1,
-  'hub_id': 'hub-local',
-  'descriptor_uri':
-      'https://eidolon.example/api/device-onboarding/v1/descriptor',
-  'device_onboarding_uri': 'https://eidolon.example/api/device-onboarding/v1',
-  'enrollment_uri':
-      'https://eidolon.example/api/device-onboarding/v1/enrollments',
-  'protocol_versions': [1],
-};
+final _target = deviceOnboardingTargetFixture();
 
 class _Platform extends PlatformBridge {
   @override
@@ -342,7 +320,8 @@ class _Security implements MobileBodySecurity {
   int cleared = 0;
 
   @override
-  Future<DeviceEnrollmentMaterial> loadOrCreateMaterial(String hubId) async =>
+  Future<DeviceEnrollmentMaterial> loadOrCreateMaterial(
+          String ownerDomainId) async =>
       DeviceEnrollmentMaterial(
         enrollmentRequestId: 'mobile-enroll-1',
         handoffRequestId: 'mobile-handoff-1',
@@ -352,7 +331,7 @@ class _Security implements MobileBodySecurity {
       );
 
   @override
-  Future<void> clearMaterial(String hubId) async {
+  Future<void> clearMaterial(String ownerDomainId) async {
     cleared += 1;
     enrollmentId = null;
     retrievalExpiresAt = null;
@@ -360,7 +339,7 @@ class _Security implements MobileBodySecurity {
 
   @override
   Future<void> saveEnrollmentReceipt({
-    required String hubId,
+    required String ownerDomainId,
     required String enrollmentId,
     required DateTime retrievalExpiresAt,
   }) async {

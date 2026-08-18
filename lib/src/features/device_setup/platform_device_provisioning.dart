@@ -18,7 +18,8 @@ import 'device_setup_ports.dart';
 /// The enrollment is a fact the Host holds, the device only caused it, and over
 /// an access-point session the answer could not travel anyway: joining the
 /// network the Owner chose is what takes that session down.
-typedef PendingEnrollmentLookup = Future<List<PendingDeviceEnrollment>> Function();
+typedef PendingEnrollmentLookup = Future<List<PendingDeviceEnrollment>>
+    Function();
 
 /// Whether the Host already holds this device, whatever state it is in.
 ///
@@ -83,22 +84,20 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
       // Android will not tell an app what is nearby unless location is on,
       // whatever permissions it holds. Nothing here reads a location, but the
       // scan does not happen without it.
-      'LOCATION_SERVICES_OFF' =>
-        '请打开手机的定位开关。Android 不打开它就不让应用看到附近的设备。',
-      'DEVICE_SCAN_STALE' =>
-        '手机刚才没能重新扫描一次,所以还不知道附近有什么。稍等几秒再试一次。',
+      'LOCATION_SERVICES_OFF' => '请打开手机的定位开关。Android 不打开它就不让应用看到附近的设备。',
+      'DEVICE_SCAN_STALE' => '手机刚才没能重新扫描一次,所以还不知道附近有什么。稍等几秒再试一次。',
       'DEVICE_SCAN_BUSY' => '正在扫描,请稍候。',
       'WIFI_PERMISSION_DENIED' => '设置设备需要「附近设备」权限。',
-      'DEVICE_UNREACHABLE' =>
-        '连不上这台设备。它的设置窗口可能已经超时,按一下它的按键再试。',
+      'DEVICE_UNREACHABLE' => '连不上这台设备。它的设置窗口可能已经超时,按一下它的按键再试。',
       'DEVICE_DISCONNECTED' => '设备中断了这次设置。请再试一次。',
       // The detail is kept. This one sentence has stood in front of three
       // unrelated faults so far, none of them the device's silence.
-      'DESCRIPTOR_EMPTY' || 'DESCRIPTOR_UNAVAILABLE' =>
+      'DESCRIPTOR_EMPTY' ||
+      'DESCRIPTOR_UNAVAILABLE' =>
         _withDetail('没能读到设备的说明', error),
-      'TRUST_UNANSWERED' =>
-        _withDetail('设备没有回应它是否接受了这台 Host', error),
-      'DEVICE_REFUSED_NETWORK' || 'NETWORK_REJECTED' =>
+      'TRUST_UNANSWERED' => _withDetail('设备没有回应它是否接受了这个 Owner Domain', error),
+      'DEVICE_REFUSED_NETWORK' ||
+      'NETWORK_REJECTED' =>
         '设备没有接受这个网络,请确认 Wi-Fi 名称和密码。',
       _ => error.message ?? '设置设备时出错了。',
     };
@@ -110,7 +109,9 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
 
   static String _withDetail(String sentence, PlatformException error) {
     final detail = error.message?.trim();
-    return detail == null || detail.isEmpty ? '$sentence。' : '$sentence:$detail';
+    return detail == null || detail.isEmpty
+        ? '$sentence。'
+        : '$sentence:$detail';
   }
 
   @override
@@ -234,12 +235,19 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
       {
         'payloadJson': jsonEncode({
           'contract_version': '1',
-          'hub_id': onboardingTarget.hubId,
-          'hub_certificate': onboardingTarget.hubCertificate,
+          'owner_domain_id': onboardingTarget.ownerDomainId,
+          'owner_domain_descriptor':
+              onboardingTarget.ownerDomainDescriptor.toJson(),
+          'owner_root_certificate': onboardingTarget.ownerRootCertificate,
+          'authority_signing_certificate':
+              onboardingTarget.authoritySigningCertificate,
         }),
       },
     );
-    _requireAcceptedHandover(handover, expectedHubId: onboardingTarget.hubId);
+    _requireAcceptedHandover(
+      handover,
+      expectedOwnerDomainId: onboardingTarget.ownerDomainId,
+    );
 
     await _channel.invokeMethod<void>('provisioningConfigureNetwork', {
       'ssid': credentials.ssid,
@@ -253,11 +261,14 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
     await _channel.invokeMethod<void>('closeProvisioningSession');
   }
 
-  void _requireAcceptedHandover(String? raw, {required String expectedHubId}) {
+  void _requireAcceptedHandover(
+    String? raw, {
+    required String expectedOwnerDomainId,
+  }) {
     if (raw == null || raw.isEmpty) {
       throw const DeviceProvisioningTransportException(
         'trust_handover_unanswered',
-        '设备没有回应它是否接受了这台 Host。',
+        '设备没有回应它是否接受了这个 Owner Domain。',
       );
     }
     final Object? decoded;
@@ -266,14 +277,14 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
     } on FormatException {
       throw const DeviceProvisioningTransportException(
         'trust_handover_invalid',
-        '设备对 Host 交接的回应无法解析。',
+        '设备对 Owner Domain 交接的回应无法解析。',
       );
     }
     if (decoded is! Map<String, dynamic> ||
         decoded['contract_version'] != '1') {
       throw const DeviceProvisioningTransportException(
         'trust_handover_invalid',
-        '设备返回的 Host 交接结果与 v1 契约不一致。',
+        '设备返回的 Owner Domain 交接结果与 v1 契约不一致。',
       );
     }
     if (decoded['accepted'] != true) {
@@ -281,16 +292,14 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
       throw DeviceProvisioningTransportException(
         'trust_handover_refused',
         error is String && error.isNotEmpty
-            ? '设备拒绝了这台 Host:$error'
-            : '设备拒绝了这台 Host。',
+            ? '设备拒绝了这个 Owner Domain:$error'
+            : '设备拒绝了这个 Owner Domain。',
       );
     }
-    // A device that echoed a different Host is not the device this setup is
-    // configuring, and continuing would hand it a network it cannot use.
-    if (decoded['hub_id'] != expectedHubId) {
+    if (decoded['owner_domain_id'] != expectedOwnerDomainId) {
       throw const DeviceProvisioningTransportException(
         'trust_handover_mismatch',
-        '设备确认的 Host 与本次设置的 Host 不一致。',
+        '设备确认的 Owner Domain 与本次设置不一致。',
       );
     }
   }
@@ -349,7 +358,8 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
   }
 }
 
-DeviceProvisioningCandidate _candidateFromPlatform(Map<Object?, Object?> value) {
+DeviceProvisioningCandidate _candidateFromPlatform(
+    Map<Object?, Object?> value) {
   final transportId = value['transportId'];
   final displayName = value['displayName'];
   final transportKind = value['transportKind'];

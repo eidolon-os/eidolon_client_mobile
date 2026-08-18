@@ -22,8 +22,7 @@ DeviceRemovalProgress _progress(String outcome) =>
       'device_id': 'mobile-android-0123456789abcdef',
       'owner_id': 'owner-1',
       'outcome': outcome,
-      'stopped_after':
-          outcome == 'done' ? 'kernel-unmounted' : 'hub-revoked',
+      'stopped_after': outcome == 'done' ? 'kernel-unmounted' : 'hub-revoked',
     });
 
 Future<void> _open(
@@ -99,7 +98,6 @@ void main() {
     );
     expect(notice.data, contains('移除未完成'));
   });
-
 
   testWidgets('a refusal is not offered as something to retry', (tester) async {
     await _open(tester, (_) async => _progress('refused'));

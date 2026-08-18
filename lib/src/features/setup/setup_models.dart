@@ -199,13 +199,10 @@ class CommissioningEndpoint {
     // than a guess, and an entry that is not a usable HTTPS origin is dropped
     // rather than carried to the point of use.
     if (value is! List) return const [];
-    return value
-        .whereType<String>()
-        .where((url) {
-          final uri = Uri.tryParse(url);
-          return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
-        })
-        .toList(growable: false);
+    return value.whereType<String>().where((url) {
+      final uri = Uri.tryParse(url);
+      return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
+    }).toList(growable: false);
   }
 
   final String hostId;

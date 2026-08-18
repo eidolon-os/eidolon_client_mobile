@@ -4,16 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 MountedDevice _device({String displayName = ''}) => MountedDevice.fromJson({
-  'device_id': 'esp32-0123456789abcdef',
-  'display_name': displayName,
-  'device_kind': 'esp32-box3',
-  'admission_state': 'ready',
-  'mount': {
-    'revision': 2,
-    'attached_companion_id': 'companion-1',
-    'updated_at': '2026-08-12T08:10:00Z',
-  },
-});
+      'device_id': 'esp32-0123456789abcdef',
+      'display_name': displayName,
+      'device_kind': 'esp32-box3',
+      'admission_state': 'ready',
+      'mount': {
+        'revision': 2,
+        'attached_companion_id': 'companion-1',
+        'updated_at': '2026-08-12T08:10:00Z',
+      },
+    });
 
 Future<void> _open(
   WidgetTester tester, {

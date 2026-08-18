@@ -38,7 +38,6 @@ import java.util.UUID
 class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL = "live.eidolon.mobile/platform"
-        private const val HUB_SERVICE_TYPE = "_eidolon-hub._tcp."
         private const val LOCAL_API_SERVICE_TYPE = "_eidolon-local-api._tcp."
         private const val KEY_ALIAS = "eidolon-mobile-device-p256-v1"
         private const val CONTROLLER_KEY_ALIAS = "eidolon-host-controller-p256-v1"
@@ -79,7 +78,6 @@ class MainActivity : FlutterActivity() {
     private fun handleMethodCall(call: MethodCall, result: MethodChannel.Result) {
         try {
             when (call.method) {
-                "discoverHub" -> discoverHub(call.argument<Int>("timeoutMs") ?: 8000, result)
                 "discoverLocalApis" -> discoverLocalApis(
                     call.argument<Int>("timeoutMs") ?: 5000,
                     result,
@@ -88,13 +86,14 @@ class MainActivity : FlutterActivity() {
                 "signRequest" -> result.success(signRequest(call))
                 "loadOrCreateDeviceEnrollmentMaterial" -> result.success(
                     deviceEnrollmentMaterialStore.loadOrCreate(
-                        call.argument<String>("hubId") ?: error("hubId is required"),
+                        call.argument<String>("ownerDomainId")
+                            ?: error("ownerDomainId is required"),
                     ),
                 )
                 "saveDeviceEnrollmentReceipt" -> {
                     deviceEnrollmentMaterialStore.saveReceipt(
-                        hubId = call.argument<String>("hubId")
-                            ?: error("hubId is required"),
+                        ownerDomainId = call.argument<String>("ownerDomainId")
+                            ?: error("ownerDomainId is required"),
                         enrollmentId = call.argument<String>("enrollmentId")
                             ?: error("enrollmentId is required"),
                         retrievalExpiresAtMs = call.argument<Number>("retrievalExpiresAtMs")
@@ -104,7 +103,8 @@ class MainActivity : FlutterActivity() {
                 }
                 "clearDeviceEnrollmentMaterial" -> {
                     deviceEnrollmentMaterialStore.clear(
-                        call.argument<String>("hubId") ?: error("hubId is required"),
+                        call.argument<String>("ownerDomainId")
+                            ?: error("ownerDomainId is required"),
                     )
                     result.success(null)
                 }
@@ -479,70 +479,6 @@ class MainActivity : FlutterActivity() {
                 result,
             )
         }
-    }
-
-    private fun discoverHub(timeoutMs: Int, result: MethodChannel.Result) {
-        if (discoveryListener != null) {
-            result.error("DISCOVERY_BUSY", "mDNS discovery is already running", null)
-            return
-        }
-        val nsd = getSystemService(Context.NSD_SERVICE) as NsdManager
-        val completed = AtomicBoolean(false)
-        val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        multicastLock = wifi.createMulticastLock("eidolon-hub-discovery").apply {
-            setReferenceCounted(false)
-            acquire()
-        }
-
-        fun finish(value: Map<String, String>? = null, code: String? = null, message: String? = null) {
-            if (!completed.compareAndSet(false, true)) return
-            discoveryListener?.let {
-                try { nsd.stopServiceDiscovery(it) } catch (_: Exception) { }
-            }
-            discoveryListener = null
-            multicastLock?.let { if (it.isHeld) it.release() }
-            multicastLock = null
-            if (value != null) result.success(value) else result.error(code ?: "NOT_FOUND", message, null)
-        }
-
-        val listener = object : NsdManager.DiscoveryListener {
-            override fun onDiscoveryStarted(serviceType: String) = Unit
-            override fun onDiscoveryStopped(serviceType: String) = Unit
-            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
-                finish(code = "DISCOVERY_FAILED", message = "NSD start failed: $errorCode")
-            }
-            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
-            override fun onServiceLost(serviceInfo: NsdServiceInfo) = Unit
-
-            @Suppress("DEPRECATION")
-            override fun onServiceFound(serviceInfo: NsdServiceInfo) {
-                if (completed.get() || !serviceInfo.serviceType.startsWith("_eidolon-hub._tcp")) return
-                nsd.resolveService(serviceInfo, object : NsdManager.ResolveListener {
-                    override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) = Unit
-
-                    override fun onServiceResolved(info: NsdServiceInfo) {
-                        val attributes = info.attributes.mapValues {
-                            String(it.value, StandardCharsets.UTF_8)
-                        }
-                        val registerUrl = attributes["register_url"] ?: return
-                        if (attributes["txtvers"] != "1" || attributes["api"] != "v1") return
-                        finish(
-                            mapOf(
-                                "instanceName" to info.serviceName,
-                                "registerUrl" to registerUrl,
-                                "version" to (attributes["version"] ?: ""),
-                                "api" to (attributes["api"] ?: ""),
-                            ),
-                        )
-                    }
-                })
-            }
-        }
-        discoveryListener = listener
-        mainHandler.postDelayed({
-            finish(code = "NOT_FOUND", message = "No compatible Eidolon Hub found on the LAN")
-        }, timeoutMs.toLong())
-        nsd.discoverServices(HUB_SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
     }
 
     private fun discoverLocalApis(timeoutMs: Int, result: MethodChannel.Result) {

@@ -58,8 +58,8 @@ mDNS 发现 Hub -> P-256 签名注册 -> 审批/绑定 -> LiveKit control room
   表示为 Device 认领、挂载或添加完成。
 - 原 Audio Demo 的控制器、AEC、Avatar 和回归测试均保留。
 
-- Android mDNS/NSD 发现 `_eidolon-hub._tcp.local.`，支持手动输入
-  `register_url` 作为调试兜底。
+- Android 不再读取 Host 发布的直连注册地址；产品路径从已认证 Local API
+  取得 Owner bundle，Owner Domain 签名目录才决定逻辑 Authority endpoint。
 - Android Keystore 内不可导出的 P-256 私钥；签名 canonical request 与 ESP32
   客户端一致。
 - Hub `pending_approval`、`waiting_binding`、`active`、撤销状态处理及自动刷新。

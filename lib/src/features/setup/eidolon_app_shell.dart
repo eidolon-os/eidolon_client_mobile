@@ -265,7 +265,8 @@ class _HostDetailPageState extends State<_HostDetailPage> {
   ControllerKeyBridge? get controllerKeys => widget.controllerKeys;
   DeviceProvisioningTransport? get deviceProvisioning =>
       widget.deviceProvisioning;
-  HostConversationBuilder? get conversationBuilder => widget.conversationBuilder;
+  HostConversationBuilder? get conversationBuilder =>
+      widget.conversationBuilder;
   ManagedHostUpdater get onHostUpdated => widget.onHostUpdated;
   Future<void> Function(String hostId) get onHostRemoved =>
       widget.onHostRemoved;
@@ -424,7 +425,8 @@ class _HostDetailPageState extends State<_HostDetailPage> {
                   Text('主机 ID', style: Theme.of(context).textTheme.labelMedium),
                   SelectableText(host.hostId),
                   const SizedBox(height: 8),
-                  Text('Controller', style: Theme.of(context).textTheme.labelMedium),
+                  Text('Controller',
+                      style: Theme.of(context).textTheme.labelMedium),
                   SelectableText(host.controllerId),
                 ],
               ),

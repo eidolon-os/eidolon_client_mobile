@@ -84,7 +84,8 @@ void main() {
   });
 
   group('the conversation survives the address changing under it', () {
-    test('a Host that stopped answering is looked for again, and the '
+    test(
+        'a Host that stopped answering is looked for again, and the '
         'operation simply completes', () async {
       // The Host moved while the App was open. Nothing above this layer should
       // learn that anything happened.

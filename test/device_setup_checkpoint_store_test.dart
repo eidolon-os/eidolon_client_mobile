@@ -5,6 +5,8 @@ import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_mod
 import 'package:eidolon_client_mobile/src/platform/app_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/owner_domain_fixtures.dart';
+
 const _preferenceKey = 'eidolon.device-setup-checkpoints.v2';
 
 DeviceSetupCheckpoint _checkpoint(
@@ -19,13 +21,7 @@ DeviceSetupCheckpoint _checkpoint(
       provisioningState: DeviceProvisioningState.networkConfigured,
       admissionState: DeviceAdmissionState.pendingApproval,
       updatedAt: DateTime.utc(2026, 8, 9, 10, minute),
-      onboardingTarget: DeviceOnboardingTarget(
-        hubId: 'hub-local',
-        descriptorUri: Uri.parse('https://hub.local/onboarding'),
-        tlsSpkiFingerprint:
-            'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
-  hubCertificate: '-----BEGIN CERTIFICATE-----\\nMIIBdummy\\n-----END CERTIFICATE-----\\n',
-),
+      onboardingTarget: deviceOnboardingTargetFixture(),
       deviceId: deviceId ?? 'device-$setupId',
       enrollmentId: 'enrollment-$setupId',
     );

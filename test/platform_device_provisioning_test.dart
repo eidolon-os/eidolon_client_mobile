@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/owner_domain_fixtures.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -39,12 +41,7 @@ void main() {
         'trust': trust,
       });
 
-  final target = DeviceOnboardingTarget(
-    hubId: 'ehost-0123456789abcdef0123',
-    descriptorUri: Uri.parse('https://hub.local:8443/api/device-onboarding/v1/descriptor'),
-    tlsSpkiFingerprint: 'sha256:AAAA',
-    hubCertificate: '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n',
-  );
+  final target = deviceOnboardingTargetFixture();
 
   PlatformDeviceProvisioning build({
     PendingEnrollmentLookup? loadPending,
@@ -139,12 +136,23 @@ void main() {
           (call.arguments as Map)['payloadJson'] as String,
         ) as Map<String, dynamic>;
         expect(payload['contract_version'], '1');
-        expect(payload['hub_id'], target.hubId);
-        expect(payload['hub_certificate'], target.hubCertificate);
+        expect(payload['owner_domain_id'], target.ownerDomainId);
+        expect(
+          payload['owner_domain_descriptor'],
+          target.ownerDomainDescriptor.toJson(),
+        );
+        expect(
+          payload['owner_root_certificate'],
+          target.ownerRootCertificate,
+        );
+        expect(
+          payload['authority_signing_certificate'],
+          target.authoritySigningCertificate,
+        );
         return jsonEncode({
           'contract_version': '1',
           'device_id': '10:51:db:7e:24:44',
-          'hub_id': target.hubId,
+          'owner_domain_id': target.ownerDomainId,
           'accepted': true,
         });
       }
@@ -160,7 +168,8 @@ void main() {
       ),
     );
     await session.configureNetwork(
-      credentials: const DeviceWifiCredentials(ssid: 'home', password: 'secret'),
+      credentials:
+          const DeviceWifiCredentials(ssid: 'home', password: 'secret'),
       onboardingTarget: target,
     );
 
@@ -214,7 +223,7 @@ void main() {
       if (call.method == 'provisioningHandOverTrust') {
         return jsonEncode({
           'contract_version': '1',
-          'hub_id': 'ehost-someone-else',
+          'owner_domain_id': 'ehost-someone-else',
           'accepted': true,
         });
       }
@@ -319,7 +328,11 @@ void main() {
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'discoverProvisionableDevices') {
         return <Object?>[
-          <Object?, Object?>{'transportId': '', 'displayName': 'x', 'transportKind': 'softap'},
+          <Object?, Object?>{
+            'transportId': '',
+            'displayName': 'x',
+            'transportKind': 'softap'
+          },
         ];
       }
       return null;

@@ -260,7 +260,10 @@ void main() {
     final diagnostic =
         await refuse('Admin Device admission response violated its contract');
     final fieldErrors = await refuse([
-      {'loc': ['body', 'request_id'], 'msg': 'string does not match regex'},
+      {
+        'loc': ['body', 'request_id'],
+        'msg': 'string does not match regex'
+      },
     ]);
 
     expect(tagged.reason, '主机上已经没有这台设备了。');

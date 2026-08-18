@@ -7,23 +7,6 @@ class PlatformBridge {
 
   static const _channel = MethodChannel('live.eidolon.mobile/platform');
 
-  Future<HubService> discoverHub({
-    Duration timeout = const Duration(seconds: 8),
-  }) async {
-    final result = await _channel.invokeMapMethod<Object?, Object?>(
-      'discoverHub',
-      {'timeoutMs': timeout.inMilliseconds},
-    );
-    if (result == null) {
-      throw StateError('mDNS discovery returned no Hub');
-    }
-    final service = HubService.fromMap(result);
-    if (service.api != 'v1' || service.registerUrl.isEmpty) {
-      throw StateError('Hub mDNS TXT record is incompatible');
-    }
-    return service;
-  }
-
   Future<DeviceIdentity> getDeviceIdentity() async {
     final result = await _channel.invokeMapMethod<Object?, Object?>(
       'getDeviceIdentity',

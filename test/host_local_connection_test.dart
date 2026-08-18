@@ -197,108 +197,108 @@ LocalApiClient _clientFor(
   // painted its own copy would pass a test the product would fail.
   var ownerName = 'Manson';
   return LocalApiClient(
-      httpClient: MockClient((request) async {
-        if (request.url.path == '/api/local/v1/owner') {
-          final body = jsonDecode(request.body) as Map<String, dynamic>;
-          ownerName = body['display_name']! as String;
-          ownerRenames?.add(ownerName);
-          return _jsonResponse({
-            'operation': 'local.owner-name',
+    httpClient: MockClient((request) async {
+      if (request.url.path == '/api/local/v1/owner') {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        ownerName = body['display_name']! as String;
+        ownerRenames?.add(ownerName);
+        return _jsonResponse({
+          'operation': 'local.owner-name',
+          'contract_version': '1',
+          'owner_id': 'owner_primary',
+          'display_name': ownerName,
+        });
+      }
+      if (request.url.path == '/api/local/v1/host') {
+        return http.Response(jsonEncode(overview), 200);
+      }
+      if (request.url.path == '/api/local/v1/auth/challenges') {
+        return http.Response(
+          jsonEncode({
             'contract_version': '1',
-            'owner_id': 'owner_primary',
-            'display_name': ownerName,
-          });
-        }
-        if (request.url.path == '/api/local/v1/host') {
-          return http.Response(jsonEncode(overview), 200);
-        }
-        if (request.url.path == '/api/local/v1/auth/challenges') {
-          return http.Response(
-            jsonEncode({
+            'purpose': 'eidolon-controller-local-auth-v1',
+            'controller_id': _controllerId,
+            'challenge': validHostChallenge,
+            'reset_epoch': 2,
+          }),
+          200,
+        );
+      }
+      if (request.url.path == '/api/local/v1/auth/sessions') {
+        return http.Response(
+          jsonEncode({
+            'contract_version': '1',
+            'token_type': 'Bearer',
+            'access_token': validHostChallenge,
+            'expires_at': '2026-08-06T09:00:00Z',
+            'controller': {
               'contract_version': '1',
-              'purpose': 'eidolon-controller-local-auth-v1',
               'controller_id': _controllerId,
-              'challenge': validHostChallenge,
+              'role': 'host_admin',
+              'display_name': 'Test tablet',
+              'platform': 'android',
               'reset_epoch': 2,
-            }),
-            200,
+              'owner_id': workspaceReady ? 'owner_primary' : null,
+            },
+          }),
+          200,
+        );
+      }
+      if (request.url.path == '/api/local/v1/setup/workspace') {
+        if (workspaceTransportFailure case final kind?) {
+          throw PinnedHttpException(
+            kind: kind,
+            message: 'simulated workspace transport failure',
+            uri: request.url,
           );
         }
-        if (request.url.path == '/api/local/v1/auth/sessions') {
-          return http.Response(
-            jsonEncode({
-              'contract_version': '1',
-              'token_type': 'Bearer',
-              'access_token': validHostChallenge,
-              'expires_at': '2026-08-06T09:00:00Z',
-              'controller': {
-                'contract_version': '1',
-                'controller_id': _controllerId,
-                'role': 'host_admin',
-                'display_name': 'Test tablet',
-                'platform': 'android',
-                'reset_epoch': 2,
-                'owner_id': workspaceReady ? 'owner_primary' : null,
-              },
-            }),
-            200,
-          );
+        if (workspaceStatusCode != 200) {
+          return http.Response('', workspaceStatusCode);
         }
-        if (request.url.path == '/api/local/v1/setup/workspace') {
-          if (workspaceTransportFailure case final kind?) {
-            throw PinnedHttpException(
-              kind: kind,
-              message: 'simulated workspace transport failure',
-              uri: request.url,
-            );
-          }
-          if (workspaceStatusCode != 200) {
-            return http.Response('', workspaceStatusCode);
-          }
-          return _jsonResponse(
-              workspaceReady
-                  ? {
-                      'contract_version': '1',
-                      'operation_id': _workspaceOperationId,
-                      'state': 'ready',
-                      'owner': {
-                        'owner_id': 'owner_primary',
-                        'display_name': ownerName,
-                        'lifecycle_state': 'active',
-                      },
-                      'workspace': {
-                        'state': 'ready',
-                        'primary_companion_id': 'companion_primary',
-                        'persona_genome_id': 'genome_origin',
-                        'memory_realm_id': 'realm_primary',
-                      },
-                    }
-                  : {
-                      'contract_version': '1',
-                      'operation_id': _workspaceOperationId,
-                      'state': 'absent',
-                      'owner': null,
-                      'workspace': null,
-                    },
-          );
+        return _jsonResponse(
+          workspaceReady
+              ? {
+                  'contract_version': '1',
+                  'operation_id': _workspaceOperationId,
+                  'state': 'ready',
+                  'owner': {
+                    'owner_id': 'owner_primary',
+                    'display_name': ownerName,
+                    'lifecycle_state': 'active',
+                  },
+                  'workspace': {
+                    'state': 'ready',
+                    'primary_companion_id': 'companion_primary',
+                    'persona_genome_id': 'genome_origin',
+                    'memory_realm_id': 'realm_primary',
+                  },
+                }
+              : {
+                  'contract_version': '1',
+                  'operation_id': _workspaceOperationId,
+                  'state': 'absent',
+                  'owner': null,
+                  'workspace': null,
+                },
+        );
+      }
+      if (request.url.path == '/api/local/v1/workspace/runtime') {
+        if (runtimeStatusCode != 200) {
+          return http.Response('', runtimeStatusCode);
         }
-        if (request.url.path == '/api/local/v1/workspace/runtime') {
-          if (runtimeStatusCode != 200) {
-            return http.Response('', runtimeStatusCode);
-          }
-          return http.Response(jsonEncode(_workspaceRuntime()), 200);
+        return http.Response(jsonEncode(_workspaceRuntime()), 200);
+      }
+      if (request.url.path == '/api/local/v1/devices') {
+        if (devicesStatusCode != 200) {
+          return http.Response('', devicesStatusCode);
         }
-        if (request.url.path == '/api/local/v1/devices') {
-          if (devicesStatusCode != 200) {
-            return http.Response('', devicesStatusCode);
-          }
-          return http.Response(
-            jsonEncode(_deviceInventory(withReadyDevice: withReadyDevice)),
-            200,
-          );
-        }
-        return http.Response('', 404);
-      }),
+        return http.Response(
+          jsonEncode(_deviceInventory(withReadyDevice: withReadyDevice)),
+          200,
+        );
+      }
+      return http.Response('', 404);
+    }),
   );
 }
 

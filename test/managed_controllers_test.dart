@@ -30,8 +30,7 @@ Future<void> _open(
       home: ManagedControllersPage(
         thisControllerId: _thisPhone,
         loadControllers: load,
-        invite: invite ??
-            () async => throw StateError('must not invite'),
+        invite: invite ?? () async => throw StateError('must not invite'),
         revoke: revoke ?? (_) async => throw StateError('must not revoke'),
       ),
     ),
@@ -100,8 +99,8 @@ void main() {
 
     await tester.tap(find.byKey(const Key('revoke-$_otherPhone')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('confirm-controller-revocation')),
-        findsOneWidget);
+    expect(
+        find.byKey(const Key('confirm-controller-revocation')), findsOneWidget);
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(revoked, isNull);
@@ -119,7 +118,8 @@ void main() {
     expect(find.byKey(const Key('controller-$_otherPhone')), findsNothing);
   });
 
-  testWidgets('revoking this phone says what it costs, and says it differently '
+  testWidgets(
+      'revoking this phone says what it costs, and says it differently '
       'when it is the last one', (tester) async {
     await _open(
       tester,

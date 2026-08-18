@@ -66,16 +66,13 @@ class HostMoment {
       kind: _kind(value['kind']),
       actor: _actor(value['actor']),
       deviceId: deviceId,
-      deviceName: value['device_name'] is String
-          ? value['device_name'] as String
-          : '',
-      deviceKind: value['device_kind'] is String
-          ? value['device_kind'] as String
-          : '',
+      deviceName:
+          value['device_name'] is String ? value['device_name'] as String : '',
+      deviceKind:
+          value['device_kind'] is String ? value['device_kind'] as String : '',
       reason: value['reason'] is String ? value['reason'] as String : '',
-      eventType: value['event_type'] is String
-          ? value['event_type'] as String
-          : '',
+      eventType:
+          value['event_type'] is String ? value['event_type'] as String : '',
     );
   }
 
@@ -135,8 +132,7 @@ String hostMomentSentence(HostMoment moment) {
   final byOwner = moment.actor == HostMomentActor.owner;
   return switch (moment.kind) {
     HostMomentKind.deviceKnocked => '$name 敲了门',
-    HostMomentKind.deviceAccepted =>
-      byOwner ? '你接受了 $name' : '$name 被接受了',
+    HostMomentKind.deviceAccepted => byOwner ? '你接受了 $name' : '$name 被接受了',
     HostMomentKind.deviceRemoved => byOwner ? '你移除了 $name' : '$name 被移除了',
     HostMomentKind.other => '$name 有一次变动',
   };
@@ -163,8 +159,10 @@ String _two(int number) => number.toString().padLeft(2, '0');
 String hostMomentDetail(HostMoment moment) {
   final parts = <String>[
     if (moment.kind == HostMomentKind.deviceKnocked) '等待你接受',
-    if (moment.reason == 'owner-removed') '由你发起'
-    else if (moment.reason.isNotEmpty) '原因：${moment.reason}',
+    if (moment.reason == 'owner-removed')
+      '由你发起'
+    else if (moment.reason.isNotEmpty)
+      '原因：${moment.reason}',
     if (moment.deviceKind.isNotEmpty) moment.deviceKind,
     moment.deviceId,
   ];

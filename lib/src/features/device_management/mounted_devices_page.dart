@@ -332,10 +332,8 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
         _notice = switch (progress) {
           // Half done, and the half that matters is done: the device cannot
           // reach anything any more.
-          _ when progress.onlyTheGrantIsGone =>
-            '授权已撤销，设备已经无法访问；卸载尚未完成，可以再试一次。',
-          _ when progress.outcome == ActOutcome.unfinished =>
-            '移除未完成，可以再试一次。',
+          _ when progress.onlyTheGrantIsGone => '授权已撤销，设备已经无法访问；卸载尚未完成，可以再试一次。',
+          _ when progress.outcome == ActOutcome.unfinished => '移除未完成，可以再试一次。',
           // The Host decided. Offering "try again" here would be offering
           // something that can only fail the same way.
           _ => '主机拒绝了这次移除。',
@@ -395,9 +393,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
                 ListTile(
                   title: const Text('关联 Companion'),
                   subtitle: Text(
-                    device.mount.attachedCompanionId == null
-                        ? '尚未关联'
-                        : '已关联',
+                    device.mount.attachedCompanionId == null ? '尚未关联' : '已关联',
                   ),
                 ),
                 ListTile(

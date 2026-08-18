@@ -3,15 +3,15 @@ import 'package:flutter/services.dart';
 import 'hub_onboarding_models.dart';
 
 abstract interface class MobileBodySecurity {
-  Future<DeviceEnrollmentMaterial> loadOrCreateMaterial(String hubId);
+  Future<DeviceEnrollmentMaterial> loadOrCreateMaterial(String ownerDomainId);
 
   Future<void> saveEnrollmentReceipt({
-    required String hubId,
+    required String ownerDomainId,
     required String enrollmentId,
     required DateTime retrievalExpiresAt,
   });
 
-  Future<void> clearMaterial(String hubId);
+  Future<void> clearMaterial(String ownerDomainId);
 }
 
 class PlatformMobileBodySecurity implements MobileBodySecurity {
@@ -22,11 +22,12 @@ class PlatformMobileBodySecurity implements MobileBodySecurity {
   final MethodChannel _channel;
 
   @override
-  Future<DeviceEnrollmentMaterial> loadOrCreateMaterial(String hubId) async {
-    final normalized = _hubId(hubId);
+  Future<DeviceEnrollmentMaterial> loadOrCreateMaterial(
+      String ownerDomainId) async {
+    final normalized = _ownerDomainId(ownerDomainId);
     final value = await _channel.invokeMapMethod<Object?, Object?>(
       'loadOrCreateDeviceEnrollmentMaterial',
-      {'hubId': normalized},
+      {'ownerDomainId': normalized},
     );
     if (value == null) {
       throw StateError('Platform did not return enrollment material');
@@ -36,7 +37,7 @@ class PlatformMobileBodySecurity implements MobileBodySecurity {
 
   @override
   Future<void> saveEnrollmentReceipt({
-    required String hubId,
+    required String ownerDomainId,
     required String enrollmentId,
     required DateTime retrievalExpiresAt,
   }) async {
@@ -47,7 +48,7 @@ class PlatformMobileBodySecurity implements MobileBodySecurity {
     await _channel.invokeMethod<void>(
       'saveDeviceEnrollmentReceipt',
       {
-        'hubId': _hubId(hubId),
+        'ownerDomainId': _ownerDomainId(ownerDomainId),
         'enrollmentId': normalizedEnrollmentId,
         'retrievalExpiresAtMs':
             retrievalExpiresAt.toUtc().millisecondsSinceEpoch,
@@ -56,16 +57,17 @@ class PlatformMobileBodySecurity implements MobileBodySecurity {
   }
 
   @override
-  Future<void> clearMaterial(String hubId) => _channel.invokeMethod<void>(
+  Future<void> clearMaterial(String ownerDomainId) =>
+      _channel.invokeMethod<void>(
         'clearDeviceEnrollmentMaterial',
-        {'hubId': _hubId(hubId)},
+        {'ownerDomainId': _ownerDomainId(ownerDomainId)},
       );
 }
 
-String _hubId(String value) {
+String _ownerDomainId(String value) {
   final normalized = value.trim();
   if (normalized.isEmpty || normalized.length > 128) {
-    throw const FormatException('Hub ID is invalid');
+    throw const FormatException('Owner Domain ID is invalid');
   }
   return normalized;
 }

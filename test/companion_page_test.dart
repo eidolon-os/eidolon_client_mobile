@@ -6,8 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 const _companionId = 'c_683f963f54885e86892416894c9d92d1';
 
-WorkspaceRuntime _runtime({String name = '小忆'}) =>
-    WorkspaceRuntime.fromJson({
+WorkspaceRuntime _runtime({String name = '小忆'}) => WorkspaceRuntime.fromJson({
       'contract_version': '1',
       'operation_id': '32c421a3-e0df-40f9-8f75-68745ae39d81',
       'state': 'ready',

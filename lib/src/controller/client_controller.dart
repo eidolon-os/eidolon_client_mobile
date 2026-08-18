@@ -146,7 +146,7 @@ class ClientController extends ChangeNotifier {
       phase == ClientPhase.awaitingApproval ||
       phase == ClientPhase.awaitingBinding;
 
-  Future<void> start({String? manualRegisterUrl}) async {
+  Future<void> start() async {
     if (_busy) return;
     _busy = true;
     _activationTimer?.cancel();
@@ -156,24 +156,17 @@ class ClientController extends ChangeNotifier {
       identity = await _platform.getDeviceIdentity();
       if (_conversationProvisioner != null) {
         _setPhase(ClientPhase.discovering);
-      } else if (manualRegisterUrl != null &&
-          manualRegisterUrl.trim().isNotEmpty) {
-        hub = HubService(
-          instanceName: 'Manual Hub',
-          registerUrl: manualRegisterUrl.trim(),
-        );
       } else {
-        _setPhase(ClientPhase.discovering);
-        hub = await _platform.discoverHub();
+        throw StateError(
+          'Owner Domain provisioning target is required; Host mDNS is not a trust source',
+        );
       }
       await _registerAndApply();
-      if (_conversationProvisioner != null) {
-        hub = HubService(
-          instanceName: _conversationProvisioner.serviceName,
-          registerUrl: _conversationProvisioner.serviceUri.toString(),
-          api: 'device-onboarding-v1',
-        );
-      }
+      hub = HubService(
+        instanceName: _conversationProvisioner.serviceName,
+        registerUrl: _conversationProvisioner.serviceUri.toString(),
+        api: 'device-onboarding-v1',
+      );
     } catch (exception) {
       _fail(exception);
     } finally {

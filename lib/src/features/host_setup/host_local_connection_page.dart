@@ -273,9 +273,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     final runtime = _controller.workspaceRuntime;
     if (runtime == null) return Future<void>.value();
     final companion = runtime.primaryCompanion;
-    final name = companion.displayName.isNotEmpty
-        ? companion.displayName
-        : '它';
+    final name = companion.displayName.isNotEmpty ? companion.displayName : '它';
     return Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => PersonaHistoryPage(
@@ -749,9 +747,8 @@ class _WorkspaceCard extends StatelessWidget {
                   ? runtime!.primaryCompanion.displayName
                   : '主 Companion',
               statusLabel: runtime == null ? '已创建' : '运行中',
-              detail: runtime == null
-                  ? 'Workspace 已创建'
-                  : '打开它的页面：改名、它的变化、连到它的设备',
+              detail:
+                  runtime == null ? 'Workspace 已创建' : '打开它的页面：改名、它的变化、连到它的设备',
             ),
             _WorkspaceResourceStatus(
               icon: Icons.auto_stories_outlined,
@@ -761,9 +758,7 @@ class _WorkspaceCard extends StatelessWidget {
               // row ever said, and it named a thing an Owner cannot open,
               // search or act on — an identifier standing in for the fact
               // that there is nothing here to show yet.
-              detail: runtime == null
-                  ? '已经为它准备好'
-                  : '它记住的东西留在这台主机上,没有离开过',
+              detail: runtime == null ? '已经为它准备好' : '它记住的东西留在这台主机上,没有离开过',
             ),
             if (controller.workspaceRuntimeError case final error?) ...[
               const SizedBox(height: 12),
@@ -941,7 +936,6 @@ class _WorkspaceResourceStatus extends StatelessWidget {
         ),
       );
 }
-
 
 String _localTime(DateTime value) {
   final local = value.toLocal();

@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'package:eidolon_client_mobile/src/features/conversation/hub_onboarding_client.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/hub_onboarding_models.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/mobile_body_security.dart';
+import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-const _fingerprint = 'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8';
+import 'support/owner_domain_fixtures.dart';
+
 const _retrievalToken = 'device-generated-random-token-000001';
 
 void main() {
@@ -19,23 +21,16 @@ void main() {
     );
   });
 
-  test('screen-independent enrollment and pending handoff use the Hub contract',
-      () async {
+  test('uses signed logical Admission route and portable Owner root', () async {
     final security = _Security();
     final requests = <http.Request>[];
+    final target = _target(ownerDomainDescriptorFixture());
     final client = HubOnboardingClient(
       security: security,
-      clientFactory: (fingerprint) {
-        expect(fingerprint, _fingerprint);
+      clientFactory: (ownerRootCertificate) {
+        expect(ownerRootCertificate, ownerRootCertificateFixture);
         return MockClient((request) async {
           requests.add(request);
-          if (request.method == 'GET') {
-            return http.Response(
-              jsonEncode(_descriptorJson),
-              200,
-              headers: {'content-type': 'application/json'},
-            );
-          }
           final body = jsonDecode(request.body) as Map<String, dynamic>;
           if (body['operation'] == 'device.enrollment') {
             return http.Response(
@@ -50,7 +45,6 @@ void main() {
               200,
             );
           }
-          expect(body['operation'], 'device.handoff');
           return http.Response(
             jsonEncode({
               'operation': 'device.handoff-outcome',
@@ -67,139 +61,74 @@ void main() {
         });
       },
     );
-    final descriptor = await client.fetchDescriptor(_target);
-    final material = await security.loadOrCreateMaterial(_target.hubId);
+
+    final descriptor = await client.fetchDescriptor(target);
+    expect(requests, isEmpty, reason: 'discovery is not a trust fetch');
+    final material = await security.loadOrCreateMaterial(target.ownerDomainId);
     final receipt = await client.enroll(
-      target: _target,
+      target: target,
       descriptor: descriptor,
       material: material,
       deviceId: 'aa:bb',
-      displayName: 'esp32-s3-touch-amoled-2.06',
-      deviceKind: 'esp32-s3-touch-amoled-2.06',
+      displayName: 'Eidolon Body',
+      deviceKind: 'esp32-s3',
       manifest: _manifest,
     );
-    final handoff = await client.handoff(
-      target: _target,
+    await client.handoff(
+      target: target,
       descriptor: descriptor,
       material: material,
       deviceId: 'aa:bb',
       enrollmentId: receipt.enrollmentId,
     );
 
-    expect(receipt.enrollmentId, 'enrollment_1');
-    expect(handoff.isPending, isTrue);
+    expect(requests[0].url.host, 'owner-a.local');
+    expect(requests[0].url.path, '/api/device-onboarding/v1/enrollments');
+    expect(requests[1].url.path,
+        '/api/device-onboarding/v1/enrollments/enrollment_1/handoff');
     expect(security.savedEnrollmentId, 'enrollment_1');
-    final enrollmentBody = jsonDecode(requests[1].body) as Map<String, dynamic>;
-    expect(enrollmentBody['operation'], 'device.enrollment');
-    expect(enrollmentBody, isNot(contains('identity_proof')));
-    expect(enrollmentBody, isNot(contains('pairing_proof')));
-    expect(
-      requests[2].url.path,
-      '/api/device-onboarding/v1/enrollments/enrollment_1/handoff',
-    );
   });
 
-  test('descriptor identity cannot switch Hub origin', () async {
-    final client = HubOnboardingClient(
-      security: _Security(),
-      clientFactory: (_) => MockClient(
-        (_) async => http.Response(
-          jsonEncode({
-            ..._descriptorJson,
-            'enrollment_uri':
-                'https://attacker.invalid/api/device-onboarding/v1/enrollments',
-          }),
-          200,
-        ),
-      ),
-    );
+  test('Host A to B changes only the signed route', () async {
+    final descriptorA = ownerDomainDescriptorFixture();
+    final endpoints = ownerDomainDescriptorJsonFixture['endpoints']! as List;
+    final jsonB = Map<String, dynamic>.from(ownerDomainDescriptorJsonFixture)
+      ..['directory_revision'] = 8
+      ..['signature'] =
+          'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB'
+      ..['endpoints'] = [
+        {
+          ...endpoints[0] as Map<String, dynamic>,
+          'uri': 'https://owner-b.local/api/device-onboarding/v1',
+        },
+        endpoints[1],
+      ];
+    final descriptorB = OwnerDomainDescriptorV1.fromJson(jsonB);
 
-    await expectLater(
-      client.fetchDescriptor(_target),
-      throwsA(
-        isA<HubOnboardingRequestException>().having(
-          (error) => error.message,
-          'message',
-          contains('身份不一致'),
-        ),
-      ),
-    );
+    expect(_target(descriptorA).admissionEndpoint().uri.host, 'owner-a.local');
+    expect(_target(descriptorB).admissionEndpoint().uri.host, 'owner-b.local');
+    expect(descriptorB.ownerDomainId, descriptorA.ownerDomainId);
   });
 
-  test('reaches the Hub at the address the Host answered on, not by its name',
-      () async {
-    // The Host names its Hub in mDNS. This client cannot query mDNS, so a
-    // request built from that name never leaves the phone. It dials the
-    // address the Host itself answered on instead — while the descriptor it
-    // gets back still has to match the Hub by name, which is what says the far
-    // end is the Hub the Host meant.
-    final requested = <Uri>[];
-    final client = HubOnboardingClient(
-      security: _Security(),
-      clientFactory: (_) => MockClient((request) async {
-        requested.add(request.url);
-        return http.Response(
-          jsonEncode(_descriptorJson),
-          200,
-          headers: {'content-type': 'application/json'},
-        );
-      }),
+  test('a descriptor from another Owner Domain is rejected', () {
+    final wrong = Map<String, dynamic>.from(ownerDomainDescriptorJsonFixture)
+      ..['owner_domain_id'] = 'owner-attacker';
+    final target = VerifiedOwnerDomainTarget(
+      ownerDomainId: ownerDomainIdFixture,
+      descriptor: OwnerDomainDescriptorV1.fromJson(wrong),
+      ownerRootCertificate: ownerRootCertificateFixture,
     );
 
-    final descriptor = await client.fetchDescriptor(_reachedTarget);
-
-    expect(requested.single.host, '192.168.3.206');
-    expect(requested.single.path, '/api/device-onboarding/v1/descriptor');
-    expect(descriptor.descriptorUri.host, 'eidolon-hub.local');
-  });
-
-  test('a target with no known address is still dialled by name', () async {
-    final requested = <Uri>[];
-    final client = HubOnboardingClient(
-      security: _Security(),
-      clientFactory: (_) => MockClient((request) async {
-        requested.add(request.url);
-        return http.Response(
-          jsonEncode(_descriptorJson),
-          200,
-          headers: {'content-type': 'application/json'},
-        );
-      }),
-    );
-
-    await client.fetchDescriptor(_target);
-
-    expect(requested.single.host, 'eidolon-hub.local');
+    expect(target.admissionEndpoint, throwsFormatException);
   });
 }
 
-final _target = VerifiedHubTarget(
-  hubId: 'hub-local',
-  descriptorUri: Uri(
-      scheme: 'https',
-      host: 'eidolon-hub.local',
-      path: '/api/device-onboarding/v1/descriptor'),
-  tlsSpkiFingerprint: _fingerprint,
-);
-
-/// The same Hub, as handed over by a Host that answered on its address.
-final _reachedTarget = VerifiedHubTarget(
-  hubId: _target.hubId,
-  descriptorUri: _target.descriptorUri,
-  tlsSpkiFingerprint: _target.tlsSpkiFingerprint,
-  hostAddress: '192.168.3.206',
-);
-
-const _descriptorJson = {
-  'schema_version': 1,
-  'hub_id': 'hub-local',
-  'descriptor_uri':
-      'https://eidolon-hub.local/api/device-onboarding/v1/descriptor',
-  'device_onboarding_uri': 'https://eidolon-hub.local/api/device-onboarding/v1',
-  'enrollment_uri':
-      'https://eidolon-hub.local/api/device-onboarding/v1/enrollments',
-  'protocol_versions': [1],
-};
+VerifiedOwnerDomainTarget _target(OwnerDomainDescriptorV1 descriptor) =>
+    VerifiedOwnerDomainTarget(
+      ownerDomainId: ownerDomainIdFixture,
+      descriptor: descriptor,
+      ownerRootCertificate: ownerRootCertificateFixture,
+    );
 
 const _manifest = <String, dynamic>{
   'schema_version': 1,
@@ -220,7 +149,8 @@ class _Security implements MobileBodySecurity {
   String? savedEnrollmentId;
 
   @override
-  Future<DeviceEnrollmentMaterial> loadOrCreateMaterial(String hubId) async =>
+  Future<DeviceEnrollmentMaterial> loadOrCreateMaterial(
+          String ownerDomainId) async =>
       const DeviceEnrollmentMaterial(
         enrollmentRequestId: 'mobile-enroll-1',
         handoffRequestId: 'mobile-handoff-1',
@@ -229,7 +159,7 @@ class _Security implements MobileBodySecurity {
 
   @override
   Future<void> saveEnrollmentReceipt({
-    required String hubId,
+    required String ownerDomainId,
     required String enrollmentId,
     required DateTime retrievalExpiresAt,
   }) async {
@@ -237,5 +167,5 @@ class _Security implements MobileBodySecurity {
   }
 
   @override
-  Future<void> clearMaterial(String hubId) async {}
+  Future<void> clearMaterial(String ownerDomainId) async {}
 }

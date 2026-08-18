@@ -102,8 +102,7 @@ Map<String, dynamic> workspaceBody() => {
 /// A Host that answers everything a session needs, wherever it is asked.
 Future<http.Response> hostSessionResponse(http.Request request) async =>
     switch (request.url.path) {
-      '/api/local/v1/host' =>
-        http.Response(jsonEncode(overviewBody()), 200),
+      '/api/local/v1/host' => http.Response(jsonEncode(overviewBody()), 200),
       '/api/local/v1/auth/challenges' => http.Response(
           jsonEncode({
             'contract_version': '1',

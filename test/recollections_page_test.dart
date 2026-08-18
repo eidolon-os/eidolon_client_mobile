@@ -9,11 +9,12 @@ Recollections _answer(String query, List<Recollection> items) =>
 Future<void> _open(
   WidgetTester tester,
   Future<Recollections> Function(String query) onSearch,
-) => tester.pumpWidget(
-  MaterialApp(
-    home: RecollectionsPage(companionName: '小忆', onSearch: onSearch),
-  ),
-);
+) =>
+    tester.pumpWidget(
+      MaterialApp(
+        home: RecollectionsPage(companionName: '小忆', onSearch: onSearch),
+      ),
+    );
 
 Future<void> _ask(WidgetTester tester, String question) async {
   await tester.enterText(

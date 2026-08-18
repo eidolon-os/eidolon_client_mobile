@@ -12,11 +12,14 @@ import java.net.InetAddress
 import java.net.URI
 import java.net.URL
 import java.security.SecureRandom
+import java.security.KeyStore
+import java.security.cert.CertificateFactory
 import java.util.concurrent.Executors
 import javax.net.ssl.HostnameVerifier
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
+import javax.net.ssl.TrustManagerFactory
 
 internal class PinnedHttpsClient(private val mainHandler: Handler) {
     private val executor = Executors.newSingleThreadExecutor()
@@ -35,7 +38,10 @@ internal class PinnedHttpsClient(private val mainHandler: Handler) {
                     call.argument<String>("method") ?: "GET",
                 )
                 val expected = call.argument<String>("tlsSpkiFingerprint")
-                    ?: error("tlsSpkiFingerprint is required")
+                val ownerRootCertificate = call.argument<String>("ownerRootCertificate")
+                require((expected == null) != (ownerRootCertificate == null)) {
+                    "exactly one endpoint trust mode is required"
+                }
                 val body = Base64.decode(
                     call.argument<String>("bodyBase64") ?: "",
                     Base64.DEFAULT,
@@ -49,19 +55,23 @@ internal class PinnedHttpsClient(private val mainHandler: Handler) {
                 validatePinnedHttpHeaders(headers)
 
                 val sslContext = SSLContext.getInstance("TLS")
-                sslContext.init(
-                    null,
-                    arrayOf<TrustManager>(PinnedSpkiTrustManager(expected)),
-                    SecureRandom(),
-                )
-                val connectionUrl = preferIpv4WhenAvailable(url)
+                val trustManagers = if (expected != null) {
+                    arrayOf<TrustManager>(PinnedSpkiTrustManager(expected))
+                } else {
+                    ownerDomainTrustManagers(ownerRootCertificate!!)
+                }
+                sslContext.init(null, trustManagers, SecureRandom())
+                val connectionUrl =
+                    if (expected != null) preferIpv4WhenAvailable(url) else url
                 val connection = connectionUrl.openConnection() as HttpsURLConnection
                 try {
                     connection.sslSocketFactory = sslContext.socketFactory
                     // Local discovery returns an IP address, while the self-signed
                     // certificate is identified by the Host-signed SPKI pin. The
                     // pin is the endpoint authority; DNS hostname matching is not.
-                    connection.hostnameVerifier = HostnameVerifier { _, _ -> true }
+                    if (expected != null) {
+                        connection.hostnameVerifier = HostnameVerifier { _, _ -> true }
+                    }
                     connection.instanceFollowRedirects = false
                     connection.connectTimeout = 8000
                     connection.readTimeout = 8000
@@ -111,6 +121,18 @@ internal class PinnedHttpsClient(private val mainHandler: Handler) {
 
     fun close() {
         executor.shutdownNow()
+    }
+
+    private fun ownerDomainTrustManagers(certificatePem: String): Array<TrustManager> {
+        val certificate = CertificateFactory.getInstance("X.509").generateCertificate(
+            certificatePem.byteInputStream(Charsets.US_ASCII),
+        )
+        val keyStore = KeyStore.getInstance(KeyStore.getDefaultType())
+        keyStore.load(null)
+        keyStore.setCertificateEntry("eidolon-owner-root", certificate)
+        val factory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+        factory.init(keyStore)
+        return factory.trustManagers
     }
 
     /**

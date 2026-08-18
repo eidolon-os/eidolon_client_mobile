@@ -68,7 +68,6 @@ class ClientPage extends StatefulWidget {
 
 class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
   late final ClientController controller;
-  final manualUrl = TextEditingController();
 
   @override
   void initState() {
@@ -96,7 +95,6 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
     controller
       ..removeListener(_refresh)
       ..dispose();
-    manualUrl.dispose();
     super.dispose();
   }
 
@@ -144,8 +142,6 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
           key: const Key('compact-actions'),
           child: _Actions(
             controller: controller,
-            onManualUrl:
-                controller.usesProductProvisioning ? null : _showManualUrl,
           ),
         ),
         const SizedBox(height: 16),
@@ -190,9 +186,6 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
                   key: const Key('tablet-actions'),
                   child: _Actions(
                     controller: controller,
-                    onManualUrl: controller.usesProductProvisioning
-                        ? null
-                        : _showManualUrl,
                   ),
                 ),
               ],
@@ -229,40 +222,10 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
             key: const Key('compact-actions'),
             child: _Actions(
               controller: controller,
-              onManualUrl:
-                  controller.usesProductProvisioning ? null : _showManualUrl,
             ),
           ),
         ],
       ];
-
-  Future<void> _showManualUrl() async {
-    final accepted = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('手动指定 Hub'),
-        content: TextField(
-          controller: manualUrl,
-          keyboardType: TextInputType.url,
-          decoration: const InputDecoration(
-            hintText: 'http://192.168.1.10:8082/api/device/register',
-            labelText: 'register_url',
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('连接')),
-        ],
-      ),
-    );
-    if (accepted == true) {
-      await controller.start(manualRegisterUrl: manualUrl.text);
-    }
-  }
 }
 
 class _Header extends StatelessWidget {
@@ -998,9 +961,8 @@ class _FailureCard extends StatelessWidget {
 }
 
 class _Actions extends StatelessWidget {
-  const _Actions({required this.controller, required this.onManualUrl});
+  const _Actions({required this.controller});
   final ClientController controller;
-  final VoidCallback? onManualUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -1071,13 +1033,6 @@ class _Actions extends StatelessWidget {
                 ),
               ),
             ),
-            if (onManualUrl != null) ...[
-              const SizedBox(height: 4),
-              TextButton(
-                onPressed: state.busy ? null : onManualUrl,
-                child: const Text('mDNS 不可用？手动输入地址'),
-              ),
-            ],
           ],
         ),
     };

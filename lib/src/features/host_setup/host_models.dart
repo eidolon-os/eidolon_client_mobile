@@ -175,4 +175,3 @@ HostWorkspaceState _parseWorkspace(String value) => switch (value) {
       'ready' => HostWorkspaceState.ready,
       _ => throw FormatException('Unknown workspace state: $value'),
     };
-

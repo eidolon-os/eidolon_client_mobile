@@ -107,7 +107,9 @@ void main() {
       loadActivity: () async => HostActivity(
         coverage: 'device-lifecycle',
         moments: [
-          _moment(eventId: 'evt-2', kind: HostMomentKind.deviceKnocked,
+          _moment(
+              eventId: 'evt-2',
+              kind: HostMomentKind.deviceKnocked,
               actor: HostMomentActor.device),
           _moment(),
         ],
@@ -182,7 +184,8 @@ void main() {
   testWidgets('what is running is counted, and what is not is named', (
     tester,
   ) async {
-    await _open(tester, listServices: () async => _services(ready: 3, failed: 1));
+    await _open(tester,
+        listServices: () async => _services(ready: 3, failed: 1));
 
     expect(find.text('3/4 个服务在正常运行'), findsOneWidget);
     expect(find.textContaining('broken-0 失败'), findsOneWidget);
@@ -244,7 +247,8 @@ void main() {
         }),
         throwsFormatException,
       );
-      expect(() => HostActivity.fromJson({'moments': []}), throwsFormatException);
+      expect(
+          () => HostActivity.fromJson({'moments': []}), throwsFormatException);
     });
 
     test('an act this app has no word for is still an act', () {

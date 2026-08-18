@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
 
+import '../../generated/device_foundation_v1.dart';
 import '../../models/hub_models.dart';
 import '../../platform/platform_bridge.dart';
 import '../device_setup/device_setup_models.dart';
@@ -78,23 +79,25 @@ class MobileConversationProvisioner implements ConversationProvisioner {
   final HubOnboardingClient _hubClient;
   final DateTime Function() _clock;
 
-  VerifiedHubTarget? _lastTarget;
+  VerifiedOwnerDomainTarget? _lastTarget;
 
   @override
-  String get serviceName => _lastTarget?.hubId ?? 'Eidolon Hub';
+  String get serviceName => _lastTarget?.ownerDomainId ?? 'Eidolon Hub';
 
   @override
   Uri get serviceUri =>
-      _lastTarget?.descriptorUri ?? Uri.parse('https://eidolon.invalid/');
+      _lastTarget?.admissionEndpoint().uri ??
+      Uri.parse('https://eidolon.invalid/');
 
   @override
   Future<HubConfig> provision({String sessionIntent = ''}) async {
     final deviceTarget = await _loadTarget();
-    final target = VerifiedHubTarget.fromDeviceTarget(deviceTarget)..validate();
+    final target = VerifiedOwnerDomainTarget.fromDeviceTarget(deviceTarget);
+    target.admissionEndpoint();
     _lastTarget = target;
     final descriptor = await _hubClient.fetchDescriptor(target);
     final identity = await _platform.getDeviceIdentity();
-    final material = await _security.loadOrCreateMaterial(target.hubId);
+    final material = await _security.loadOrCreateMaterial(target.ownerDomainId);
 
     try {
       return await _admitAndHandoff(target, descriptor, material, identity);
@@ -105,15 +108,15 @@ class MobileConversationProvisioner implements ConversationProvisioner {
       // Hub saying so justifies discarding local material; a local clock
       // reading "expired" does not, because an approved device stays in
       // service and re-enrolling one is refused.
-      await _security.clearMaterial(target.hubId);
-      final fresh = await _security.loadOrCreateMaterial(target.hubId);
+      await _security.clearMaterial(target.ownerDomainId);
+      final fresh = await _security.loadOrCreateMaterial(target.ownerDomainId);
       return _admitAndHandoff(target, descriptor, fresh, identity);
     }
   }
 
   Future<HubConfig> _admitAndHandoff(
-    VerifiedHubTarget target,
-    HubOnboardingDescriptor descriptor,
+    VerifiedOwnerDomainTarget target,
+    OwnerDomainDescriptorV1 descriptor,
     DeviceEnrollmentMaterial material,
     DeviceIdentity identity,
   ) async {
@@ -129,7 +132,7 @@ class MobileConversationProvisioner implements ConversationProvisioner {
     }
 
     final requestId = await _approvalRequestId(
-      hubId: target.hubId,
+      ownerDomainId: target.ownerDomainId,
       deviceId: identity.deviceId,
       enrollmentId: enrollmentId,
     );
@@ -192,8 +195,8 @@ class MobileConversationProvisioner implements ConversationProvisioner {
   }
 
   Future<HubEnrollmentReceipt> _enroll({
-    required VerifiedHubTarget target,
-    required HubOnboardingDescriptor descriptor,
+    required VerifiedOwnerDomainTarget target,
+    required OwnerDomainDescriptorV1 descriptor,
     required DeviceEnrollmentMaterial material,
     required String deviceId,
   }) async {
@@ -228,12 +231,12 @@ class MobileConversationProvisioner implements ConversationProvisioner {
       (error.statusCode == 404 || error.statusCode == 410);
 
   Future<String> _approvalRequestId({
-    required String hubId,
+    required String ownerDomainId,
     required String deviceId,
     required String enrollmentId,
   }) async {
     final digest = await Sha256().hash(
-      utf8.encode('$hubId\n$deviceId\n$enrollmentId'),
+      utf8.encode('$ownerDomainId\n$deviceId\n$enrollmentId'),
     );
     final suffix = base64UrlEncode(digest.bytes).replaceAll('=', '');
     return 'mobile-body-approval-$suffix';

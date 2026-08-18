@@ -16,14 +16,14 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /**
- * Android-Keystore-backed storage for the short-lived Hub enrollment bearer
+ * Android-Keystore-backed storage for short-lived Owner-scoped enrollment bearer
  * material. The normal app preference bridge never sees these values.
  */
 internal class DeviceEnrollmentMaterialStore(context: Context) {
     companion object {
         private const val KEY_ALIAS = "eidolon-mobile-enrollment-aes-v1"
         private const val PREFERENCES = "eidolon-mobile-enrollment-secrets"
-        private const val RECORD_VERSION = 1
+        private const val RECORD_VERSION = 2
         private const val GCM_TAG_BITS = 128
         private const val RANDOM_BYTES = 32
     }
@@ -36,50 +36,50 @@ internal class DeviceEnrollmentMaterialStore(context: Context) {
     private val random = SecureRandom()
 
     @Synchronized
-    fun loadOrCreate(hubId: String): Map<String, Any> {
-        val normalizedHubId = requireHubId(hubId)
-        val key = enrollmentPreferenceKey(normalizedHubId)
+    fun loadOrCreate(ownerDomainId: String): Map<String, Any> {
+        val normalizedOwnerDomainId = requireOwnerDomainId(ownerDomainId)
+        val key = enrollmentPreferenceKey(normalizedOwnerDomainId)
         val stored = preferences.getString(key, null)
         val record = if (stored == null) {
             JSONObject()
                 .put("version", RECORD_VERSION)
-                .put("hubId", normalizedHubId)
+                .put("ownerDomainId", normalizedOwnerDomainId)
                 .put("enrollmentRequestId", "mobile-enroll-${UUID.randomUUID()}")
                 .put("handoffRequestId", "mobile-handoff-${UUID.randomUUID()}")
                 .put("retrievalToken", randomBase64Url())
-                .also { save(key, normalizedHubId, it) }
+                .also { save(key, normalizedOwnerDomainId, it) }
         } else {
-            decrypt(stored, normalizedHubId)
+            decrypt(stored, normalizedOwnerDomainId)
         }
-        validateRecord(record, normalizedHubId)
+        validateRecord(record, normalizedOwnerDomainId)
         return record.toPlatformMap()
     }
 
     @Synchronized
     fun saveReceipt(
-        hubId: String,
+        ownerDomainId: String,
         enrollmentId: String,
         retrievalExpiresAtMs: Long,
     ) {
-        val normalizedHubId = requireHubId(hubId)
+        val normalizedOwnerDomainId = requireOwnerDomainId(ownerDomainId)
         require(enrollmentId.isNotBlank() && enrollmentId.length <= 128) {
             "enrollmentId is invalid"
         }
         require(retrievalExpiresAtMs >= 0) { "retrievalExpiresAtMs is invalid" }
-        val key = enrollmentPreferenceKey(normalizedHubId)
+        val key = enrollmentPreferenceKey(normalizedOwnerDomainId)
         val stored = preferences.getString(key, null)
             ?: error("Enrollment material does not exist")
-        val record = decrypt(stored, normalizedHubId)
-        validateRecord(record, normalizedHubId)
+        val record = decrypt(stored, normalizedOwnerDomainId)
+        validateRecord(record, normalizedOwnerDomainId)
         record
             .put("enrollmentId", enrollmentId)
             .put("retrievalExpiresAtMs", retrievalExpiresAtMs)
-        save(key, normalizedHubId, record)
+        save(key, normalizedOwnerDomainId, record)
     }
 
     @Synchronized
-    fun clear(hubId: String) {
-        remove(enrollmentPreferenceKey(requireHubId(hubId)))
+    fun clear(ownerDomainId: String) {
+        remove(enrollmentPreferenceKey(requireOwnerDomainId(ownerDomainId)))
     }
 
     private fun save(key: String, associatedData: String, record: JSONObject) {
@@ -144,12 +144,12 @@ internal class DeviceEnrollmentMaterialStore(context: Context) {
         return generator.generateKey()
     }
 
-    private fun validateRecord(record: JSONObject, hubId: String) {
+    private fun validateRecord(record: JSONObject, ownerDomainId: String) {
         check(record.getInt("version") == RECORD_VERSION) {
             "Enrollment material version is unsupported"
         }
-        check(record.getString("hubId") == hubId) {
-            "Enrollment material belongs to another Hub"
+        check(record.getString("ownerDomainId") == ownerDomainId) {
+            "Enrollment material belongs to another Owner Domain"
         }
         requireBounded(record.getString("enrollmentRequestId"), 1, 96, "enrollmentRequestId")
         requireBounded(record.getString("handoffRequestId"), 1, 96, "handoffRequestId")
@@ -174,8 +174,8 @@ internal class DeviceEnrollmentMaterialStore(context: Context) {
         }
     }
 
-    private fun enrollmentPreferenceKey(hubId: String): String =
-        "hub-${digestKey(hubId)}"
+    private fun enrollmentPreferenceKey(ownerDomainId: String): String =
+        "owner-${digestKey(ownerDomainId)}"
 
     private fun digestKey(value: String): String = hex(
         MessageDigest.getInstance("SHA-256").digest(value.toByteArray(StandardCharsets.UTF_8)),
@@ -190,8 +190,8 @@ internal class DeviceEnrollmentMaterialStore(context: Context) {
     private fun decodeBase64Url(value: String): ByteArray =
         Base64.decode(value, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
 
-    private fun requireHubId(value: String): String = value.trim().also {
-        require(it.isNotEmpty() && it.length <= 128) { "hubId is invalid" }
+    private fun requireOwnerDomainId(value: String): String = value.trim().also {
+        require(it.isNotEmpty() && it.length <= 128) { "ownerDomainId is invalid" }
     }
 
     private fun requireBase64Url(value: String, field: String) {

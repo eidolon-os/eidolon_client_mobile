@@ -65,8 +65,8 @@ class PersonaHistory {
       companionId: companionId,
       chapters: chapters
           .map(
-            (chapter) =>
-                PersonaChapter.fromJson(Map<String, dynamic>.from(chapter as Map)),
+            (chapter) => PersonaChapter.fromJson(
+                Map<String, dynamic>.from(chapter as Map)),
           )
           .toList(growable: false),
     );
