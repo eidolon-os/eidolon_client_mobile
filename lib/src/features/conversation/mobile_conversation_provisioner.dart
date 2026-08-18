@@ -11,7 +11,35 @@ import 'hub_onboarding_models.dart';
 import 'mobile_body_security.dart';
 
 const mobileLiveKitBindingFormat =
-    'application/vnd.eidolon.livekit-device+json;v=1';
+    'application/vnd.eidolon.livekit-session+json;v=2';
+
+/// A provisioning failure that trying again cannot clear.
+///
+/// The Host has settled something: it refused this device, or it still holds a
+/// registration this phone can no longer prove is its own. Either way the next
+/// attempt fetches the same answer, and what moves it forward is a person
+/// acting somewhere else. Saying so is the whole point of this type — a
+/// failure raised as a plain error reaches the person as "try again", which is
+/// advice that cannot work.
+class MobileProvisioningBlocked implements Exception {
+  const MobileProvisioningBlocked({
+    required this.title,
+    required this.message,
+    required this.detail,
+  });
+
+  /// What happened.
+  final String title;
+
+  /// What to do about it, naming where the control actually is.
+  final String message;
+
+  /// What someone diagnosing this needs, which is not what the person needs.
+  final String detail;
+
+  @override
+  String toString() => detail;
+}
 
 typedef DeviceOnboardingTargetLoader = Future<DeviceOnboardingTarget>
     Function();
@@ -114,10 +142,17 @@ class MobileConversationProvisioner implements ConversationProvisioner {
       deviceId: identity.deviceId,
       requestId: requestId,
     );
-    if (progress.state == DeviceAdmissionState.failed) {
-      throw StateError('移动设备接入未完成：${progress.completedStage}');
+    if (progress.outcome == ActOutcome.refused) {
+      // The Host decided. Repeating gets the same answer, so this stops here
+      // and says how far it got rather than looping.
+      throw MobileProvisioningBlocked(
+        title: '主机拒绝了这台手机接入',
+        message: '重试会得到同样的答复。请在「我的 Eidolon」→「打开设备管理」'
+            '确认这台手机的接入状态。',
+        detail: 'Mobile admission refused after ${progress.stoppedAfter}',
+      );
     }
-    if (progress.state != DeviceAdmissionState.ready) {
+    if (progress.outcome != ActOutcome.done) {
       return _waitingConfig(identity);
     }
 
@@ -177,7 +212,14 @@ class MobileConversationProvisioner implements ConversationProvisioner {
       // The Host still holds this device, but this phone no longer has the
       // material that proves it is that device. Only the owner can resolve
       // that, by removing the device so it can be added again.
-      throw StateError('这台设备已在 Host 上登记，但本机凭据已失效；请在管理端移除该设备后重新添加');
+      throw const MobileProvisioningBlocked(
+        title: '这台手机需要先被移除',
+        message: '主机上还留着它的登记，而本机凭据已经失效，主机不会为同一台设备'
+            '重复登记。请到「我的 Eidolon」→「打开设备管理」，点开这台手机，'
+            '选「移除设备」，然后回到这里重新连接。',
+        detail: 'Hub still holds this device and the local enrollment material '
+            'no longer proves it (handoff returned HTTP 409)',
+      );
     }
   }
 
@@ -220,8 +262,7 @@ class MobileConversationProvisioner implements ConversationProvisioner {
       final binding = _decodeBinding(assignment.opaqueBinding);
       return HubConfig(
         status: HubConfigStatus.active,
-        active: binding.active,
-        control: binding.control,
+        session: binding.session,
         registrationId: assignment.channelId,
         deviceFingerprint: identity.fingerprint,
         sampleRate: binding.sampleRate,
@@ -242,7 +283,7 @@ class MobileConversationProvisioner implements ConversationProvisioner {
       throw const FormatException('Provider 返回了无效的 Mobile LiveKit binding');
     }
     final value = Map<String, dynamic>.from(decoded);
-    if (value['schema_version'] != 1 || value['audio'] is! Map) {
+    if (value['schema_version'] != 2 || value['audio'] is! Map) {
       throw const FormatException('Provider 返回了不兼容的 Mobile LiveKit binding');
     }
     final audio = Map<String, dynamic>.from(value['audio'] as Map);
@@ -257,8 +298,7 @@ class MobileConversationProvisioner implements ConversationProvisioner {
       throw const FormatException('Provider 返回了无效的音频参数');
     }
     return _MobileLiveKitBinding(
-      active: _room(value, 'active'),
-      control: _room(value, 'control'),
+      session: _room(value, 'session'),
       sampleRate: sampleRate,
       channels: channels,
     );
@@ -310,7 +350,7 @@ class MobileConversationProvisioner implements ConversationProvisioner {
   }) =>
       HubConfig(
         status: status,
-        active: const RoomConfig(
+        session: const RoomConfig(
           serverUrl: '',
           token: '',
           identity: '',
@@ -322,14 +362,12 @@ class MobileConversationProvisioner implements ConversationProvisioner {
 
 class _MobileLiveKitBinding {
   const _MobileLiveKitBinding({
-    required this.active,
-    required this.control,
+    required this.session,
     required this.sampleRate,
     required this.channels,
   });
 
-  final RoomConfig active;
-  final RoomConfig control;
+  final RoomConfig session;
   final int sampleRate;
   final int channels;
 }

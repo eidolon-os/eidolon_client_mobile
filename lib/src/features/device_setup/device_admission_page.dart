@@ -78,7 +78,7 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage> {
     });
     try {
       final progress = await widget.onApprove(
-        requestId: await _requestId(selected.deviceId),
+        requestId: await _requestId(selected),
         deviceId: selected.deviceId,
       );
       if (!mounted) return;
@@ -90,9 +90,23 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage> {
     }
   }
 
-  Future<String> _requestId(String deviceId) async {
+  /// Name this approval, not this device.
+  ///
+  /// The Host reads a repeated id as the same act again, which is what makes a
+  /// second tap harmless. But an id derived from the Host and the device alone is
+  /// the same forever, so approving a device that was removed and came back
+  /// looked like a replay of the approval it was given months ago — and was
+  /// refused, with advice to remove the device that had just been re-added.
+  ///
+  /// The enrolment's own moment is what separates one approval from the next: a
+  /// device that enrolled again brings a new one, while every retry of this tap
+  /// brings the same.
+  Future<String> _requestId(PendingDeviceEnrollment enrollment) async {
     final digest = await Sha256().hash(
-      utf8.encode('${widget.hostId}\n$deviceId'),
+      utf8.encode(
+        '${widget.hostId}\n${enrollment.deviceId}\n'
+        '${enrollment.enrolledAt.toUtc().toIso8601String()}',
+      ),
     );
     final suffix = base64UrlEncode(digest.bytes).replaceAll('=', '');
     return 'device-approval-$suffix';
@@ -120,7 +134,7 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage> {
   @override
   Widget build(BuildContext context) {
     final progress = _progress;
-    final ready = progress?.state == DeviceAdmissionState.ready;
+    final ready = progress?.outcome == ActOutcome.done;
     return Scaffold(
       key: const Key('device-admission-page'),
       appBar: AppBar(
@@ -294,13 +308,16 @@ class _ProgressCard extends StatelessWidget {
   Widget build(BuildContext context) => Card(
         child: ListTile(
           leading: const Icon(Icons.sync),
-          title: Text(switch (progress.state) {
-            DeviceAdmissionState.approved => 'Hub 已批准，正在挂载',
-            DeviceAdmissionState.binding => '正在绑定 Companion',
-            DeviceAdmissionState.failed => '接入未完成',
-            _ => '正在接入',
+          // One sentence about what to do, and the internal hand-off it
+          // stopped at kept as a technical detail beneath it. This card used
+          // to name the hand-off in its title, which told a person the shape
+          // of our authority sequence instead of telling them anything.
+          title: Text(switch (progress.outcome) {
+            ActOutcome.done => '已接入',
+            ActOutcome.unfinished => '还没完成，可以再试一次',
+            ActOutcome.refused => '主机拒绝了这次接入',
           }),
-          subtitle: Text('已完成：${progress.completedStage}'),
+          subtitle: Text('停在：${progress.stoppedAfter}'),
         ),
       );
 }

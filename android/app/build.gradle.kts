@@ -45,4 +45,9 @@ flutter {
 
 dependencies {
     testImplementation(kotlin("test"))
+    implementation("com.github.espressif:esp-idf-provisioning-android:lib-2.4.4")
+    // The provisioning client reports connection state on this bus rather than
+    // through its listeners, so it is part of the API whether or not the
+    // library exports it.
+    implementation("org.greenrobot:eventbus:3.3.1")
 }

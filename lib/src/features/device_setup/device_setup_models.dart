@@ -27,6 +27,26 @@ enum DeviceAdmissionState {
   failed,
 }
 
+/// What an act on the Host came to, in the only terms that change what
+/// someone does next.
+///
+/// The Host used to answer with three fields — a state that mixed how far the
+/// act got with whether it had ended, the name of an internal authority
+/// hand-off, and a retry flag — and every screen reassembled a decision out
+/// of them slightly differently. These three are the decision:
+///
+///  * [done] — it finished; there is nothing to offer.
+///  * [unfinished] — it stopped partway and asking again can finish it.
+///  * [refused] — the Host decided; asking again gets the same answer.
+enum ActOutcome { done, unfinished, refused }
+
+ActOutcome _actOutcome(Object? value) => switch (value) {
+      'done' => ActOutcome.done,
+      'unfinished' => ActOutcome.unfinished,
+      'refused' => ActOutcome.refused,
+      _ => throw const FormatException('Local API 返回了未知的执行结果'),
+    };
+
 class DeviceProvisioningCandidate {
   const DeviceProvisioningCandidate({
     required this.transportId,
@@ -85,40 +105,6 @@ class DeviceWifiCredentials {
 }
 
 /// A device answering on its own setup hotspot, before it belongs to anyone.
-class CommissionableDevice {
-  const CommissionableDevice({
-    required this.deviceId,
-    required this.board,
-    required this.deviceKind,
-  });
-
-  final String deviceId;
-  final String board;
-  final String deviceKind;
-
-  factory CommissionableDevice.fromPlatform(Map<Object?, Object?> value) =>
-      CommissionableDevice(
-        deviceId: _boundedPlatformString(value, 'deviceId', maxLength: 128),
-        board: _boundedPlatformString(value, 'board', maxLength: 96, minLength: 0),
-        deviceKind:
-            _boundedPlatformString(value, 'deviceKind', maxLength: 96, minLength: 0),
-      );
-}
-
-/// What the device confirmed it accepted. The identity is echoed back so the
-/// Owner's device can recognise the enrollment this device is about to create.
-class CommissionedDevice {
-  const CommissionedDevice({required this.deviceId, required this.hubId});
-
-  final String deviceId;
-  final String hubId;
-
-  factory CommissionedDevice.fromPlatform(Map<Object?, Object?> value) =>
-      CommissionedDevice(
-        deviceId: _boundedPlatformString(value, 'deviceId', maxLength: 128),
-        hubId: _boundedPlatformString(value, 'hubId', maxLength: 128),
-      );
-}
 
 class DeviceOnboardingTarget {
   const DeviceOnboardingTarget({
@@ -126,11 +112,30 @@ class DeviceOnboardingTarget {
     required this.descriptorUri,
     required this.tlsSpkiFingerprint,
     required this.hubCertificate,
+    this.hostAddress,
   });
 
   final String hubId;
   final Uri descriptorUri;
   final String tlsSpkiFingerprint;
+
+  /// The address the Host answered on when it handed this target over.
+  ///
+  /// Deliberately absent from the wire and from the checkpoint: it describes
+  /// one client's route to the Host at one moment, not the Hub. A device being
+  /// set up gets [descriptorUri] and finds the address itself, and a resumed
+  /// checkpoint asks the Host again rather than dialling a remembered address.
+  final String? hostAddress;
+
+  /// This target, as reached at [hostAddress].
+  DeviceOnboardingTarget reachedAt(String hostAddress) =>
+      DeviceOnboardingTarget(
+        hubId: hubId,
+        descriptorUri: descriptorUri,
+        tlsSpkiFingerprint: tlsSpkiFingerprint,
+        hubCertificate: hubCertificate,
+        hostAddress: hostAddress,
+      );
 
   /// The Host's own certificate, carried to a device being set up. A device
   /// cannot obtain it from anywhere it could already trust, so the Owner
@@ -235,50 +240,36 @@ class DeviceAdmissionProgress {
     required this.requestId,
     required this.deviceId,
     required this.ownerId,
-    required this.state,
-    required this.completedStage,
+    required this.outcome,
+    required this.stoppedAfter,
     this.companionId,
-    this.retryable = false,
   });
 
   final String requestId;
   final String deviceId;
   final String ownerId;
-  final DeviceAdmissionState state;
-  final String completedStage;
+  final ActOutcome outcome;
+
+  /// How far it got. For someone diagnosing it — never the basis of what a
+  /// screen tells a person to do.
+  final String stoppedAfter;
   final String? companionId;
-  final bool retryable;
 
   factory DeviceAdmissionProgress.fromJson(Map<String, dynamic> value) {
     if (value['operation'] != 'local.device-admission-progress' ||
         value['contract_version'] != '1') {
       throw const FormatException('Local API 返回了无效的设备接入状态');
     }
-    final rawState = value['state'];
-    final state = switch (rawState) {
-      'approved' => DeviceAdmissionState.approved,
-      'binding' => DeviceAdmissionState.binding,
-      'ready' => DeviceAdmissionState.ready,
-      'failed' => DeviceAdmissionState.failed,
-      _ => throw const FormatException('Local API 返回了未知的设备接入状态'),
-    };
-    final retryable = value['retryable'];
-    if (retryable is! bool) {
-      throw const FormatException('Local API 返回了无效的设备重试状态');
-    }
     return DeviceAdmissionProgress(
       requestId: _boundedWireString(value, 'request_id', 128),
       deviceId: _boundedWireString(value, 'device_id', 128),
       ownerId: _boundedWireString(value, 'owner_id', 64),
-      state: state,
-      completedStage: _boundedWireString(value, 'completed_stage', 64),
+      outcome: _actOutcome(value['outcome']),
+      stoppedAfter: _boundedWireString(value, 'stopped_after', 64),
       companionId: _optionalBoundedWireString(value, 'companion_id', 64),
-      retryable: retryable,
     );
   }
 }
-
-enum DeviceRemovalState { revoked, removed, failed }
 
 /// What removing a device accomplished on the Host.
 ///
@@ -289,40 +280,32 @@ class DeviceRemovalProgress {
     required this.requestId,
     required this.deviceId,
     required this.ownerId,
-    required this.state,
-    required this.completedStage,
-    this.retryable = false,
+    required this.outcome,
+    required this.stoppedAfter,
   });
 
   final String requestId;
   final String deviceId;
   final String ownerId;
-  final DeviceRemovalState state;
-  final String completedStage;
-  final bool retryable;
+  final ActOutcome outcome;
+  final String stoppedAfter;
+
+  /// The grant is gone but the mount is not, which is worth saying out loud:
+  /// the device is already off, and what is left to retry is the unmount.
+  bool get onlyTheGrantIsGone =>
+      outcome == ActOutcome.unfinished && stoppedAfter == 'hub-revoked';
 
   factory DeviceRemovalProgress.fromJson(Map<String, dynamic> value) {
     if (value['operation'] != 'local.device-removal-progress' ||
         value['contract_version'] != '1') {
       throw const FormatException('Local API 返回了无效的设备移除状态');
     }
-    final state = switch (value['state']) {
-      'revoked' => DeviceRemovalState.revoked,
-      'removed' => DeviceRemovalState.removed,
-      'failed' => DeviceRemovalState.failed,
-      _ => throw const FormatException('Local API 返回了未知的设备移除状态'),
-    };
-    final retryable = value['retryable'];
-    if (retryable is! bool) {
-      throw const FormatException('Local API 返回了无效的设备重试状态');
-    }
     return DeviceRemovalProgress(
       requestId: _boundedWireString(value, 'request_id', 128),
       deviceId: _boundedWireString(value, 'device_id', 128),
       ownerId: _boundedWireString(value, 'owner_id', 64),
-      state: state,
-      completedStage: _boundedWireString(value, 'completed_stage', 64),
-      retryable: retryable,
+      outcome: _actOutcome(value['outcome']),
+      stoppedAfter: _boundedWireString(value, 'stopped_after', 64),
     );
   }
 }
@@ -486,20 +469,6 @@ class DeviceSetupCheckpoint {
   }
 }
 
-String _boundedPlatformString(
-  Map<Object?, Object?> value,
-  String key, {
-  int minLength = 1,
-  required int maxLength,
-}) {
-  final result = value[key];
-  if (result is! String ||
-      result.length < minLength ||
-      result.length > maxLength) {
-    throw FormatException('设备返回的 $key 无效');
-  }
-  return result;
-}
 
 String _requiredCheckpointString(Map<String, dynamic> value, String key) {
   final result = value[key];

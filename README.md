@@ -54,7 +54,7 @@ mDNS 发现 Hub -> P-256 签名注册 -> 审批/绑定 -> LiveKit control room
 - 独立 Devices 页面展示主机确认的 mounted inventory、Companion attachment、revision
   和详情；不从 mount 事实臆断设备在线。
 - 已提供明确隔离的兼容设备开发配网入口：Android 通过系统网络选择器连接当前
-  `Xiaozhi-*` 热点，使用设备 `/scan` 与 `/submit` 配置 Wi-Fi；UI 不会把成功结果
+  `eidolon-*` 热点，使用设备 `/scan` 与 `/submit` 配置 Wi-Fi；UI 不会把成功结果
   表示为 Device 认领、挂载或添加完成。
 - 原 Audio Demo 的控制器、AEC、Avatar 和回归测试均保留。
 
@@ -148,3 +148,13 @@ http://192.168.1.10:8082/api/device/register
 真机使用扬声器播放远端 TTS，并在本地持续说话。服务端录制或 STT 输入中不应
 出现明显的远端 TTS 回灌。首版使用的是 WebRTC/设备音频 HAL 所提供的 AEC；
 后续可增加机型白名单、耳机/蓝牙路由和客观 ERLE 指标测试。
+
+## License
+
+Copyright © 2026 Li Jinsong.
+
+本项目允许依据 [PolyForm Noncommercial License 1.0.0](LICENSE) 进行许可范围内的
+非商业使用。商业使用需要另行取得书面授权，请联系
+[lijinsong@aimanthor.com](mailto:lijinsong@aimanthor.com)。
+
+许可范围、第三方例外和必要声明见 [LICENSING.md](LICENSING.md) 与 [NOTICE](NOTICE)。

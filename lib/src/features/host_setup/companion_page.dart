@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../device_management/mounted_device_models.dart';
@@ -17,6 +19,10 @@ class CompanionPage extends StatelessWidget {
     required this.devices,
     required this.onRename,
     required this.onOpenHistory,
+    this.onOpenRecollections,
+    this.face,
+    this.onChangeFace,
+    this.onClearFace,
   });
 
   final WorkspaceRuntime runtime;
@@ -26,6 +32,14 @@ class CompanionPage extends StatelessWidget {
   final MountedDeviceInventory? devices;
   final VoidCallback onRename;
   final VoidCallback onOpenHistory;
+
+  /// Null on a Host too old to be asked what it remembers.
+  final VoidCallback? onOpenRecollections;
+
+  /// What it looks like, when it looks like anything yet.
+  final Uint8List? face;
+  final VoidCallback? onChangeFace;
+  final VoidCallback? onClearFace;
 
   List<MountedDevice> get _itsDevices =>
       (devices?.devices ?? const <MountedDevice>[])
@@ -54,9 +68,17 @@ class CompanionPage extends StatelessWidget {
               padding: const EdgeInsets.all(20),
               child: Row(
                 children: [
-                  const CircleAvatar(
-                    radius: 26,
-                    child: Icon(Icons.face_retouching_natural),
+                  GestureDetector(
+                    key: const Key('companion-face'),
+                    onTap: onChangeFace,
+                    child: CircleAvatar(
+                      radius: 26,
+                      foregroundImage:
+                          face == null ? null : MemoryImage(face!),
+                      child: face == null
+                          ? const Icon(Icons.face_retouching_natural)
+                          : null,
+                    ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -85,6 +107,42 @@ class CompanionPage extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          if (onChangeFace != null)
+            Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    key: const Key('companion-change-face'),
+                    leading: const Icon(Icons.image_outlined),
+                    title: Text(face == null ? '给它一张脸' : '换一张脸'),
+                    subtitle: const Text('从相册里选一张照片,它会用这张脸出现'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: onChangeFace,
+                  ),
+                  if (face != null && onClearFace != null)
+                    ListTile(
+                      key: const Key('companion-clear-face'),
+                      leading: const Icon(Icons.hide_image_outlined),
+                      title: const Text('不要这张脸'),
+                      subtitle: const Text('它会回到没有脸的样子'),
+                      onTap: onClearFace,
+                    ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 16),
+          if (onOpenRecollections != null)
+            Card(
+              child: ListTile(
+                key: const Key('companion-open-recollections'),
+                leading: const Icon(Icons.menu_book_outlined),
+                title: const Text('它记得什么'),
+                subtitle: const Text('问问看,它记住的东西留在这台主机上'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: onOpenRecollections,
+              ),
+            ),
           const SizedBox(height: 16),
           Card(
             child: ListTile(

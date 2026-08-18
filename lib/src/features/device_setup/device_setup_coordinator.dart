@@ -158,7 +158,14 @@ class DeviceSetupCoordinator {
         );
       }
       final updated = checkpoint.copyWith(
-        admissionState: progress.state,
+        admissionState: switch (progress.outcome) {
+          ActOutcome.done => DeviceAdmissionState.ready,
+          // Partway is partway: the checkpoint records that it is still
+          // binding, which is what makes the next attempt a continuation
+          // rather than a fresh start.
+          ActOutcome.unfinished => DeviceAdmissionState.binding,
+          ActOutcome.refused => DeviceAdmissionState.failed,
+        },
         updatedAt: _now(),
         clearFailure: true,
       );

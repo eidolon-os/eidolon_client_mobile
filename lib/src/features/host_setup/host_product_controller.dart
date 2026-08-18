@@ -10,15 +10,19 @@ import '../setup/controller_key_bridge.dart';
 import '../setup/host_registry.dart';
 import '../setup/setup_models.dart';
 import '../setup/setup_trust.dart';
+import 'activity_models.dart';
 import 'controller_grant_models.dart';
 import 'host_product_repositories.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
+import 'host_vitals_models.dart';
 import 'local_api_client.dart';
 import 'local_api_discovery.dart';
 import 'persona_history_models.dart';
+import 'recollection_models.dart';
 import 'pinned_http_client.dart';
 import 'workspace_models.dart';
+import 'network_changes.dart';
 import 'workspace_runtime_models.dart';
 
 typedef ManagedHostUpdater = Future<void> Function(ManagedHost host);
@@ -31,8 +35,10 @@ class HostProductController extends ChangeNotifier {
     ControllerKeyBridge? controllerKeys,
     LocalApiDiscovery? discovery,
     LocalApiClientFactory? localApiClientFactory,
+    NetworkChanges? networkChanges,
   })  : _host = host,
         _onHostUpdated = onHostUpdated,
+        _networkChanges = networkChanges ?? PlatformNetworkChanges(),
         _session = HostProductSession(
           host: host,
           transport: transport,
@@ -46,18 +52,31 @@ class HostProductController extends ChangeNotifier {
     _hostServicesRepository = HostServicesRepository(_session);
     _controllerGrantRepository = HostControllerGrantRepository(_session);
     _companionRepository = HostCompanionRepository(_session);
+    _ownerRepository = HostOwnerRepository(_session);
+    _recollectionsRepository = HostRecollectionsRepository(_session);
+    _activityRepository = HostActivityRepository(_session);
     _deviceNamingRepository = HostDeviceNamingRepository(_session);
+    // Where the Host was is only true for as long as this phone is on the
+    // network it learned it from. Watching for that keeps the recovery the
+    // session already does from costing a timeout first.
+    _networkSubscription =
+        _networkChanges.changes.listen((_) => _session.invalidateLocation());
   }
 
   ManagedHost _host;
   final ManagedHostUpdater _onHostUpdated;
   final HostProductSession _session;
+  final NetworkChanges _networkChanges;
+  StreamSubscription<void>? _networkSubscription;
   late final HostWorkspaceRepository _workspaceRepository;
   late final HostDevicesRepository _devicesRepository;
   late final HostDeviceAdmissionRepository _deviceAdmissionRepository;
   late final HostServicesRepository _hostServicesRepository;
   late final HostControllerGrantRepository _controllerGrantRepository;
   late final HostCompanionRepository _companionRepository;
+  late final HostOwnerRepository _ownerRepository;
+  late final HostRecollectionsRepository _recollectionsRepository;
+  late final HostActivityRepository _activityRepository;
   late final HostDeviceNamingRepository _deviceNamingRepository;
 
   bool _connecting = false;
@@ -228,6 +247,19 @@ class HostProductController extends ChangeNotifier {
   Future<HostServiceInventory> listHostServices() =>
       _hostServicesRepository.list();
 
+  /// How the machine is doing. Read when someone opens the page that shows
+  /// it, not held here: a temperature from five minutes ago is not a
+  /// temperature, and nothing else on this controller needs it.
+  Future<HostVitals> hostVitals() => _hostServicesRepository.vitals();
+
+  /// What has happened to this Owner's devices lately.
+  ///
+  /// Asked for when someone opens the screen that shows it, and never cached
+  /// here: a history read once and held would keep answering with the moment
+  /// this app last looked, which is the question nobody asked.
+  Future<HostActivity> activity({int limit = 50}) =>
+      _activityRepository.list(limit: limit);
+
   /// Name one of this Owner's devices.
   ///
   /// The inventory is re-read afterwards for the same reason the Companion's
@@ -259,6 +291,76 @@ class HostProductController extends ChangeNotifier {
     );
     await refreshWorkspace();
   }
+
+  /// What this Eidolon looks like, as the Host last answered.
+  ///
+  /// The picture is held here rather than fetched by whoever is drawing it: a
+  /// screen that re-read a photograph on every rebuild would spend a
+  /// megabyte to show what it already had. It is re-read when the Host says
+  /// the face changed — which is what the hash beside it is for.
+  Uint8List? get companionFace => _companionFace;
+  Uint8List? _companionFace;
+  String? _companionFaceSha256;
+
+  Future<void> loadCompanionFace({required String companionId}) async {
+    final state = await _companionRepository.faceState(
+      companionId: companionId,
+    );
+    if (_disposed) return;
+    if (!state.hasFace) {
+      _companionFace = null;
+      _companionFaceSha256 = null;
+      _notify();
+      return;
+    }
+    if (state.matches(_companionFaceSha256) && _companionFace != null) return;
+    final face = await _companionRepository.face(companionId: companionId);
+    if (_disposed) return;
+    _companionFace = face;
+    _companionFaceSha256 = state.sha256;
+    _notify();
+  }
+
+  Future<void> setCompanionFace({
+    required String companionId,
+    required Uint8List face,
+  }) async {
+    final state = await _companionRepository.setFace(
+      companionId: companionId,
+      face: face,
+    );
+    if (_disposed) return;
+    // Shown from what was sent, and only because the Host accepted it and
+    // said so with the same hash.
+    _companionFace = state.hasFace ? face : null;
+    _companionFaceSha256 = state.sha256;
+    _notify();
+  }
+
+  Future<void> clearCompanionFace({required String companionId}) async {
+    await _companionRepository.clearFace(companionId: companionId);
+    if (_disposed) return;
+    _companionFace = null;
+    _companionFaceSha256 = null;
+    _notify();
+  }
+
+  /// Name the person this Host answers to.
+  ///
+  /// Nothing identifies them in the request: the session does. As with the
+  /// Companion, the runtime view is re-read rather than patched here.
+  Future<void> renameOwner({required String displayName}) async {
+    await _ownerRepository.rename(displayName: displayName);
+    await refreshWorkspace();
+  }
+
+  /// Ask it what it remembers about something.
+  ///
+  /// Not held on this controller: unlike the face or the name, an answer here
+  /// belongs to one question someone just asked, and keeping the last one
+  /// would show it again beside the next question.
+  Future<Recollections> recollections({required String query}) =>
+      _recollectionsRepository.search(query: query);
 
   /// What this Eidolon has been.
   Future<PersonaHistory> personaHistory({required String companionId}) =>
@@ -370,7 +472,7 @@ class HostProductController extends ChangeNotifier {
       deviceId: deviceId,
       companionId: workspace.workspace?.primaryCompanionId,
     );
-    if (progress.state == DeviceAdmissionState.ready) {
+    if (progress.outcome == ActOutcome.done) {
       await refreshDevices();
     }
     return progress;
@@ -567,6 +669,8 @@ class HostProductController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    unawaited(_networkSubscription?.cancel());
+    unawaited(_networkChanges.close());
     unawaited(_session.close());
     super.dispose();
   }

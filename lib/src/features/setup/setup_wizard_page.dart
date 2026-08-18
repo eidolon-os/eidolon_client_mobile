@@ -700,28 +700,49 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   }
 }
 
+/// What the person is being asked to do, and how much of it is left.
+///
+/// It used to list five things — 附近主机 · Setup 码 · Wi-Fi · 认领 · 主机接入
+/// — of which the person does three. 认领 is the phone and the Host talking to
+/// each other, and 主机接入 is the outcome of that conversation; putting them
+/// in the same row as "choose a Wi-Fi network" made the setup look half again
+/// as long as it is. Meanwhile the one thing still waiting on the other side
+/// — giving the Eidolon and yourself a name — was not mentioned at all, so
+/// the bar reached the end and then asked for more.
+///
+/// Protocol phases are not what a progress bar is for. The phases are still
+/// exactly as separate as they were: this only stops presenting them as
+/// errands.
 class _ProgressHeader extends StatelessWidget {
   const _ProgressHeader({required this.stage});
 
   final _SetupStage stage;
 
+  /// The three things a person does here, plus the one waiting after.
+  static const _steps = ['选一台主机', '输入 Setup 码', '连上 Wi-Fi', '起名字'];
+
   @override
   Widget build(BuildContext context) {
-    final index = switch (stage) {
+    final done = switch (stage) {
       _SetupStage.nearby => 0,
       _SetupStage.code => 1,
       _SetupStage.wifi => 2,
-      _SetupStage.configuring => 3,
-      _SetupStage.complete => 4,
+      // Working and finished are the same amount of the person's work: all of
+      // it that happens here.
+      _SetupStage.configuring || _SetupStage.complete => 3,
     };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('SETUP', style: Theme.of(context).textTheme.labelLarge),
+        Text('设置', style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 8),
-        LinearProgressIndicator(value: (index + 1) / 5),
+        LinearProgressIndicator(value: done / _steps.length),
         const SizedBox(height: 8),
-        Text('附近主机  ·  Setup 码  ·  Wi-Fi  ·  认领  ·  主机接入'),
+        Text(
+          _steps.indexed
+              .map((entry) => entry.$1 < done ? '✓ ${entry.$2}' : entry.$2)
+              .join('  ·  '),
+        ),
       ],
     );
   }

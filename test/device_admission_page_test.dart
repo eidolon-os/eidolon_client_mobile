@@ -27,8 +27,8 @@ void main() {
               requestId: requestId,
               deviceId: deviceId,
               ownerId: 'owner-1',
-              state: DeviceAdmissionState.ready,
-              completedStage: 'companion-attached',
+              outcome: ActOutcome.done,
+              stoppedAfter: 'companion-attached',
               companionId: 'companion-1',
             );
           },

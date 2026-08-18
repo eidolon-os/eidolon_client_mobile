@@ -34,7 +34,7 @@ Mobile -> pinned Local API -> product adapters -> owning authorities
 | System | Host/Bootstrap 正交状态与 IP 可读；换网已有 BLE 流程 | 已提供独立系统页与 IP、Reset epoch、恢复状态；不开放 Supervisor/日志/配置 |
 | Admin Web control plane | 当前产品分支只有运维型 Device Admission/Mount 编排，要求操作者输入 Hub credential | 只复用领域语义；不能把 credential 输入或 Admin route 搬到 Mobile |
 | Mission Control | Data V2 产品分支已移除旧跨库聚合；旧 cockpit 分支不是当前可用 producer contract | 等 Owner-scoped projection API 后接 snapshot + stream，不复活跨库读取 |
-| ESP32 provisioning | 当前目标 build 同时设置 Hotspot/BLUFI，但预处理顺序实际选择 Hotspot；开放 `Xiaozhi-XXXX` AP + 明文 `/submit` | 已接入隔离的 development UI；只能确认 Wi-Fi 配置，不能当作产品 Device claim |
+| ESP32 provisioning | 当前目标 build 同时设置 Hotspot/BLUFI，但预处理顺序实际选择 Hotspot；开放 `eidolon-XXXX` AP + 明文 `/submit` | 已接入隔离的 development UI；只能确认 Wi-Fi 配置，不能当作产品 Device claim |
 | Hub onboarding | enrollment/handoff 与 management approval contract 已存在 | ESP32 固件须先迁移；Mobile 只经 Local API 批准，Owner scope 不由 App 自报 |
 | Conversation | Hub/LiveKit/AEC Demo 保留 | Workspace 与 Mobile Body admission ready 后恢复入口 |
 
@@ -86,7 +86,7 @@ Hotspot。Hotspot 与 ESP-BLUFI 的产品选择必须在上述身份与机密性
 而不是按编译开关数量决定。
 
 开发 adapter 使用 Android `WifiNetworkSpecifier` 让用户在系统界面选择
-`Xiaozhi-*`，并让 `/scan`、`/submit` 仅通过该局部 `Network` 发出，不把整个 App
+`eidolon-*`，并让 `/scan`、`/submit` 仅通过该局部 `Network` 发出，不把整个 App
 进程绑定到开放热点。它不创建 Device checkpoint、不调用 admission，也不持久化密码。
 若 `/submit` 的连接在固件确认前中断，结果按 unknown 展示，不能臆断配网失败。
 Android adapter 同时声明 `NEARBY_WIFI_DEVICES`、`CHANGE_WIFI_STATE` 与

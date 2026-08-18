@@ -4,7 +4,9 @@ import '../device_setup/device_setup_models.dart';
 import '../naming/ask_for_a_name.dart';
 import '../device_setup/device_setup_ports.dart';
 import '../device_setup/device_admission_page.dart';
-import '../device_setup/legacy_hotspot_provisioning_page.dart';
+import '../device_setup/device_setup_page.dart';
+import '../device_setup/host_controller_device_admission.dart';
+import '../device_setup/platform_device_provisioning.dart';
 import '../host_setup/host_product_controller.dart';
 import 'mounted_device_models.dart';
 
@@ -13,10 +15,15 @@ class MountedDevicesPage extends StatefulWidget {
     super.key,
     required this.controller,
     this.deviceProvisioning,
+    this.checkpoints,
   });
 
   final HostProductController controller;
-  final LegacyHotspotProvisioningPort? deviceProvisioning;
+
+  /// Supplied by tests; production builds get the protocomm adapter, which is
+  /// the only transport this app speaks to a device.
+  final DeviceProvisioningTransport? deviceProvisioning;
+  final DeviceSetupCheckpointStore? checkpoints;
 
   @override
   State<MountedDevicesPage> createState() => _MountedDevicesPageState();
@@ -40,14 +47,25 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
   }
 
   Future<void> _openProvisioning() async {
+    final admission = HostControllerDeviceAdmission(widget.controller);
+    final transport = widget.deviceProvisioning ??
+        PlatformDeviceProvisioning(
+          loadPendingEnrollments: admission.listPending,
+          isAlreadyAdmitted: (deviceId) async {
+            await widget.controller.refreshDevices();
+            final inventory = widget.controller.devices;
+            return inventory != null &&
+                inventory.devices.any((device) => device.deviceId == deviceId);
+          },
+        );
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => LegacyHotspotProvisioningPage(
-          host: widget.controller.host,
+        builder: (_) => DeviceSetupPage(
+          transport: transport,
+          admission: admission,
+          checkpoints:
+              widget.checkpoints ?? InMemoryDeviceSetupCheckpointStore(),
           loadTarget: widget.controller.deviceOnboardingTarget,
-          onCommissioned: (deviceId) =>
-              widget.controller.claimCommissionedDevice(deviceId: deviceId),
-          provisioning: widget.deviceProvisioning,
         ),
       ),
     );
@@ -306,14 +324,22 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
     try {
       final progress = await widget.onRemove(device.deviceId);
       if (!mounted) return;
-      if (progress.state == DeviceRemovalState.removed) {
+      if (progress.outcome == ActOutcome.done) {
         Navigator.of(context).pop();
         return;
       }
       setState(() {
-        _notice = progress.state == DeviceRemovalState.revoked
-            ? '授权已撤销，设备已经无法访问；卸载尚未完成，可以再试一次。'
-            : '移除未完成，可以再试一次。';
+        _notice = switch (progress) {
+          // Half done, and the half that matters is done: the device cannot
+          // reach anything any more.
+          _ when progress.onlyTheGrantIsGone =>
+            '授权已撤销，设备已经无法访问；卸载尚未完成，可以再试一次。',
+          _ when progress.outcome == ActOutcome.unfinished =>
+            '移除未完成，可以再试一次。',
+          // The Host decided. Offering "try again" here would be offering
+          // something that can only fail the same way.
+          _ => '主机拒绝了这次移除。',
+        };
       });
     } catch (error) {
       if (!mounted) return;

@@ -47,8 +47,9 @@ class HubOnboardingClient {
     final response = await _send(
       target,
       operation: 'Hub descriptor',
-      request: (client) => client.get(
-        target.descriptorUri,
+      uri: target.descriptorUri,
+      request: (client, uri) => client.get(
+        uri,
         headers: const {'accept': 'application/json'},
       ),
     );
@@ -82,8 +83,9 @@ class HubOnboardingClient {
     final response = await _send(
       target,
       operation: 'Device enrollment',
-      request: (client) => client.post(
-        descriptor.enrollmentUri,
+      uri: descriptor.enrollmentUri,
+      request: (client, uri) => client.post(
+        uri,
         headers: const {
           'accept': 'application/json',
           'content-type': 'application/json',
@@ -140,8 +142,9 @@ class HubOnboardingClient {
       target,
       operation: 'Device handoff',
       acceptedStatusCodes: const {200, 202},
-      request: (client) => client.post(
-        handoffUri,
+      uri: handoffUri,
+      request: (client, uri) => client.post(
+        uri,
         headers: const {
           'accept': 'application/json',
           'content-type': 'application/json',
@@ -170,15 +173,21 @@ class HubOnboardingClient {
     return outcome;
   }
 
+  /// Issues [request] against [uri], dialled the way [target] says to.
+  ///
+  /// The URI goes through here rather than through each caller so that no
+  /// request can be built that reaches the network by name.
   Future<http.Response> _send(
     VerifiedHubTarget target, {
     required String operation,
-    required Future<http.Response> Function(http.Client client) request,
+    required Uri uri,
+    required Future<http.Response> Function(http.Client client, Uri uri)
+        request,
     Set<int> acceptedStatusCodes = const {200},
   }) async {
     final client = _clientFactory(target.tlsSpkiFingerprint);
     try {
-      final response = await request(client).timeout(timeout);
+      final response = await request(client, target.dial(uri)).timeout(timeout);
       if (!acceptedStatusCodes.contains(response.statusCode)) {
         throw HubOnboardingRequestException(
           operation: operation,

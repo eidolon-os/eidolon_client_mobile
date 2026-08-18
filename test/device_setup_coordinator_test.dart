@@ -96,8 +96,8 @@ class _FakeAdmission implements DeviceAdmissionPort {
       requestId: requestId,
       deviceId: deviceId,
       ownerId: 'owner-1',
-      state: DeviceAdmissionState.ready,
-      completedStage: 'companion-attached',
+      outcome: ActOutcome.done,
+      stoppedAfter: 'companion-attached',
       companionId: companionId,
     );
   }
@@ -192,7 +192,7 @@ void main() {
       contractVersion: '1',
       deviceId: 'device-dev',
       deviceKind: 'esp32-display',
-      displayName: 'Xiaozhi-1234',
+      displayName: 'eidolon-1234',
       identityFingerprint: '',
       sessionId: 'dev-session',
       expiresAt: _now.add(const Duration(minutes: 10)),
@@ -208,7 +208,7 @@ void main() {
     );
     const candidate = DeviceProvisioningCandidate(
       transportId: 'open-ap',
-      displayName: 'Xiaozhi-1234',
+      displayName: 'eidolon-1234',
       transportKind: 'hotspot',
       trust: DeviceProvisioningTrust.developmentTofu,
     );

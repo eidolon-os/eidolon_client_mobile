@@ -53,6 +53,7 @@ class ManagedHost {
   final String? lastKnownBaseUrl;
 
   ManagedHost copyWith({
+    String? displayName,
     String? tlsSpkiFingerprint,
     String? lastKnownBaseUrl,
   }) =>
@@ -62,7 +63,7 @@ class ManagedHost {
         hostFingerprint: hostFingerprint,
         bleServiceUuid: bleServiceUuid,
         controllerId: controllerId,
-        displayName: displayName,
+        displayName: displayName ?? this.displayName,
         claimedAt: claimedAt,
         tlsSpkiFingerprint: tlsSpkiFingerprint ?? this.tlsSpkiFingerprint,
         lastKnownBaseUrl: lastKnownBaseUrl ?? this.lastKnownBaseUrl,

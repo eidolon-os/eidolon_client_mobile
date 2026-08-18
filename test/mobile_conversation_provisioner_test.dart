@@ -42,8 +42,8 @@ void main() {
           requestId: requestId,
           deviceId: deviceId,
           ownerId: 'owner-1',
-          state: DeviceAdmissionState.ready,
-          completedStage: 'companion-attached',
+          outcome: ActOutcome.done,
+          stoppedAfter: 'companion-attached',
           companionId: 'companion-1',
         );
       },
@@ -57,8 +57,7 @@ void main() {
 
     expect(config.status, HubConfigStatus.active);
     expect(config.registrationId, 'channel-mobile-1');
-    expect(config.active.roomName, 'mobile-voice');
-    expect(config.control?.roomName, 'mobile-control');
+    expect(config.session.roomName, 'mobile-channel');
     expect(config.sampleRate, 16000);
     expect(config.channels, 1);
     expect(approvedDeviceId, 'mobile-android-test');
@@ -87,8 +86,8 @@ void main() {
         requestId: requestId,
         deviceId: deviceId,
         ownerId: 'owner-1',
-        state: DeviceAdmissionState.binding,
-        completedStage: 'kernel-mounted',
+        outcome: ActOutcome.unfinished,
+        stoppedAfter: 'kernel-mounted',
         companionId: 'companion-1',
       ),
       platform: _Platform(),
@@ -175,7 +174,8 @@ void main() {
     );
   });
 
-  test('a device the Host already holds asks the owner to remove it', () async {
+  test('a device the Host already holds says where the remove control is',
+      () async {
     final security = _Security();
     final requests = <http.Request>[];
     final provisioner = _provisioner(
@@ -188,14 +188,16 @@ void main() {
       ),
     );
 
+    // Retrying asks the Host the same question and gets the same 409, so the
+    // person is told which control clears it — and told it where it is, since
+    // the device list only offers removal once a device is opened.
     await expectLater(
       provisioner.provision(),
       throwsA(
-        isA<StateError>().having(
-          (error) => error.message,
-          'message',
-          contains('请在管理端移除该设备'),
-        ),
+        isA<MobileProvisioningBlocked>()
+            .having((error) => error.message, 'message', contains('打开设备管理'))
+            .having((error) => error.message, 'message', contains('移除设备'))
+            .having((error) => error.detail, 'detail', contains('409')),
       ),
     );
   });
@@ -215,8 +217,8 @@ MobileConversationProvisioner _provisioner(
         requestId: requestId,
         deviceId: deviceId,
         ownerId: 'owner-1',
-        state: DeviceAdmissionState.ready,
-        completedStage: 'companion-attached',
+        outcome: ActOutcome.done,
+        stoppedAfter: 'companion-attached',
         companionId: 'companion-1',
       ),
       platform: _Platform(),
@@ -270,18 +272,12 @@ HubOnboardingClient _hubClient(
 http.Response _handoffResponse(String manifestRevision) {
   final binding = utf8.encode(
     jsonEncode({
-      'schema_version': 1,
-      'active': {
+      'schema_version': 2,
+      'session': {
         'server_url': 'wss://livekit.example',
-        'token': 'voice-token',
+        'token': 'channel-token',
         'identity': 'mobile-android-test',
-        'room_name': 'mobile-voice',
-      },
-      'control': {
-        'server_url': 'wss://livekit.example',
-        'token': 'control-token',
-        'identity': 'mobile-android-test',
-        'room_name': 'mobile-control',
+        'room_name': 'mobile-channel',
       },
       'audio': {'sample_rate': 16000, 'channels': 1},
     }),

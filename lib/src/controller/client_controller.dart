@@ -7,6 +7,7 @@ import 'package:livekit_client/livekit_client.dart';
 
 import '../avatar/avatar_stage.dart';
 import '../features/conversation/conversation_provisioner.dart';
+import '../features/conversation/mobile_conversation_provisioner.dart';
 import '../models/client_ui_state.dart';
 import '../models/hub_models.dart';
 import '../platform/platform_bridge.dart';
@@ -63,6 +64,9 @@ class ClientController extends ChangeNotifier {
   Timer? _attentionTimer;
   Timer? _controlRecoveryTimer;
   bool _busy = false;
+  // Whether a conversation is under way. The channel is up either way, so this
+  // is no longer something that can be read off a connection.
+  bool _inConversation = false;
   bool _controlRecoveryInFlight = false;
   int _controlRecoveryAttempt = 0;
 
@@ -197,11 +201,11 @@ class ClientController extends ChangeNotifier {
         _scheduleActivationRefresh();
       case HubConfigStatus.active:
         _activationTimer?.cancel();
-        if (next.control?.usable == true && !_session.isControlConnected) {
+        if (next.session.usable && !_session.isConnected) {
           _setPhase(ClientPhase.activating);
-          await _session.connectControl(next.control!);
+          await _session.connect(next.session);
         }
-        if (_session.isVoiceConnected) {
+        if (_inConversation) {
           _setPhase(ClientPhase.conversation);
         } else {
           _setPhase(ClientPhase.ready);
@@ -266,7 +270,12 @@ class ClientController extends ChangeNotifier {
       if (fresh.status != HubConfigStatus.active) {
         throw StateError('设备当前不是 active 状态');
       }
-      await _session.connectVoice(fresh.active);
+      if (!_session.isConnected) {
+        await _session.connect(fresh.session);
+      }
+      // Asking is what starts a conversation now; the channel was already up.
+      await _session.openSession();
+      _inConversation = true;
       await _vad.start();
       microphoneState = MicrophoneState.enabled;
       // Full-duplex mobile starts listening as soon as the voice room is ready.
@@ -288,12 +297,11 @@ class ClientController extends ChangeNotifier {
         );
       });
     } catch (exception) {
-      await _session.disconnectVoice();
+      _inConversation = false;
       voiceConnection = ChannelConnectionState.disconnected;
       microphoneState = MicrophoneState.inactive;
       failure = _classifyFailure(exception, liveKitContext: true);
-      phase =
-          _session.isControlConnected ? ClientPhase.ready : ClientPhase.error;
+      phase = _session.isConnected ? ClientPhase.ready : ClientPhase.error;
       notifyListeners();
     } finally {
       _busy = false;
@@ -305,7 +313,12 @@ class ClientController extends ChangeNotifier {
     _activationTimer?.cancel();
     _audioStateTimer?.cancel();
     await _vad.stop();
-    await _session.disconnectVoice();
+    // Leaving a conversation is something this client says, not somewhere it
+    // goes: the channel stays up so the next one can start by asking.
+    if (_inConversation) {
+      await _session.closeSession();
+      _inConversation = false;
+    }
     remoteVideoTrack = null;
     videoState = VideoState.audioOnly;
     agentTurn = AgentTurnState.idle;
@@ -346,36 +359,38 @@ class ClientController extends ChangeNotifier {
       'reconnecting' => ChannelConnectionState.reconnecting,
       _ => ChannelConnectionState.disconnected,
     };
-    if (event.plane == SessionPlane.control) {
-      controlConnection = connection;
-      if (event.state == 'connected') {
-        _controlRecoveryTimer?.cancel();
-        _controlRecoveryTimer = null;
-        _controlRecoveryAttempt = 0;
-      } else if (event.state == 'reconnecting' &&
-          config?.status == HubConfigStatus.active) {
-        _scheduleControlRecovery(_controlReconnectGrace);
-      }
-    } else {
-      voiceConnection = connection;
+    controlConnection = connection;
+    if (event.state == 'connected') {
+      _controlRecoveryTimer?.cancel();
+      _controlRecoveryTimer = null;
+      _controlRecoveryAttempt = 0;
+    } else if (event.state == 'reconnecting' &&
+        config?.status == HubConfigStatus.active) {
+      _scheduleControlRecovery(_controlReconnectGrace);
     }
 
-    if (event.plane == SessionPlane.voice &&
-        event.state == 'disconnected' &&
-        phase == ClientPhase.conversation) {
-      _audioStateTimer?.cancel();
-      unawaited(_vad.stop());
-      agentTurn = AgentTurnState.idle;
-      microphoneState = MicrophoneState.inactive;
-      videoState = VideoState.audioOnly;
-      _showNotice('语音会话已结束，控制连接仍保持在线');
-      _setPhase(ClientPhase.ready);
-    }
-    if (event.plane == SessionPlane.control &&
-        event.state == 'disconnected' &&
-        config?.status == HubConfigStatus.active) {
-      controlConnection = ChannelConnectionState.reconnecting;
-      _scheduleControlRecovery(Duration.zero);
+    // Losing the channel is the one thing that still ends a conversation
+    // without anyone saying so — there is nothing left to carry it. A
+    // conversation that ends normally does so via session_end or leave(),
+    // both of which leave the channel untouched.
+    if (event.state == 'disconnected') {
+      if (_inConversation) {
+        _inConversation = false;
+        voiceConnection = ChannelConnectionState.disconnected;
+        _audioStateTimer?.cancel();
+        unawaited(_vad.stop());
+        agentTurn = AgentTurnState.idle;
+        microphoneState = MicrophoneState.inactive;
+        videoState = VideoState.audioOnly;
+        _showNotice('连接已断开，正在重新连接');
+        _setPhase(ClientPhase.ready);
+      }
+      if (config?.status == HubConfigStatus.active) {
+        controlConnection = ChannelConnectionState.reconnecting;
+        _scheduleControlRecovery(Duration.zero);
+      }
+    } else {
+      voiceConnection = _inConversation ? connection : voiceConnection;
     }
     notifyListeners();
   }
@@ -384,8 +399,7 @@ class ClientController extends ChangeNotifier {
   /// the foreground. LiveKit's built-in retry policy can otherwise spend
   /// close to a minute exhausting its backoff sequence after a Wi-Fi pause.
   void onAppResumed() {
-    if (config?.status != HubConfigStatus.active ||
-        _session.isControlConnected) {
+    if (config?.status != HubConfigStatus.active || _session.isConnected) {
       return;
     }
     controlConnection = ChannelConnectionState.reconnecting;
@@ -395,7 +409,7 @@ class ClientController extends ChangeNotifier {
 
   void _scheduleControlRecovery(Duration delay) {
     if (config?.status != HubConfigStatus.active ||
-        _session.isControlConnected ||
+        _session.isConnected ||
         _controlRecoveryInFlight) {
       return;
     }
@@ -412,7 +426,7 @@ class ClientController extends ChangeNotifier {
   Future<void> _recoverControl() async {
     if (_controlRecoveryInFlight ||
         config?.status != HubConfigStatus.active ||
-        _session.isControlConnected) {
+        _session.isConnected) {
       return;
     }
     if (_busy) {
@@ -431,7 +445,7 @@ class ClientController extends ChangeNotifier {
     var retry = false;
     try {
       await _registerAndApply(showRegistering: false);
-      if (!_session.isControlConnected) {
+      if (!_session.isConnected) {
         retry = true;
       } else {
         failure = null;
@@ -452,7 +466,7 @@ class ClientController extends ChangeNotifier {
       _busy = false;
       notifyListeners();
     }
-    if (retry && !_session.isControlConnected) {
+    if (retry && !_session.isConnected) {
       _scheduleControlRecovery(_controlRecoveryRetry);
     }
   }
@@ -751,6 +765,18 @@ class ClientController extends ChangeNotifier {
   }) {
     final details = exception.toString();
     final lower = details.toLowerCase();
+    if (exception is MobileProvisioningBlocked) {
+      // Answered before anything below gets to guess, because this failure
+      // already knows what it is: the Host has settled the matter, and the one
+      // thing not to offer is a retry that would ask it again.
+      return ClientFailure(
+        kind: ClientErrorKind.authorization,
+        title: exception.title,
+        message: exception.message,
+        technicalDetails: details,
+        retryable: false,
+      );
+    }
     if (lower.contains('microphone') ||
         lower.contains('麦克风') ||
         lower.contains('permission')) {
@@ -799,8 +825,8 @@ class ClientController extends ChangeNotifier {
     if (liveKitContext || lower.contains('livekit')) {
       return ClientFailure(
         kind: ClientErrorKind.liveKit,
-        title: '无法建立语音会话',
-        message: '控制连接仍会保持，可以再次尝试开始对话',
+        title: '无法开始这次对话',
+        message: '通道仍然在线，可以再次尝试开始对话',
         technicalDetails: details,
       );
     }

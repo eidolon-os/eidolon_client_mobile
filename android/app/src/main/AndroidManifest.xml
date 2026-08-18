@@ -9,7 +9,14 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="32" />
+    <!--
+        Not capped at API 32. NEARBY_WIFI_DEVICES replaces location for most
+        Wi-Fi APIs, but getScanResults() and startScan() are named exceptions
+        that still require ACCESS_FINE_LOCATION on Android 13 and later, and
+        finding a device offering to be set up is exactly a scan.
+        https://developer.android.com/develop/connectivity/wifi/wifi-permissions
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission
         android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" />

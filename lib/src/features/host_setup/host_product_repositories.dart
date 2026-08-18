@@ -1,10 +1,16 @@
+import 'dart:typed_data';
+
 import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
 import '../device_setup/device_setup_ports.dart';
+import 'activity_models.dart';
+import 'companion_face_models.dart';
 import 'controller_grant_models.dart';
 import 'persona_history_models.dart';
+import 'recollection_models.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
+import 'host_vitals_models.dart';
 import 'workspace_models.dart';
 import 'workspace_runtime_models.dart';
 
@@ -113,6 +119,45 @@ class HostCompanionRepository {
         ),
       );
 
+  Future<CompanionFaceState> faceState({required String companionId}) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.fetchCompanionFaceState(
+          baseUrl,
+          accessToken: accessToken,
+          companionId: companionId,
+        ),
+      );
+
+  Future<Uint8List?> face({required String companionId}) => _session.execute(
+        (client, baseUrl, accessToken) => client.fetchCompanionFace(
+          baseUrl,
+          accessToken: accessToken,
+          companionId: companionId,
+        ),
+      );
+
+  Future<CompanionFaceState> setFace({
+    required String companionId,
+    required Uint8List face,
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.setCompanionFace(
+          baseUrl,
+          accessToken: accessToken,
+          companionId: companionId,
+          face: face,
+        ),
+      );
+
+  Future<CompanionFaceState> clearFace({required String companionId}) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.clearCompanionFace(
+          baseUrl,
+          accessToken: accessToken,
+          companionId: companionId,
+        ),
+      );
+
   Future<String> rename({
     required String companionId,
     required String displayName,
@@ -122,6 +167,38 @@ class HostCompanionRepository {
           baseUrl,
           accessToken: accessToken,
           companionId: companionId,
+          displayName: displayName,
+        ),
+      );
+}
+
+/// What this Eidolon remembers.
+class HostRecollectionsRepository {
+  HostRecollectionsRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<Recollections> search({required String query, int limit = 10}) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.fetchRecollections(
+          baseUrl,
+          accessToken: accessToken,
+          query: query,
+          limit: limit,
+        ),
+      );
+}
+
+/// The person this Host answers to.
+class HostOwnerRepository {
+  HostOwnerRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<String> rename({required String displayName}) => _session.execute(
+        (client, baseUrl, accessToken) => client.renameOwner(
+          baseUrl,
+          accessToken: accessToken,
           displayName: displayName,
         ),
       );
@@ -157,10 +234,32 @@ class HostControllerGrantRepository {
       );
 }
 
+/// What has happened on this Host lately.
+class HostActivityRepository {
+  const HostActivityRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<HostActivity> list({int limit = 50}) => _session.execute(
+        (client, baseUrl, accessToken) => client.fetchActivity(
+          baseUrl,
+          accessToken: accessToken,
+          limit: limit,
+        ),
+      );
+}
+
 class HostServicesRepository {
   const HostServicesRepository(this._session);
 
   final HostProductSession _session;
+
+  Future<HostVitals> vitals() => _session.execute(
+        (client, baseUrl, accessToken) => client.fetchHostVitals(
+          baseUrl,
+          accessToken: accessToken,
+        ),
+      );
 
   Future<HostServiceInventory> list() => _session.execute(
         (client, baseUrl, accessToken) => client.fetchHostServices(

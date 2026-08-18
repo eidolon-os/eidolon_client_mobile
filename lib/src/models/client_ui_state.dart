@@ -105,10 +105,10 @@ class ClientUiState {
       ClientPhase.registering => '正在安全接入 Mobile…',
       ClientPhase.awaitingApproval => '主机正在认领 Mobile',
       ClientPhase.awaitingBinding => '正在关联 Companion',
-      ClientPhase.activating => '正在建立控制连接…',
+      ClientPhase.activating => '正在接入通道…',
       ClientPhase.ready =>
         controlConnection == ChannelConnectionState.reconnecting
-            ? '正在恢复控制连接…'
+            ? '正在恢复通道…'
             : '设备在线，可以开始对话',
       ClientPhase.joining => microphone == MicrophoneState.requestingPermission
           ? '等待麦克风授权…'
@@ -138,8 +138,8 @@ class ClientUiState {
           '使用 Android Keystore 身份完成 Enrollment 与 Owner 认领',
         ClientPhase.awaitingApproval => '认领请求会自动向前推进，无需手动填写设备 ID',
         ClientPhase.awaitingBinding => 'Hub 已批准，主机正在完成 Owner 挂载和 Companion 关联',
-        ClientPhase.activating => '授权已完成，正在连接 LiveKit 控制通道',
-        ClientPhase.ready => '控制通道保持在线，点击下方按钮开始语音会话',
+        ClientPhase.activating => '授权已完成，正在接入这台主机的通道',
+        ClientPhase.ready => '通道保持在线，点击下方按钮开始对话',
         ClientPhase.joining => '正在刷新会话凭据并启用 WebRTC AEC',
         ClientPhase.conversation => _conversationSupportingText,
         ClientPhase.error => failure?.message ?? '请检查网络后重试',

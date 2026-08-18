@@ -18,8 +18,8 @@ DeviceAdmissionProgress _claimed() => DeviceAdmissionProgress(
       requestId: 'device-commissioned-$_deviceId',
       deviceId: _deviceId,
       ownerId: 'owner-1',
-      state: DeviceAdmissionState.ready,
-      completedStage: 'companion-attached',
+      outcome: ActOutcome.done,
+      stoppedAfter: 'companion-attached',
       companionId: 'companion-1',
     );
 
@@ -66,7 +66,7 @@ void main() {
     );
 
     expect(approved, isTrue);
-    expect(progress.state, DeviceAdmissionState.ready);
+    expect(progress.outcome, ActOutcome.done);
     expect(calls, 5);
   });
 

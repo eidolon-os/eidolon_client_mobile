@@ -14,17 +14,16 @@ MountedDevice _device() => MountedDevice.fromJson({
       },
     });
 
-DeviceRemovalProgress _progress(String state) =>
+DeviceRemovalProgress _progress(String outcome) =>
     DeviceRemovalProgress.fromJson({
       'operation': 'local.device-removal-progress',
       'contract_version': '1',
       'request_id': 'device-removal-1',
       'device_id': 'mobile-android-0123456789abcdef',
       'owner_id': 'owner-1',
-      'state': state,
-      'completed_stage':
-          state == 'removed' ? 'kernel-unmounted' : 'hub-revoked',
-      'retryable': state == 'revoked',
+      'outcome': outcome,
+      'stopped_after':
+          outcome == 'done' ? 'kernel-unmounted' : 'hub-revoked',
     });
 
 Future<void> _open(
@@ -43,7 +42,7 @@ void main() {
     var calls = 0;
     await _open(tester, (_) async {
       calls += 1;
-      return _progress('removed');
+      return _progress('done');
     });
 
     await tester.tap(find.byKey(const Key('remove-mounted-device')));
@@ -61,7 +60,7 @@ void main() {
     String? removed;
     await _open(tester, (deviceId) async {
       removed = deviceId;
-      return _progress('removed');
+      return _progress('done');
     });
 
     await tester.tap(find.byKey(const Key('remove-mounted-device')));
@@ -73,7 +72,7 @@ void main() {
   });
 
   testWidgets('a revoked-but-still-mounted device says so', (tester) async {
-    await _open(tester, (_) async => _progress('revoked'));
+    await _open(tester, (_) async => _progress('unfinished'));
 
     await tester.tap(find.byKey(const Key('remove-mounted-device')));
     await tester.pumpAndSettle();
@@ -99,5 +98,24 @@ void main() {
       find.byKey(const Key('device-removal-notice')),
     );
     expect(notice.data, contains('移除未完成'));
+  });
+
+
+  testWidgets('a refusal is not offered as something to retry', (tester) async {
+    await _open(tester, (_) async => _progress('refused'));
+
+    await tester.tap(find.byKey(const Key('remove-mounted-device')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirm-device-removal-action')));
+    await tester.pumpAndSettle();
+
+    final notice = tester.widget<Text>(
+      find.byKey(const Key('device-removal-notice')),
+    );
+    // The Host decided. "Try again" would be offering something that can only
+    // fail the same way — which is the distinction the three old fields made a
+    // screen reassemble for itself.
+    expect(notice.data, contains('拒绝'));
+    expect(notice.data, isNot(contains('再试一次')));
   });
 }
