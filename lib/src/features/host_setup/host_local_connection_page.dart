@@ -16,6 +16,7 @@ import 'host_product_controller.dart';
 import 'companion_page.dart';
 import 'managed_controllers_page.dart';
 import 'mission_control_page.dart';
+import 'runtime_cockpit_page.dart';
 import 'persona_history_page.dart';
 import 'recollections_page.dart';
 import 'host_product_session.dart';
@@ -316,6 +317,27 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         ),
       );
 
+  /// The sovereign domain of this Host, on one screen.
+  ///
+  /// The same information model as the console's cockpit — Owner, Companion,
+  /// devices, memory — plus the vitals the console cannot reach. Separate from
+  /// 主机动态, which answers "what happened lately"; this one answers "what is
+  /// mine and how is it".
+  Future<void> _openRuntimeCockpit() => Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => RuntimeCockpitPage(
+            runtime: _controller.workspaceRuntime,
+            loadVitals: _controller.hostVitals,
+            listServices: _controller.listHostServices,
+            loadActivity: _controller.activity,
+            listControllers: _controller.listControllers,
+            thisControllerId: _controller.controllerId,
+            devices: _controller.devices,
+            devicesError: _controller.devicesError,
+          ),
+        ),
+      );
+
   Future<void> _openDevices() => Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => MountedDevicesPage(
@@ -360,6 +382,9 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               // to. Before that there is nothing this screen could be about.
               onOpenActivity: (_controller.workspace?.isReady ?? false)
                   ? _openMissionControl
+                  : null,
+              onOpenCockpit: (_controller.workspace?.isReady ?? false)
+                  ? _openRuntimeCockpit
                   : null,
               onOpenSystem: () => Navigator.of(context).push<void>(
                 MaterialPageRoute(
@@ -478,6 +503,7 @@ class _ConnectedHostCard extends StatelessWidget {
     required this.connection,
     required this.onOpenSystem,
     this.onOpenActivity,
+    this.onOpenCockpit,
   });
 
   final HostProductConnection connection;
@@ -485,6 +511,10 @@ class _ConnectedHostCard extends StatelessWidget {
 
   /// Null until this Host has an Owner whose devices could have a history.
   final VoidCallback? onOpenActivity;
+
+  /// Null for the same reason: there is no domain to draw before there is an
+  /// Owner for it to belong to.
+  final VoidCallback? onOpenCockpit;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -521,6 +551,15 @@ class _ConnectedHostCard extends StatelessWidget {
               Text('Controller：${connection.controllerId}'),
               Text('本次管理会话有效至 ${_localTime(connection.sessionExpiresAt)}'),
               const SizedBox(height: 12),
+              if (onOpenCockpit case final open?) ...[
+                FilledButton.icon(
+                  key: const Key('open-runtime-cockpit'),
+                  onPressed: open,
+                  icon: const Icon(Icons.dashboard_outlined),
+                  label: const Text('运行驾驶舱'),
+                ),
+                const SizedBox(height: 8),
+              ],
               if (onOpenActivity case final open?) ...[
                 FilledButton.tonalIcon(
                   key: const Key('open-mission-control'),

@@ -903,4 +903,39 @@ void main() {
     expect(renames, isEmpty);
     expect(find.text('你好，Manson。'), findsOneWidget);
   });
+
+  testWidgets('the cockpit is reachable, not merely built', (tester) async {
+    // A page nothing links to is the same fault as a module with no route:
+    // present, working, invisible. This has been shipped twice this week in
+    // other places, so the entry gets its own assertion rather than being
+    // assumed from the page existing.
+    await tester.binding.setSurfaceSize(const Size(900, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(
+            _hostOverview(workspaceState: 'ready'),
+            workspaceReady: true,
+            withReadyDevice: true,
+          ),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('open-runtime-cockpit')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('open-runtime-cockpit')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('运行驾驶舱'), findsOneWidget);
+    // The sovereign domain is the reason this screen exists; if the Workspace
+    // is ready it has to be drawn.
+    expect(find.byKey(const Key('cockpit-sovereign-domain')), findsOneWidget);
+  });
 }
