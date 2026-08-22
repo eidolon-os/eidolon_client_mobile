@@ -152,6 +152,172 @@ class AuthorityEndpointV1 {
       };
 }
 
+enum CommissioningStatusStateV1 {
+  applyingConfiguration('applying-configuration'),
+  committed('committed'),
+  rolledBack('rolled-back'),
+  failed('failed');
+
+  const CommissioningStatusStateV1(this.wireValue);
+  final String wireValue;
+}
+
+class CommissioningConditionsV1 {
+  const CommissioningConditionsV1({
+    required this.wifiConnected,
+    required this.ownerRouteValidated,
+    required this.trustCommitted,
+    required this.networkCommitted,
+  });
+
+  final bool wifiConnected;
+  final bool ownerRouteValidated;
+  final bool trustCommitted;
+  final bool networkCommitted;
+
+  factory CommissioningConditionsV1.fromJson(Map<String, dynamic> value) {
+    const keys = {
+      'wifi_connected',
+      'owner_route_validated',
+      'trust_committed',
+      'network_committed',
+    };
+    if (value.keys.toSet().difference(keys).isNotEmpty ||
+        keys.difference(value.keys.toSet()).isNotEmpty ||
+        value.values.any((item) => item is! bool)) {
+      throw const FormatException('Invalid commissioning conditions');
+    }
+    return CommissioningConditionsV1(
+      wifiConnected: value['wifi_connected']! as bool,
+      ownerRouteValidated: value['owner_route_validated']! as bool,
+      trustCommitted: value['trust_committed']! as bool,
+      networkCommitted: value['network_committed']! as bool,
+    );
+  }
+}
+
+class CommissioningStatusEvidenceV1 {
+  const CommissioningStatusEvidenceV1({
+    required this.sessionId,
+    required this.setupGeneration,
+    required this.stateRevision,
+    required this.state,
+    required this.conditions,
+    required this.failureCode,
+  });
+
+  final String sessionId;
+  final int setupGeneration;
+  final int stateRevision;
+  final CommissioningStatusStateV1 state;
+  final CommissioningConditionsV1 conditions;
+  final String? failureCode;
+
+  bool get isCommittedTerminal =>
+      state == CommissioningStatusStateV1.committed &&
+      conditions.wifiConnected &&
+      conditions.ownerRouteValidated &&
+      conditions.trustCommitted &&
+      conditions.networkCommitted &&
+      failureCode == null;
+
+  factory CommissioningStatusEvidenceV1.fromJson(Map<String, dynamic> value) {
+    const keys = {
+      'contract',
+      'contract_version',
+      'profile_id',
+      'session_id',
+      'setup_generation',
+      'state_revision',
+      'state',
+      'conditions',
+      'failure_code',
+    };
+    if (value.keys.toSet().difference(keys).isNotEmpty ||
+        keys.difference(value.keys.toSet()).isNotEmpty ||
+        value['contract'] != 'eidolon.device-foundation.commissioning-status' ||
+        value['contract_version'] != '1.0' ||
+        value['profile_id'] != 'eidolon-trust-p256-hpke-v1') {
+      throw const FormatException('Invalid commissioning status envelope');
+    }
+    final sessionId = _text(value['session_id'], 128);
+    if (sessionId.length < 16 ||
+        !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(sessionId)) {
+      throw const FormatException('Invalid commissioning session id');
+    }
+    final generation = value['setup_generation'];
+    final revision = value['state_revision'];
+    CommissioningStatusStateV1? state;
+    for (final candidate in CommissioningStatusStateV1.values) {
+      if (candidate.wireValue == value['state']) state = candidate;
+    }
+    final rawConditions = value['conditions'];
+    final failure = value['failure_code'];
+    const failures = {
+      'NETWORK_REJECTED',
+      'OWNER_ROUTE_UNAVAILABLE',
+      'OWNER_IDENTITY_MISMATCH',
+      'STORAGE_UNAVAILABLE',
+      'WINDOW_EXPIRED',
+      'CANCELLED',
+      'INTERNAL',
+    };
+    if (generation is! int ||
+        generation < 1 ||
+        revision is! int ||
+        revision < 1 ||
+        state == null ||
+        rawConditions is! Map ||
+        (failure != null &&
+            (failure is! String || !failures.contains(failure)))) {
+      throw const FormatException('Invalid commissioning status');
+    }
+    final evidence = CommissioningStatusEvidenceV1(
+      sessionId: sessionId,
+      setupGeneration: generation,
+      stateRevision: revision,
+      state: state,
+      conditions: CommissioningConditionsV1.fromJson(
+        Map<String, dynamic>.from(rawConditions),
+      ),
+      failureCode: failure as String?,
+    );
+    if (state == CommissioningStatusStateV1.committed &&
+        !evidence.isCommittedTerminal) {
+      throw const FormatException(
+          'Incomplete committed commissioning evidence');
+    }
+    if ((state == CommissioningStatusStateV1.rolledBack ||
+            state == CommissioningStatusStateV1.failed) &&
+        (failure == null ||
+            evidence.conditions.trustCommitted ||
+            evidence.conditions.networkCommitted)) {
+      throw const FormatException('Invalid failed commissioning evidence');
+    }
+    return evidence;
+  }
+}
+
+class CommissioningTerminalAckV1 {
+  const CommissioningTerminalAckV1({
+    required this.sessionId,
+    required this.setupGeneration,
+    required this.observedStateRevision,
+  });
+
+  final String sessionId;
+  final int setupGeneration;
+  final int observedStateRevision;
+
+  Map<String, dynamic> toJson() => {
+        'contract': 'eidolon.device-foundation.commissioning-terminal-ack',
+        'contract_version': '1.0',
+        'session_id': sessionId,
+        'setup_generation': setupGeneration,
+        'observed_state_revision': observedStateRevision,
+      };
+}
+
 String _text(Object? value, int maximum) {
   if (value is! String || value.isEmpty || value.length > maximum) {
     throw const FormatException('Invalid bounded contract string');

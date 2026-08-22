@@ -36,12 +36,29 @@ void main() {
         'device_kind': 'atk-dnesp32s3',
         'display_name': 'atk-dnesp32s3',
         'identity_fingerprint': 'sha256:abc',
-        'session_id': 'sess-1',
+        'session_id': 'setup_session_01',
         'expires_in_seconds': expiresInSeconds,
         'trust': trust,
       });
 
   final target = deviceOnboardingTargetFixture();
+
+  Map<String, Object?> committedEvidence() => {
+        'contract': 'eidolon.device-foundation.commissioning-status',
+        'contract_version': '1.0',
+        'profile_id': 'eidolon-trust-p256-hpke-v1',
+        'session_id': 'setup_session_01',
+        'setup_generation': 7,
+        'state_revision': 5,
+        'state': 'committed',
+        'conditions': {
+          'wifi_connected': true,
+          'owner_route_validated': true,
+          'trust_committed': true,
+          'network_committed': true,
+        },
+        'failure_code': null,
+      };
 
   PlatformDeviceProvisioning build({
     PendingEnrollmentLookup? loadPending,
@@ -153,8 +170,11 @@ void main() {
           'contract_version': '1',
           'device_id': '10:51:db:7e:24:44',
           'owner_domain_id': target.ownerDomainId,
-          'accepted': true,
+          'staged': true,
         });
+      }
+      if (call.method == 'provisioningConfigureNetwork') {
+        return committedEvidence();
       }
       return null;
     });
@@ -181,6 +201,94 @@ void main() {
     );
   });
 
+  test('credential delivery without terminal device evidence is not success',
+      () async {
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'openProvisioningSession') return descriptorJson();
+      if (call.method == 'provisioningHandOverTrust') {
+        return jsonEncode({
+          'contract_version': '1',
+          'device_id': '10:51:db:7e:24:44',
+          'owner_domain_id': target.ownerDomainId,
+          'staged': true,
+        });
+      }
+      // Models wifiConfigApplied followed by a lost/unknown terminal callback:
+      // no device-confirmed evidence crosses the platform boundary.
+      if (call.method == 'provisioningConfigureNetwork') return null;
+      return null;
+    });
+    final session = await build().open(
+      const DeviceProvisioningCandidate(
+        transportId: 't',
+        displayName: 'd',
+        transportKind: 'softap',
+        trust: DeviceProvisioningTrust.developmentTofu,
+      ),
+    );
+
+    await expectLater(
+      session.configureNetwork(
+        credentials: const DeviceWifiCredentials(ssid: 'home', password: 'pw'),
+        onboardingTarget: target,
+      ),
+      throwsA(
+        isA<DeviceProvisioningTransportException>().having(
+          (error) => error.code,
+          'code',
+          'network_terminal_missing',
+        ),
+      ),
+    );
+  });
+
+  test('Wi-Fi connectivity without Owner validation and commit is not terminal',
+      () async {
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'openProvisioningSession') return descriptorJson();
+      if (call.method == 'provisioningHandOverTrust') {
+        return jsonEncode({
+          'contract_version': '1',
+          'device_id': '10:51:db:7e:24:44',
+          'owner_domain_id': target.ownerDomainId,
+          'staged': true,
+        });
+      }
+      if (call.method == 'provisioningConfigureNetwork') {
+        final incomplete = committedEvidence();
+        incomplete['conditions'] = {
+          'wifi_connected': true,
+          'owner_route_validated': false,
+          'trust_committed': false,
+          'network_committed': false,
+        };
+        return incomplete;
+      }
+      return null;
+    });
+    final session = await build().open(
+      const DeviceProvisioningCandidate(
+        transportId: 't',
+        displayName: 'd',
+        transportKind: 'softap',
+        trust: DeviceProvisioningTrust.developmentTofu,
+      ),
+    );
+    await expectLater(
+      session.configureNetwork(
+        credentials: const DeviceWifiCredentials(ssid: 'home', password: 'pw'),
+        onboardingTarget: target,
+      ),
+      throwsA(
+        isA<DeviceProvisioningTransportException>().having(
+          (error) => error.code,
+          'code',
+          'network_terminal_invalid',
+        ),
+      ),
+    );
+  });
+
   test('does not configure a network when the device refused the Host',
       () async {
     final methods = <String>[];
@@ -190,7 +298,7 @@ void main() {
       if (call.method == 'provisioningHandOverTrust') {
         return jsonEncode({
           'contract_version': '1',
-          'accepted': false,
+          'staged': false,
           'error': 'handover is not supported',
         });
       }
@@ -224,7 +332,7 @@ void main() {
         return jsonEncode({
           'contract_version': '1',
           'owner_domain_id': 'ehost-someone-else',
-          'accepted': true,
+          'staged': true,
         });
       }
       return null;

@@ -66,10 +66,18 @@ class DeviceSetupCoordinator {
         clearFailure: true,
       );
       await checkpoints.save(checkpoint);
-      await session.configureNetwork(
+      final networkEvidence = await session.configureNetwork(
         credentials: credentials,
         onboardingTarget: onboardingTarget,
       );
+      if (!networkEvidence.isCommittedTerminal ||
+          networkEvidence.sessionId != session.descriptor.sessionId) {
+        throw const DeviceSetupException(
+          code: 'network_terminal_missing',
+          message: 'Device did not confirm the network connection',
+          retryable: true,
+        );
+      }
       checkpoint = checkpoint.copyWith(
         provisioningState: DeviceProvisioningState.networkConfigured,
         admissionState: DeviceAdmissionState.awaitingEnrollment,

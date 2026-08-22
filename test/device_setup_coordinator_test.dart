@@ -1,6 +1,7 @@
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_coordinator.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_ports.dart';
+import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/owner_domain_fixtures.dart';
@@ -46,12 +47,25 @@ class _FakeSession implements DeviceProvisioningSession {
   Future<void> close() async => closed = true;
 
   @override
-  Future<void> configureNetwork({
+  Future<CommissioningStatusEvidenceV1> configureNetwork({
     required DeviceWifiCredentials credentials,
     required DeviceOnboardingTarget onboardingTarget,
   }) async {
     configured = true;
     receivedCredentials = credentials;
+    return const CommissioningStatusEvidenceV1(
+      sessionId: 'session-1',
+      setupGeneration: 1,
+      stateRevision: 5,
+      state: CommissioningStatusStateV1.committed,
+      conditions: CommissioningConditionsV1(
+        wifiConnected: true,
+        ownerRouteValidated: true,
+        trustCommitted: true,
+        networkCommitted: true,
+      ),
+      failureCode: null,
+    );
   }
 
   @override

@@ -25,6 +25,7 @@ import com.espressif.provisioning.listeners.ProvisionListener
 import com.espressif.provisioning.listeners.ResponseListener
 import com.espressif.provisioning.listeners.WiFiScanListener
 import io.flutter.plugin.common.MethodChannel
+import org.json.JSONObject
 import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
 import org.greenrobot.eventbus.ThreadMode
@@ -80,6 +81,8 @@ class DeviceProvisioningManager(
 
         private const val DESCRIPTOR_ENDPOINT = "eidolon-descriptor"
         private const val TRUST_ENDPOINT = "eidolon-trust"
+        private const val STATUS_ENDPOINT = "eidolon-status"
+        private const val TERMINAL_ACK_ENDPOINT = "eidolon-terminal-ack"
 
         private const val TRANSPORT_KIND = "softap"
 
@@ -533,16 +536,7 @@ class DeviceProvisioningManager(
         )
     }
 
-    /**
-     * Hand the device its network, and stop being in the way.
-     *
-     * Silence after the credentials were applied is not failure. The device
-     * leaves its own access point in order to join the network it was just
-     * given, which is exactly what takes this session down — so the answer to
-     * "did it work" was never going to arrive here. It is asked of the Host,
-     * which is where enrolment is a fact. A device that *refused* has said
-     * something, and that is reported.
-     */
+    /** Hand the device a network and return only device-confirmed terminal evidence. */
     fun configureNetwork(ssid: String, password: String, result: MethodChannel.Result) {
         val espDevice = synchronized(lock) { device }
         if (espDevice == null) {
@@ -550,15 +544,121 @@ class DeviceProvisioningManager(
             return
         }
         val pending = PendingResult(result)
-        val applied = AtomicBoolean(false)
-
+        val terminalProbeStarted = AtomicBoolean(false)
+        var terminalDeadlineMillis = 0L
         fun finish(success: Boolean, code: String = "", message: String = "") {
             mainHandler.post {
                 // The session's work is over either way, and the next question
                 // this app asks goes to the Host over the home network.
                 close()
-                if (success) pending.success(null) else pending.error(code, message)
+                if (success) {
+                    pending.success(mapOf("terminal" to "wifi-connected"))
+                } else {
+                    pending.error(code, message)
+                }
             }
+        }
+
+        fun readCommittedTerminal() {
+            espDevice.sendDataToCustomEndPoint(
+                STATUS_ENDPOINT,
+                EMPTY_REQUEST,
+                object : ResponseListener {
+                    override fun onSuccess(response: ByteArray?) {
+                        val body = response?.toString(StandardCharsets.UTF_8).orEmpty()
+                        try {
+                            val status = JSONObject(body)
+                            val conditions = status.getJSONObject("conditions")
+                            val committed =
+                                status.getString("contract") ==
+                                    "eidolon.device-foundation.commissioning-status" &&
+                                status.getString("contract_version") == "1.0" &&
+                                status.getString("state") == "committed" &&
+                                status.isNull("failure_code") &&
+                                conditions.getBoolean("wifi_connected") &&
+                                conditions.getBoolean("owner_route_validated") &&
+                                conditions.getBoolean("trust_committed") &&
+                                conditions.getBoolean("network_committed")
+                            if (!committed) {
+                                if (status.optString("state") ==
+                                        "applying-configuration" &&
+                                    SystemClock.elapsedRealtime() < terminalDeadlineMillis) {
+                                    mainHandler.postDelayed(
+                                        { readCommittedTerminal() }, 500L,
+                                    )
+                                    return
+                                }
+                                finish(false, "COMMISSIONING_NOT_COMMITTED",
+                                    "Device did not commit network and Owner trust")
+                                return
+                            }
+                            val ack = JSONObject()
+                                .put("contract",
+                                    "eidolon.device-foundation.commissioning-terminal-ack")
+                                .put("contract_version", "1.0")
+                                .put("session_id", status.getString("session_id"))
+                                .put("setup_generation", status.getLong("setup_generation"))
+                                .put("observed_state_revision",
+                                    status.getLong("state_revision"))
+                            espDevice.sendDataToCustomEndPoint(
+                                TERMINAL_ACK_ENDPOINT,
+                                ack.toString().toByteArray(StandardCharsets.UTF_8),
+                                object : ResponseListener {
+                                    override fun onSuccess(response: ByteArray?) {
+                                        val acknowledged = try {
+                                            JSONObject(
+                                                response?.toString(StandardCharsets.UTF_8).orEmpty(),
+                                            ).optBoolean("acknowledged", false)
+                                        } catch (error: Exception) {
+                                            finish(false, "TERMINAL_ACK_INVALID",
+                                                errorText(error))
+                                            return
+                                        }
+                                        if (!acknowledged) {
+                                            finish(false, "TERMINAL_ACK_REFUSED",
+                                                "Device refused commissioning terminal ACK")
+                                            return
+                                        }
+                                        mainHandler.post {
+                                            close()
+                                            pending.success(mapOf(
+                                                "contract" to status.getString("contract"),
+                                                "contract_version" to status.getString("contract_version"),
+                                                "profile_id" to status.getString("profile_id"),
+                                                "session_id" to status.getString("session_id"),
+                                                "setup_generation" to status.getLong("setup_generation"),
+                                                "state_revision" to status.getLong("state_revision"),
+                                                "state" to status.getString("state"),
+                                                "conditions" to mapOf(
+                                                    "wifi_connected" to true,
+                                                    "owner_route_validated" to true,
+                                                    "trust_committed" to true,
+                                                    "network_committed" to true,
+                                                ),
+                                                "failure_code" to null,
+                                            ))
+                                        }
+                                    }
+
+                                    override fun onFailure(error: Exception?) =
+                                        finish(false, "TERMINAL_ACK_FAILED", errorText(error))
+                                },
+                            )
+                        } catch (error: Exception) {
+                            finish(false, "COMMISSIONING_STATUS_INVALID", errorText(error))
+                        }
+                    }
+
+                    override fun onFailure(error: Exception?) =
+                        finish(false, "COMMISSIONING_STATUS_UNAVAILABLE", errorText(error))
+                },
+            )
+        }
+
+        fun observeCommittedTerminal() {
+            if (!terminalProbeStarted.compareAndSet(false, true)) return
+            terminalDeadlineMillis = SystemClock.elapsedRealtime() + 30_000L
+            readCommittedTerminal()
         }
 
         espDevice.provision(
@@ -566,35 +666,37 @@ class DeviceProvisioningManager(
             password,
             object : ProvisionListener {
                 override fun createSessionFailed(error: Exception?) =
-                    finish(false, "PROVISIONING_SESSION_FAILED", errorText(error))
+                    if (!terminalProbeStarted.get()) {
+                        finish(false, "PROVISIONING_SESSION_FAILED", errorText(error))
+                    } else Unit
 
                 override fun wifiConfigSent() = Unit
 
                 override fun wifiConfigFailed(error: Exception?) =
-                    finish(false, "NETWORK_REJECTED", errorText(error))
+                    if (!terminalProbeStarted.get()) {
+                        finish(false, "NETWORK_REJECTED", errorText(error))
+                    } else Unit
 
-                override fun wifiConfigApplied() {
-                    applied.set(true)
-                }
+                // Credential delivery is an intermediate event. It is never
+                // projected as connected and never starts Owner enrollment polling.
+                override fun wifiConfigApplied() = Unit
 
                 override fun wifiConfigApplyFailed(error: Exception?) =
-                    finish(false, "NETWORK_REJECTED", errorText(error))
+                    if (!terminalProbeStarted.get()) {
+                        finish(false, "NETWORK_REJECTED", errorText(error))
+                    } else Unit
 
                 override fun provisioningFailedFromDevice(
                     reason: ESPConstants.ProvisionFailureReason?,
-                ) = finish(false, "DEVICE_REFUSED_NETWORK", reason?.name ?: "unknown")
+                ) = if (!terminalProbeStarted.get()) {
+                    finish(false, "DEVICE_REFUSED_NETWORK", reason?.name ?: "unknown")
+                } else Unit
 
-                override fun deviceProvisioningSuccess() = finish(true)
+                override fun deviceProvisioningSuccess() = observeCommittedTerminal()
 
                 override fun onProvisioningFailed(error: Exception?) {
-                    // Reached when the device stopped answering. Before the
-                    // credentials were applied that is a failure; after, it is
-                    // the expected shape of success and the Host will say.
-                    if (applied.get()) {
-                        finish(true)
-                    } else {
-                        finish(false, "PROVISIONING_FAILED", errorText(error))
-                    }
+                    if (terminalProbeStarted.get()) return
+                    finish(false, "PROVISIONING_TERMINAL_UNKNOWN", errorText(error))
                 }
             },
         )

@@ -1,4 +1,5 @@
 import 'device_setup_models.dart';
+import '../../generated/device_foundation_v1.dart';
 
 abstract interface class DeviceProvisioningTransport {
   Future<bool> requestPermission();
@@ -19,7 +20,7 @@ abstract interface class DeviceProvisioningSession {
 
   /// Configures only the device's network and onboarding destination.
   /// Host Setup codes and Controller credentials never cross this port.
-  Future<void> configureNetwork({
+  Future<CommissioningStatusEvidenceV1> configureNetwork({
     required DeviceWifiCredentials credentials,
     required DeviceOnboardingTarget onboardingTarget,
   });

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../../generated/device_foundation_v1.dart';
 import 'device_setup_models.dart';
 import 'device_setup_ports.dart';
 
@@ -99,6 +100,7 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
       'DEVICE_REFUSED_NETWORK' ||
       'NETWORK_REJECTED' =>
         '设备没有接受这个网络,请确认 Wi-Fi 名称和密码。',
+      'PROVISIONING_TERMINAL_UNKNOWN' => '设备收到了网络配置，但没有确认连接成功；旧网络仍应保留，请重试。',
       _ => error.message ?? '设置设备时出错了。',
     };
     throw DeviceProvisioningTransportException(
@@ -221,7 +223,7 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
   }
 
   @override
-  Future<void> configureNetwork({
+  Future<CommissioningStatusEvidenceV1> configureNetwork({
     required DeviceWifiCredentials credentials,
     required DeviceOnboardingTarget onboardingTarget,
   }) async {
@@ -244,24 +246,52 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
         }),
       },
     );
-    _requireAcceptedHandover(
+    _requireStagedHandover(
       handover,
       expectedOwnerDomainId: onboardingTarget.ownerDomainId,
     );
 
-    await _channel.invokeMethod<void>('provisioningConfigureNetwork', {
-      'ssid': credentials.ssid,
-      'password': credentials.password,
-    });
+    final rawEvidence = await _channel.invokeMapMethod<Object?, Object?>(
+      'provisioningConfigureNetwork',
+      {
+        'ssid': credentials.ssid,
+        'password': credentials.password,
+      },
+    );
+    if (rawEvidence == null) {
+      throw const DeviceProvisioningTransportException(
+        'network_terminal_missing',
+        '设备没有确认已连接到新网络。',
+      );
+    }
+    final CommissioningStatusEvidenceV1 evidence;
+    try {
+      evidence = CommissioningStatusEvidenceV1.fromJson(
+        Map<String, dynamic>.from(rawEvidence),
+      );
+    } on FormatException {
+      throw const DeviceProvisioningTransportException(
+        'network_terminal_invalid',
+        '设备返回的配网终态证据不符合 v1 契约。',
+      );
+    }
+    if (!evidence.isCommittedTerminal ||
+        evidence.sessionId != descriptor.sessionId) {
+      throw const DeviceProvisioningTransportException(
+        'network_terminal_invalid',
+        '设备没有确认 Owner 可达且网络与信任已共同提交。',
+      );
+    }
 
     // The device is leaving its own access point to join the network it was just
     // given, so this session is over whether or not anyone closes it. Letting go
     // now is what puts the phone back on the Host's network — and the next thing
     // asked is a question only the Host can answer.
     await _channel.invokeMethod<void>('closeProvisioningSession');
+    return evidence;
   }
 
-  void _requireAcceptedHandover(
+  void _requireStagedHandover(
     String? raw, {
     required String expectedOwnerDomainId,
   }) {
@@ -287,7 +317,7 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
         '设备返回的 Owner Domain 交接结果与 v1 契约不一致。',
       );
     }
-    if (decoded['accepted'] != true) {
+    if (decoded['staged'] != true) {
       final error = decoded['error'];
       throw DeviceProvisioningTransportException(
         'trust_handover_refused',
