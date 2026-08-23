@@ -75,26 +75,40 @@ class PlatformOwnerDomainDirectoryVerifier
     final currentRaw = owners[target.ownerDomainId];
     if (currentRaw != null) {
       if (currentRaw is! Map ||
+          (currentRaw['owner_domain_generation'] != null &&
+              currentRaw['owner_domain_generation'] is! int) ||
           currentRaw['directory_revision'] is! int ||
           currentRaw['fingerprint'] is! String) {
         throw const FormatException('Owner Domain directory state is corrupt');
       }
       final current = Map<String, dynamic>.from(currentRaw);
+      // Pre-generation state can only represent generation 1: the field did
+      // not exist before any higher generation could be issued.
+      final currentGeneration =
+          (current['owner_domain_generation'] as int?) ?? 1;
       final currentRevision = current['directory_revision']! as int;
       final currentFingerprint = current['fingerprint']! as String;
-      if (descriptor.directoryRevision < currentRevision) {
-        throw const FormatException('Owner Domain directory revision rollback');
+      if (descriptor.ownerDomainGeneration < currentGeneration) {
+        throw const FormatException('Owner Domain generation rollback');
       }
-      if (descriptor.directoryRevision == currentRevision) {
-        if (fingerprint != currentFingerprint) {
+      if (descriptor.ownerDomainGeneration == currentGeneration) {
+        if (descriptor.directoryRevision < currentRevision) {
           throw const FormatException(
-            'Owner Domain directory revision was reused with different content',
+            'Owner Domain directory revision rollback',
           );
         }
-        return;
+        if (descriptor.directoryRevision == currentRevision) {
+          if (fingerprint != currentFingerprint) {
+            throw const FormatException(
+              'Owner Domain directory revision was reused with different content',
+            );
+          }
+          return;
+        }
       }
     }
     owners[target.ownerDomainId] = {
+      'owner_domain_generation': descriptor.ownerDomainGeneration,
       'directory_revision': descriptor.directoryRevision,
       'fingerprint': fingerprint,
     };

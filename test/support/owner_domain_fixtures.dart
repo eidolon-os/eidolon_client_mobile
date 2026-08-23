@@ -12,6 +12,7 @@ TEST-AUTHORITY-SIGNER
 
 const ownerDomainDescriptorJsonFixture = <String, dynamic>{
   'owner_domain_id': ownerDomainIdFixture,
+  'owner_domain_generation': 1,
   'directory_revision': 7,
   'trust_root_refs': [
     'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',

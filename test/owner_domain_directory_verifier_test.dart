@@ -23,7 +23,8 @@ void main() {
       '"logical_audience":"owner-local:device-control","priority":10,'
       '"transport_profile":"https-json","uri":"https://owner-a.local/'
       'api/device-control/v1"}],"expires_at":"2036-08-18T00:00:00Z",'
-      '"issued_at":"2026-08-18T00:00:00Z","owner_domain_id":"owner-local",'
+      '"issued_at":"2026-08-18T00:00:00Z","owner_domain_generation":1,'
+      '"owner_domain_id":"owner-local",'
       '"signing_key_id":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
       'bbbbbbbbbbbbbbbbbbbbbbbb","trust_root_refs":["sha256:aaaaaaaaaaaa'
       'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]}',
@@ -63,15 +64,41 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test('higher Owner generation resets revision and fences the old lineage',
+      () async {
+    final verifier = PlatformOwnerDomainDirectoryVerifier(
+      preferences: InMemoryAppPreferences(),
+      signatureVerifier: const _AcceptingSignatureVerifier(),
+    );
+    final generationOne = _target(
+      generation: 1,
+      revision: 8,
+      host: 'owner-a.local',
+      signature: 'A',
+    );
+    final generationTwo = _target(
+      generation: 2,
+      revision: 1,
+      host: 'owner-b.local',
+      signature: 'B',
+    );
+
+    await verifier.verify(generationOne);
+    await verifier.verify(generationTwo);
+    await expectLater(verifier.verify(generationOne), throwsFormatException);
+  });
 }
 
 DeviceOnboardingTarget _target({
+  int generation = 1,
   required int revision,
   required String host,
   required String signature,
 }) {
   final endpoints = ownerDomainDescriptorJsonFixture['endpoints']! as List;
   final value = Map<String, dynamic>.from(ownerDomainDescriptorJsonFixture)
+    ..['owner_domain_generation'] = generation
     ..['directory_revision'] = revision
     ..['signature'] = signature * 86
     ..['endpoints'] = [

@@ -4,6 +4,7 @@
 class OwnerDomainDescriptorV1 {
   const OwnerDomainDescriptorV1({
     required this.ownerDomainId,
+    required this.ownerDomainGeneration,
     required this.directoryRevision,
     required this.trustRootRefs,
     required this.endpoints,
@@ -14,6 +15,7 @@ class OwnerDomainDescriptorV1 {
   });
 
   final String ownerDomainId;
+  final int ownerDomainGeneration;
   final int directoryRevision;
   final List<AuthorityEndpointV1> endpoints;
   final List<String> trustRootRefs;
@@ -25,6 +27,7 @@ class OwnerDomainDescriptorV1 {
   factory OwnerDomainDescriptorV1.fromJson(Map<String, dynamic> value) {
     const keys = {
       'owner_domain_id',
+      'owner_domain_generation',
       'directory_revision',
       'trust_root_refs',
       'endpoints',
@@ -38,12 +41,15 @@ class OwnerDomainDescriptorV1 {
       throw const FormatException('Invalid Owner Domain descriptor fields');
     }
     final ownerDomainId = _text(value['owner_domain_id'], 128);
+    final ownerDomainGeneration = value['owner_domain_generation'];
     final revision = value['directory_revision'];
     final roots = value['trust_root_refs'];
     final rawEndpoints = value['endpoints'];
     final issuedAt = DateTime.tryParse(value['issued_at'] as String? ?? '');
     final expiresAt = DateTime.tryParse(value['expires_at'] as String? ?? '');
-    if (revision is! int ||
+    if (ownerDomainGeneration is! int ||
+        ownerDomainGeneration < 1 ||
+        revision is! int ||
         revision < 1 ||
         roots is! List ||
         roots.isEmpty ||
@@ -64,6 +70,7 @@ class OwnerDomainDescriptorV1 {
     }
     return OwnerDomainDescriptorV1(
       ownerDomainId: ownerDomainId,
+      ownerDomainGeneration: ownerDomainGeneration,
       directoryRevision: revision,
       trustRootRefs: trustRoots,
       endpoints: rawEndpoints
@@ -85,6 +92,7 @@ class OwnerDomainDescriptorV1 {
 
   Map<String, dynamic> toJson() => {
     'owner_domain_id': ownerDomainId,
+    'owner_domain_generation': ownerDomainGeneration,
     'directory_revision': directoryRevision,
     'trust_root_refs': trustRootRefs,
     'endpoints': endpoints.map((item) => item.toJson()).toList(growable: false),
