@@ -27,6 +27,7 @@ void main() {
     final target = _target(ownerDomainDescriptorFixture());
     final client = HubOnboardingClient(
       security: security,
+      directoryVerifier: const AcceptingOwnerDomainDirectoryVerifier(),
       clientFactory: (ownerRootCertificate) {
         expect(ownerRootCertificate, ownerRootCertificateFixture);
         return MockClient((request) async {
@@ -107,6 +108,10 @@ void main() {
 
     expect(_target(descriptorA).admissionEndpoint().uri.host, 'owner-a.local');
     expect(_target(descriptorB).admissionEndpoint().uri.host, 'owner-b.local');
+    expect(
+      _target(descriptorB).admissionEndpoint().logicalAudience,
+      '$ownerDomainIdFixture:admission',
+    );
     expect(descriptorB.ownerDomainId, descriptorA.ownerDomainId);
   });
 
@@ -117,6 +122,7 @@ void main() {
       ownerDomainId: ownerDomainIdFixture,
       descriptor: OwnerDomainDescriptorV1.fromJson(wrong),
       ownerRootCertificate: ownerRootCertificateFixture,
+      authoritySigningCertificate: authoritySigningCertificateFixture,
     );
 
     expect(target.admissionEndpoint, throwsFormatException);
@@ -128,6 +134,7 @@ VerifiedOwnerDomainTarget _target(OwnerDomainDescriptorV1 descriptor) =>
       ownerDomainId: ownerDomainIdFixture,
       descriptor: descriptor,
       ownerRootCertificate: ownerRootCertificateFixture,
+      authoritySigningCertificate: authoritySigningCertificateFixture,
     );
 
 const _manifest = <String, dynamic>{

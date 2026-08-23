@@ -84,6 +84,8 @@ class MainActivity : FlutterActivity() {
                 )
                 "getDeviceIdentity" -> result.success(deviceIdentity())
                 "signRequest" -> result.success(signRequest(call))
+                "verifyOwnerDomainDescriptor" ->
+                    result.success(verifyOwnerDomainDescriptor(call))
                 "loadOrCreateDeviceEnrollmentMaterial" -> result.success(
                     deviceEnrollmentMaterialStore.loadOrCreate(
                         call.argument<String>("ownerDomainId")
@@ -288,6 +290,26 @@ class MainActivity : FlutterActivity() {
             "timestamp" to timestamp,
             "publicKey" to base64Url(publicDer),
             "signature" to base64Url(signer.sign()),
+        )
+    }
+
+    private fun verifyOwnerDomainDescriptor(call: MethodCall): Boolean {
+        return OwnerDomainDescriptorVerifier.verify(
+            ownerDomainId = call.argument<String>("ownerDomainId")
+                ?: error("ownerDomainId is required"),
+            ownerRootCertificate = call.argument<String>("ownerRootCertificate")
+                ?: error("ownerRootCertificate is required"),
+            authoritySigningCertificate =
+                call.argument<String>("authoritySigningCertificate")
+                    ?: error("authoritySigningCertificate is required"),
+            signingKeyId = call.argument<String>("signingKeyId")
+                ?: error("signingKeyId is required"),
+            trustRootRefs = call.argument<List<String>>("trustRootRefs")
+                ?: error("trustRootRefs is required"),
+            signature = call.argument<String>("signature")
+                ?: error("signature is required"),
+            canonicalSigningDocument = call.argument<String>("canonicalSigningDocument")
+                ?: error("canonicalSigningDocument is required"),
         )
     }
 

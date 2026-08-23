@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'device_setup_coordinator.dart';
 import 'device_setup_models.dart';
 import 'device_setup_ports.dart';
+import 'owner_domain_directory_verifier.dart';
 
 /// One setup act, in the order the device abstraction states it.
 ///
@@ -144,6 +145,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
         transport: _OpenSessionTransport(widget.transport, _session!),
         admission: widget.admission,
         checkpoints: widget.checkpoints,
+        ownerDirectoryVerifier: PlatformOwnerDomainDirectoryVerifier(),
         allowDevelopmentTrust: widget.allowDevelopmentTrust,
       );
       final checkpoint = await coordinator.provisionAndAdmit(

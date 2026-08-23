@@ -133,6 +133,7 @@ void main() {
       transport: transport,
       admission: admission,
       checkpoints: store,
+      ownerDirectoryVerifier: const AcceptingOwnerDomainDirectoryVerifier(),
       clock: () => _now,
     );
 
@@ -169,6 +170,7 @@ void main() {
       transport: transport,
       admission: admission,
       checkpoints: store,
+      ownerDirectoryVerifier: const AcceptingOwnerDomainDirectoryVerifier(),
       clock: () => _now,
     );
 
@@ -208,6 +210,7 @@ void main() {
       transport: _FakeTransport(session),
       admission: _FakeAdmission(),
       checkpoints: store,
+      ownerDirectoryVerifier: const AcceptingOwnerDomainDirectoryVerifier(),
       clock: () => _now,
     );
     const candidate = DeviceProvisioningCandidate(
@@ -227,6 +230,38 @@ void main() {
 
     expect(result.provisioningState, DeviceProvisioningState.failed);
     expect(result.failure?.code, 'untrusted_device_provisioning');
+    expect(session.configured, isFalse);
+  });
+
+  test('rejects an unauthenticated Owner directory before opening transport',
+      () async {
+    final session = _FakeSession(_descriptor);
+    final transport = _FakeTransport(session);
+    final coordinator = DeviceSetupCoordinator(
+      transport: transport,
+      admission: _FakeAdmission(),
+      checkpoints: InMemoryDeviceSetupCheckpointStore(),
+      ownerDirectoryVerifier: const RejectingOwnerDomainDirectoryVerifier(),
+      clock: () => _now,
+    );
+
+    await expectLater(
+      coordinator.provisionAndAdmit(
+        setupId: 'setup-rejected',
+        requestId: 'request-rejected',
+        candidate: _candidate,
+        credentials: const DeviceWifiCredentials(ssid: 'Home', password: 'pw'),
+        onboardingTarget: deviceOnboardingTargetFixture(),
+      ),
+      throwsA(
+        isA<DeviceSetupException>().having(
+          (error) => error.code,
+          'code',
+          'owner_directory_rejected',
+        ),
+      ),
+    );
+    expect(transport.closed, isFalse);
     expect(session.configured, isFalse);
   });
 }

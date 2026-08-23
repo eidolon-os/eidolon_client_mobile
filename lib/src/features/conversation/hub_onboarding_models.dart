@@ -11,11 +11,13 @@ class VerifiedOwnerDomainTarget {
     required this.ownerDomainId,
     required this.descriptor,
     required this.ownerRootCertificate,
+    required this.authoritySigningCertificate,
   });
 
   final String ownerDomainId;
   final OwnerDomainDescriptorV1 descriptor;
   final String ownerRootCertificate;
+  final String authoritySigningCertificate;
 
   factory VerifiedOwnerDomainTarget.fromDeviceTarget(
     DeviceOnboardingTarget target,
@@ -24,6 +26,7 @@ class VerifiedOwnerDomainTarget {
         ownerDomainId: target.ownerDomainId,
         descriptor: target.ownerDomainDescriptor,
         ownerRootCertificate: target.ownerRootCertificate,
+        authoritySigningCertificate: target.authoritySigningCertificate,
       );
 
   AuthorityEndpointV1 admissionEndpoint() {
@@ -34,7 +37,6 @@ class VerifiedOwnerDomainTarget {
     final endpoints = descriptor.endpoints
         .where((item) =>
             item.authority == 'admission' &&
-            item.logicalAudience == 'eidolon-admission' &&
             item.transportProfile == 'https-json')
         .toList(growable: false)
       ..sort((left, right) => left.priority.compareTo(right.priority));

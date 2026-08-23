@@ -43,6 +43,12 @@ abstract interface class DeviceAdmissionPort {
   });
 }
 
+abstract interface class OwnerDomainDirectoryVerifier {
+  /// Verifies Owner identity, delegated P-256 signer and descriptor signature.
+  /// A transport-reachable endpoint or Host TLS leaf is never sufficient.
+  Future<void> verify(DeviceOnboardingTarget target);
+}
+
 abstract interface class DeviceSetupCheckpointStore {
   Future<void> save(DeviceSetupCheckpoint checkpoint);
 

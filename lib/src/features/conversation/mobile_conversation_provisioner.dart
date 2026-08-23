@@ -6,6 +6,7 @@ import '../../generated/device_foundation_v1.dart';
 import '../../models/hub_models.dart';
 import '../../platform/platform_bridge.dart';
 import '../device_setup/device_setup_models.dart';
+import '../device_setup/owner_domain_directory_verifier.dart';
 import 'conversation_provisioner.dart';
 import 'hub_onboarding_client.dart';
 import 'hub_onboarding_models.dart';
@@ -69,6 +70,7 @@ class MobileConversationProvisioner implements ConversationProvisioner {
         _hubClient = hubClient ??
             HubOnboardingClient(
               security: security ?? const PlatformMobileBodySecurity(),
+              directoryVerifier: PlatformOwnerDomainDirectoryVerifier(),
             ),
         _clock = clock ?? DateTime.now;
 

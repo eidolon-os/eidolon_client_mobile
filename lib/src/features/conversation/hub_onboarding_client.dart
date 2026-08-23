@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 
 import '../host_setup/pinned_http_client.dart';
 import '../../generated/device_foundation_v1.dart';
+import '../device_setup/device_setup_models.dart';
+import '../device_setup/device_setup_ports.dart';
 import 'hub_onboarding_models.dart';
 import 'mobile_body_security.dart';
 
@@ -31,24 +33,32 @@ class HubOnboardingRequestException implements Exception {
 class HubOnboardingClient {
   HubOnboardingClient({
     required MobileBodySecurity security,
+    required OwnerDomainDirectoryVerifier directoryVerifier,
     OwnerDomainClientFactory? clientFactory,
     this.timeout = const Duration(seconds: 8),
   })  : _security = security,
+        _directoryVerifier = directoryVerifier,
         _clientFactory = clientFactory ??
             ((ownerRootCertificate) => PlatformPinnedHttpClient.ownerDomain(
                   ownerRootCertificate: ownerRootCertificate,
                 ));
 
   final MobileBodySecurity _security;
+  final OwnerDomainDirectoryVerifier _directoryVerifier;
   final OwnerDomainClientFactory _clientFactory;
   final Duration timeout;
 
   Future<OwnerDomainDescriptorV1> fetchDescriptor(
     VerifiedOwnerDomainTarget target,
   ) async {
-    // The Controller already authenticated and verified this immutable signed
-    // directory.  Mobile resolves logical Authorities from it; it never turns
-    // the discovery URI or the current Host TLS leaf into persistent identity.
+    await _directoryVerifier.verify(
+      DeviceOnboardingTarget(
+        ownerDomainId: target.ownerDomainId,
+        ownerDomainDescriptor: target.descriptor,
+        ownerRootCertificate: target.ownerRootCertificate,
+        authoritySigningCertificate: target.authoritySigningCertificate,
+      ),
+    );
     target.admissionEndpoint();
     return target.descriptor;
   }

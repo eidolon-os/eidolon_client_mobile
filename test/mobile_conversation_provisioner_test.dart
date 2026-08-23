@@ -236,6 +236,7 @@ HubOnboardingClient _hubClient(
   var enrolled = false;
   return HubOnboardingClient(
     security: security,
+    directoryVerifier: const AcceptingOwnerDomainDirectoryVerifier(),
     clientFactory: (ownerRootCertificate) {
       expect(ownerRootCertificate, ownerRootCertificateFixture);
       return MockClient((request) async {

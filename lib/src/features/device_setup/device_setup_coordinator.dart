@@ -25,6 +25,7 @@ class DeviceSetupCoordinator {
     required this.transport,
     required this.admission,
     required this.checkpoints,
+    required this.ownerDirectoryVerifier,
     this.allowDevelopmentTrust = false,
     DeviceSetupClock? clock,
   }) : _clock = clock ?? DateTime.now;
@@ -32,6 +33,7 @@ class DeviceSetupCoordinator {
   final DeviceProvisioningTransport transport;
   final DeviceAdmissionPort admission;
   final DeviceSetupCheckpointStore checkpoints;
+  final OwnerDomainDirectoryVerifier ownerDirectoryVerifier;
   final bool allowDevelopmentTrust;
   final DeviceSetupClock _clock;
 
@@ -43,6 +45,14 @@ class DeviceSetupCoordinator {
     required DeviceOnboardingTarget onboardingTarget,
     String? companionId,
   }) async {
+    try {
+      await ownerDirectoryVerifier.verify(onboardingTarget);
+    } catch (error) {
+      throw DeviceSetupException(
+        code: 'owner_directory_rejected',
+        message: 'Owner Domain directory could not be authenticated: $error',
+      );
+    }
     var checkpoint = DeviceSetupCheckpoint(
       contractVersion: DeviceSetupCheckpoint.currentContractVersion,
       setupId: setupId,

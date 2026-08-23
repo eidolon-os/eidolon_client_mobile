@@ -1,4 +1,5 @@
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
+import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_ports.dart';
 import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 
 const ownerDomainIdFixture = 'owner-local';
@@ -18,14 +19,14 @@ const ownerDomainDescriptorJsonFixture = <String, dynamic>{
   'endpoints': [
     {
       'authority': 'admission',
-      'logical_audience': 'eidolon-admission',
+      'logical_audience': '$ownerDomainIdFixture:admission',
       'uri': 'https://owner-a.local/api/device-onboarding/v1',
       'transport_profile': 'https-json',
       'priority': 10,
     },
     {
       'authority': 'device-control',
-      'logical_audience': 'eidolon-device-control',
+      'logical_audience': '$ownerDomainIdFixture:device-control',
       'uri': 'https://owner-a.local/api/device-control/v1',
       'transport_profile': 'https-json',
       'priority': 10,
@@ -50,3 +51,21 @@ DeviceOnboardingTarget deviceOnboardingTargetFixture({String? hostAddress}) =>
       authoritySigningCertificate: authoritySigningCertificateFixture,
       hostAddress: hostAddress,
     );
+
+class AcceptingOwnerDomainDirectoryVerifier
+    implements OwnerDomainDirectoryVerifier {
+  const AcceptingOwnerDomainDirectoryVerifier();
+
+  @override
+  Future<void> verify(DeviceOnboardingTarget target) async {}
+}
+
+class RejectingOwnerDomainDirectoryVerifier
+    implements OwnerDomainDirectoryVerifier {
+  const RejectingOwnerDomainDirectoryVerifier();
+
+  @override
+  Future<void> verify(DeviceOnboardingTarget target) async {
+    throw const FormatException('signature invalid');
+  }
+}
