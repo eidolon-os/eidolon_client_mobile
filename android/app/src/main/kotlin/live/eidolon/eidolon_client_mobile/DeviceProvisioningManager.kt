@@ -21,9 +21,9 @@ import com.espressif.provisioning.ESPConstants
 import com.espressif.provisioning.ESPDevice
 import com.espressif.provisioning.ESPProvisionManager
 import com.espressif.provisioning.WiFiAccessPoint
-import com.espressif.provisioning.listeners.ProvisionListener
 import com.espressif.provisioning.listeners.ResponseListener
 import com.espressif.provisioning.listeners.WiFiScanListener
+import com.espressif.provisioning.utils.MessengeHelper
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
 import org.greenrobot.eventbus.EventBus
@@ -31,6 +31,8 @@ import org.greenrobot.eventbus.Subscribe
 import org.greenrobot.eventbus.ThreadMode
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
+import espressif.Constants
+import espressif.NetworkConfig
 
 /**
  * The Android half of device provisioning: protocomm over the device's own
@@ -46,18 +48,16 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Two things are worth knowing before reading further.
  *
- * The vendor client binds the whole process to the device's network while a
- * session is open, because that access point has no route to anything else.
- * That is acceptable only if it is undone the moment the session's work is
- * finished — the very next thing this app does is ask the *Host* whether the
- * device enrolled, and that question travels over the home network. So the
- * binding is released as soon as credentials have been handed over, not when
- * the screen is dismissed.
+ * The vendor client binds the process to the device's network while a session
+ * is open, because that access point has no route to anything else. Eidolon,
+ * rather than the vendor convenience API, owns that route lease: it is released
+ * only after committed terminal evidence has been read and acknowledged. The
+ * next Host request can therefore never race the final device request.
  *
- * And handing over credentials is the last thing that can be asked. The
- * provisioning service stops once they are accepted, so anything Eidolon needs
- * to say — which Host this device belongs to — has to be said before it, and
- * the order is enforced by the caller rather than assumed here.
+ * Owner trust is staged before the network candidate. The device keeps the
+ * provisioning service alive through validation and atomic commit, then the
+ * controller sends the canonical terminal ACK before either side tears down
+ * the transport.
  */
 class DeviceProvisioningManager(
     private val context: Context,
@@ -83,6 +83,7 @@ class DeviceProvisioningManager(
         private const val TRUST_ENDPOINT = "eidolon-trust"
         private const val STATUS_ENDPOINT = "eidolon-status"
         private const val TERMINAL_ACK_ENDPOINT = "eidolon-terminal-ack"
+        private const val PROV_CONFIG_ENDPOINT = "prov-config"
 
         private const val TRANSPORT_KIND = "softap"
 
@@ -103,6 +104,8 @@ class DeviceProvisioningManager(
 
         /** How long to wait for the phone to actually be on the device's network. */
         private const val JOIN_TIMEOUT_MILLIS = 60_000
+        private const val TERMINAL_TIMEOUT_MILLIS = 30_000L
+        private const val TERMINAL_POLL_MILLIS = 500L
     }
 
     private val provisioning: ESPProvisionManager =
@@ -324,8 +327,9 @@ class DeviceProvisioningManager(
             override fun onAvailable(network: Network) {
                 Log.i(TAG, "Joined the device's setup network")
                 // Every request this process makes now goes over the device's
-                // network. Released as soon as the credentials are handed over,
-                // because the next thing this app asks is asked of the Host.
+                // network. The commissioning adapter retains this lease through
+                // committed terminal evidence and its ACK, then releases it
+                // before the next Host request.
                 connectivity.bindProcessToNetwork(network)
                 mainHandler.post { startSession(transportId, pending) }
             }
@@ -544,22 +548,108 @@ class DeviceProvisioningManager(
             return
         }
         val pending = PendingResult(result)
-        val terminalProbeStarted = AtomicBoolean(false)
-        var terminalDeadlineMillis = 0L
+        val lease = CommissioningClientLeaseCore()
+        var terminalDeadlineMillis = SystemClock.elapsedRealtime() + TERMINAL_TIMEOUT_MILLIS
+        var committedStatus: JSONObject? = null
+
         fun finish(success: Boolean, code: String = "", message: String = "") {
             mainHandler.post {
-                // The session's work is over either way, and the next question
-                // this app asks goes to the Host over the home network.
+                // This is the one route-lease release point. No vendor callback
+                // may unbind SoftAP before the Eidolon core reaches terminal.
                 close()
                 if (success) {
-                    pending.success(mapOf("terminal" to "wifi-connected"))
+                    val status = committedStatus
+                    if (status == null) {
+                        pending.error(
+                            "COMMISSIONING_STATUS_MISSING",
+                            "Committed terminal evidence was not retained",
+                        )
+                        return@post
+                    }
+                    pending.success(mapOf(
+                        "contract" to status.getString("contract"),
+                        "contract_version" to status.getString("contract_version"),
+                        "profile_id" to status.getString("profile_id"),
+                        "session_id" to status.getString("session_id"),
+                        "setup_generation" to status.getLong("setup_generation"),
+                        "state_revision" to status.getLong("state_revision"),
+                        "state" to status.getString("state"),
+                        "conditions" to mapOf(
+                            "wifi_connected" to true,
+                            "owner_route_validated" to true,
+                            "trust_committed" to true,
+                            "network_committed" to true,
+                        ),
+                        "failure_code" to null,
+                    ))
                 } else {
                     pending.error(code, message)
                 }
             }
         }
 
-        fun readCommittedTerminal() {
+        fun fail(code: String, message: String) {
+            if (lease.handle(CommissioningClientLeaseEvent.Failed) ==
+                CommissioningClientLeaseAction.ReleaseFailed
+            ) {
+                Log.w(TAG, "Commissioning client lease failed: $code: $message")
+                finish(false, code, message)
+            }
+        }
+
+        lateinit var sendNetworkCandidate: () -> Unit
+        lateinit var applyNetworkCandidate: () -> Unit
+        lateinit var readCommittedTerminal: () -> Unit
+        lateinit var sendTerminalAck: () -> Unit
+
+        sendTerminalAck = {
+            val status = committedStatus
+            if (status == null) {
+                fail("COMMISSIONING_STATUS_MISSING", "No committed status to acknowledge")
+            } else {
+                val ack = JSONObject()
+                    .put("contract", "eidolon.device-foundation.commissioning-terminal-ack")
+                    .put("contract_version", "1.0")
+                    .put("session_id", status.getString("session_id"))
+                    .put("setup_generation", status.getLong("setup_generation"))
+                    .put("observed_state_revision", status.getLong("state_revision"))
+                espDevice.sendDataToCustomEndPoint(
+                    TERMINAL_ACK_ENDPOINT,
+                    ack.toString().toByteArray(StandardCharsets.UTF_8),
+                    object : ResponseListener {
+                        override fun onSuccess(response: ByteArray?) {
+                            val acknowledged = try {
+                                JSONObject(
+                                    response?.toString(StandardCharsets.UTF_8).orEmpty(),
+                                ).optBoolean("acknowledged", false)
+                            } catch (error: Exception) {
+                                fail("TERMINAL_ACK_INVALID", errorText(error))
+                                return
+                            }
+                            if (!acknowledged) {
+                                fail(
+                                    "TERMINAL_ACK_REFUSED",
+                                    "Device refused commissioning terminal ACK",
+                                )
+                                return
+                            }
+                            if (lease.handle(
+                                    CommissioningClientLeaseEvent.TerminalAckAccepted,
+                                ) == CommissioningClientLeaseAction.ReleaseSucceeded
+                            ) {
+                                Log.i(TAG, "Committed terminal ACK accepted; releasing SoftAP")
+                                finish(true)
+                            }
+                        }
+
+                        override fun onFailure(error: Exception?) =
+                            fail("TERMINAL_ACK_FAILED", errorText(error))
+                    },
+                )
+            }
+        }
+
+        readCommittedTerminal = {
             espDevice.sendDataToCustomEndPoint(
                 STATUS_ENDPOINT,
                 EMPTY_REQUEST,
@@ -579,127 +669,128 @@ class DeviceProvisioningManager(
                                 conditions.getBoolean("owner_route_validated") &&
                                 conditions.getBoolean("trust_committed") &&
                                 conditions.getBoolean("network_committed")
-                            if (!committed) {
-                                if (status.optString("state") ==
-                                        "applying-configuration" &&
-                                    SystemClock.elapsedRealtime() < terminalDeadlineMillis) {
-                                    mainHandler.postDelayed(
-                                        { readCommittedTerminal() }, 500L,
+                            if (!committed &&
+                                status.optString("state") == "applying-configuration"
+                            ) {
+                                if (SystemClock.elapsedRealtime() >= terminalDeadlineMillis) {
+                                    fail(
+                                        "COMMISSIONING_TERMINAL_TIMEOUT",
+                                        "Device did not publish terminal evidence in time",
                                     )
                                     return
                                 }
-                                finish(false, "COMMISSIONING_NOT_COMMITTED",
-                                    "Device did not commit network and Owner trust")
+                                if (lease.handle(CommissioningClientLeaseEvent.StatusApplying) ==
+                                    CommissioningClientLeaseAction.ReadTerminalStatus
+                                ) {
+                                    mainHandler.postDelayed(
+                                        { readCommittedTerminal() },
+                                        TERMINAL_POLL_MILLIS,
+                                    )
+                                }
                                 return
                             }
-                            val ack = JSONObject()
-                                .put("contract",
-                                    "eidolon.device-foundation.commissioning-terminal-ack")
-                                .put("contract_version", "1.0")
-                                .put("session_id", status.getString("session_id"))
-                                .put("setup_generation", status.getLong("setup_generation"))
-                                .put("observed_state_revision",
-                                    status.getLong("state_revision"))
-                            espDevice.sendDataToCustomEndPoint(
-                                TERMINAL_ACK_ENDPOINT,
-                                ack.toString().toByteArray(StandardCharsets.UTF_8),
-                                object : ResponseListener {
-                                    override fun onSuccess(response: ByteArray?) {
-                                        val acknowledged = try {
-                                            JSONObject(
-                                                response?.toString(StandardCharsets.UTF_8).orEmpty(),
-                                            ).optBoolean("acknowledged", false)
-                                        } catch (error: Exception) {
-                                            finish(false, "TERMINAL_ACK_INVALID",
-                                                errorText(error))
-                                            return
-                                        }
-                                        if (!acknowledged) {
-                                            finish(false, "TERMINAL_ACK_REFUSED",
-                                                "Device refused commissioning terminal ACK")
-                                            return
-                                        }
-                                        mainHandler.post {
-                                            close()
-                                            pending.success(mapOf(
-                                                "contract" to status.getString("contract"),
-                                                "contract_version" to status.getString("contract_version"),
-                                                "profile_id" to status.getString("profile_id"),
-                                                "session_id" to status.getString("session_id"),
-                                                "setup_generation" to status.getLong("setup_generation"),
-                                                "state_revision" to status.getLong("state_revision"),
-                                                "state" to status.getString("state"),
-                                                "conditions" to mapOf(
-                                                    "wifi_connected" to true,
-                                                    "owner_route_validated" to true,
-                                                    "trust_committed" to true,
-                                                    "network_committed" to true,
-                                                ),
-                                                "failure_code" to null,
-                                            ))
-                                        }
-                                    }
-
-                                    override fun onFailure(error: Exception?) =
-                                        finish(false, "TERMINAL_ACK_FAILED", errorText(error))
-                                },
-                            )
+                            if (!committed) {
+                                fail(
+                                    "COMMISSIONING_NOT_COMMITTED",
+                                    "Device did not commit network and Owner trust",
+                                )
+                                return
+                            }
+                            committedStatus = status
+                            if (lease.handle(CommissioningClientLeaseEvent.StatusCommitted) ==
+                                CommissioningClientLeaseAction.SendTerminalAck
+                            ) {
+                                Log.i(TAG, "Observed committed terminal evidence")
+                                sendTerminalAck()
+                            }
                         } catch (error: Exception) {
-                            finish(false, "COMMISSIONING_STATUS_INVALID", errorText(error))
+                            fail("COMMISSIONING_STATUS_INVALID", errorText(error))
                         }
                     }
 
                     override fun onFailure(error: Exception?) =
-                        finish(false, "COMMISSIONING_STATUS_UNAVAILABLE", errorText(error))
+                        fail("COMMISSIONING_STATUS_UNAVAILABLE", errorText(error))
                 },
             )
         }
 
-        fun observeCommittedTerminal() {
-            if (!terminalProbeStarted.compareAndSet(false, true)) return
-            terminalDeadlineMillis = SystemClock.elapsedRealtime() + 30_000L
-            readCommittedTerminal()
+        applyNetworkCandidate = {
+            espDevice.sendDataToCustomEndPoint(
+                PROV_CONFIG_ENDPOINT,
+                MessengeHelper.prepareApplyWiFiConfigMsg(),
+                object : ResponseListener {
+                    override fun onSuccess(response: ByteArray?) {
+                        val accepted = try {
+                            val payload = NetworkConfig.NetworkConfigPayload.parseFrom(
+                                response ?: byteArrayOf(),
+                            )
+                            payload.hasRespApplyWifiConfig() &&
+                                payload.respApplyWifiConfig.status == Constants.Status.Success
+                        } catch (error: Exception) {
+                            fail("NETWORK_APPLY_RESPONSE_INVALID", errorText(error))
+                            return
+                        }
+                        if (!accepted) {
+                            fail("NETWORK_APPLY_REJECTED", "Device rejected Wi-Fi apply")
+                            return
+                        }
+                        terminalDeadlineMillis =
+                            SystemClock.elapsedRealtime() + TERMINAL_TIMEOUT_MILLIS
+                        if (lease.handle(CommissioningClientLeaseEvent.ConfigurationApplied) ==
+                            CommissioningClientLeaseAction.ReadTerminalStatus
+                        ) {
+                            Log.i(TAG, "Wi-Fi candidate applied; retaining SoftAP for terminal evidence")
+                            readCommittedTerminal()
+                        }
+                    }
+
+                    override fun onFailure(error: Exception?) =
+                        fail("NETWORK_APPLY_UNAVAILABLE", errorText(error))
+                },
+            )
         }
 
-        espDevice.provision(
-            ssid,
-            password,
-            object : ProvisionListener {
-                override fun createSessionFailed(error: Exception?) =
-                    if (!terminalProbeStarted.get()) {
-                        finish(false, "PROVISIONING_SESSION_FAILED", errorText(error))
-                    } else Unit
+        sendNetworkCandidate = {
+            espDevice.sendDataToCustomEndPoint(
+                PROV_CONFIG_ENDPOINT,
+                MessengeHelper.prepareWiFiConfigMsg(ssid, password),
+                object : ResponseListener {
+                    override fun onSuccess(response: ByteArray?) {
+                        val accepted = try {
+                            val payload = NetworkConfig.NetworkConfigPayload.parseFrom(
+                                response ?: byteArrayOf(),
+                            )
+                            payload.hasRespSetWifiConfig() &&
+                                payload.respSetWifiConfig.status == Constants.Status.Success
+                        } catch (error: Exception) {
+                            fail("NETWORK_CANDIDATE_RESPONSE_INVALID", errorText(error))
+                            return
+                        }
+                        if (!accepted) {
+                            fail("NETWORK_CANDIDATE_REJECTED", "Device rejected Wi-Fi credentials")
+                            return
+                        }
+                        if (lease.handle(
+                                CommissioningClientLeaseEvent.NetworkCandidateAccepted,
+                            ) == CommissioningClientLeaseAction.ApplyNetworkCandidate
+                        ) {
+                            Log.i(TAG, "Wi-Fi candidate accepted; applying under the same lease")
+                            applyNetworkCandidate()
+                        }
+                    }
 
-                override fun wifiConfigSent() = Unit
+                    override fun onFailure(error: Exception?) =
+                        fail("NETWORK_CANDIDATE_UNAVAILABLE", errorText(error))
+                },
+            )
+        }
 
-                override fun wifiConfigFailed(error: Exception?) =
-                    if (!terminalProbeStarted.get()) {
-                        finish(false, "NETWORK_REJECTED", errorText(error))
-                    } else Unit
-
-                // Credential delivery is an intermediate event. It is never
-                // projected as connected and never starts Owner enrollment polling.
-                override fun wifiConfigApplied() = Unit
-
-                override fun wifiConfigApplyFailed(error: Exception?) =
-                    if (!terminalProbeStarted.get()) {
-                        finish(false, "NETWORK_REJECTED", errorText(error))
-                    } else Unit
-
-                override fun provisioningFailedFromDevice(
-                    reason: ESPConstants.ProvisionFailureReason?,
-                ) = if (!terminalProbeStarted.get()) {
-                    finish(false, "DEVICE_REFUSED_NETWORK", reason?.name ?: "unknown")
-                } else Unit
-
-                override fun deviceProvisioningSuccess() = observeCommittedTerminal()
-
-                override fun onProvisioningFailed(error: Exception?) {
-                    if (terminalProbeStarted.get()) return
-                    finish(false, "PROVISIONING_TERMINAL_UNKNOWN", errorText(error))
-                }
-            },
-        )
+        if (lease.handle(CommissioningClientLeaseEvent.Start) ==
+            CommissioningClientLeaseAction.SendNetworkCandidate
+        ) {
+            Log.i(TAG, "Starting Eidolon-owned commissioning client lease")
+            sendNetworkCandidate()
+        }
     }
 
     /** Leave the device alone and give the phone its own network back. */

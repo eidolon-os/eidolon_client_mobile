@@ -98,9 +98,15 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
         _withDetail('没能读到设备的说明', error),
       'TRUST_UNANSWERED' => _withDetail('设备没有回应它是否接受了这个 Owner Domain', error),
       'DEVICE_REFUSED_NETWORK' ||
-      'NETWORK_REJECTED' =>
+      'NETWORK_REJECTED' ||
+      'NETWORK_CANDIDATE_REJECTED' ||
+      'NETWORK_APPLY_REJECTED' =>
         '设备没有接受这个网络,请确认 Wi-Fi 名称和密码。',
-      'PROVISIONING_TERMINAL_UNKNOWN' => '设备收到了网络配置，但没有确认连接成功；旧网络仍应保留，请重试。',
+      'COMMISSIONING_TERMINAL_TIMEOUT' =>
+        '设备正在连接网络，但没有在限定时间内完成 Owner 验证；旧网络仍应保留。',
+      'COMMISSIONING_STATUS_UNAVAILABLE' ||
+      'TERMINAL_ACK_FAILED' =>
+        '手机与设备的安全设置连接提前中断；不要复位设备，请重试。',
       _ => error.message ?? '设置设备时出错了。',
     };
     throw DeviceProvisioningTransportException(

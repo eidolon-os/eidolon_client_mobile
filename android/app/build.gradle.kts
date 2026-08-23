@@ -46,6 +46,11 @@ flutter {
 dependencies {
     testImplementation(kotlin("test"))
     implementation("com.github.espressif:esp-idf-provisioning-android:lib-2.4.4")
+    // Espressif publishes its generated prov-config messages with the protobuf
+    // runtime at runtime scope. Eidolon's adapter deliberately uses those
+    // standard messages directly, so the matching API must also be visible to
+    // Kotlin compilation; this is not a second wire implementation.
+    implementation("com.google.protobuf:protobuf-javalite:3.18.0")
     // The provisioning client reports connection state on this bus rather than
     // through its listeners, so it is part of the API whether or not the
     // library exports it.
