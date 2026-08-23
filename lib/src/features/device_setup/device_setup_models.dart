@@ -285,32 +285,68 @@ class DeviceRemovalProgress {
     required this.requestId,
     required this.deviceId,
     required this.ownerId,
+    required this.intentId,
     required this.outcome,
-    required this.stoppedAfter,
+    required this.conditions,
   });
 
   final String requestId;
   final String deviceId;
   final String ownerId;
+  final String intentId;
   final ActOutcome outcome;
-  final String stoppedAfter;
+  final Map<String, String> conditions;
 
   /// The grant is gone but the mount is not, which is worth saying out loud:
   /// the device is already off, and what is left to retry is the unmount.
-  bool get onlyTheGrantIsGone =>
-      outcome == ActOutcome.unfinished && stoppedAfter == 'hub-revoked';
+  bool get platformAccessRevoked =>
+      conditions['platform_access_revoked'] == 'true';
+  bool get mountRemoved => conditions['mount_removed'] == 'true';
+  bool get channelAccessRevoked =>
+      conditions['channel_access_revoked'] == 'true';
+  bool get deviceEraseAcknowledged =>
+      conditions['device_erase_acknowledged'] == 'true';
 
   factory DeviceRemovalProgress.fromJson(Map<String, dynamic> value) {
     if (value['operation'] != 'local.device-removal-progress' ||
         value['contract_version'] != '1') {
       throw const FormatException('Local API 返回了无效的设备移除状态');
     }
+    final rawConditions = value['conditions'];
+    if (rawConditions is! List) {
+      throw const FormatException('Local API 返回了无效的设备移除条件');
+    }
+    final conditions = <String, String>{};
+    for (final raw in rawConditions) {
+      if (raw is! Map<String, dynamic>) {
+        throw const FormatException('Local API 返回了无效的设备移除条件');
+      }
+      final name = _boundedWireString(raw, 'name', 64);
+      final state = _boundedWireString(raw, 'state', 16);
+      if (!const {'true', 'false', 'unknown'}.contains(state) ||
+          conditions.containsKey(name)) {
+        throw const FormatException('Local API 返回了冲突的设备移除条件');
+      }
+      conditions[name] = state;
+    }
+    const required = {
+      'platform_access_revoked',
+      'mount_removed',
+      'channel_access_revoked',
+      'device_erase_acknowledged',
+    };
+    final names = conditions.keys.toSet();
+    if (names.difference(required).isNotEmpty ||
+        required.difference(names).isNotEmpty) {
+      throw const FormatException('Local API 返回了不完整的设备移除条件');
+    }
     return DeviceRemovalProgress(
       requestId: _boundedWireString(value, 'request_id', 128),
       deviceId: _boundedWireString(value, 'device_id', 128),
       ownerId: _boundedWireString(value, 'owner_id', 64),
+      intentId: _boundedWireString(value, 'intent_id', 128),
       outcome: _actOutcome(value['outcome']),
-      stoppedAfter: _boundedWireString(value, 'stopped_after', 64),
+      conditions: Map.unmodifiable(conditions),
     );
   }
 }

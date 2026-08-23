@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import '../device_setup/device_setup_models.dart';
@@ -141,8 +143,10 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
             ...inventory.devices.map(
               (device) => _MountedDeviceCard(
                 device: device,
-                onRemove: (deviceId) =>
-                    controller.removeDevice(deviceId: deviceId),
+                onRemove: (deviceId, requestId) => controller.removeDevice(
+                  deviceId: deviceId,
+                  requestId: requestId,
+                ),
                 onRename: (deviceId, displayName) => controller.renameDevice(
                   deviceId: deviceId,
                   displayName: displayName,
@@ -206,7 +210,10 @@ class _MountedDeviceCard extends StatelessWidget {
   });
 
   final MountedDevice device;
-  final Future<DeviceRemovalProgress> Function(String deviceId) onRemove;
+  final Future<DeviceRemovalProgress> Function(
+    String deviceId,
+    String requestId,
+  ) onRemove;
   final Future<void> Function(String deviceId, String displayName)? onRename;
 
   @override
@@ -253,7 +260,10 @@ class MountedDeviceDetailPage extends StatefulWidget {
   });
 
   final MountedDevice device;
-  final Future<DeviceRemovalProgress> Function(String deviceId) onRemove;
+  final Future<DeviceRemovalProgress> Function(
+    String deviceId,
+    String requestId,
+  ) onRemove;
 
   /// Naming is done to the name, where the name is — the same rule the
   /// Eidolon's own page follows. A device arrives calling itself after its
@@ -267,8 +277,11 @@ class MountedDeviceDetailPage extends StatefulWidget {
 }
 
 class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
+  final Random _random = Random.secure();
   bool _removing = false;
+  bool _platformRemoved = false;
   String? _notice;
+  String? _removalRequestId;
 
   Future<void> _renameDevice() async {
     final rename = widget.onRename;
@@ -300,7 +313,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
         key: const Key('confirm-device-removal'),
         title: const Text('移除这台设备？'),
         content: const Text(
-          '主机会撤销它的授权并从当前 Owner 卸载。这台设备会立即失去访问，'
+          '主机会先撤销它对当前 Owner 的访问授权，再让挂载和通道独立收敛。'
           '之后需要重新认领才能再次使用。',
         ),
         actions: [
@@ -322,18 +335,32 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
       _notice = null;
     });
     try {
-      final progress = await widget.onRemove(device.deviceId);
+      final requestId = _removalRequestId ??= _newRemovalRequestId();
+      final progress = await widget.onRemove(device.deviceId, requestId);
       if (!mounted) return;
       if (progress.outcome == ActOutcome.done) {
-        Navigator.of(context).pop();
+        setState(() {
+          _platformRemoved = true;
+          _notice = progress.deviceEraseAcknowledged
+              ? '已从平台移除，设备也已确认清除本地状态。'
+              : '已从平台移除；设备本地擦除尚未确认。离线设备再次出现时旧凭据会被拒绝，必要时请执行物理复位。';
+        });
         return;
       }
       setState(() {
+        if (progress.outcome == ActOutcome.refused) {
+          _removalRequestId = null;
+        }
         _notice = switch (progress) {
-          // Half done, and the half that matters is done: the device cannot
-          // reach anything any more.
-          _ when progress.onlyTheGrantIsGone => '授权已撤销，设备已经无法访问；卸载尚未完成，可以再试一次。',
-          _ when progress.outcome == ActOutcome.unfinished => '移除未完成，可以再试一次。',
+          _ when progress.platformAccessRevoked && !progress.mountRemoved =>
+            '平台访问授权已撤销；主机挂载正在独立收敛。',
+          _
+              when progress.platformAccessRevoked &&
+                  progress.mountRemoved &&
+                  !progress.channelAccessRevoked =>
+            '平台授权和主机挂载已移除；通道凭据正在独立收敛。',
+          _ when progress.outcome == ActOutcome.unfinished =>
+            '主机已受理移除，正在等待各权威状态收敛。设备本地擦除尚未确认。',
           // The Host decided. Offering "try again" here would be offering
           // something that can only fail the same way.
           _ => '主机拒绝了这次移除。',
@@ -341,10 +368,23 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
       });
     } catch (error) {
       if (!mounted) return;
-      setState(() => _notice = '移除未完成：$error');
+      setState(
+        () => _notice = '暂时无法确认主机是否已受理；再次确认会继续同一移除意图：$error',
+      );
     } finally {
       if (mounted) setState(() => _removing = false);
     }
+  }
+
+  String _newRemovalRequestId() {
+    final bytes = List<int>.generate(16, (_) => _random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex =
+        bytes.map((value) => value.toRadixString(16).padLeft(2, '0')).join();
+    final uuid = '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+        '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+    return 'device-removal-$uuid';
   }
 
   @override
@@ -410,7 +450,9 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
           const SizedBox(height: 24),
           if (_notice case final notice?) ...[
             Card(
-              color: Theme.of(context).colorScheme.errorContainer,
+              color: _platformRemoved
+                  ? Theme.of(context).colorScheme.tertiaryContainer
+                  : Theme.of(context).colorScheme.errorContainer,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(notice, key: const Key('device-removal-notice')),
@@ -420,7 +462,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
           ],
           OutlinedButton.icon(
             key: const Key('remove-mounted-device'),
-            onPressed: _removing ? null : _confirmRemoval,
+            onPressed: _removing || _platformRemoved ? null : _confirmRemoval,
             style: OutlinedButton.styleFrom(
               foregroundColor: Theme.of(context).colorScheme.error,
             ),
@@ -430,7 +472,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.link_off),
-            label: const Text('移除设备'),
+            label: Text(_platformRemoved ? '已从平台移除' : '移除设备'),
           ),
           const SizedBox(height: 8),
           Text(

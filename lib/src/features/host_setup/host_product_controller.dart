@@ -485,27 +485,17 @@ class HostProductController extends ChangeNotifier {
   /// restored onto different storage.
   Future<DeviceRemovalProgress> removeDevice({
     required String deviceId,
+    required String requestId,
   }) async {
     if (_connection == null) {
       throw const HostControllerAuthorizationException('请先安全连接主机，再移除设备');
     }
     final progress = await _devicesRepository.remove(
-      requestId: _removalRequestId(deviceId),
+      requestId: requestId,
       deviceId: deviceId,
     );
     await refreshDevices();
     return progress;
-  }
-
-  /// Stable per device, so a retry after a dropped reply resumes the same
-  /// removal instead of starting a second one. The tail of the device id is
-  /// kept when it is too long to fit, because that is where its entropy is.
-  static String _removalRequestId(String deviceId) {
-    const room = 113;
-    final tail = deviceId.length <= room
-        ? deviceId
-        : deviceId.substring(deviceId.length - room);
-    return 'device-removal-$tail';
   }
 
   Future<void> _loadProductState() async {

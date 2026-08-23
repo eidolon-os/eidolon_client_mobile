@@ -24,7 +24,7 @@ Future<void> _open(
     MaterialApp(
       home: MountedDeviceDetailPage(
         device: device,
-        onRemove: (_) async => throw StateError('not part of this test'),
+        onRemove: (_, __) async => throw StateError('not part of this test'),
         onRename: onRename,
       ),
     ),
