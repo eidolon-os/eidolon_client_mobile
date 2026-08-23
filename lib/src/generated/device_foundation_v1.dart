@@ -56,8 +56,9 @@ class OwnerDomainDescriptorV1 {
         !expiresAt.isAfter(issuedAt)) {
       throw const FormatException('Invalid Owner Domain descriptor');
     }
-    final trustRoots =
-        roots.map((item) => _digest(item)).toList(growable: false);
+    final trustRoots = roots
+        .map((item) => _digest(item))
+        .toList(growable: false);
     if (trustRoots.toSet().length != trustRoots.length) {
       throw const FormatException('Duplicate Owner root reference');
     }
@@ -65,12 +66,16 @@ class OwnerDomainDescriptorV1 {
       ownerDomainId: ownerDomainId,
       directoryRevision: revision,
       trustRootRefs: trustRoots,
-      endpoints: rawEndpoints.map((item) {
-        if (item is! Map) {
-          throw const FormatException('Invalid Authority endpoint');
-        }
-        return AuthorityEndpointV1.fromJson(Map<String, dynamic>.from(item));
-      }).toList(growable: false),
+      endpoints: rawEndpoints
+          .map((item) {
+            if (item is! Map) {
+              throw const FormatException('Invalid Authority endpoint');
+            }
+            return AuthorityEndpointV1.fromJson(
+              Map<String, dynamic>.from(item),
+            );
+          })
+          .toList(growable: false),
       issuedAt: value['issued_at']! as String,
       expiresAt: value['expires_at']! as String,
       signingKeyId: _digest(value['signing_key_id']),
@@ -79,16 +84,15 @@ class OwnerDomainDescriptorV1 {
   }
 
   Map<String, dynamic> toJson() => {
-        'owner_domain_id': ownerDomainId,
-        'directory_revision': directoryRevision,
-        'trust_root_refs': trustRootRefs,
-        'endpoints':
-            endpoints.map((item) => item.toJson()).toList(growable: false),
-        'issued_at': issuedAt,
-        'expires_at': expiresAt,
-        'signing_key_id': signingKeyId,
-        'signature': signature,
-      };
+    'owner_domain_id': ownerDomainId,
+    'directory_revision': directoryRevision,
+    'trust_root_refs': trustRootRefs,
+    'endpoints': endpoints.map((item) => item.toJson()).toList(growable: false),
+    'issued_at': issuedAt,
+    'expires_at': expiresAt,
+    'signing_key_id': signingKeyId,
+    'signature': signature,
+  };
 }
 
 class AuthorityEndpointV1 {
@@ -123,8 +127,12 @@ class AuthorityEndpointV1 {
     final uri = Uri.tryParse(_text(value['uri'], 2048));
     final profile = _text(value['transport_profile'], 32);
     final priority = value['priority'];
-    if (!const {'admission', 'device-control', 'body-mesh', 'companion'}
-            .contains(authority) ||
+    if (!const {
+          'admission',
+          'device-control',
+          'body-mesh',
+          'companion',
+        }.contains(authority) ||
         uri == null ||
         uri.scheme != 'https' ||
         uri.host.isEmpty ||
@@ -144,12 +152,112 @@ class AuthorityEndpointV1 {
   }
 
   Map<String, dynamic> toJson() => {
-        'authority': authority,
-        'logical_audience': logicalAudience,
-        'uri': uri.toString(),
-        'transport_profile': transportProfile,
-        'priority': priority,
-      };
+    'authority': authority,
+    'logical_audience': logicalAudience,
+    'uri': uri.toString(),
+    'transport_profile': transportProfile,
+    'priority': priority,
+  };
+}
+
+enum DeviceLocalEraseStateV1 {
+  accepted('accepted'),
+  pending('pending'),
+  deliveryAccepted('delivery-accepted'),
+  acknowledged('acknowledged'),
+  expired('expired'),
+  permanentFailure('permanent-failure');
+
+  const DeviceLocalEraseStateV1(this.wireValue);
+  final String wireValue;
+}
+
+class DeviceLocalEraseOperationStatusV1 {
+  const DeviceLocalEraseOperationStatusV1({
+    required this.operationId,
+    required this.requestFingerprint,
+    required this.state,
+    required this.claimGeneration,
+    required this.trustEpoch,
+    required this.terminalResult,
+  });
+
+  final String operationId;
+  final String requestFingerprint;
+  final DeviceLocalEraseStateV1 state;
+  final int claimGeneration;
+  final int trustEpoch;
+  final String? terminalResult;
+
+  bool get deviceErased =>
+      state == DeviceLocalEraseStateV1.acknowledged &&
+      terminalResult == 'erased';
+
+  factory DeviceLocalEraseOperationStatusV1.fromJson(
+    Map<String, dynamic> value,
+  ) {
+    const keys = {
+      'contract',
+      'contract_version',
+      'operation_id',
+      'operation_type',
+      'request_fingerprint',
+      'device_ref',
+      'created_at',
+      'deadline',
+      'state',
+      'attempt_count',
+      'terminal_result',
+    };
+    if (value.keys.toSet().difference(keys).isNotEmpty ||
+        keys.difference(value.keys.toSet()).isNotEmpty ||
+        value['contract'] !=
+            'eidolon.device-foundation.device-operation-status' ||
+        value['contract_version'] != '1.0' ||
+        value['operation_type'] != 'device-local.erase') {
+      throw const FormatException('Invalid device-local.erase status');
+    }
+    final ref = value['device_ref'];
+    final generation = ref is Map ? ref['claim_generation'] : null;
+    final epoch = ref is Map ? ref['trust_epoch'] : null;
+    DeviceLocalEraseStateV1? state;
+    for (final candidate in DeviceLocalEraseStateV1.values) {
+      if (candidate.wireValue == value['state']) state = candidate;
+    }
+    final result = value['terminal_result'];
+    if (state == null ||
+        generation is! int ||
+        generation < 1 ||
+        epoch is! int ||
+        epoch < 1 ||
+        (result != null &&
+            !const {
+              'erased',
+              'permanent-failure',
+              'deadline-expired',
+            }.contains(result))) {
+      throw const FormatException('Invalid device-local.erase state');
+    }
+    final expectedResult = switch (state) {
+      DeviceLocalEraseStateV1.acknowledged => 'erased',
+      DeviceLocalEraseStateV1.expired => 'deadline-expired',
+      DeviceLocalEraseStateV1.permanentFailure => 'permanent-failure',
+      _ => null,
+    };
+    if (result != expectedResult) {
+      throw const FormatException(
+        'Incoherent device-local.erase terminal state',
+      );
+    }
+    return DeviceLocalEraseOperationStatusV1(
+      operationId: _text(value['operation_id'], 128),
+      requestFingerprint: _digest(value['request_fingerprint']),
+      state: state,
+      claimGeneration: generation,
+      trustEpoch: epoch,
+      terminalResult: result as String?,
+    );
+  }
 }
 
 enum CommissioningStatusStateV1 {
@@ -285,7 +393,8 @@ class CommissioningStatusEvidenceV1 {
     if (state == CommissioningStatusStateV1.committed &&
         !evidence.isCommittedTerminal) {
       throw const FormatException(
-          'Incomplete committed commissioning evidence');
+        'Incomplete committed commissioning evidence',
+      );
     }
     if ((state == CommissioningStatusStateV1.rolledBack ||
             state == CommissioningStatusStateV1.failed) &&
@@ -310,12 +419,12 @@ class CommissioningTerminalAckV1 {
   final int observedStateRevision;
 
   Map<String, dynamic> toJson() => {
-        'contract': 'eidolon.device-foundation.commissioning-terminal-ack',
-        'contract_version': '1.0',
-        'session_id': sessionId,
-        'setup_generation': setupGeneration,
-        'observed_state_revision': observedStateRevision,
-      };
+    'contract': 'eidolon.device-foundation.commissioning-terminal-ack',
+    'contract_version': '1.0',
+    'session_id': sessionId,
+    'setup_generation': setupGeneration,
+    'observed_state_revision': observedStateRevision,
+  };
 }
 
 String _text(Object? value, int maximum) {
