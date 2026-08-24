@@ -288,6 +288,35 @@ class ManagementClient {
     return ForgetResultView.fromJson(body);
   }
 
+  /// 只让它记得 — keep this memory between me and one of my Eidolons.
+  ///
+  /// One call, not two. Forgetting needs a preview because words have to be
+  /// resolved into a set; here I am looking at the memory when I name it. And
+  /// nothing becomes unrecallable: the Eidolon I gave it to still remembers it,
+  /// and sending this again with [companionId] null gives it back to all of them.
+  ///
+  /// A `PUT`, so a retry after a connection I never saw the answer to changes
+  /// nothing twice.
+  Future<MemoryAudienceView> assignMemoryAudience(
+    Uri baseUri, {
+    required String accessToken,
+    required String entryId,
+    String? companionId,
+  }) async {
+    final body = await _send(
+      'PUT',
+      baseUri.resolve(
+        ManagementV1.memoryEntriesByEntryIdAudiencePath(entryId),
+      ),
+      accessToken: accessToken,
+      what: '设置这条记忆的归属',
+      // An empty string rather than a word for "everyone": the Host decides what
+      // an audience is, and absence is how this app says all of them.
+      body: {'companion_id': companionId ?? ''},
+    );
+    return MemoryAudienceView.fromJson(body);
+  }
+
   Future<Map<String, dynamic>> _get(
     Uri endpoint, {
     required String accessToken,

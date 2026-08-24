@@ -262,6 +262,12 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                 _controller.confirmForget(confirmationToken: token),
             loadDay: (since) => _controller.memoryEntries(since: since),
             loadCopy: _controller.memoryCopy,
+            loadCompanions: () async => (await _controller.roster()).companions,
+            assignAudience: (entryId, companionId) =>
+                _controller.assignMemoryAudience(
+              entryId: entryId,
+              companionId: companionId,
+            ),
           ),
         ),
       );

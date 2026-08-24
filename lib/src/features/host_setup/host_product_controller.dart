@@ -430,6 +430,16 @@ class HostProductController extends ChangeNotifier {
   Future<MemoryCopyView> memoryCopy({String? companionId}) =>
       _managementRepository.memoryCopy(companionId: companionId);
 
+  /// Keep one memory between me and one of my Eidolons, or give it back.
+  Future<MemoryAudienceView> assignMemoryAudience({
+    required String entryId,
+    String? companionId,
+  }) =>
+      _managementRepository.assignMemoryAudience(
+        entryId: entryId,
+        companionId: companionId,
+      );
+
   /// What forgetting [target] would remove. Nothing changes.
   Future<ForgetProposalView> previewForget({
     required String target,

@@ -265,6 +265,20 @@ class HostManagementRepository {
         ),
       );
 
+  /// Keep one memory between the Owner and one Companion, or give it back.
+  Future<MemoryAudienceView> assignMemoryAudience({
+    required String entryId,
+    String? companionId,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.assignMemoryAudience(
+          baseUri,
+          accessToken: accessToken,
+          entryId: entryId,
+          companionId: companionId,
+        ),
+      );
+
   /// What forgetting [target] would remove. Nothing changes.
   Future<ForgetProposalView> previewForget({
     required String target,

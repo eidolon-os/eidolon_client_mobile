@@ -25,6 +25,8 @@ class MemoryLibraryScreen extends StatefulWidget {
     this.confirmForget,
     this.loadDay,
     this.loadCopy,
+    this.loadCompanions,
+    this.assignAudience,
   });
 
   final Future<MemoryLibraryView> Function() load;
@@ -43,6 +45,15 @@ class MemoryLibraryScreen extends StatefulWidget {
   /// Reads the whole visible memory, for the copy a person keeps. Null hides
   /// the way in rather than opening a screen that cannot fill itself.
   final Future<MemoryCopyView> Function()? loadCopy;
+
+  /// The two halves of 只让它记得, handed on to the day page where the entries
+  /// are. Passed through this screen rather than wired there directly because
+  /// this is where the Host's answer about governing memory is already read.
+  final Future<List<CompanionSummaryView>> Function()? loadCompanions;
+  final Future<MemoryAudienceView> Function(
+    String entryId,
+    String? companionId,
+  )? assignAudience;
 
   @override
   State<MemoryLibraryScreen> createState() => _MemoryLibraryScreenState();
@@ -89,8 +100,9 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
   bool get _canForget =>
       widget.previewForget != null &&
       widget.confirmForget != null &&
-      _context != null &&
-      hostCan(_context!, 'memory.govern');
+      _canGovern;
+
+  bool get _canGovern => _context != null && hostCan(_context!, 'memory.govern');
 
   /// Opened as its own screen rather than a dialog: what is about to be removed
   /// has to be readable, and a list inside a dialog is where that gets cramped.
@@ -114,7 +126,15 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
   /// questions, and answering both on one page makes each harder to read.
   Future<void> _openToday() => Navigator.of(context).push<void>(
         MaterialPageRoute(
-          builder: (_) => MemoryDayScreen(load: widget.loadDay!),
+          builder: (_) => MemoryDayScreen(
+            load: widget.loadDay!,
+            // Gated on the same capability as forgetting, because it is the same
+            // promise: this Host can publish a change to what is remembered. A
+            // control offered without it would open a sheet whose every choice
+            // fails.
+            loadCompanions: _canGovern ? widget.loadCompanions : null,
+            assignAudience: _canGovern ? widget.assignAudience : null,
+          ),
         ),
       );
 

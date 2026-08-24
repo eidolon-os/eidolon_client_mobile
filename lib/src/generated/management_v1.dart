@@ -13,6 +13,7 @@ class ManagementV1 {
   static String companionsByCompanionIdPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}';
   static const String contextPath = '/api/management/v1/context';
   static const String memoryEntriesPath = '/api/management/v1/memory/entries';
+  static String memoryEntriesByEntryIdAudiencePath(String entryId) => '/api/management/v1/memory/entries/${Uri.encodeComponent(entryId)}/audience';
   static const String memoryExportPath = '/api/management/v1/memory/export';
   static const String memoryForgetConfirmPath = '/api/management/v1/memory/forget/confirm';
   static const String memoryForgetPreviewPath = '/api/management/v1/memory/forget/preview';
@@ -392,6 +393,46 @@ class ManagementContextView {
       defaultCompanionId: value['default_companion_id'] as String?,
       limits: ((value['limits'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as int?))),
       owner: OwnerContextView.fromJson(value['owner'] as Map<String, dynamic>),
+    );
+  }
+}
+
+class MemoryAudienceRequest {
+  const MemoryAudienceRequest({
+    this.companionId,
+  });
+
+  final String? companionId;
+
+  factory MemoryAudienceRequest.fromJson(Map<String, dynamic> value) {
+    return MemoryAudienceRequest(
+      companionId: value['companion_id'] as String?,
+    );
+  }
+}
+
+class MemoryAudienceView {
+  const MemoryAudienceView({
+    this.companionId,
+    this.contractVersion,
+    required this.entryId,
+    required this.status,
+  });
+
+  final String? companionId;
+
+  final String? contractVersion;
+
+  final String entryId;
+
+  final String status;
+
+  factory MemoryAudienceView.fromJson(Map<String, dynamic> value) {
+    return MemoryAudienceView(
+      companionId: value['companion_id'] as String?,
+      contractVersion: value['contract_version'] as String?,
+      entryId: value['entry_id'] as String,
+      status: value['status'] as String,
     );
   }
 }
