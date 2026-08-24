@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'persona_history_models.dart';
+import '../../generated/management_v1.dart';
 
 /// What this Eidolon has been, and the way back to any of it.
 ///
@@ -18,15 +18,15 @@ class PersonaHistoryPage extends StatefulWidget {
   });
 
   final String companionName;
-  final Future<PersonaHistory> Function() loadHistory;
-  final Future<PersonaHistory> Function(String chapterId) restore;
+  final Future<PersonaHistoryView> Function() loadHistory;
+  final Future<PersonaHistoryView> Function(String chapterId) restore;
 
   @override
   State<PersonaHistoryPage> createState() => _PersonaHistoryPageState();
 }
 
 class _PersonaHistoryPageState extends State<PersonaHistoryPage> {
-  PersonaHistory? _history;
+  PersonaHistoryView? _history;
   String? _error;
   bool _busy = false;
 
@@ -53,11 +53,21 @@ class _PersonaHistoryPageState extends State<PersonaHistoryPage> {
     }
   }
 
-  Future<void> _confirmRestore(PersonaChapter chapter) async {
-    final chapters = _history?.chapters ?? const <PersonaChapter>[];
-    final since = chapters
-        .where((value) => value.changedAt.isAfter(chapter.changedAt))
-        .length;
+  Future<void> _confirmRestore(PersonaChapterView chapter) async {
+    final chapters = _history?.chapters ?? const <PersonaChapterView>[];
+    final moment = _moment(chapter.changedAt);
+    // Counted over the chapters this phone can place in time. One it cannot read
+    // is left out of the count rather than assumed to be after or before: a
+    // sentence that said "the 3 changes since then" when it meant 4 would be
+    // worse than one that says 3 of the changes it is sure about.
+    final since = moment == null
+        ? 0
+        : chapters
+            .where((value) {
+              final other = _moment(value.changedAt);
+              return other != null && other.isAfter(moment);
+            })
+            .length;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -184,7 +194,7 @@ class _PersonaHistoryPageState extends State<PersonaHistoryPage> {
                 // whatever created it, and reading it out as "what changed"
                 // would be showing machinery again.
                 isBeginning: chapter == history.chapters.last,
-                onRestore: _busy || chapter.isCurrent
+                onRestore: _busy || (chapter.isCurrent ?? false)
                     ? null
                     : () => _confirmRestore(chapter),
               ),
@@ -202,7 +212,7 @@ class _ChapterCard extends StatelessWidget {
     required this.onRestore,
   });
 
-  final PersonaChapter chapter;
+  final PersonaChapterView chapter;
   final bool isBeginning;
   final VoidCallback? onRestore;
 
@@ -223,7 +233,8 @@ class _ChapterCard extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(width: 10),
-                if (chapter.isCurrent) const Chip(label: Text('现在的它')),
+                if (chapter.isCurrent ?? false)
+                  const Chip(label: Text('现在的它')),
               ],
             ),
             const SizedBox(height: 8),
@@ -233,12 +244,12 @@ class _ChapterCard extends StatelessWidget {
               // on its behalf, which is worse than admitting the gap.
               isBeginning
                   ? '它刚来的时候'
-                  : chapter.whatChanged.isNotEmpty
-                      ? chapter.whatChanged
+                  : (chapter.whatChanged ?? '').isNotEmpty
+                      ? chapter.whatChanged!
                       : restored != null
                           ? '回到了更早的样子'
                           : '这次变化没有留下说明',
-              style: !isBeginning && chapter.whatChanged.isEmpty
+              style: !isBeginning && (chapter.whatChanged ?? '').isEmpty
                   ? Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.outline,
                       )
@@ -264,11 +275,25 @@ class _ChapterCard extends StatelessWidget {
 }
 
 /// Whether this Eidolon has only ever been one thing.
-bool _stillTheSame(PersonaHistory? history) =>
+bool _stillTheSame(PersonaHistoryView? history) =>
     history != null && history.chapters.length == 1;
 
-String _day(DateTime value) {
-  final local = value.toLocal();
+/// The instant a chapter carries, when this phone can read it.
+///
+/// The wire carries a string. Parsed here rather than in a hand-written model,
+/// because placing a chapter in time is what this screen does with it — order
+/// the list, and count what came after.
+DateTime? _moment(String value) => DateTime.tryParse(value);
+
+/// The day, as a person reads it.
+///
+/// An unreadable value is shown as it arrived rather than hidden: here the date
+/// is how someone recognises which chapter this is, so dropping it would leave a
+/// row they cannot identify.
+String _day(String value) {
+  final parsed = _moment(value);
+  if (parsed == null) return value;
+  final local = parsed.toLocal();
   return '${local.year}-${local.month.toString().padLeft(2, '0')}-'
       '${local.day.toString().padLeft(2, '0')}';
 }

@@ -11,6 +11,8 @@ class ManagementV1 {
 
   static const String companionsPath = '/api/management/v1/companions';
   static String companionsByCompanionIdPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}';
+  static String companionsByCompanionIdPersonaHistoryPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona-history';
+  static String companionsByCompanionIdPersonaRestorationsPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona-restorations';
   static const String contextPath = '/api/management/v1/context';
   static const String memoryEntriesPath = '/api/management/v1/memory/entries';
   static String memoryEntriesByEntryIdAudiencePath(String entryId) => '/api/management/v1/memory/entries/${Uri.encodeComponent(entryId)}/audience';
@@ -686,6 +688,72 @@ class OwnerContextView {
       displayName: value['display_name'] as String?,
       ownerId: value['owner_id'] as String,
       revision: value['revision'] as int,
+    );
+  }
+}
+
+class PersonaChapterView {
+  const PersonaChapterView({
+    required this.changedAt,
+    required this.chapterId,
+    this.isCurrent,
+    this.restoredFrom,
+    this.whatChanged,
+  });
+
+  final String changedAt;
+
+  final String chapterId;
+
+  final bool? isCurrent;
+
+  final int? restoredFrom;
+
+  final String? whatChanged;
+
+  factory PersonaChapterView.fromJson(Map<String, dynamic> value) {
+    return PersonaChapterView(
+      changedAt: value['changed_at'] as String,
+      chapterId: value['chapter_id'] as String,
+      isCurrent: value['is_current'] as bool?,
+      restoredFrom: value['restored_from'] as int?,
+      whatChanged: value['what_changed'] as String?,
+    );
+  }
+}
+
+class PersonaHistoryView {
+  const PersonaHistoryView({
+    required this.chapters,
+    required this.companionId,
+    this.contractVersion,
+  });
+
+  final List<PersonaChapterView> chapters;
+
+  final String companionId;
+
+  final String? contractVersion;
+
+  factory PersonaHistoryView.fromJson(Map<String, dynamic> value) {
+    return PersonaHistoryView(
+      chapters: ((value['chapters'] as List<dynamic>).map((entry) => PersonaChapterView.fromJson(entry as Map<String, dynamic>)).toList()),
+      companionId: value['companion_id'] as String,
+      contractVersion: value['contract_version'] as String?,
+    );
+  }
+}
+
+class PersonaRestoreRequest {
+  const PersonaRestoreRequest({
+    required this.chapterId,
+  });
+
+  final String chapterId;
+
+  factory PersonaRestoreRequest.fromJson(Map<String, dynamic> value) {
+    return PersonaRestoreRequest(
+      chapterId: value['chapter_id'] as String,
     );
   }
 }

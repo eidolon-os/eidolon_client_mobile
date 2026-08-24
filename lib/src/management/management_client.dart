@@ -222,6 +222,49 @@ class ManagementClient {
     return MemoryDayView.fromJson(body);
   }
 
+  /// What this Eidolon has been.
+  ///
+  /// A record rather than a settings screen, and no proposal queue: a Companion
+  /// considering a change has not changed, and being handed that would turn
+  /// living with an Eidolon into appraising it.
+  Future<PersonaHistoryView> fetchPersonaHistory(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+  }) async {
+    final body = await _get(
+      baseUri.resolve(
+        ManagementV1.companionsByCompanionIdPersonaHistoryPath(companionId),
+      ),
+      accessToken: accessToken,
+      what: '读取人格变化',
+    );
+    return PersonaHistoryView.fromJson(body);
+  }
+
+  /// Make it the way it was then, and answer with where that leaves it.
+  ///
+  /// A `PUT` naming the chapter it should be, so the same request twice leaves
+  /// the same Eidolon — asking for the chapter it already is succeeds rather than
+  /// conflicting. Going back appends to the record instead of rewinding it.
+  Future<PersonaHistoryView> restorePersona(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+    required String chapterId,
+  }) async {
+    final body = await _send(
+      'PUT',
+      baseUri.resolve(
+        ManagementV1.companionsByCompanionIdPersonaRestorationsPath(companionId),
+      ),
+      accessToken: accessToken,
+      what: '回到那时候',
+      body: {'chapter_id': chapterId},
+    );
+    return PersonaHistoryView.fromJson(body);
+  }
+
   /// 你还记得…吗 — what it remembers about something.
   ///
   /// The question a person arrives with, and the first memory read this app ever

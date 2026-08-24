@@ -1,10 +1,10 @@
-import 'package:eidolon_client_mobile/src/features/host_setup/persona_history_models.dart';
+import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/persona_history_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-PersonaHistory _history({String firstSummary = '我发现你不喜欢被打断'}) =>
-    PersonaHistory.fromJson({
+PersonaHistoryView _history({String firstSummary = '我发现你不喜欢被打断'}) =>
+    PersonaHistoryView.fromJson({
       'companion_id': 'c_1',
       'chapters': [
         {
@@ -26,8 +26,8 @@ PersonaHistory _history({String firstSummary = '我发现你不喜欢被打断'}
 
 Future<void> _open(
   WidgetTester tester, {
-  PersonaHistory? history,
-  Future<PersonaHistory> Function(String chapterId)? restore,
+  PersonaHistoryView? history,
+  Future<PersonaHistoryView> Function(String chapterId)? restore,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -131,7 +131,7 @@ void main() {
     // 它会慢慢变化 would be promising something the product does not do.
     await _open(
       tester,
-      history: PersonaHistory.fromJson({
+      history: PersonaHistoryView.fromJson({
         'companion_id': 'c_1',
         'chapters': [
           {
@@ -164,17 +164,32 @@ void main() {
       expect(chapter.restoredFrom, isNull);
     });
 
-    test('a shape the Host is not supposed to send is refused', () {
-      expect(
-        () => PersonaChapter.fromJson({
-          'chapter_id': 'g_1',
-          'changed_at': 'not-a-time',
-          'what_changed': '',
-          'restored_from': null,
-          'is_current': false,
+    testWidgets('a date this phone cannot read is shown as it arrived',
+        (tester) async {
+      // The parse tests that used to live here belonged to a hand-written
+      // model; the generated client owns that wire now. What is still this
+      // screen's decision is the date — it is how someone recognises which
+      // chapter a row is, so an unreadable one is shown rather than hidden.
+      await _open(
+        tester,
+        history: PersonaHistoryView.fromJson({
+          'companion_id': 'c_1',
+          'chapters': [
+            {
+              'chapter_id': 'g_1',
+              'changed_at': 'not-a-time',
+              'what_changed': '',
+              'restored_from': null,
+              'is_current': true,
+            },
+          ],
         }),
-        throwsA(isA<FormatException>()),
       );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('persona-chapter-g_1')), findsOneWidget);
+      expect(find.text('not-a-time'), findsOneWidget);
     });
+
   });
 }

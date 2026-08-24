@@ -22,7 +22,6 @@ import '../../generated/device_foundation_v1.dart';
 import '../../management/management_client.dart';
 import 'local_api_client.dart';
 import 'local_api_discovery.dart';
-import 'persona_history_models.dart';
 import 'pinned_http_client.dart';
 import 'workspace_models.dart';
 import 'network_changes.dart';
@@ -453,16 +452,16 @@ class HostProductController extends ChangeNotifier {
       _managementRepository.context();
 
   /// What this Eidolon has been.
-  Future<PersonaHistory> personaHistory({required String companionId}) =>
-      _companionRepository.personaHistory(companionId: companionId);
+  Future<PersonaHistoryView> personaHistory({required String companionId}) =>
+      _managementRepository.personaHistory(companionId: companionId);
 
   /// Make it the way it was then, and re-read the workspace so what is shown
   /// afterwards is what the Host now says it is.
-  Future<PersonaHistory> restorePersona({
+  Future<PersonaHistoryView> restorePersona({
     required String companionId,
     required String chapterId,
   }) async {
-    final history = await _companionRepository.restorePersona(
+    final history = await _managementRepository.restorePersona(
       companionId: companionId,
       chapterId: chapterId,
     );

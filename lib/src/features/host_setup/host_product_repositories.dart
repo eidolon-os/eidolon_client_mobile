@@ -6,7 +6,6 @@ import '../../generated/device_foundation_v1.dart';
 import 'activity_models.dart';
 import 'companion_face_models.dart';
 import 'controller_grant_models.dart';
-import 'persona_history_models.dart';
 import '../../generated/management_v1.dart';
 import '../../management/management_client.dart';
 import 'host_product_session.dart';
@@ -97,28 +96,6 @@ class HostCompanionRepository {
   HostCompanionRepository(this._session);
 
   final HostProductSession _session;
-
-  Future<PersonaHistory> personaHistory({required String companionId}) =>
-      _session.execute(
-        (client, baseUrl, accessToken) => client.fetchPersonaHistory(
-          baseUrl,
-          accessToken: accessToken,
-          companionId: companionId,
-        ),
-      );
-
-  Future<PersonaHistory> restorePersona({
-    required String companionId,
-    required String chapterId,
-  }) =>
-      _session.execute(
-        (client, baseUrl, accessToken) => client.restorePersona(
-          baseUrl,
-          accessToken: accessToken,
-          companionId: companionId,
-          chapterId: chapterId,
-        ),
-      );
 
   Future<CompanionFaceState> faceState({required String companionId}) =>
       _session.execute(
@@ -235,6 +212,31 @@ class HostManagementRepository {
           since: since,
           limit: limit,
           companionId: companionId,
+        ),
+      );
+
+  /// What this Eidolon has been.
+  Future<PersonaHistoryView> personaHistory({required String companionId}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchPersonaHistory(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+        ),
+      );
+
+  /// Make it the way it was then. Idempotent: the chapter it already is
+  /// succeeds rather than conflicting.
+  Future<PersonaHistoryView> restorePersona({
+    required String companionId,
+    required String chapterId,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.restorePersona(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          chapterId: chapterId,
         ),
       );
 
