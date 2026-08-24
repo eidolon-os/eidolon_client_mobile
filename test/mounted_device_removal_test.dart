@@ -4,9 +4,26 @@ import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_mod
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-MountedDevice _device() => MountedDevice.fromJson({
-      'device_id': 'mobile-android-0123456789abcdef',
-      'admission_state': 'ready',
+MountedDevice _device({String claimState = 'active'}) =>
+    MountedDevice.fromJson({
+      'claim': {
+        'device_ref': {
+          'device_instance_id': 'mobile-android-0123456789abcdef',
+          'owner_domain_id': 'owner-b0a862b0aab941d64554',
+          'owner_domain_generation': 3,
+          'claim_generation': 1,
+          'trust_epoch': 1,
+        },
+        'business_owner_id': 'owner_683f0000000000000000',
+        'manifest_ref': {
+          'manifest_id': 'mobile-android',
+          'revision': 1,
+          'digest': 'sha256:${'a' * 64}',
+        },
+        'state': claimState,
+        'revision': 1,
+        'updated_at': '2026-08-12T08:10:00Z',
+      },
       'mount': {
         'revision': 2,
         'attached_companion_id': 'companion-1',

@@ -58,7 +58,6 @@ class HostProductController extends ChangeNotifier {
     _companionRepository = HostCompanionRepository(_session);
     _ownerRepository = HostOwnerRepository(_session);
     _activityRepository = HostActivityRepository(_session);
-    _deviceNamingRepository = HostDeviceNamingRepository(_session);
     _managementRepository = HostManagementRepository(_session);
     // Where the Host was is only true for as long as this phone is on the
     // network it learned it from. Watching for that keeps the recovery the
@@ -80,7 +79,6 @@ class HostProductController extends ChangeNotifier {
   late final HostCompanionRepository _companionRepository;
   late final HostOwnerRepository _ownerRepository;
   late final HostActivityRepository _activityRepository;
-  late final HostDeviceNamingRepository _deviceNamingRepository;
   late final HostManagementRepository _managementRepository;
 
   bool _connecting = false;
@@ -269,17 +267,6 @@ class HostProductController extends ChangeNotifier {
   /// The inventory is re-read afterwards for the same reason the Companion's
   /// is: the Host is what a thing is called, and a screen editing its own copy
   /// would show a name the Host might not have accepted.
-  Future<void> renameDevice({
-    required String deviceId,
-    required String displayName,
-  }) async {
-    await _deviceNamingRepository.rename(
-      deviceId: deviceId,
-      displayName: displayName,
-    );
-    await refreshDevices();
-  }
-
   /// Name this Owner's Eidolon.
   ///
   /// The runtime view is re-read afterwards rather than patched here: the Host
@@ -486,7 +473,8 @@ class HostProductController extends ChangeNotifier {
     required String companionId,
     required String taskId,
   }) =>
-      _managementRepository.cancelTask(companionId: companionId, taskId: taskId);
+      _managementRepository.cancelTask(
+          companionId: companionId, taskId: taskId);
 
   Future<TaskView> retryTask({
     required String companionId,

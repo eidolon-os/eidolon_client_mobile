@@ -1,4 +1,5 @@
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_device_models.dart';
+import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/activity_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/controller_grant_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_service_models.dart';
@@ -75,10 +76,24 @@ MountedDeviceInventory _devices(List<String> names) => MountedDeviceInventory(
       devices: [
         for (final name in names)
           MountedDevice(
-            deviceId: 'device-$name',
-            displayName: name,
-            deviceKind: 'esp-box-3',
-            admissionState: MountedDeviceAdmissionState.mounted,
+            claim: ClaimRecordV1.fromJson({
+              'device_ref': {
+                'device_instance_id': 'device-$name',
+                'owner_domain_id': 'owner-b0a862b0aab941d64554',
+                'owner_domain_generation': 3,
+                'claim_generation': 1,
+                'trust_epoch': 1,
+              },
+              'business_owner_id': 'owner_683f0000000000000000',
+              'manifest_ref': {
+                'manifest_id': name,
+                'revision': 1,
+                'digest': 'sha256:${'a' * 64}',
+              },
+              'state': 'active',
+              'revision': 1,
+              'updated_at': '2026-08-19T00:00:00Z',
+            }),
             mount: MountedDeviceMount(
               revision: 1,
               attachedCompanionId: 'cmp-1',
@@ -111,9 +126,10 @@ Future<void> _open(
             : runtime as WorkspaceRuntime?,
         loadVitals: loadVitals ?? () async => _vitals(const []),
         listServices: listServices ?? () async => _services(),
-        loadActivity:
-            loadActivity ?? () async => const HostActivity(coverage: 'full', moments: []),
-        listControllers: listControllers ?? () async => const <ControllerGrant>[],
+        loadActivity: loadActivity ??
+            () async => const HostActivity(coverage: 'full', moments: []),
+        listControllers:
+            listControllers ?? () async => const <ControllerGrant>[],
         thisControllerId: _controllerId,
         devices: devices,
         devicesError: devicesError,
@@ -124,8 +140,11 @@ Future<void> _open(
 }
 
 void main() {
-  testWidgets('shows whose the Host is, and what is attached to whom', (tester) async {
-    await _open(tester, devices: _devices(['客厅', '书房']));
+  testWidgets('shows whose the Host is, and what is attached to whom',
+      (tester) async {
+    // Devices carry no Owner-given name yet; the accepted Manifest is what a
+    // row can honestly say a device is.
+    await _open(tester, devices: _devices(['esp-box-3', 'waveshare-amoled']));
 
     // The information model the console cockpit uses, on a phone: Owner ▸
     // Companion ▸ devices and memory, drawn as containment.
@@ -133,7 +152,7 @@ void main() {
     expect(find.text('曼森'), findsOneWidget);
     expect(find.text('Eidolon'), findsOneWidget);
     expect(find.text('记忆领域 realm-1'), findsOneWidget);
-    expect(find.text('客厅'), findsOneWidget);
+    expect(find.text('esp-box-3'), findsOneWidget);
     expect(find.text('已附体'), findsNWidgets(2));
   });
 

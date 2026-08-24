@@ -1,4 +1,24 @@
-enum MountedDeviceAdmissionState { mounted, ready }
+import '../../generated/device_foundation_v1.dart';
+
+/// What this Owner's Host says about one device it holds.
+///
+/// Three facts, from three authorities, deliberately not collapsed into one:
+/// Hub says whether the Claim still stands, Kernel says whether the device is
+/// mounted, and the mount says which Companion it answers as. A device whose
+/// Claim was revoked but whose mount survives is a real, reachable state — a
+/// removal that finished its first half — and folding it into "fine" is how
+/// the one screen that could offer the retry stopped being able to say so.
+enum MountedDeviceState {
+  /// The Claim stands and a Companion answers through this device.
+  ready,
+
+  /// The Claim stands; nothing answers through it yet.
+  awaitingCompanion,
+
+  /// Platform access is gone and the Host still lists it. The device is
+  /// already off; what is left to retry is the unmount.
+  accessRevoked,
+}
 
 class MountedDeviceMount {
   const MountedDeviceMount({
@@ -38,92 +58,62 @@ class MountedDeviceMount {
 }
 
 class MountedDevice {
-  const MountedDevice({
-    required this.deviceId,
-    required this.displayName,
-    required this.deviceKind,
-    required this.admissionState,
-    required this.mount,
-  });
+  const MountedDevice({required this.claim, required this.mount});
 
   factory MountedDevice.fromJson(Map<String, dynamic> value) {
-    final deviceId = value['device_id'];
-    final rawState = value['admission_state'];
+    final rawClaim = value['claim'];
     final rawMount = value['mount'];
-    final rawName = value['display_name'];
-    final rawKind = value['device_kind'];
-    // Three fields on a Host that predates saying what a device is, five on
-    // one that says it. An App is routinely newer than the Host beside it.
-    if (value.length < 3 ||
-        value.length > 5 ||
-        (rawName != null && rawName is! String) ||
-        (rawKind != null && rawKind is! String) ||
-        deviceId is! String ||
-        deviceId.isEmpty ||
-        deviceId.length > 128 ||
-        rawState is! String ||
-        rawMount is! Map) {
+    if (value.length != 2 || rawClaim is! Map || rawMount is! Map) {
       throw const FormatException('Local API 返回了无效的设备');
     }
-    final state = switch (rawState) {
-      'mounted' => MountedDeviceAdmissionState.mounted,
-      'ready' => MountedDeviceAdmissionState.ready,
-      _ => throw const FormatException('Local API 返回了未知的设备状态'),
-    };
-    final mount = MountedDeviceMount.fromJson(
-      Map<String, dynamic>.from(rawMount),
-    );
-    if (state == MountedDeviceAdmissionState.ready &&
-        mount.attachedCompanionId == null) {
-      throw const FormatException('Ready 设备没有关联 Companion');
-    }
-    if (state == MountedDeviceAdmissionState.mounted &&
-        mount.attachedCompanionId != null) {
-      throw const FormatException('Mounted 设备包含了已完成的 Companion 关联');
-    }
     return MountedDevice(
-      deviceId: deviceId,
-      displayName: (rawName as String?)?.trim() ?? '',
-      deviceKind: (rawKind as String?)?.trim() ?? '',
-      admissionState: state,
-      mount: mount,
+      claim: ClaimRecordV1.fromJson(Map<String, dynamic>.from(rawClaim)),
+      mount: MountedDeviceMount.fromJson(Map<String, dynamic>.from(rawMount)),
     );
   }
 
-  final String deviceId;
+  /// Hub's own Claim record, kept whole rather than copied field by field: the
+  /// generation and trust epoch inside it are what a later removal has to name,
+  /// and re-deriving them is how a stale one gets sent.
+  final ClaimRecordV1 claim;
+  final MountedDeviceMount mount;
 
-  /// What this device is called, or empty when the Host could not say. Empty
-  /// stays empty: an identifier is what someone falls back to when nobody
-  /// will tell them what a thing is, not a substitute for its name.
-  final String displayName;
+  DeviceRefV1 get deviceRef => DeviceRefV1.fromJson(
+        Map<String, dynamic>.from(claim.json['device_ref']! as Map),
+      );
 
-  /// What kind of thing it is — esp32-box3, a phone. Useful exactly when the
-  /// name is missing or when two devices share one.
-  final String deviceKind;
+  String get deviceId => deviceRef.deviceInstanceId;
+
+  /// What kind of thing this is, as the accepted Manifest names it. Nobody has
+  /// named devices yet, and an identifier is not a name.
+  String get deviceKind {
+    final manifest = claim.json['manifest_ref'];
+    final value = manifest is Map ? manifest['manifest_id'] : null;
+    return value is String ? value.trim() : '';
+  }
+
+  MountedDeviceState get state {
+    if (claim.json['state'] != ClaimStateV1.active.wireValue) {
+      return MountedDeviceState.accessRevoked;
+    }
+    return mount.attachedCompanionId == null
+        ? MountedDeviceState.awaitingCompanion
+        : MountedDeviceState.ready;
+  }
+
+  String get _shortId => deviceId.length <= 16
+      ? deviceId
+      : '…${deviceId.substring(deviceId.length - 12)}';
 
   /// The line under the name: what kind of thing it is, or the tail of its
-  /// identifier when the kind would only repeat the name — which is what
-  /// happens when a device reports its board as its name, as an ESP32 does.
-  String get detail {
-    if (deviceKind.isNotEmpty && deviceKind != displayName) return deviceKind;
-    return deviceId.length <= 16
-        ? deviceId
-        : '…${deviceId.substring(deviceId.length - 12)}';
-  }
+  /// identifier when the kind would only repeat the line above.
+  String get detail =>
+      deviceKind.isNotEmpty && deviceKind != label ? deviceKind : _shortId;
 
-  /// How this device should be named on screen: what it is called, and
-  /// failing that what it is, and failing that the tail of its identifier so
-  /// there is at least something to read out when asking for help.
-  String get label {
-    if (displayName.isNotEmpty) return displayName;
-    if (deviceKind.isNotEmpty) return deviceKind;
-    return deviceId.length <= 16
-        ? deviceId
-        : '…${deviceId.substring(deviceId.length - 12)}';
-  }
-
-  final MountedDeviceAdmissionState admissionState;
-  final MountedDeviceMount mount;
+  /// How this device should be named on screen: what it is, and failing that
+  /// the tail of its identifier, so there is something to read out when asking
+  /// for help — and never invented into a name.
+  String get label => deviceKind.isNotEmpty ? deviceKind : _shortId;
 }
 
 class MountedDeviceInventory {
@@ -133,7 +123,8 @@ class MountedDeviceInventory {
     final rawDevices = value['devices'];
     if (value.length != 3 ||
         value['contract_version'] != '1' ||
-        value['coverage'] != 'mounted-devices' ||
+        value['coverage'] !=
+            'active-kernel-mounts-with-owner-scoped-hub-claims' ||
         rawDevices is! List ||
         rawDevices.length > 100) {
       throw const FormatException('Local API 返回了无效的设备列表');

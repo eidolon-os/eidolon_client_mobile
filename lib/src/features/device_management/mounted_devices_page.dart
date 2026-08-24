@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../device_setup/device_setup_models.dart';
 import '../device_setup/device_setup_checkpoint_store.dart';
-import '../naming/ask_for_a_name.dart';
 import '../device_setup/device_setup_ports.dart';
 import '../device_setup/device_admission_page.dart';
 import '../device_setup/device_setup_page.dart';
@@ -153,10 +152,6 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
                   deviceId: deviceId,
                   requestId: requestId,
                 ),
-                onRename: (deviceId, displayName) => controller.renameDevice(
-                  deviceId: deviceId,
-                  displayName: displayName,
-                ),
               ),
             ),
           ],
@@ -212,7 +207,6 @@ class _MountedDeviceCard extends StatelessWidget {
   const _MountedDeviceCard({
     required this.device,
     required this.onRemove,
-    required this.onRename,
   });
 
   final MountedDevice device;
@@ -220,18 +214,22 @@ class _MountedDeviceCard extends StatelessWidget {
     String deviceId,
     String requestId,
   ) onRemove;
-  final Future<void> Function(String deviceId, String displayName)? onRename;
-
   @override
   Widget build(BuildContext context) {
-    final (label, color) = switch (device.admissionState) {
-      MountedDeviceAdmissionState.ready => (
+    final (label, color) = switch (device.state) {
+      MountedDeviceState.ready => (
           '已接入',
           Theme.of(context).colorScheme.primary,
         ),
-      MountedDeviceAdmissionState.mounted => (
+      MountedDeviceState.awaitingCompanion => (
           '待关联 Companion',
           Theme.of(context).colorScheme.tertiary,
+        ),
+      // Its access is already gone; what is left is the mount. Saying so is
+      // the difference between "retry the removal" and "something is wrong".
+      MountedDeviceState.accessRevoked => (
+          '已停用，待移除',
+          Theme.of(context).colorScheme.error,
         ),
     };
     return Card(
@@ -262,7 +260,6 @@ class MountedDeviceDetailPage extends StatefulWidget {
     super.key,
     required this.device,
     required this.onRemove,
-    this.onRename,
   });
 
   final MountedDevice device;
@@ -270,12 +267,6 @@ class MountedDeviceDetailPage extends StatefulWidget {
     String deviceId,
     String requestId,
   ) onRemove;
-
-  /// Naming is done to the name, where the name is — the same rule the
-  /// Eidolon's own page follows. A device arrives calling itself after its
-  /// board, so two of the same one are indistinguishable until someone says
-  /// which is which.
-  final Future<void> Function(String deviceId, String displayName)? onRename;
 
   @override
   State<MountedDeviceDetailPage> createState() =>
@@ -288,28 +279,6 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
   bool _platformRemoved = false;
   String? _notice;
   String? _removalRequestId;
-
-  Future<void> _renameDevice() async {
-    final rename = widget.onRename;
-    if (rename == null) return;
-    final name = await askForAName(
-      context,
-      question: '这台设备叫什么？',
-      hint: '比如「客厅的音箱」',
-      current: widget.device.displayName,
-      dialogKey: const Key('rename-device-dialog'),
-      fieldKey: const Key('device-name-field'),
-      confirmKey: const Key('confirm-device-name'),
-    );
-    if (name == null || !mounted) return;
-    try {
-      await rename(widget.device.deviceId, name);
-      if (mounted) Navigator.of(context).pop();
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _notice = '改名没有完成：$error');
-    }
-  }
 
   Future<void> _confirmRemoval() async {
     final device = widget.device;
@@ -391,23 +360,15 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
   @override
   Widget build(BuildContext context) {
     final device = widget.device;
-    final stateLabel = switch (device.admissionState) {
-      MountedDeviceAdmissionState.ready => '已接入',
-      MountedDeviceAdmissionState.mounted => '待关联 Companion',
+    final stateLabel = switch (device.state) {
+      MountedDeviceState.ready => '已接入',
+      MountedDeviceState.awaitingCompanion => '待关联 Companion',
+      MountedDeviceState.accessRevoked => '已停用，待移除',
     };
     return Scaffold(
       key: const Key('mounted-device-detail'),
       appBar: AppBar(
         title: Text(device.label),
-        actions: [
-          if (widget.onRename != null)
-            IconButton(
-              key: const Key('rename-device'),
-              onPressed: _removing ? null : _renameDevice,
-              tooltip: '改名',
-              icon: const Icon(Icons.edit_outlined),
-            ),
-        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(24),

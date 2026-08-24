@@ -286,7 +286,7 @@ class _DevicesRow extends StatelessWidget {
               children: [
                 const Icon(Icons.memory_outlined, size: 18),
                 const SizedBox(width: 8),
-                Expanded(child: Text(device.displayName)),
+                Expanded(child: Text(device.label)),
                 if (device.mount.attachedCompanionId == companionId)
                   Text('已附体', style: theme.textTheme.bodySmall),
               ],

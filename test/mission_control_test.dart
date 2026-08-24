@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_device_models.dart';
+import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/activity_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_service_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/mission_control_page.dart';
@@ -61,10 +62,24 @@ MountedDeviceInventory _devices(List<String> names) => MountedDeviceInventory(
       devices: [
         for (final name in names)
           MountedDevice(
-            deviceId: 'device-$name',
-            displayName: name,
-            deviceKind: 'esp-box-3',
-            admissionState: MountedDeviceAdmissionState.mounted,
+            claim: ClaimRecordV1.fromJson({
+              'device_ref': {
+                'device_instance_id': 'device-$name',
+                'owner_domain_id': 'owner-b0a862b0aab941d64554',
+                'owner_domain_generation': 3,
+                'claim_generation': 1,
+                'trust_epoch': 1,
+              },
+              'business_owner_id': 'owner_683f0000000000000000',
+              'manifest_ref': {
+                'manifest_id': name,
+                'revision': 1,
+                'digest': 'sha256:${'a' * 64}',
+              },
+              'state': 'active',
+              'revision': 1,
+              'updated_at': '2026-08-17T00:00:00Z',
+            }),
             mount: MountedDeviceMount(
               revision: 1,
               attachedCompanionId: null,
@@ -203,12 +218,15 @@ void main() {
     expect(find.byKey(const Key('mission-control-services')), findsNothing);
   });
 
-  testWidgets('devices are listed by name, and a failure to list them shows', (
+  testWidgets(
+      'devices are listed by what they are, and a failure to list them shows', (
     tester,
   ) async {
-    await _open(tester, devices: _devices(['客厅的 Box-3', '书房的板子']));
+    // Nobody has named devices yet, so the accepted Manifest is what a row can
+    // honestly say a device is. An identifier is the fallback, not the name.
+    await _open(tester, devices: _devices(['esp-box-3', 'waveshare-amoled']));
     expect(find.textContaining('2 台设备挂在它上面'), findsOneWidget);
-    expect(find.textContaining('客厅的 Box-3'), findsOneWidget);
+    expect(find.textContaining('esp-box-3'), findsOneWidget);
 
     await _open(tester, devicesError: '设备列表暂时不可用。');
     expect(

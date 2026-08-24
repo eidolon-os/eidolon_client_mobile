@@ -1,145 +1,170 @@
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_device_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Map<String, dynamic> _inventory() => {
+/// The Host projects Kernel's mount together with Hub's canonical Claim, and
+/// copies neither. These pin what the phone may read out of that: a device is
+/// named by what it is, and the three authorities' facts stay three facts.
+
+const _deviceId =
+    'device-instance-cb2f012772ecde9edb09b4e6dd3fb2fedafda81e2591e2ca0fa6afe06d5ae2fa';
+
+Map<String, dynamic> _claim({
+  String state = 'active',
+  String manifestId = 'box3-device-manifest',
+}) =>
+    <String, dynamic>{
+      'device_ref': <String, dynamic>{
+        'device_instance_id': _deviceId,
+        'owner_domain_id': 'owner-b0a862b0aab941d64554',
+        'owner_domain_generation': 3,
+        'claim_generation': 1,
+        'trust_epoch': 1,
+      },
+      'business_owner_id': 'owner_683f0000000000000000',
+      'manifest_ref': <String, dynamic>{
+        'manifest_id': manifestId,
+        'revision': 1,
+        'digest': 'sha256:${'a' * 64}',
+      },
+      'state': state,
+      'revision': 1,
+      'updated_at': '2026-08-25T00:00:00Z',
+    };
+
+Map<String, dynamic> _inventory({
+  String claimState = 'active',
+  String? companionId = 'c_01',
+}) =>
+    <String, dynamic>{
       'contract_version': '1',
-      'coverage': 'mounted-devices',
-      'devices': [
-        {
-          'device_id': 'device-1',
-          'admission_state': 'ready',
-          'mount': {
+      'coverage': 'active-kernel-mounts-with-owner-scoped-hub-claims',
+      'devices': <dynamic>[
+        <String, dynamic>{
+          'claim': _claim(state: claimState),
+          'mount': <String, dynamic>{
             'revision': 2,
-            'attached_companion_id': 'companion-1',
-            'updated_at': '2026-08-09T08:10:00Z',
+            'attached_companion_id': companionId,
+            'updated_at': '2026-08-25T08:10:00Z',
           },
         },
       ],
     };
 
 void main() {
-  test('strictly parses the mounted-only Local API Device projection', () {
-    final inventory = MountedDeviceInventory.fromJson(_inventory());
+  test('parses the Host projection of Kernel membership and Hub Claim', () {
+    final device = MountedDeviceInventory.fromJson(_inventory()).devices.single;
 
-    expect(inventory.devices, hasLength(1));
-    expect(
-      inventory.devices.single.admissionState,
-      MountedDeviceAdmissionState.ready,
+    expect(device.deviceId, _deviceId);
+    expect(device.state, MountedDeviceState.ready);
+    expect(device.mount.attachedCompanionId, 'c_01');
+    // The Claim is kept whole: the generation and trust epoch inside it are
+    // what a later removal has to name, and re-deriving them is how a stale
+    // one gets sent.
+    expect(device.deviceRef.claimGeneration, 1);
+    expect(device.deviceRef.ownerDomainGeneration, 3);
+  });
+
+  test('a device nothing answers through is not shown as ready', () {
+    final inventory = MountedDeviceInventory.fromJson(
+      _inventory(companionId: null),
     );
     expect(
-      inventory.devices.single.mount.attachedCompanionId,
-      'companion-1',
+      inventory.devices.single.state,
+      MountedDeviceState.awaitingCompanion,
     );
   });
 
-  test('rejects inconsistent or expanded Device payloads', () {
-    final inconsistent = _inventory();
-    final device =
-        (inconsistent['devices'] as List).single as Map<String, dynamic>;
-    device['mount'] = {
-      ...(device['mount'] as Map<String, dynamic>),
-      'attached_companion_id': null,
-    };
-    expect(
-      () => MountedDeviceInventory.fromJson(inconsistent),
-      throwsFormatException,
-    );
+  test('a revoked Claim with a surviving mount is its own state', () {
+    // Removal's first half: platform access is gone, the mount is not. Folding
+    // this into "fine" leaves the one screen that could offer the retry unable
+    // to say anything is wrong.
+    for (final state in ['revoked', 'suspended']) {
+      final inventory = MountedDeviceInventory.fromJson(
+        _inventory(claimState: state),
+      );
+      expect(
+        inventory.devices.single.state,
+        MountedDeviceState.accessRevoked,
+        reason: state,
+      );
+    }
+  });
 
+  test('rejects a projection that is not this contract', () {
     final expanded = _inventory()..['owner_id'] = 'must-not-be-exposed';
     expect(
       () => MountedDeviceInventory.fromJson(expanded),
       throwsFormatException,
     );
 
+    final oldCoverage = _inventory()..['coverage'] = 'mounted-devices';
+    expect(
+      () => MountedDeviceInventory.fromJson(oldCoverage),
+      throwsFormatException,
+    );
+
     final withMountState = _inventory();
-    final stateful =
+    final device =
         (withMountState['devices'] as List).single as Map<String, dynamic>;
-    stateful['mount'] = {
-      ...(stateful['mount'] as Map<String, dynamic>),
+    device['mount'] = <String, dynamic>{
+      ...(device['mount'] as Map<String, dynamic>),
       'state': 'active',
     };
     expect(
       () => MountedDeviceInventory.fromJson(withMountState),
       throwsFormatException,
     );
-  });
 
-  test('rejects the inactive state removal used to leave in the list', () {
-    final removed = _inventory();
-    final device = (removed['devices'] as List).single as Map<String, dynamic>;
-    device['admission_state'] = 'inactive';
-    device['mount'] = {
-      ...(device['mount'] as Map<String, dynamic>),
-      'attached_companion_id': null,
+    // The shape this consumer used to expect, which the Host stopped sending
+    // when the inventory became a projection of the canonical Claim.
+    final flattened = _inventory();
+    (flattened['devices'] as List)[0] = <String, dynamic>{
+      'device_id': 'device-1',
+      'admission_state': 'ready',
+      'mount': <String, dynamic>{
+        'revision': 1,
+        'attached_companion_id': 'c_01',
+        'updated_at': '2026-08-25T08:10:00Z',
+      },
     };
     expect(
-      () => MountedDeviceInventory.fromJson(removed),
+      () => MountedDeviceInventory.fromJson(flattened),
+      throwsFormatException,
+    );
+  });
+
+  test('rejects two rows for one device', () {
+    final duplicated = _inventory();
+    final devices = duplicated['devices'] as List;
+    devices.add(Map<String, dynamic>.from(devices.single as Map));
+    expect(
+      () => MountedDeviceInventory.fromJson(duplicated),
       throwsFormatException,
     );
   });
 
   group('a device is named, not enumerated', () {
-    test('by what it is called, then what it is, then its tail', () {
-      MountedDevice device(Map<String, dynamic> extra) =>
-          MountedDevice.fromJson({
-            'device_id': '24:ec:4a:52:f3:54:aa:bb',
-            'admission_state': 'mounted',
-            'mount': {
-              'revision': 1,
-              'attached_companion_id': null,
-              'updated_at': '2026-08-12T08:10:00Z',
-            },
-            ...extra,
-          });
+    MountedDevice device({String manifestId = 'box3-device-manifest'}) =>
+        MountedDevice.fromJson(<String, dynamic>{
+          'claim': _claim(manifestId: manifestId),
+          'mount': <String, dynamic>{
+            'revision': 1,
+            'attached_companion_id': null,
+            'updated_at': '2026-08-25T08:10:00Z',
+          },
+        });
 
-      expect(
-        device({'display_name': '客厅的 Box-3', 'device_kind': 'esp32-box3'})
-            .label,
-        '客厅的 Box-3',
-      );
-      // No name yet: what kind of thing it is still beats a hex string.
-      expect(device({'device_kind': 'esp32-box3'}).label, 'esp32-box3');
-      // Nothing at all: the tail, so there is something to read out when
-      // asking for help — and never invented into a name.
-      expect(device({}).label, '…:f3:54:aa:bb');
+    test('by what it is, then by the tail of its identifier', () {
+      // Nobody has named devices yet, and the accepted Manifest is the only
+      // thing that says what this is. An identifier is what someone falls back
+      // to when nothing will tell them.
+      expect(device().label, 'box3-device-manifest');
+      expect(device().detail, endsWith('e06d5ae2fa'));
     });
 
     test('the second line never repeats the first', () {
-      // An ESP32 reports its board as its name, so name and kind arrive equal.
-      // Printing it twice tells the person nothing and looks like a bug.
-      final board = MountedDevice.fromJson({
-        'device_id': '24:ec:4a:52:f3:54',
-        'display_name': 'esp-box-3',
-        'device_kind': 'esp-box-3',
-        'admission_state': 'mounted',
-        'mount': {
-          'revision': 1,
-          'attached_companion_id': null,
-          'updated_at': '2026-08-12T08:10:00Z',
-        },
-      });
-
-      expect(board.label, 'esp-box-3');
-      expect(board.detail, isNot('esp-box-3'));
-      expect(board.detail, contains('f3:54'));
-    });
-
-    test('a Host that predates saying what a device is still parses', () {
-      // Three fields then, five now. An App is routinely newer than the Host
-      // beside it, and a device list that broke on the older one would make
-      // every addition there someone's outage.
-      final device = MountedDevice.fromJson({
-        'device_id': 'device-1',
-        'admission_state': 'mounted',
-        'mount': {
-          'revision': 1,
-          'attached_companion_id': null,
-          'updated_at': '2026-08-12T08:10:00Z',
-        },
-      });
-
-      expect(device.displayName, isEmpty);
-      expect(device.deviceKind, isEmpty);
+      final named = device();
+      expect(named.detail, isNot(named.label));
     });
   });
 }

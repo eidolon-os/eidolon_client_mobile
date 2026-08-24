@@ -37,12 +37,28 @@ WorkspaceRuntime _runtime({String name = '小忆'}) => WorkspaceRuntime.fromJson
 MountedDeviceInventory _devices(List<String?> attachedTo) =>
     MountedDeviceInventory.fromJson({
       'contract_version': '1',
-      'coverage': 'mounted-devices',
+      'coverage': 'active-kernel-mounts-with-owner-scoped-hub-claims',
       'devices': [
         for (final (index, companion) in attachedTo.indexed)
           {
-            'device_id': 'device-$index',
-            'admission_state': companion == null ? 'mounted' : 'ready',
+            'claim': {
+              'device_ref': {
+                'device_instance_id': 'device-$index',
+                'owner_domain_id': 'owner-b0a862b0aab941d64554',
+                'owner_domain_generation': 3,
+                'claim_generation': 1,
+                'trust_epoch': 1,
+              },
+              'business_owner_id': 'owner_683f0000000000000000',
+              'manifest_ref': {
+                'manifest_id': 'esp-box-3',
+                'revision': 1,
+                'digest': 'sha256:${'a' * 64}',
+              },
+              'state': 'active',
+              'revision': 1,
+              'updated_at': '2026-08-12T08:10:00Z',
+            },
             'mount': {
               'revision': 2,
               'attached_companion_id': companion,

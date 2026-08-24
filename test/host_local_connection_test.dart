@@ -162,12 +162,28 @@ Map<String, dynamic> _workspaceRuntime() => {
 
 Map<String, dynamic> _deviceInventory({bool withReadyDevice = false}) => {
       'contract_version': '1',
-      'coverage': 'mounted-devices',
+      'coverage': 'active-kernel-mounts-with-owner-scoped-hub-claims',
       'devices': withReadyDevice
           ? [
               {
-                'device_id': 'device-waveshare-1',
-                'admission_state': 'ready',
+                'claim': {
+                  'device_ref': {
+                    'device_instance_id': 'device-waveshare-1',
+                    'owner_domain_id': 'owner-b0a862b0aab941d64554',
+                    'owner_domain_generation': 3,
+                    'claim_generation': 1,
+                    'trust_epoch': 1,
+                  },
+                  'business_owner_id': 'owner_683f0000000000000000',
+                  'manifest_ref': {
+                    'manifest_id': 'esp-box-3',
+                    'revision': 1,
+                    'digest': 'sha256:${'a' * 64}',
+                  },
+                  'state': 'active',
+                  'revision': 1,
+                  'updated_at': '2026-08-09T08:10:00Z',
+                },
                 'mount': {
                   'revision': 2,
                   'attached_companion_id': 'companion_primary',
