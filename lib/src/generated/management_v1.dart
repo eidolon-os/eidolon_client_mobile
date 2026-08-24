@@ -26,6 +26,7 @@ class ManagementV1 {
   static const String memoryForgetPreviewPath = '/api/management/v1/memory/forget/preview';
   static const String memoryLibraryPath = '/api/management/v1/memory/library';
   static const String memoryRecollectionsPath = '/api/management/v1/memory/recollections';
+  static const String ownerActionsRevokeRuntimeSessionsPath = '/api/management/v1/owner/actions/revoke-runtime-sessions';
   static const String ownerDefaultCompanionPath = '/api/management/v1/owner/default-companion';
 }
 
@@ -855,6 +856,24 @@ class RecollectionsView {
       contractVersion: value['contract_version'] as String?,
       query: value['query'] as String,
       recollections: ((value['recollections'] as List<dynamic>).map((entry) => RecollectionView.fromJson(entry as Map<String, dynamic>)).toList()),
+    );
+  }
+}
+
+class RevokedSessionsView {
+  const RevokedSessionsView({
+    this.contractVersion,
+    required this.revokedAt,
+  });
+
+  final String? contractVersion;
+
+  final String revokedAt;
+
+  factory RevokedSessionsView.fromJson(Map<String, dynamic> value) {
+    return RevokedSessionsView(
+      contractVersion: value['contract_version'] as String?,
+      revokedAt: value['revoked_at'] as String,
     );
   }
 }

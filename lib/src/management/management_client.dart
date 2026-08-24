@@ -222,6 +222,28 @@ class ManagementClient {
     return MemoryDayView.fromJson(body);
   }
 
+  /// 让所有设备重新登录 — end every runtime session this Owner has.
+  ///
+  /// For a phone that went missing. Every device has to get a new session before
+  /// it can talk to an Eidolon again, and they do that on their own — the Host
+  /// records an instant and refuses anything issued before it, so this is
+  /// recoverable rather than a lockout.
+  ///
+  /// It does **not** remove any phone's access to *managing* this Host: that is a
+  /// Controller grant, revoked from the devices screen.
+  Future<RevokedSessionsView> revokeRuntimeSessions(
+    Uri baseUri, {
+    required String accessToken,
+  }) async {
+    final body = await _send(
+      'POST',
+      baseUri.resolve(ManagementV1.ownerActionsRevokeRuntimeSessionsPath),
+      accessToken: accessToken,
+      what: '让所有设备重新登录',
+    );
+    return RevokedSessionsView.fromJson(body);
+  }
+
   /// When this Eidolon and I talked.
   ///
   /// Not what was said: the Host keeps words per turn and these rows carry

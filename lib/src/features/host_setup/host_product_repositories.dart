@@ -215,6 +215,13 @@ class HostManagementRepository {
         ),
       );
 
+  /// End every runtime session this Owner has.
+  Future<RevokedSessionsView> revokeRuntimeSessions() =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) =>
+            client.revokeRuntimeSessions(baseUri, accessToken: accessToken),
+      );
+
   /// When this Eidolon and I talked.
   Future<ConversationPageView> conversations({
     required String companionId,

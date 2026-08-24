@@ -451,6 +451,10 @@ class HostProductController extends ChangeNotifier {
   Future<ManagementContextView> managementContext() =>
       _managementRepository.context();
 
+  /// End every runtime session, so every device has to sign in again.
+  Future<RevokedSessionsView> revokeRuntimeSessions() =>
+      _managementRepository.revokeRuntimeSessions();
+
   /// When this Eidolon and I talked.
   Future<ConversationPageView> conversations({
     required String companionId,

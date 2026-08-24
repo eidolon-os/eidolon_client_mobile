@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../setup/host_registry.dart';
+import '../../generated/management_v1.dart';
+import '../../management/management_client.dart';
 import 'host_models.dart';
 import 'host_product_session.dart';
 import 'dart:async';
@@ -23,6 +25,7 @@ class HostSystemPage extends StatelessWidget {
     this.listServices,
     this.changeService,
     this.readVitals,
+    this.revokeRuntimeSessions,
   });
 
   final ManagedHost host;
@@ -35,6 +38,12 @@ class HostSystemPage extends StatelessWidget {
 
   /// Null on a Host too old to be asked how it is doing.
   final Future<HostVitals> Function()? readVitals;
+
+  /// End every runtime session, so every device has to sign in again. Null when
+  /// this Host has not said it can — the action is on this page rather than the
+  /// devices one because it is not aimed at a device: it ends *all* of them, and
+  /// the reason someone wants it is that one of them is out of their hands.
+  final Future<RevokedSessionsView> Function()? revokeRuntimeSessions;
 
   @override
   Widget build(BuildContext context) {
@@ -102,6 +111,10 @@ class HostSystemPage extends StatelessWidget {
               changeService: changeService,
             ),
           ],
+          if (revokeRuntimeSessions case final revoke?) ...[
+            const SizedBox(height: 16),
+            _SignOutDevicesCard(revoke: revoke),
+          ],
           const SizedBox(height: 12),
           Text(
             '这里展示主机状态与服务。发布、激活和回滚仍由 Ops 在工作站执行。',
@@ -112,6 +125,108 @@ class HostSystemPage extends StatelessWidget {
     );
   }
 }
+
+/// 让所有设备重新登录 — the action for a device that is out of someone's hands.
+///
+/// Confirmed here rather than at the boundary, because whether to ask twice is a
+/// question about a screen. What the dialog has to get right is the scope: this
+/// ends the sessions devices use to *talk* to an Eidolon, and it does not touch
+/// which phones may *manage* this Host. Someone reading "让所有设备重新登录"
+/// could reasonably fear it locks them out of this very app, and it does not.
+class _SignOutDevicesCard extends StatefulWidget {
+  const _SignOutDevicesCard({required this.revoke});
+
+  final Future<RevokedSessionsView> Function() revoke;
+
+  @override
+  State<_SignOutDevicesCard> createState() => _SignOutDevicesCardState();
+}
+
+class _SignOutDevicesCardState extends State<_SignOutDevicesCard> {
+  bool _busy = false;
+  String? _outcome;
+
+  Future<void> _confirmAndRevoke() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('confirm-sign-out-devices'),
+        title: const Text('让所有设备重新登录？'),
+        content: const Text(
+          '每台设备都要重新取得会话才能再和它说话，它们会自己完成。'
+          '正在进行的语音或对话会断开。\n\n'
+          '这不会影响任何手机对这台主机的管理权限，也不会解绑设备。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const Key('confirm-sign-out-devices-action'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('让它们重新登录'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _busy = true;
+      _outcome = null;
+    });
+    try {
+      final revoked = await widget.revoke();
+      if (!mounted) return;
+      // The instant, not a claim of completeness: a device that is offline right
+      // now finds out when it comes back.
+      setState(() => _outcome = '已在 ${_dateTime(DateTime.tryParse(revoked.revokedAt) ?? DateTime.now())} 让所有设备重新登录');
+    } catch (error) {
+      if (!mounted) return;
+      setState(
+        () => _outcome = error is ManagementRequestException && error.statusCode == 503
+            // Saying "done" here would leave someone believing a missing phone
+            // had been cut off.
+            ? '这台主机现在做不了这件事，设备仍然在线'
+            : '没能完成：$error',
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SectionCard(
+      title: '设备会话',
+      children: [
+        const Text('如果有一台设备不在你手上了，可以让所有设备重新登录。'),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            key: const Key('sign-out-devices'),
+            onPressed: _busy ? null : _confirmAndRevoke,
+            icon: const Icon(Icons.logout),
+            label: const Text('让所有设备重新登录'),
+          ),
+        ),
+        if (_busy)
+          const Padding(
+            padding: EdgeInsets.only(top: 12),
+            child: LinearProgressIndicator(key: Key('sign-out-devices-busy')),
+          ),
+        if (_outcome case final outcome?)
+          Padding(
+            key: const Key('sign-out-devices-outcome'),
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(outcome),
+          ),
+      ],
+    );
+  }
+}
+
 
 class _StatusHeader extends StatelessWidget {
   const _StatusHeader({required this.state});

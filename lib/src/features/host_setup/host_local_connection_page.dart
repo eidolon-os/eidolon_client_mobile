@@ -520,6 +520,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                     listServices: _controller.listHostServices,
                     changeService: _controller.changeHostService,
                     readVitals: _controller.hostVitals,
+                    revokeRuntimeSessions: _controller.revokeRuntimeSessions,
                   ),
                 ),
               ),
