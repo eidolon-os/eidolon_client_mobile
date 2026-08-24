@@ -28,6 +28,10 @@ import 'host_system_page.dart';
 import 'local_api_discovery.dart';
 import 'network_changes.dart';
 import 'workspace_models.dart';
+import '../constellation/cockpit_composition.dart';
+import '../constellation/constellation_cockpit_page.dart';
+import '../constellation/polled_cockpit_feed.dart';
+import 'host_models.dart';
 
 export 'host_product_controller.dart' show ManagedHostUpdater;
 
@@ -409,6 +413,32 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   /// devices, memory — plus the vitals the console cannot reach. Separate from
   /// 主机动态, which answers "what happened lately"; this one answers "what is
   /// mine and how is it".
+  /// The star map, reading this Host.
+  ///
+  /// Identity is real: the Owner comes from `/context` and the Companions from
+  /// the roster, both over the same pinned session everything else here uses.
+  /// The runtime lanes are not — Mission Control has no producer on the
+  /// management plane yet — so every one of them reports unavailable with that
+  /// reason, and the moons say 读不到 rather than 未绑定 or 空闲.
+  ///
+  /// It is offered next to the runtime cockpit rather than replacing it. The
+  /// swap is the plan (docs/constellation-cockpit.md §3.2) but not yet: the
+  /// cockpit still shows vitals, services and activity from endpoints that
+  /// answer, and trading those for a mostly-unreadable map would be a
+  /// regression dressed as progress.
+  Future<void> _openConstellation() => Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => ConstellationCockpitPage(
+            feed: PolledCockpitFeed(
+              read: CockpitComposer(
+                readContext: _controller.managementContext,
+                readRoster: _controller.roster,
+              ).read,
+            ),
+          ),
+        ),
+      );
+
   Future<void> _openRuntimeCockpit() => Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => RuntimeCockpitPage(
@@ -472,6 +502,16 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               onOpenCockpit: (_controller.workspace?.isReady ?? false)
                   ? _openRuntimeCockpit
                   : null,
+              // Gated on this Host having an Owner, not on the Workspace setup
+              // read — which is what it was, and a live Host disproved it: Owner
+              // claimed, session valid, `/setup/workspace` failing, and the star
+              // map hidden even though `/context` and the roster would both have
+              // answered. Its sources are the management plane's; the gate has to
+              // be about the same fact it needs.
+              onOpenConstellation:
+                  connection.overview.state.claim == HostClaimState.claimed
+                      ? _openConstellation
+                      : null,
               onOpenSystem: () => Navigator.of(context).push<void>(
                 MaterialPageRoute(
                   builder: (_) => HostSystemPage(
@@ -592,6 +632,7 @@ class _ConnectedHostCard extends StatelessWidget {
     required this.onOpenSystem,
     this.onOpenActivity,
     this.onOpenCockpit,
+    this.onOpenConstellation,
   });
 
   final HostProductConnection connection;
@@ -603,6 +644,10 @@ class _ConnectedHostCard extends StatelessWidget {
   /// Null for the same reason: there is no domain to draw before there is an
   /// Owner for it to belong to.
   final VoidCallback? onOpenCockpit;
+
+  /// The star map. Offered only once there is an Owner: a sovereign domain with
+  /// no Owner has nothing to draw.
+  final VoidCallback? onOpenConstellation;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -645,6 +690,15 @@ class _ConnectedHostCard extends StatelessWidget {
                   onPressed: open,
                   icon: const Icon(Icons.dashboard_outlined),
                   label: const Text('运行驾驶舱'),
+                ),
+                const SizedBox(height: 8),
+              ],
+              if (onOpenConstellation case final open?) ...[
+                FilledButton.tonalIcon(
+                  key: const Key('open-constellation'),
+                  onPressed: open,
+                  icon: const Icon(Icons.hub_outlined),
+                  label: const Text('星图'),
                 ),
                 const SizedBox(height: 8),
               ],

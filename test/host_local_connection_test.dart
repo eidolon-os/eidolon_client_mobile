@@ -109,6 +109,7 @@ ManagedHost _host({String? tlsSpkiFingerprint}) => ManagedHost(
 Map<String, dynamic> _hostOverview({
   String hostId = validHostId,
   String workspaceState = 'absent',
+  String claimState = 'claimed',
 }) =>
     {
       'contract_version': '1',
@@ -123,7 +124,7 @@ Map<String, dynamic> _hostOverview({
       },
       'state': {
         'reset_epoch': 2,
-        'claim_state': 'claimed',
+        'claim_state': claimState,
         'network_state': 'connected',
         'workspace_state': workspaceState,
         'recovery_state': 'normal',
@@ -447,6 +448,83 @@ void main() {
     expect(find.text('已创建'), findsNWidgets(2));
   });
 
+  testWidgets('星图入口在 Owner 就绪后出现，且不取代运行驾驶舱', (tester) async {
+    // 两个入口并存是刻意的：驾驶舱的 vitals/服务/动态来自会应答的端点，而星图的
+    // 运行 lane 还没有 producer。用一屏大部分「读不到」的图换掉它，是把退步装成
+    // 进展。§3.2 的替换等运行 lane 落地。
+    await tester.binding.setSurfaceSize(const Size(900, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(
+            _hostOverview(workspaceState: 'ready'),
+            workspaceReady: true,
+          ),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('open-constellation')), findsOneWidget);
+    expect(find.byKey(const Key('open-runtime-cockpit')), findsOneWidget);
+  });
+
+  testWidgets('主机还没有主人时没有星图入口', (tester) async {
+    // 没有主人的主权域无物可画。门看的是「这台主机有主人」——
+    // 而不是 Workspace setup 读取是否成功：真机上出现过 Owner 已认领、
+    // 会话有效、setup 读取失败的组合，那时 /context 和 roster 都答得出，
+    // 星图却被藏了。
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) =>
+              _clientFor(_hostOverview(claimState: 'unclaimed')),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('open-constellation')), findsNothing);
+  });
+
+  testWidgets('Workspace 读不到但主机有主人时，星图入口仍在', (tester) async {
+    // 真机上的组合：Owner 已认领、管理会话有效、`/setup/workspace` 失败。
+    // 星图的来源是 /context 与 roster，两者都不依赖那次读取。
+    await tester.binding.setSurfaceSize(const Size(900, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(
+            _hostOverview(),
+            workspaceTransportFailure: PinnedHttpFailureKind.io,
+          ),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('open-constellation')), findsOneWidget);
+    // 而运行驾驶舱按它自己的门（Workspace 就绪）照常缺席。
+    expect(find.byKey(const Key('open-runtime-cockpit')), findsNothing);
+  });
+
   testWidgets('ready Workspace shows only Kernel-confirmed mounted devices',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1800));
@@ -663,7 +741,8 @@ void main() {
     // Scrolled to rather than tapped where it used to be: the card grew a row
     // (the roster entry), and a fixed drag distance stops landing on this
     // button — which then reads as "the runtime never came back".
-    await tester.ensureVisible(find.byKey(const Key('retry-workspace-runtime')));
+    await tester
+        .ensureVisible(find.byKey(const Key('retry-workspace-runtime')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('retry-workspace-runtime')));
     await tester.pumpAndSettle();
@@ -1018,7 +1097,8 @@ void main() {
     expect(find.byKey(const Key('roster-default-badge')), findsOneWidget);
   });
 
-  testWidgets('the memory library is reachable, not merely built', (tester) async {
+  testWidgets('the memory library is reachable, not merely built',
+      (tester) async {
     // The row for "它的记忆" carried no way in until now: it said the memory
     // exists and left the person there. Same assertion as the cockpit's and the
     // roster's, for the same reason.
