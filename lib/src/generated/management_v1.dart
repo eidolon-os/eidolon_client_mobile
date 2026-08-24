@@ -1,0 +1,174 @@
+// Generated from eidolon_admin/contracts/management/v1/management-v1.openapi.json.
+// Do not edit by hand; contracts/management/v1/generate_dart.py owns this file
+// and a test runs it with --check, so an edit here fails rather than surviving.
+//
+// No operation takes an ownerId: the Owner comes from the authenticated
+// Controller session, so it is not expressible from a client.
+
+/// The paths this contract describes, so a caller does not spell one.
+class ManagementV1 {
+  const ManagementV1._();
+
+  static const String companionsPath = '/api/management/v1/companions';
+  static const String contextPath = '/api/management/v1/context';
+}
+
+class CompanionRosterView {
+  const CompanionRosterView({
+    required this.companions,
+    this.contractVersion,
+    this.defaultCompanionId,
+    this.nextCursor,
+  });
+
+  final List<CompanionSummaryView> companions;
+
+  final String? contractVersion;
+
+  final String? defaultCompanionId;
+
+  final String? nextCursor;
+
+  factory CompanionRosterView.fromJson(Map<String, dynamic> value) {
+    return CompanionRosterView(
+      companions: ((value['companions'] as List<dynamic>).map((entry) => CompanionSummaryView.fromJson(entry as Map<String, dynamic>)).toList()),
+      contractVersion: value['contract_version'] as String?,
+      defaultCompanionId: value['default_companion_id'] as String?,
+      nextCursor: value['next_cursor'] as String?,
+    );
+  }
+}
+
+class CompanionSummaryView {
+  const CompanionSummaryView({
+    required this.companionId,
+    required this.createdAt,
+    this.displayName,
+    required this.kind,
+    required this.lifecycleState,
+    required this.revision,
+    required this.updatedAt,
+  });
+
+  final String companionId;
+
+  final String createdAt;
+
+  final String? displayName;
+
+  final String kind;
+
+  final String lifecycleState;
+
+  final int revision;
+
+  final String updatedAt;
+
+  factory CompanionSummaryView.fromJson(Map<String, dynamic> value) {
+    return CompanionSummaryView(
+      companionId: value['companion_id'] as String,
+      createdAt: value['created_at'] as String,
+      displayName: value['display_name'] as String?,
+      kind: value['kind'] as String,
+      lifecycleState: value['lifecycle_state'] as String,
+      revision: value['revision'] as int,
+      updatedAt: value['updated_at'] as String,
+    );
+  }
+}
+
+class HTTPValidationError {
+  const HTTPValidationError({
+    this.detail,
+  });
+
+  final List<ValidationError>? detail;
+
+  factory HTTPValidationError.fromJson(Map<String, dynamic> value) {
+    return HTTPValidationError(
+      detail: value['detail'] == null ? null : ((value['detail'] as List<dynamic>).map((entry) => ValidationError.fromJson(entry as Map<String, dynamic>)).toList()),
+    );
+  }
+}
+
+class ManagementContextView {
+  const ManagementContextView({
+    required this.capabilities,
+    this.contractVersion,
+    this.defaultCompanionId,
+    required this.limits,
+    required this.owner,
+  });
+
+  final Map<String, bool> capabilities;
+
+  final String? contractVersion;
+
+  final String? defaultCompanionId;
+
+  final Map<String, int?> limits;
+
+  final OwnerContextView owner;
+
+  factory ManagementContextView.fromJson(Map<String, dynamic> value) {
+    return ManagementContextView(
+      capabilities: ((value['capabilities'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as bool))),
+      contractVersion: value['contract_version'] as String?,
+      defaultCompanionId: value['default_companion_id'] as String?,
+      limits: ((value['limits'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as int?))),
+      owner: OwnerContextView.fromJson(value['owner'] as Map<String, dynamic>),
+    );
+  }
+}
+
+class OwnerContextView {
+  const OwnerContextView({
+    this.displayName,
+    required this.ownerId,
+    required this.revision,
+  });
+
+  final String? displayName;
+
+  final String ownerId;
+
+  final int revision;
+
+  factory OwnerContextView.fromJson(Map<String, dynamic> value) {
+    return OwnerContextView(
+      displayName: value['display_name'] as String?,
+      ownerId: value['owner_id'] as String,
+      revision: value['revision'] as int,
+    );
+  }
+}
+
+class ValidationError {
+  const ValidationError({
+    this.ctx,
+    this.input,
+    required this.loc,
+    required this.msg,
+    required this.type,
+  });
+
+  final Map<String, Object?>? ctx;
+
+  final Object? input;
+
+  final List<Object> loc;
+
+  final String msg;
+
+  final String type;
+
+  factory ValidationError.fromJson(Map<String, dynamic> value) {
+    return ValidationError(
+      ctx: value['ctx'] == null ? null : ((value['ctx'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as Object?))),
+      input: value['input'],
+      loc: ((value['loc'] as List<dynamic>).map((entry) => entry as Object).toList()),
+      msg: value['msg'] as String,
+      type: value['type'] as String,
+    );
+  }
+}
