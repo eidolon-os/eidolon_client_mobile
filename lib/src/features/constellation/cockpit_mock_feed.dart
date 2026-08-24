@@ -17,27 +17,48 @@ import 'cockpit_models.dart';
 /// cockpit shows that badge. Nothing here is allowed to look like a fact from
 /// the Host.
 class MockCockpitFeed implements CockpitFeed {
-  MockCockpitFeed({this.autoplay = true, DateTime? startedAt})
-      : _startedAt = startedAt ?? DateTime.now() {
+  MockCockpitFeed({
+    this.autoplay = true,
+    DateTime? startedAt,
+    this.firstReadDelay = Duration.zero,
+  }) : _startedAt = startedAt ?? DateTime.now() {
     _world = _MockWorld(_startedAt);
-    _snapshot = _world.snapshot(StreamState.live);
+    if (firstReadDelay == Duration.zero) {
+      _publish();
+    } else {
+      // Lets a caller exercise the state a real adapter always starts in: no
+      // facts yet, and a screen that has to say so.
+      Timer(firstReadDelay, () {
+        if (!_disposed) _publish();
+      });
+    }
     if (autoplay) _scheduleBeat();
   }
 
   /// Off in tests that want one deterministic frame instead of a moving one.
   final bool autoplay;
 
+  /// How long this world pretends the first read takes.
+  final Duration firstReadDelay;
+
   final DateTime _startedAt;
   late _MockWorld _world;
-  late CockpitSnapshot _snapshot;
+  CockpitSnapshot? _snapshot;
+  CockpitObservation _observation =
+      const CockpitObservation(state: ObservationState.connecting);
   final _updates = StreamController<CockpitSnapshot>.broadcast();
   final _pulses = StreamController<CockpitPulse>.broadcast();
+  final _observations = StreamController<CockpitObservation>.broadcast();
   Timer? _timer;
   int _beat = 0;
   var _disposed = false;
+  var _paused = false;
 
   @override
-  CockpitSnapshot get snapshot => _snapshot;
+  CockpitSnapshot? get snapshot => _snapshot;
+
+  @override
+  CockpitObservation get observation => _observation;
 
   @override
   Stream<CockpitSnapshot> get updates => _updates.stream;
@@ -46,9 +67,31 @@ class MockCockpitFeed implements CockpitFeed {
   Stream<CockpitPulse> get pulses => _pulses.stream;
 
   @override
+  Stream<CockpitObservation> get observations => _observations.stream;
+
+  @override
   Future<void> refresh() async {
     _publish();
   }
+
+  @override
+  void pause() {
+    if (_paused) return;
+    _paused = true;
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  @override
+  void resume() {
+    if (!_paused) return;
+    _paused = false;
+    if (autoplay) _scheduleBeat();
+  }
+
+  /// Whether the script is currently running. Tests assert on this rather than
+  /// on a timer, because "did backgrounding actually stop it" is the question.
+  bool get running => !_paused && !_disposed;
 
   /// Advance the script by one beat without waiting for its timer. Tests drive
   /// the world this way so a scene is reproducible rather than timing-dependent.
@@ -62,10 +105,11 @@ class MockCockpitFeed implements CockpitFeed {
   }
 
   void _scheduleBeat() {
+    if (_disposed || _paused) return;
     final beats = _script;
     final beat = beats[_beat % beats.length];
     _timer = Timer(beat.after, () {
-      if (_disposed) return;
+      if (_disposed || _paused) return;
       step();
       _scheduleBeat();
     });
@@ -78,8 +122,15 @@ class MockCockpitFeed implements CockpitFeed {
 
   void _publish() {
     if (_disposed) return;
-    _snapshot = _world.snapshot(StreamState.live);
-    _updates.add(_snapshot);
+    final snapshot = _world.snapshot(StreamState.live);
+    _snapshot = snapshot;
+    _observation = CockpitObservation(
+      state: ObservationState.live,
+      lastReadAt: snapshot.generatedAt,
+      cursor: snapshot.events.isEmpty ? null : snapshot.events.first.eventId,
+    );
+    _updates.add(snapshot);
+    _observations.add(_observation);
   }
 
   @override
@@ -88,6 +139,7 @@ class MockCockpitFeed implements CockpitFeed {
     _timer?.cancel();
     _updates.close();
     _pulses.close();
+    _observations.close();
   }
 }
 

@@ -112,18 +112,38 @@ UI 只通过 `CockpitFeed` 的五个成员碰数据：`snapshot` / `updates` / `
 `ConstellationCockpitPage` 的 `feed` 是必填的，没有回落到 mock 的路径 ——
 少传一个参数就显示演示数据，这种事不该可能发生。
 
-### 6.2 接缝本身还是照 mock 的形状定的
+### 6.2 接口已经按契约定型
 
-真流要补进接口的三样，恰好都是
-[product-surface-plan.md](product-surface-plan.md) §5 已经要求的：
+完整契约见 **[mission-control-local-api-contract.md](mission-control-local-api-contract.md)**。
+消费侧的形状已经改成契约要求的样子，不再是「mock 用着方便」的样子：
 
-| 缺口 | 为什么不能靠 adapter 内部糊 |
-|---|---|
-| **游标与去重** | 有界重连之后，要么重放（飞镖打两次）要么跳过（静默丢事件）。`pulses` 现在是 fire-and-forget，没有「我从这里续上」的概念 |
-| **前后台生命周期** | 接口没有 `pause` / `resume`，App 切后台时订阅只是挂着 |
-| **`refresh()` 的结果** | 返回 `Future<void>`，成功失败都一样 —— 现在页面靠 catch 兜住，但这是页面在替接口补语义 |
+```dart
+abstract class CockpitFeed {
+  CockpitSnapshot? get snapshot;          // 第一次读到之前是 null
+  CockpitObservation get observation;     // 观测状态与事实分开
+  Stream<CockpitSnapshot> get updates;
+  Stream<CockpitPulse> get pulses;
+  Stream<CockpitObservation> get observations;
+  Future<void> refresh();                 // 失败必须抛
+  void pause();                           // App 切后台
+  void resume();
+  void dispose();
+}
+```
 
-失败通道已经补上了（见 §6.3），剩下这三样等真实传输一起定，现在补是凭空设计。
+四个刻意的决定：
+
+1. **`snapshot` 可空。** 真 adapter 在第一个往返之前没有事实。给它一个空 snapshot
+   顶上，就等于让「还没读到」长成「什么都没有」。所以第一次读取落地之前，星图
+   **一个节点都不画** —— 另有一屏说明它在读、或者第一次就失败了（含重试）。
+2. **观测状态自己一条通道**（`connecting / live / degraded / lost` + 原因 + 最后一次
+   成功读取时间 + 游标）。传输失败不用伪造一份 snapshot 来表达。
+3. **`pause` / `resume` 在接口里**，因为消费者真的会调 —— 页面挂在
+   `AppLifecycleState` 上，切后台就停止消费。
+4. **`refresh()` 失败必须抛。** 静默失败的刷新按钮是最坏的一种按钮。
+
+游标语义（客户端给、服务端从之后重放、`event_id` 双端去重、过期发
+`stream.reset`）写在契约 §4，`CockpitObservation.cursor` 是它在消费侧的落点。
 
 ### 6.3 读失败已经有位置了
 

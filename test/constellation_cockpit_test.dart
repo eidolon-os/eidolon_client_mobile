@@ -68,6 +68,7 @@ Finder _moon(String companionId, MoonKind kind) => find.byWidgetPredicate(
     );
 
 void main() {
+  _contractTests();
   _failureTests();
 
   testWidgets('主人核心、伙伴行星和三颗卫星都画了出来', (tester) async {
@@ -265,7 +266,7 @@ void main() {
     feed.step();
     await _settle(tester);
 
-    expect(feed.snapshot.pipelineActive, isTrue);
+    expect(feed.snapshot?.pipelineActive, isTrue);
     expect(find.text('对话中'), findsOneWidget);
     expect(find.textContaining('客厅音箱 加入语音房间'), findsOneWidget);
 
@@ -332,16 +333,30 @@ class _FailingFeed implements CockpitFeed {
   final MockCockpitFeed _backing;
   final _updates = StreamController<CockpitSnapshot>.broadcast();
   final _pulses = StreamController<CockpitPulse>.broadcast();
+  final _observations = StreamController<CockpitObservation>.broadcast();
   var refreshes = 0;
+  var paused = false;
 
   @override
-  CockpitSnapshot get snapshot => _backing.snapshot;
+  CockpitSnapshot? get snapshot => _backing.snapshot;
+
+  @override
+  CockpitObservation get observation => _backing.observation;
 
   @override
   Stream<CockpitSnapshot> get updates => _updates.stream;
 
   @override
   Stream<CockpitPulse> get pulses => _pulses.stream;
+
+  @override
+  Stream<CockpitObservation> get observations => _observations.stream;
+
+  @override
+  void pause() => paused = true;
+
+  @override
+  void resume() => paused = false;
 
   void fail(Object error) => _updates.addError(error);
 
@@ -355,6 +370,7 @@ class _FailingFeed implements CockpitFeed {
   void dispose() {
     _updates.close();
     _pulses.close();
+    _observations.close();
     _backing.dispose();
   }
 }
@@ -402,5 +418,131 @@ void _failureTests() {
     expect(find.textContaining('主机仍然没有回应'), findsOneWidget);
 
     await _close(tester);
+  });
+}
+
+/// A feed that has never read anything — the state every real adapter starts in
+/// and the one a mock hides by having facts on construction.
+class _UnreadFeed implements CockpitFeed {
+  final _updates = StreamController<CockpitSnapshot>.broadcast();
+  final _pulses = StreamController<CockpitPulse>.broadcast();
+  final _observations = StreamController<CockpitObservation>.broadcast();
+  var _observation =
+      const CockpitObservation(state: ObservationState.connecting);
+  var refreshes = 0;
+
+  @override
+  CockpitSnapshot? get snapshot => null;
+
+  @override
+  CockpitObservation get observation => _observation;
+
+  @override
+  Stream<CockpitSnapshot> get updates => _updates.stream;
+
+  @override
+  Stream<CockpitPulse> get pulses => _pulses.stream;
+
+  @override
+  Stream<CockpitObservation> get observations => _observations.stream;
+
+  void failFirstRead(String detail) {
+    _observation = CockpitObservation(
+      state: ObservationState.lost,
+      detail: detail,
+    );
+    _observations.add(_observation);
+  }
+
+  @override
+  Future<void> refresh() async => refreshes += 1;
+
+  @override
+  void pause() {}
+
+  @override
+  void resume() {}
+
+  @override
+  void dispose() {
+    _updates.close();
+    _pulses.close();
+    _observations.close();
+  }
+}
+
+void _contractTests() {
+  testWidgets('第一次读取落地之前不画星图，也不假装是空的域', (tester) async {
+    final feed = MockCockpitFeed(
+      autoplay: false,
+      // 比打开这一屏本身的 pump 更久，否则断言时读取已经落地了。
+      firstReadDelay: const Duration(seconds: 3),
+    );
+    addTearDown(feed.dispose);
+    await _openCockpit(tester, feed);
+
+    // 还没有事实：星图一个节点都不画。
+    expect(find.byKey(const Key('constellation-first-read')), findsOneWidget);
+    expect(find.byType(OwnerCore), findsNothing);
+    expect(find.text('正在读取这台主机的运行投影'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 3));
+    await _settle(tester);
+
+    // 读到了才有星图。
+    expect(find.byKey(const Key('constellation-first-read')), findsNothing);
+    expect(find.byType(OwnerCore), findsOneWidget);
+
+    await _close(tester);
+  });
+
+  testWidgets('第一次读取就失败：说出来并给重试，而不是空转', (tester) async {
+    final feed = _UnreadFeed();
+    addTearDown(feed.dispose);
+    await _openCockpit(tester, feed);
+
+    feed.failFirstRead('pinned host 无法验证');
+    await _settle(tester);
+
+    expect(find.text('没能读到这台主机的运行投影'), findsOneWidget);
+    expect(find.textContaining('pinned host 无法验证'), findsOneWidget);
+    // 关键区别要说出口：这一屏从没成功读过，所以它什么都不画。
+    expect(find.textContaining('不该长成同一张'), findsOneWidget);
+    expect(find.byType(OwnerCore), findsNothing);
+
+    await tester.tap(find.byKey(const Key('retry-first-read')));
+    await _settle(tester);
+    expect(feed.refreshes, 1);
+
+    await _close(tester);
+  });
+
+  testWidgets('切到后台暂停消费，回到前台继续', (tester) async {
+    final feed = _FailingFeed();
+    addTearDown(feed.dispose);
+    await _openCockpit(tester, feed);
+    expect(feed.paused, isFalse);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await _settle(tester);
+    expect(feed.paused, isTrue);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await _settle(tester);
+    expect(feed.paused, isFalse);
+
+    await _close(tester);
+  });
+
+  testWidgets('mock 的暂停真的把脚本停住了', (tester) async {
+    final feed = MockCockpitFeed();
+    addTearDown(feed.dispose);
+    expect(feed.running, isTrue);
+    feed.pause();
+    expect(feed.running, isFalse);
+    feed.resume();
+    expect(feed.running, isTrue);
+    // 停回去，别把定时器留给测试收尾。
+    feed.pause();
   });
 }

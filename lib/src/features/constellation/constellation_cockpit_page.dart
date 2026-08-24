@@ -38,26 +38,32 @@ class ConstellationCockpitPage extends StatefulWidget {
 }
 
 class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   CockpitFeed get _feed => widget.feed;
   late final AnimationController _clock = AnimationController.unbounded(
     vsync: this,
   );
-  late final ValueNotifier<CockpitSnapshot> _snapshot =
-      ValueNotifier<CockpitSnapshot>(_feed.snapshot);
+  late final ValueNotifier<CockpitSnapshot?> _snapshot =
+      ValueNotifier<CockpitSnapshot?>(_feed.snapshot);
   final _stage = GlobalKey<ConstellationStageState>();
   final List<CockpitPulse> _pulses = <CockpitPulse>[];
   final List<Timer> _pulseTimers = <Timer>[];
   StreamSubscription<CockpitSnapshot>? _snapshotSub;
   StreamSubscription<CockpitPulse>? _pulseSub;
+  StreamSubscription<CockpitObservation>? _observationSub;
   Timer? _secondHand;
   Timer? _igniteTimer;
 
-  /// What went wrong reading the projection, if anything. Kept apart from the
-  /// snapshot on purpose: an unread domain is not a quiet one, and the map on
+  /// How well this screen is observing, as opposed to what it observed. The
+  /// feed's own channel — an unread domain is not a quiet one, and the map on
   /// screen after a failure is a memory, not an observation.
-  String? _readFailure;
-  DateTime? _lastRead;
+  late CockpitObservation _observation = _feed.observation;
+
+  String? get _readFailure =>
+      _observation.healthy || _observation.state == ObservationState.connecting
+          ? null
+          : (_observation.detail.isEmpty ? '流已中断' : _observation.detail);
+  DateTime? get _lastRead => _observation.lastReadAt;
 
   String _focusedId = '';
   InspectorTab _tab = InspectorTab.overview;
@@ -70,9 +76,15 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
   void initState() {
     super.initState();
     _clockText = formatClock(DateTime.now());
-    _lastRead = _feed.snapshot.generatedAt;
+    WidgetsBinding.instance.addObserver(this);
     _snapshotSub = _feed.updates.listen(_onSnapshot, onError: _onFeedError);
     _pulseSub = _feed.pulses.listen(_onPulse, onError: _onFeedError);
+    _observationSub = _feed.observations.listen(
+      (observation) {
+        if (mounted) setState(() => _observation = observation);
+      },
+      onError: _onFeedError,
+    );
     _secondHand = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _clockText = formatClock(DateTime.now()));
     });
@@ -107,14 +119,38 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
     _wasActive = active;
     _snapshot.value = snapshot;
     setState(() {
-      _readFailure = null;
-      _lastRead = snapshot.generatedAt;
+      _observation = CockpitObservation(
+        state: ObservationState.live,
+        lastReadAt: snapshot.generatedAt,
+        cursor: _observation.cursor,
+      );
     });
   }
 
   void _onFeedError(Object error) {
     if (!mounted) return;
-    setState(() => _readFailure = '$error');
+    setState(() {
+      _observation = CockpitObservation(
+        // The stream failing does not mean the domain stopped — only that this
+        // screen stopped being able to see it.
+        state: ObservationState.lost,
+        detail: '$error',
+        lastReadAt: _observation.lastReadAt,
+        cursor: _observation.cursor,
+      );
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Nobody is looking: stop consuming. A cockpit that keeps a stream open in
+    // the background is a cockpit that spends a battery to observe nothing.
+    if (state == AppLifecycleState.resumed) {
+      _feed.resume();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _feed.pause();
+    }
   }
 
   Future<void> _refresh() async {
@@ -144,8 +180,10 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
     }
     _igniteTimer?.cancel();
     _secondHand?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _snapshotSub?.cancel();
     _pulseSub?.cancel();
+    _observationSub?.cancel();
     _clock.dispose();
     _snapshot.dispose();
     super.dispose();
@@ -214,27 +252,30 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
         maxChildSize: 0.92,
         expand: false,
         builder: (context, controller) =>
-            ValueListenableBuilder<CockpitSnapshot>(
+            ValueListenableBuilder<CockpitSnapshot?>(
           valueListenable: _snapshot,
-          builder: (context, live, _) => CockpitDeckSheet(
-            controller: controller,
-            snapshot: live,
-            scopeName:
-                _focusedId.isEmpty ? '' : _companionName(live, _focusedId),
-            initialTab: tab,
-            onActivityTap: (activity) {
-              Navigator.of(sheetContext).pop();
-              _openActivity(live, activity);
-            },
-            onEventTap: (event) {
-              Navigator.of(sheetContext).pop();
-              _openEvent(live, event);
-            },
-            onServiceTap: (service) {
-              Navigator.of(sheetContext).pop();
-              _openService(service);
-            },
-          ),
+          builder: (context, live, _) {
+            if (live == null) return const SizedBox.shrink();
+            return CockpitDeckSheet(
+              controller: controller,
+              snapshot: live,
+              scopeName:
+                  _focusedId.isEmpty ? '' : _companionName(live, _focusedId),
+              initialTab: tab,
+              onActivityTap: (activity) {
+                Navigator.of(sheetContext).pop();
+                _openActivity(live, activity);
+              },
+              onEventTap: (event) {
+                Navigator.of(sheetContext).pop();
+                _openEvent(live, event);
+              },
+              onServiceTap: (service) {
+                Navigator.of(sheetContext).pop();
+                _openService(service);
+              },
+            );
+          },
         ),
       ),
     );
@@ -359,6 +400,16 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
   @override
   Widget build(BuildContext context) {
     final snapshot = _snapshot.value;
+    if (snapshot == null) {
+      // No read has landed. This is not an empty domain and must not look like
+      // one, so the map is not drawn at all until there is something to draw.
+      return _FirstReadScreen(
+        clock: _clock,
+        observation: _observation,
+        onBack: () => Navigator.of(context).maybePop(),
+        onRetry: _refresh,
+      );
+    }
     final units = _units(snapshot);
     final focused = units.where((unit) => unit.id == _focusedId).firstOrNull;
     // Measured, not assumed: both arrangements are costed against this window
@@ -601,4 +652,120 @@ class _ReadFailureStrip extends StatelessWidget {
           ],
         ),
       );
+}
+
+/// Before the first read.
+///
+/// Deliberately not the map with nothing on it. A constellation drawn from no
+/// data looks exactly like a domain where nothing exists, and this screen's
+/// whole job is to keep those two apart. So it says which it is, and if the
+/// first read failed it says that instead of waiting forever.
+class _FirstReadScreen extends StatelessWidget {
+  const _FirstReadScreen({
+    required this.clock,
+    required this.observation,
+    required this.onBack,
+    required this.onRetry,
+  });
+
+  final Animation<double> clock;
+  final CockpitObservation observation;
+  final VoidCallback onBack;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final failed = observation.state == ObservationState.lost ||
+        observation.state == ObservationState.degraded;
+    return Scaffold(
+      key: const Key('constellation-first-read'),
+      backgroundColor: Cockpit.bg,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          IgnorePointer(child: StarField(clock: clock)),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  GestureDetector(
+                    onTap: onBack,
+                    child: Text(
+                      '‹ 返回',
+                      style: Cockpit.mono(size: 11, color: Cockpit.inkDim),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    'EIDOLON 星图',
+                    style: Cockpit.mono(
+                      size: 13,
+                      weight: FontWeight.w900,
+                      color: Colors.white,
+                      tracking: 0.16,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    failed ? '没能读到这台主机的运行投影' : '正在读取这台主机的运行投影',
+                    style: Cockpit.sans(
+                      size: 17,
+                      color: failed ? Cockpit.bad : Cockpit.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    failed
+                        ? '${observation.detail}\n'
+                            '这一屏还没有过任何一次成功的读取，所以它什么都不画 —— '
+                            '空的星图和读不到的星图，不该长成同一张。'
+                        : '还没有事实到达。星图会在第一次读取落地后出现。',
+                    style: Cockpit.mono(
+                      size: 10,
+                      weight: FontWeight.w600,
+                      color: Cockpit.inkDim,
+                      height: 1.7,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  if (failed)
+                    GestureDetector(
+                      key: const Key('retry-first-read'),
+                      onTap: onRetry,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Cockpit.cyan),
+                          color: Cockpit.cyan.withValues(alpha: 0.08),
+                        ),
+                        child: Text(
+                          '重试',
+                          style: Cockpit.mono(size: 11, color: Cockpit.cyan),
+                        ),
+                      ),
+                    )
+                  else
+                    const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.8,
+                        valueColor: AlwaysStoppedAnimation<Color>(Cockpit.cyan),
+                      ),
+                    ),
+                  const Spacer(flex: 2),
+                ],
+              ),
+            ),
+          ),
+          const IgnorePointer(child: CockpitVignette()),
+        ],
+      ),
+    );
+  }
 }
