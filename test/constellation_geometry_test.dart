@@ -334,6 +334,97 @@ void main() {
     });
   });
 
+  group('伙伴变多时的密度', () {
+    // 这一组是照着一次测量写的：固定椭圆下 N=8 时不同伙伴的卫星间隙是 -16.4dp
+    // （重叠），N=10 的行星鞋边只剩 6.2dp —— 手指点下去会落到别人家的资产上。
+    List<CompanionUnit> many(int count) =>
+        [for (var i = 0; i < count; i += 1) _unit(id: 'c$i', devices: 2)];
+
+    test('行星之间永远留得下一根手指', () {
+      for (var count = 1; count <= 12; count += 1) {
+        final layout = buildConstellationLayout(units: many(count));
+        final planets = layout.planets;
+        for (var i = 0; i < planets.length; i += 1) {
+          for (var j = i + 1; j < planets.length; j += 1) {
+            final gap = (planets[i].center - planets[j].center).distance -
+                metrics.planetRadius * 2;
+            expect(
+              gap,
+              greaterThanOrEqualTo(metrics.neighbourGap - 0.5),
+              reason: '$count 位伙伴时，两颗行星只隔 ${gap.toStringAsFixed(1)}dp',
+            );
+          }
+        }
+      }
+    });
+
+    test('任何两个伙伴的卫星都不会挨到一起', () {
+      // 违反过的就是这条不变量。
+      for (var count = 1; count <= 12; count += 1) {
+        final layout = buildConstellationLayout(units: many(count));
+        final moons = layout.moons.toList();
+        for (var i = 0; i < moons.length; i += 1) {
+          for (var j = i + 1; j < moons.length; j += 1) {
+            if (moons[i].unit.id == moons[j].unit.id) continue;
+            final gap = (moons[i].center - moons[j].center).distance -
+                metrics.moonRadius * 2;
+            expect(
+              gap,
+              greaterThanOrEqualTo(metrics.neighbourGap - 0.5),
+              reason: '$count 位伙伴时，两家的卫星只隔 ${gap.toStringAsFixed(1)}dp',
+            );
+          }
+        }
+      }
+    });
+
+    test('挤的时候只有被聚焦的那个还挂着卫星', () {
+      // 8 位是实测会挤的密度。
+      final units = many(8);
+      final crowded = buildConstellationLayout(units: units);
+      expect(crowded.crowded, isTrue);
+      for (final planet in crowded.planets) {
+        expect(planet.moons, isEmpty, reason: '没聚焦却还画着卫星');
+        expect(planet.ports, isEmpty);
+        expect(planet.beads, isEmpty);
+      }
+
+      final focused = buildConstellationLayout(units: units, focusedId: 'c3');
+      for (final planet in focused.planets) {
+        if (planet.unit.id == 'c3') {
+          // 被聚焦的那个要完整：三颗卫星和它的身体端口都在。
+          expect(planet.moons.map((moon) => moon.kind), containsAll(MoonKind.values));
+          expect(planet.ports, isNotEmpty);
+        } else {
+          expect(planet.moons, isEmpty);
+        }
+      }
+    });
+
+    test('不挤就不收：这是测量出来的，不是「N 大于几」', () {
+      // 实测里 6 位是宽松的（39dp）而 5 位是挤的（19.8dp）——
+      // 哪几对最近取决于角度怎么落在椭圆上，所以规则不能写成一个计数阈值。
+      final five = buildConstellationLayout(units: many(5));
+      final six = buildConstellationLayout(units: many(6));
+      expect(five.crowded, isTrue);
+      expect(six.crowded, isFalse);
+      for (final planet in six.planets) {
+        expect(planet.moons, hasLength(3), reason: '不挤的时候不该藏起来');
+      }
+    });
+
+    test('轨道只在需要时才涨', () {
+      expect(orbitGrowth(1, metrics), 1);
+      expect(orbitGrowth(3, metrics), 1);
+      // 邻居的角距按 1/N 收窄，所以到某个数就必须涨。
+      expect(orbitGrowth(10, metrics), greaterThan(1));
+      expect(
+        orbitGrowth(12, metrics),
+        greaterThan(orbitGrowth(10, metrics)),
+      );
+    });
+  });
+
   test('椭圆比宽更高，画布也是竖的', () {
     // 手机是竖的：椭圆必须比宽更高，否则伙伴会挤在一条水平线上，
     // 上下留出两块空白。

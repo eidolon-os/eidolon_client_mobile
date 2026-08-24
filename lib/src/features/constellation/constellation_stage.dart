@@ -118,9 +118,13 @@ class ConstellationStageState extends State<ConstellationStage>
 
   void _frame(Size viewport, ConstellationLayout layout) {
     if (viewport.isEmpty) return;
-    // A rotation changes both, and either one alone is enough to invalidate the
-    // framing: the map is re-shaped as well as re-sized.
-    final changed = viewport != _viewport || layout.canvas != _canvas;
+    // A rotation changes both, and either alone invalidates the framing: the map
+    // is re-shaped as well as re-sized. Focus is the exception — taking a
+    // companion's moons back out of hiding also changes the canvas, and
+    // re-framing there would snap the camera a frame before the fly-to moves it.
+    final reshaped = layout.canvas != _canvas;
+    final changed = viewport != _viewport ||
+        (reshaped && widget.focusedId.isEmpty && _cameraFocus.isEmpty);
     _viewport = viewport;
     _canvas = layout.canvas;
     _fitScale = math.min(

@@ -33,6 +33,7 @@ class ConstellationMetrics {
     this.beadOrbit = 44,
     this.startDegrees = -90,
     this.padding = 18,
+    this.neighbourGap = 28,
   });
 
   final double orbitRadiusX;
@@ -55,6 +56,10 @@ class ConstellationMetrics {
 
   /// Breathing room between the outermost node and the edge of the map.
   final double padding;
+
+  /// The least space allowed between two neighbouring planets' rims. Sized for
+  /// a finger, not for the eye: two companions closer than this are one target.
+  final double neighbourGap;
 
   /// The portrait orbit: much taller than wide, so a phone's vertical extent
   /// carries the domain.
@@ -170,6 +175,7 @@ class ConstellationLayout {
     required this.ownerCenter,
     required this.planets,
     required this.canvas,
+    this.crowded = false,
   });
 
   final ConstellationMetrics metrics;
@@ -178,6 +184,12 @@ class ConstellationLayout {
 
   /// The map's own size: the bounding box of everything placed on it.
   final Size canvas;
+
+  /// Too many companions for every asset moon to be drawn at once, so only the
+  /// focused companion carries its moons. Measured, not a companion count: which
+  /// pairs come closest depends on how the angles land on the ellipse, and odd
+  /// counts crowd differently from even ones.
+  final bool crowded;
 
   Iterable<MoonNode> get moons => planets.expand((planet) => planet.moons);
   Iterable<DevicePortNode> get ports =>
@@ -194,6 +206,25 @@ class ConstellationLayout {
 }
 
 const double _deg = math.pi / 180;
+
+/// How much the orbit has to grow to hold [count] companions.
+///
+/// The angular gap between neighbours shrinks as 1/N, so a fixed ellipse
+/// eventually puts two planets on top of each other — measured at 6.2dp of rim
+/// clearance for ten, and their moons overlapping by 17dp well before that. The
+/// chord between neighbours is `2·R·sin(π/N)`, so this returns the factor that
+/// makes that chord clear both planets plus [ConstellationMetrics.neighbourGap].
+///
+/// The smaller radius is the constraint, because that is the direction where the
+/// ellipse is tightest; scaling both by the same factor keeps the portrait shape
+/// the phone needs.
+double orbitGrowth(int count, ConstellationMetrics metrics) {
+  if (count < 2) return 1;
+  final needed = (metrics.planetRadius * 2 + metrics.neighbourGap) /
+      (2 * math.sin(math.pi / count));
+  final tightest = math.min(metrics.orbitRadiusX, metrics.orbitRadiusY);
+  return math.max(1, needed / tightest);
+}
 
 /// Which chrome arrangement shows the most map, and which orbit to draw in it.
 ///
@@ -277,9 +308,13 @@ ConstellationLayout buildConstellationLayout({
   required List<CompanionUnit> units,
   ConstellationMetrics metrics = const ConstellationMetrics(),
   DateTime? now,
+  String focusedId = '',
 }) {
   final at = now ?? DateTime.now();
   final count = units.isEmpty ? 1 : units.length;
+  final growth = orbitGrowth(count, metrics);
+  final radiusX = metrics.orbitRadiusX * growth;
+  final radiusY = metrics.orbitRadiusY * growth;
 
   // First pass: place everything around an origin at (0, 0).
   final placements = <_Placement>[];
@@ -287,8 +322,8 @@ ConstellationLayout buildConstellationLayout({
     final unit = units[index];
     final angle = (metrics.startDegrees + (index * 360) / count) * _deg;
     final center = Offset(
-      metrics.orbitRadiusX * math.cos(angle),
-      metrics.orbitRadiusY * math.sin(angle),
+      radiusX * math.cos(angle),
+      radiusY * math.sin(angle),
     );
 
     // Moons fan outward from the core, so the crowded side of a planet always
@@ -352,6 +387,36 @@ ConstellationLayout buildConstellationLayout({
     );
   }
 
+  // Do the asset clusters of different companions collide? Growing the orbit
+  // separates the planets, but a cluster reaches 131dp past its planet, so
+  // clearing those too would need a canvas wide enough to shrink every moon to
+  // twenty pixels — measured, which is why this is a density rule and not a
+  // bigger ellipse. When they collide, only the focused companion keeps its
+  // moons; the others stay planets until tapped, which is the affordance this
+  // screen already has.
+  var crowded = false;
+  for (var i = 0; i < placements.length && !crowded; i += 1) {
+    for (var j = i + 1; j < placements.length && !crowded; j += 1) {
+      for (final a in placements[i].moons.values) {
+        for (final b in placements[j].moons.values) {
+          if ((a - b).distance - metrics.moonRadius * 2 <
+              metrics.neighbourGap) {
+            crowded = true;
+            break;
+          }
+        }
+        if (crowded) break;
+      }
+    }
+  }
+  if (crowded) {
+    for (var index = 0; index < placements.length; index += 1) {
+      final placement = placements[index];
+      if (placement.unit.id == focusedId) continue;
+      placements[index] = placement.withoutAssets();
+    }
+  }
+
   // Second pass: the map is the bounding box of what was placed. Each node
   // contributes its own footprint, so nothing ends up half over the edge.
   var bounds =
@@ -382,6 +447,7 @@ ConstellationLayout buildConstellationLayout({
     final center = placement.center + shift;
     final moons = <MoonNode>[];
     for (final kind in const [MoonKind.body, MoonKind.mem, MoonKind.act]) {
+      if (!placement.moons.containsKey(kind)) continue;
       final facts = moonFacts(unit, kind);
       moons.add(
         MoonNode(
@@ -396,7 +462,9 @@ ConstellationLayout buildConstellationLayout({
         ),
       );
     }
-    final body = moons.firstWhere((moon) => moon.kind == MoonKind.body);
+    final body = moons
+        .where((moon) => moon.kind == MoonKind.body)
+        .firstOrNull;
     final activeDeviceIds = <String>{
       for (final activity in unit.activities)
         if (isActiveActivity(activity)) ...[
@@ -406,7 +474,8 @@ ConstellationLayout buildConstellationLayout({
     }..removeWhere((id) => id.isEmpty);
 
     final ports = <DevicePortNode>[];
-    for (var index = 0; index < placement.devices.length; index += 1) {
+    for (var index = 0; index < placement.devices.length && body != null;
+        index += 1) {
       final device = placement.devices[index];
       ports.add(
         DevicePortNode(
@@ -450,6 +519,7 @@ ConstellationLayout buildConstellationLayout({
     ownerCenter: shift,
     planets: planets,
     canvas: bounds.size,
+    crowded: crowded,
   );
 }
 
@@ -474,6 +544,18 @@ class _Placement {
   final List<Offset> beads;
   final List<CockpitDevice> devices;
   final List<ActivityBeadGroup> groups;
+
+  /// The same companion as a planet with nothing hanging off it.
+  _Placement withoutAssets() => _Placement(
+        unit: unit,
+        center: center,
+        angle: angle,
+        moons: const <MoonKind, Offset>{},
+        ports: const <Offset>[],
+        beads: const <Offset>[],
+        devices: const <CockpitDevice>[],
+        groups: const <ActivityBeadGroup>[],
+      );
 }
 
 /// What one moon says, in the two or three words it has room for.
@@ -642,4 +724,9 @@ List<ActivityBeadGroup> summarizeActivityBeads(
         ),
       )
       .toList(growable: false);
+}
+
+
+extension _FirstOrNullMoons<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }
