@@ -273,6 +273,38 @@ class ManagementClient {
     return ConversationPageView.fromJson(body);
   }
 
+  /// What was said that time.
+  ///
+  /// A page at a time, newest turn first, so [cursor] walks back through the
+  /// conversation. Only what I said and what it said: what tools it called to
+  /// get there is how the answer was reached, and the Host does not send it.
+  Future<TranscriptView> fetchTranscript(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+    required String conversationId,
+    int? limit,
+    String? cursor,
+  }) async {
+    final body = await _get(
+      _withQuery(
+        baseUri.resolve(
+          ManagementV1.companionsByCompanionIdConversationsByConversationIdTurnsPath(
+            companionId,
+            conversationId,
+          ),
+        ),
+        {
+          if (limit != null) 'limit': '$limit',
+          if (cursor != null) 'cursor': cursor,
+        },
+      ),
+      accessToken: accessToken,
+      what: '读取那次对话',
+    );
+    return TranscriptView.fromJson(body);
+  }
+
   /// What I asked it to do, and how far it has got.
   Future<TaskPageView> fetchTasks(
     Uri baseUri, {

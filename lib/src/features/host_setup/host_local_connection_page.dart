@@ -20,6 +20,7 @@ import 'managed_controllers_page.dart';
 import 'mission_control_page.dart';
 import 'runtime_cockpit_page.dart';
 import 'persona_history_page.dart';
+import '../../management/conversations_screen.dart';
 import '../../management/tasks_screen.dart';
 import 'recollections_page.dart';
 import 'host_product_session.dart';
@@ -216,6 +217,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               onOpenHistory: _openPersonaHistory,
               onOpenRecollections: () => _openRecollections(current),
               onOpenTasks: () => _openTasks(current),
+              onOpenConversations: () => _openConversations(current),
               face: _controller.companionFace,
               onChangeFace: () => _changeCompanionFace(current),
               onClearFace: _controller.companionFace == null
@@ -297,6 +299,26 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
           retry: (taskId) => _controller.retryTask(
             companionId: companionId,
             taskId: taskId,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// When this Eidolon and I talked, and what was said.
+  Future<void> _openConversations(WorkspaceRuntime runtime) {
+    final companionId = runtime.primaryCompanion.companionId;
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => ConversationsScreen(
+          load: (cursor) => _controller.conversations(
+            companionId: companionId,
+            cursor: cursor,
+          ),
+          loadTranscript: (conversationId, cursor) => _controller.transcript(
+            companionId: companionId,
+            conversationId: conversationId,
+            cursor: cursor,
           ),
         ),
       ),

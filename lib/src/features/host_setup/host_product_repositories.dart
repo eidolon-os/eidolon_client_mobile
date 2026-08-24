@@ -238,6 +238,24 @@ class HostManagementRepository {
         ),
       );
 
+  /// What was said in one conversation.
+  Future<TranscriptView> transcript({
+    required String companionId,
+    required String conversationId,
+    int? limit,
+    String? cursor,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchTranscript(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          conversationId: conversationId,
+          limit: limit,
+          cursor: cursor,
+        ),
+      );
+
   /// What it was asked to do, and how far it has got.
   Future<TaskPageView> tasks({
     required String companionId,

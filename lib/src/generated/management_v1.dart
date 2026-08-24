@@ -12,6 +12,7 @@ class ManagementV1 {
   static const String companionsPath = '/api/management/v1/companions';
   static String companionsByCompanionIdPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}';
   static String companionsByCompanionIdConversationsPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/conversations';
+  static String companionsByCompanionIdConversationsByConversationIdTurnsPath(String companionId, String conversationId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/conversations/${Uri.encodeComponent(conversationId)}/turns';
   static String companionsByCompanionIdPersonaHistoryPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona-history';
   static String companionsByCompanionIdPersonaRestorationsPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona-restorations';
   static String companionsByCompanionIdTasksPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks';
@@ -878,6 +879,24 @@ class RevokedSessionsView {
   }
 }
 
+class SpokenMessageView {
+  const SpokenMessageView({
+    required this.role,
+    this.text,
+  });
+
+  final String role;
+
+  final String? text;
+
+  factory SpokenMessageView.fromJson(Map<String, dynamic> value) {
+    return SpokenMessageView(
+      role: value['role'] as String,
+      text: value['text'] as String?,
+    );
+  }
+}
+
 class TaskPageView {
   const TaskPageView({
     required this.companionId,
@@ -962,6 +981,62 @@ class TaskView {
       taskId: value['task_id'] as String,
       updatedAt: value['updated_at'] as String?,
       urgency: value['urgency'] as String?,
+    );
+  }
+}
+
+class TranscriptTurnView {
+  const TranscriptTurnView({
+    this.finishedAt,
+    required this.messages,
+    this.startedAt,
+    this.status,
+    required this.turnId,
+  });
+
+  final String? finishedAt;
+
+  final List<SpokenMessageView> messages;
+
+  final String? startedAt;
+
+  final String? status;
+
+  final String turnId;
+
+  factory TranscriptTurnView.fromJson(Map<String, dynamic> value) {
+    return TranscriptTurnView(
+      finishedAt: value['finished_at'] as String?,
+      messages: ((value['messages'] as List<dynamic>).map((entry) => SpokenMessageView.fromJson(entry as Map<String, dynamic>)).toList()),
+      startedAt: value['started_at'] as String?,
+      status: value['status'] as String?,
+      turnId: value['turn_id'] as String,
+    );
+  }
+}
+
+class TranscriptView {
+  const TranscriptView({
+    this.contractVersion,
+    required this.conversationId,
+    this.nextCursor,
+    required this.turns,
+  });
+
+  final String? contractVersion;
+
+  final String conversationId;
+
+  final String? nextCursor;
+
+  final List<TranscriptTurnView> turns;
+
+  factory TranscriptView.fromJson(Map<String, dynamic> value) {
+    return TranscriptView(
+      contractVersion: value['contract_version'] as String?,
+      conversationId: value['conversation_id'] as String,
+      nextCursor: value['next_cursor'] as String?,
+      turns: ((value['turns'] as List<dynamic>).map((entry) => TranscriptTurnView.fromJson(entry as Map<String, dynamic>)).toList()),
     );
   }
 }

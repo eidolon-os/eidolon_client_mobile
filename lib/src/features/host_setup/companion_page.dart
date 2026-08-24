@@ -21,6 +21,7 @@ class CompanionPage extends StatelessWidget {
     required this.onOpenHistory,
     this.onOpenRecollections,
     this.onOpenTasks,
+    this.onOpenConversations,
     this.face,
     this.onChangeFace,
     this.onClearFace,
@@ -40,6 +41,10 @@ class CompanionPage extends StatelessWidget {
   /// Null while nothing is behind it. The long tasks this Eidolon was given —
   /// the one place a person can stop something it is doing.
   final VoidCallback? onOpenTasks;
+
+  /// When we talked, and what was said each time. Null while nothing is behind
+  /// it.
+  final VoidCallback? onOpenConversations;
 
   /// What it looks like, when it looks like anything yet.
   final Uint8List? face;
@@ -159,6 +164,18 @@ class CompanionPage extends StatelessWidget {
               ),
             ),
           if (onOpenTasks != null) const SizedBox(height: 16),
+          if (onOpenConversations != null)
+            Card(
+              child: ListTile(
+                key: const Key('companion-open-conversations'),
+                leading: const Icon(Icons.forum_outlined),
+                title: const Text('说过的话'),
+                subtitle: const Text('哪天聊过，以及那次说了什么'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: onOpenConversations,
+              ),
+            ),
+          if (onOpenConversations != null) const SizedBox(height: 16),
           Card(
             child: ListTile(
               key: const Key('companion-open-history'),

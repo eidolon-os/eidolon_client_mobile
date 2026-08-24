@@ -465,6 +465,18 @@ class HostProductController extends ChangeNotifier {
         cursor: cursor,
       );
 
+  /// What was said in one conversation.
+  Future<TranscriptView> transcript({
+    required String companionId,
+    required String conversationId,
+    String? cursor,
+  }) =>
+      _managementRepository.transcript(
+        companionId: companionId,
+        conversationId: conversationId,
+        cursor: cursor,
+      );
+
   /// What it was asked to do, and how far it has got.
   Future<TaskPageView> tasks({required String companionId, String? cursor}) =>
       _managementRepository.tasks(companionId: companionId, cursor: cursor);
