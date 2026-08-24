@@ -71,6 +71,14 @@ final class DeviceRefV1 {
       trustEpoch: trustEpoch,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'device_instance_id': deviceInstanceId,
+    'owner_domain_id': ownerDomainId.value,
+    'owner_domain_generation': ownerDomainGeneration,
+    'claim_generation': claimGeneration,
+    'trust_epoch': trustEpoch,
+  };
 }
 
 final class ManifestRefV1 {
@@ -256,6 +264,158 @@ class AuthorityEndpointV1 {
     'uri': uri.toString(),
     'transport_profile': transportProfile,
     'priority': priority,
+  };
+}
+
+enum DeliveryKindV1 {
+  twinDelta('twin_delta'),
+  operation('operation'),
+  stopGeneration('stop_generation');
+
+  const DeliveryKindV1(this.wireValue);
+  final String wireValue;
+}
+
+final class DeliverEnvelopeV1 {
+  const DeliverEnvelopeV1({
+    required this.deliveryAttemptId,
+    required this.messageId,
+    required this.kind,
+    required this.deviceRef,
+    required this.deadline,
+    required this.payloadSchema,
+    required this.payload,
+  });
+
+  final String deliveryAttemptId;
+  final String messageId;
+  final DeliveryKindV1 kind;
+  final DeviceRefV1 deviceRef;
+  final DateTime deadline;
+  final Uri payloadSchema;
+  final Map<String, dynamic> payload;
+
+  factory DeliverEnvelopeV1.fromJson(Map<String, dynamic> value) {
+    _strictObject(value, const {
+      'delivery_attempt_id', 'message_id', 'kind', 'device_ref',
+      'deadline', 'payload_schema', 'payload',
+    });
+    final kind = DeliveryKindV1.values.where(
+      (candidate) => candidate.wireValue == value['kind'],
+    ).firstOrNull;
+    final deadline = DateTime.tryParse(value['deadline'] as String? ?? '');
+    final payloadSchema = Uri.tryParse(_text(value['payload_schema'], 2048));
+    if (kind == null || deadline == null || !deadline.isUtc ||
+        payloadSchema == null || !payloadSchema.hasScheme) {
+      throw const FormatException('Invalid delivery envelope');
+    }
+    return DeliverEnvelopeV1(
+      deliveryAttemptId: _identifier(value['delivery_attempt_id']),
+      messageId: _identifier(value['message_id']),
+      kind: kind,
+      deviceRef: DeviceRefV1.fromJson(_map(value['device_ref'])),
+      deadline: deadline,
+      payloadSchema: payloadSchema,
+      payload: _map(value['payload']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'delivery_attempt_id': deliveryAttemptId,
+    'message_id': messageId,
+    'kind': kind.wireValue,
+    'device_ref': deviceRef.toJson(),
+    'deadline': deadline.toIso8601String(),
+    'payload_schema': payloadSchema.toString(),
+    'payload': payload,
+  };
+}
+
+enum DeliveryAcceptanceStateV1 {
+  accepted('accepted'),
+  rejected('rejected');
+
+  const DeliveryAcceptanceStateV1(this.wireValue);
+  final String wireValue;
+}
+
+final class DeliveryAcceptanceV1 {
+  const DeliveryAcceptanceV1({
+    required this.deliveryAttemptId,
+    required this.state,
+    required this.adapterCode,
+  });
+
+  final String deliveryAttemptId;
+  final DeliveryAcceptanceStateV1 state;
+  final String? adapterCode;
+
+  factory DeliveryAcceptanceV1.fromJson(Map<String, dynamic> value) {
+    _strictObject(value, const {'delivery_attempt_id', 'state', 'adapter_code'});
+    final state = DeliveryAcceptanceStateV1.values.where(
+      (candidate) => candidate.wireValue == value['state'],
+    ).firstOrNull;
+    final adapterCode = value['adapter_code'];
+    if (state == null ||
+        (state == DeliveryAcceptanceStateV1.accepted) != (adapterCode == null) ||
+        (adapterCode != null && adapterCode is! String)) {
+      throw const FormatException('Invalid delivery acceptance');
+    }
+    return DeliveryAcceptanceV1(
+      deliveryAttemptId: _identifier(value['delivery_attempt_id']),
+      state: state,
+      adapterCode: adapterCode as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'delivery_attempt_id': deliveryAttemptId,
+    'state': state.wireValue,
+    'adapter_code': adapterCode,
+  };
+}
+
+final class DeviceEvidenceEnvelopeV1 {
+  const DeviceEvidenceEnvelopeV1({
+    required this.deliveryAttemptId,
+    required this.messageId,
+    required this.deviceRef,
+    required this.payloadSchema,
+    required this.payload,
+  });
+
+  final String deliveryAttemptId;
+  final String messageId;
+  final DeviceRefV1 deviceRef;
+  final Uri payloadSchema;
+  final Map<String, dynamic> payload;
+
+  factory DeviceEvidenceEnvelopeV1.fromJson(Map<String, dynamic> value) {
+    _strictObject(value, const {
+      'delivery_attempt_id', 'message_id', 'kind', 'device_ref',
+      'payload_schema', 'payload',
+    });
+    final payloadSchema = Uri.tryParse(_text(value['payload_schema'], 2048));
+    if (value['kind'] != 'operation_ack' || payloadSchema == null ||
+        !payloadSchema.hasScheme) {
+      throw const FormatException('Invalid device evidence envelope');
+    }
+    return DeviceEvidenceEnvelopeV1(
+      deliveryAttemptId: _identifier(value['delivery_attempt_id']),
+      messageId: _identifier(value['message_id']),
+      deviceRef: DeviceRefV1.fromJson(_map(value['device_ref'])),
+      payloadSchema: payloadSchema,
+      payload: _map(value['payload']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'delivery_attempt_id': deliveryAttemptId,
+    'message_id': messageId,
+    'kind': 'operation_ack',
+    'device_ref': deviceRef.toJson(),
+    'payload_schema': payloadSchema.toString(),
+    'payload': payload,
   };
 }
 
