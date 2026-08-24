@@ -23,8 +23,8 @@ class PersistentDeviceSetupCheckpointStore
     }
   }
 
-  static const _preferenceKey = 'eidolon.device-setup-checkpoints.v2';
-  static const _documentVersion = '2';
+  static const _preferenceKey = 'eidolon.device-setup-checkpoints.v3';
+  static const _documentVersion = '3';
 
   final AppPreferences _preferences;
   final int maximumEntries;
@@ -36,6 +36,14 @@ class PersistentDeviceSetupCheckpointStore
     await _writeQueue;
     final entries = await _readEntries();
     return entries.where((item) => item.setupId == setupId).firstOrNull;
+  }
+
+  @override
+  Future<List<DeviceSetupCheckpoint>> list() async {
+    await _writeQueue;
+    final entries = await _readEntries();
+    entries.sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+    return List.unmodifiable(entries);
   }
 
   @override

@@ -1,3 +1,5 @@
+import '../../generated/device_foundation_v1.dart';
+import 'admission_projection.dart';
 import 'device_setup_models.dart';
 import 'device_setup_ports.dart';
 
@@ -18,8 +20,10 @@ class DeviceSetupException implements Exception {
 
 typedef DeviceSetupClock = DateTime Function();
 
-/// Coordinates local provisioning and Owner admission without merging their
-/// completion semantics or attempting destructive compensation.
+/// Coordinates network commissioning and Admission as separate committed facts.
+///
+/// A successful network terminal only advances [DeviceProvisioningState].
+/// Admission is recovered from Hub before any Decision is sent or replayed.
 class DeviceSetupCoordinator {
   DeviceSetupCoordinator({
     required this.transport,
@@ -27,15 +31,22 @@ class DeviceSetupCoordinator {
     required this.checkpoints,
     required this.ownerDirectoryVerifier,
     this.allowDevelopmentTrust = false,
+    this.enrollmentTimeout = const Duration(minutes: 3),
+    this.enrollmentInterval = const Duration(seconds: 3),
     DeviceSetupClock? clock,
-  }) : _clock = clock ?? DateTime.now;
+    Future<void> Function(Duration)? sleep,
+  })  : _clock = clock ?? DateTime.now,
+        _sleep = sleep ?? Future<void>.delayed;
 
   final DeviceProvisioningTransport transport;
   final DeviceAdmissionPort admission;
   final DeviceSetupCheckpointStore checkpoints;
   final OwnerDomainDirectoryVerifier ownerDirectoryVerifier;
   final bool allowDevelopmentTrust;
+  final Duration enrollmentTimeout;
+  final Duration enrollmentInterval;
   final DeviceSetupClock _clock;
+  final Future<void> Function(Duration) _sleep;
 
   Future<DeviceSetupCheckpoint> provisionAndAdmit({
     required String setupId,
@@ -57,6 +68,10 @@ class DeviceSetupCoordinator {
       contractVersion: DeviceSetupCheckpoint.currentContractVersion,
       setupId: setupId,
       requestId: requestId,
+      createCommandId: _commandId('create', setupId),
+      decisionCommandId: _commandId('decision', setupId),
+      collectCommandId: _commandId('collect', setupId),
+      ackCommandId: _commandId('ack', setupId),
       provisioningState: DeviceProvisioningState.selected,
       admissionState: DeviceAdmissionState.notStarted,
       updatedAt: _now(),
@@ -76,12 +91,15 @@ class DeviceSetupCoordinator {
         clearFailure: true,
       );
       await checkpoints.save(checkpoint);
-      final networkEvidence = await session.configureNetwork(
+      final evidence = await session.configureNetwork(
         credentials: credentials,
         onboardingTarget: onboardingTarget,
+        createCommandId: checkpoint.createCommandId,
+        collectCommandId: checkpoint.collectCommandId,
+        ackCommandId: checkpoint.ackCommandId,
       );
-      if (!networkEvidence.isCommittedTerminal ||
-          networkEvidence.sessionId != session.descriptor.sessionId) {
+      if (!evidence.isCommittedTerminal ||
+          evidence.sessionId != session.descriptor.sessionId) {
         throw const DeviceSetupException(
           code: 'network_terminal_missing',
           message: 'Device did not confirm the network connection',
@@ -94,34 +112,8 @@ class DeviceSetupCoordinator {
         updatedAt: _now(),
       );
       await checkpoints.save(checkpoint);
-
-      final receipt = await session.awaitEnrollment();
-      if (receipt.deviceId != session.descriptor.deviceId) {
-        throw const DeviceSetupException(
-          code: 'enrollment_identity_mismatch',
-          message: 'Enrollment does not belong to the provisioned Device',
-        );
-      }
-      if (receipt.lifecycleState != 'pending-approval' &&
-          receipt.lifecycleState != 'approved') {
-        throw const DeviceSetupException(
-          code: 'invalid_enrollment_state',
-          message: 'Device enrollment is not awaiting approval',
-        );
-      }
-      checkpoint = checkpoint.copyWith(
-        admissionState: DeviceAdmissionState.pendingApproval,
-        enrollmentId: receipt.enrollmentId,
-        updatedAt: _now(),
-      );
-      await checkpoints.save(checkpoint);
     } on DeviceSetupException catch (error) {
-      return _fail(
-        checkpoint,
-        error,
-        admissionStage: checkpoint.provisioningState ==
-            DeviceProvisioningState.networkConfigured,
-      );
+      return _fail(checkpoint, error);
     } catch (error) {
       return _fail(
         checkpoint,
@@ -130,15 +122,14 @@ class DeviceSetupCoordinator {
           message: error.toString(),
           retryable: true,
         ),
-        admissionStage: checkpoint.provisioningState ==
-            DeviceProvisioningState.networkConfigured,
       );
     } finally {
       await _closeProvisioning(session);
     }
-    return _continueAdmission(checkpoint);
+    return _resume(checkpoint, waitForEnrollment: true);
   }
 
+  /// Startup/foreground entry point. Recovery is always queried before replay.
   Future<DeviceSetupCheckpoint> resumeAdmission(String setupId) async {
     final checkpoint = await checkpoints.load(setupId);
     if (checkpoint == null) {
@@ -149,51 +140,72 @@ class DeviceSetupCoordinator {
     }
     if (checkpoint.provisioningState !=
             DeviceProvisioningState.networkConfigured ||
-        checkpoint.deviceId == null ||
-        checkpoint.enrollmentId == null) {
+        checkpoint.deviceId == null) {
       throw const DeviceSetupException(
         code: 'admission_not_resumable',
-        message: 'Device enrollment has not completed',
+        message: 'Device network commissioning has not committed',
       );
     }
-    return _continueAdmission(checkpoint);
+    return _resume(checkpoint, waitForEnrollment: false);
   }
 
-  Future<DeviceSetupCheckpoint> _continueAdmission(
-    DeviceSetupCheckpoint checkpoint,
-  ) async {
+  Future<DeviceSetupCheckpoint> _resume(
+    DeviceSetupCheckpoint checkpoint, {
+    required bool waitForEnrollment,
+  }) async {
+    var current = checkpoint;
     try {
-      final progress = await admission.approve(
-        requestId: checkpoint.requestId,
-        deviceId: checkpoint.deviceId!,
-        companionId: checkpoint.companionId,
-      );
-      if (progress.requestId != checkpoint.requestId ||
-          progress.deviceId != checkpoint.deviceId) {
-        throw const DeviceSetupException(
-          code: 'admission_identity_mismatch',
-          message: 'Local API returned another Device admission',
+      var projection = current.enrollmentId == null
+          ? null
+          : await admission.recover(enrollmentId: current.enrollmentId!);
+      if (projection == null) {
+        final found = await _findEnrollment(
+          current,
+          wait: waitForEnrollment,
         );
+        if (found == null) {
+          return _fail(
+            current,
+            const DeviceSetupException(
+              code: 'enrollment_not_seen',
+              message: 'Device has not created an Enrollment yet',
+              retryable: true,
+            ),
+            admissionStage: true,
+          );
+        }
+        projection = found.$1;
+        current = found.$2;
       }
-      final updated = checkpoint.copyWith(
-        admissionState: switch (progress.outcome) {
-          ActOutcome.done => DeviceAdmissionState.ready,
-          // Partway is partway: the checkpoint records that it is still
-          // binding, which is what makes the next attempt a continuation
-          // rather than a fresh start.
-          ActOutcome.unfinished => DeviceAdmissionState.binding,
-          ActOutcome.refused => DeviceAdmissionState.failed,
-        },
-        updatedAt: _now(),
-        clearFailure: true,
+
+      final stage = projection.validateForOwner(
+        current.onboardingTarget.ownerDomainId,
+        ownerDomainGeneration: current
+            .onboardingTarget.ownerDomainDescriptor.ownerDomainGeneration,
       );
-      await checkpoints.save(updated);
-      return updated;
+      current = await _saveProjection(current, projection, stage);
+      if (stage == AdmissionProjectionStage.pendingReview) {
+        // The immutable Decision payload is derived from the recovered Proposal.
+        // Reply loss is recovered on the next entry before this ID is reused.
+        projection = await admission.decide(
+          commandId: current.decisionCommandId,
+          correlationId: current.requestId,
+          projection: projection,
+          initialCompanionId: current.companionId,
+        );
+        final decidedStage = projection.validateForOwner(
+          current.onboardingTarget.ownerDomainId,
+          ownerDomainGeneration: current
+              .onboardingTarget.ownerDomainDescriptor.ownerDomainGeneration,
+        );
+        return _saveProjection(current, projection, decidedStage);
+      }
+      return current;
     } on DeviceSetupException catch (error) {
-      return _fail(checkpoint, error, admissionStage: true);
+      return _fail(current, error, admissionStage: true);
     } catch (error) {
       return _fail(
-        checkpoint,
+        current,
         DeviceSetupException(
           code: 'admission_unavailable',
           message: error.toString(),
@@ -202,6 +214,76 @@ class DeviceSetupCoordinator {
         admissionStage: true,
       );
     }
+  }
+
+  Future<(EnrollmentRecoveryProjectionV1, DeviceSetupCheckpoint)?>
+      _findEnrollment(
+    DeviceSetupCheckpoint checkpoint, {
+    required bool wait,
+  }) async {
+    final deadline = _now().add(enrollmentTimeout);
+    var cursor = checkpoint.recoveryCursor;
+    while (true) {
+      final page = await admission.listRecovery(after: cursor);
+      for (final projection in page.projections) {
+        projection.validateForOwner(
+          checkpoint.onboardingTarget.ownerDomainId,
+          ownerDomainGeneration: checkpoint
+              .onboardingTarget.ownerDomainDescriptor.ownerDomainGeneration,
+        );
+        if (projection.proposal.json['device_instance_candidate_id'] ==
+            checkpoint.deviceId) {
+          final updated = checkpoint.copyWith(
+            enrollmentId: projection.proposal.json['enrollment_id']! as String,
+            expectedProposalRevision: projection.sourceRevision,
+            recoveryCursor: page.nextCursor,
+            updatedAt: _now(),
+          );
+          await checkpoints.save(updated);
+          return (projection, updated);
+        }
+      }
+      cursor = page.nextCursor;
+      checkpoint = checkpoint.copyWith(
+        recoveryCursor: cursor,
+        clearRecoveryCursor: cursor == null,
+        updatedAt: _now(),
+      );
+      await checkpoints.save(checkpoint);
+      if (cursor != null) continue;
+      if (!wait || !_now().isBefore(deadline)) return null;
+      await _sleep(enrollmentInterval);
+    }
+  }
+
+  Future<DeviceSetupCheckpoint> _saveProjection(
+    DeviceSetupCheckpoint checkpoint,
+    EnrollmentRecoveryProjectionV1 projection,
+    AdmissionProjectionStage stage,
+  ) async {
+    final updated = checkpoint.copyWith(
+      enrollmentId: projection.proposal.json['enrollment_id']! as String,
+      expectedProposalRevision: projection.sourceRevision,
+      admissionState: switch (stage) {
+        AdmissionProjectionStage.pendingReview =>
+          DeviceAdmissionState.pendingReview,
+        AdmissionProjectionStage.approvedAwaitingHandoff =>
+          DeviceAdmissionState.approvedAwaitingHandoff,
+        AdmissionProjectionStage.grantDelivered =>
+          DeviceAdmissionState.grantDelivered,
+        AdmissionProjectionStage.claimActive =>
+          DeviceAdmissionState.claimActive,
+        AdmissionProjectionStage.rejected ||
+        AdmissionProjectionStage.expired ||
+        AdmissionProjectionStage.canceled ||
+        AdmissionProjectionStage.claimRevoked =>
+          DeviceAdmissionState.rejected,
+      },
+      updatedAt: _now(),
+      clearFailure: true,
+    );
+    await checkpoints.save(updated);
+    return updated;
   }
 
   void _validateTrust(
@@ -256,17 +338,27 @@ class DeviceSetupCoordinator {
 
   DateTime _now() => _clock().toUtc();
 
+  String _commandId(String operation, String setupId) {
+    final value = 'mobile-$operation-$setupId';
+    if (value.length > 128) {
+      throw const DeviceSetupException(
+        code: 'setup_identity_invalid',
+        message: 'Device Setup ID is too long for stable Admission commands',
+      );
+    }
+    return value;
+  }
+
   Future<void> _closeProvisioning(DeviceProvisioningSession? session) async {
     try {
       await session?.close();
     } catch (_) {
-      // The durable workflow state is authoritative; cleanup cannot roll back
-      // network configuration or obscure the primary setup outcome.
+      // Durable workflow state is authoritative.
     }
     try {
       await transport.close();
     } catch (_) {
-      // A stale platform link is cleaned up by the next adapter open/OS cycle.
+      // The next platform open/OS cycle cleans a stale link.
     }
   }
 }

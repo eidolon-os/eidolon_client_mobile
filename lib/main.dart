@@ -12,6 +12,7 @@ import 'src/controller/client_controller.dart';
 import 'src/features/conversation/conversation_provisioner.dart';
 import 'src/features/conversation/mobile_conversation_provisioner.dart';
 import 'src/features/device_setup/device_setup_ports.dart';
+import 'src/features/device_setup/host_controller_device_admission.dart';
 import 'src/features/setup/eidolon_app_shell.dart';
 import 'src/features/setup/host_registry.dart';
 
@@ -49,7 +50,7 @@ class EidolonMobileApp extends StatelessWidget {
         conversationBuilder: (_, controller) => ClientPage(
           provisioner: MobileConversationProvisioner(
             loadTarget: controller.fetchDeviceOnboardingTarget,
-            approveAdmission: controller.approveDeviceEnrollment,
+            admission: HostControllerDeviceAdmission(controller),
           ),
         ),
       ),

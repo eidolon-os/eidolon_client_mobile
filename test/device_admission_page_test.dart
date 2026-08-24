@@ -1,114 +1,126 @@
 import 'package:eidolon_client_mobile/src/features/device_setup/device_admission_page.dart';
-import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
-import 'package:eidolon_client_mobile/src/features/host_setup/local_api_client.dart';
+import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-final _device = PendingDeviceEnrollment(
-  deviceId: 'aa:bb:cc:dd:ee:ff',
-  displayName: 'Living Room Device',
-  deviceKind: 'voice-client',
-  enrolledAt: DateTime.utc(2026, 8, 9),
-);
+import 'support/admission_fixtures.dart';
 
 void main() {
-  testWidgets('loads pending devices and waits for explicit confirmation', (
-    tester,
-  ) async {
-    String? approvedDevice;
+  testWidgets('empty recovery never presents completion', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(home: _page(load: (_) async => canonicalRecoveryPage([]))),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('空列表不代表'), findsOneWidget);
+    expect(find.byKey(const Key('confirm-enrollment-decision')), findsNothing);
+  });
+
+  testWidgets(
+      'one confirmation shows immutable actor/context and explicit Decision',
+      (tester) async {
+    var projection = canonicalProjection(state: 'pending_review');
+    String? sentCommandId;
+    String? sentCorrelationId;
     await tester.pumpWidget(
       MaterialApp(
-        home: DeviceAdmissionPage(
-          hostId: 'host-1',
-          loadPending: () async => [_device],
-          onApprove: ({required requestId, required deviceId}) async {
-            approvedDevice = deviceId;
-            return DeviceAdmissionProgress(
-              requestId: requestId,
-              deviceId: deviceId,
-              ownerId: 'owner-1',
-              outcome: ActOutcome.done,
-              stoppedAfter: 'companion-attached',
-              companionId: 'companion-1',
+        home: _page(
+          load: (_) async => canonicalRecoveryPage([projection]),
+          decide: ({
+            required String commandId,
+            required String correlationId,
+            required EnrollmentRecoveryProjectionV1 projection,
+          }) async {
+            expect(projection.json['approval_decision'], isNull);
+            sentCommandId = commandId;
+            sentCorrelationId = correlationId;
+            return canonicalProjection(
+              state: 'approved_awaiting_handoff',
+              withDecision: true,
             );
           },
         ),
       ),
     );
     await tester.pumpAndSettle();
-
-    expect(find.text('Living Room Device'), findsOneWidget);
-    expect(approvedDevice, isNull);
-    expect(find.byKey(const Key('confirm-device-admission')), findsNothing);
-
-    await tester.tap(find.byKey(const Key('pending-device-aa:bb:cc:dd:ee:ff')));
+    await tester.tap(find.byKey(const Key('enrollment-enrollment_01')));
     await tester.pump();
-    expect(
-        find.byKey(const Key('device-admission-confirmation')), findsOneWidget);
-    expect(approvedDevice, isNull);
 
-    await tester.tap(find.byKey(const Key('confirm-device-admission')));
+    expect(find.byKey(const Key('immutable-decision-context')), findsOneWidget);
+    expect(find.textContaining('Actor：controller_01'), findsOneWidget);
+    expect(find.textContaining('批准不会宣称'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('confirm-enrollment-decision')));
     await tester.pumpAndSettle();
 
-    expect(approvedDevice, _device.deviceId);
-    expect(find.byKey(const Key('device-admission-ready')), findsOneWidget);
+    expect(sentCommandId, startsWith('mobile-decision-'));
+    expect(sentCorrelationId, 'manual-admission-enrollment_01');
+    expect(find.text('已批准，等待设备领取 Grant'), findsOneWidget);
+    expect(find.byKey(const Key('confirm-enrollment-decision')), findsNothing);
   });
 
-  testWidgets('shows a screen-independent empty state and can refresh', (
-    tester,
-  ) async {
+  testWidgets('approved/grant/claim stay listed and foreground reloads',
+      (tester) async {
     var loads = 0;
+    final projections = [
+      canonicalProjection(
+        state: 'approved_awaiting_handoff',
+        withDecision: true,
+      ),
+      canonicalProjection(
+        state: 'grant_delivered',
+        deviceId: 'device_02',
+        withDecision: true,
+        withDelivery: true,
+      ),
+      canonicalProjection(
+        state: 'grant_acknowledged',
+        deviceId: 'device_03',
+        withDecision: true,
+        withDelivery: true,
+        claimState: 'active',
+      ),
+    ];
     await tester.pumpWidget(
       MaterialApp(
-        home: DeviceAdmissionPage(
-          hostId: 'host-1',
-          loadPending: () async {
-            loads += 1;
-            return const [];
-          },
-          onApprove: ({required requestId, required deviceId}) async =>
-              throw StateError('must not approve'),
-        ),
+        home: _page(load: (_) async {
+          loads += 1;
+          return canonicalRecoveryPage(projections);
+        }),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('no-pending-devices')), findsOneWidget);
-    expect(find.textContaining('二维码'), findsNothing);
-    await tester.tap(find.byKey(const Key('refresh-pending-devices')));
+    expect(find.byType(ListTile), findsNWidgets(3));
+    expect(find.text('已批准，等待设备领取 Grant'), findsOneWidget);
+    expect(find.text('Grant 已交付，等待 ClaimActive'), findsOneWidget);
+    expect(find.text('ClaimActive'), findsOneWidget);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
     expect(loads, 2);
   });
-
-  testWidgets('shows why the Host refused instead of guessing at it', (
-    tester,
-  ) async {
-    // A conflict the Host can explain used to reach the person as "refresh the
-    // list" — advice that cannot help when the refusal is not about the list.
-    await tester.pumpWidget(
-      MaterialApp(
-        home: DeviceAdmissionPage(
-          hostId: 'host-1',
-          loadPending: () async => [_device],
-          onApprove: ({required requestId, required deviceId}) async =>
-              throw const LocalApiRequestException(
-            'Device admission 返回 HTTP 409',
-            statusCode: 409,
-            reason: '主机上已经没有这台设备了。',
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('pending-device-aa:bb:cc:dd:ee:ff')));
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('confirm-device-admission')));
-    await tester.pumpAndSettle();
-
-    final error = tester.widget<Text>(
-      find.byKey(const Key('device-admission-error')),
-    );
-    expect(error.data, contains('主机上已经没有这台设备了'));
-    expect(error.data, isNot(contains('请刷新列表')));
-  });
 }
+
+typedef _Load = Future<EnrollmentProposalPageV1> Function(
+  AdmissionListCursorV1? after,
+);
+
+DeviceAdmissionPage _page({
+  required _Load load,
+  EnrollmentDecision? decide,
+}) =>
+    DeviceAdmissionPage(
+      ownerDomainId: 'owner-domain_01',
+      ownerDomainGeneration: 3,
+      businessOwnerId: 'business-owner_01',
+      controllerId: 'controller_01',
+      loadRecovery: ({AdmissionListCursorV1? after}) => load(after),
+      onDecide: decide ??
+          ({
+            required String commandId,
+            required String correlationId,
+            required EnrollmentRecoveryProjectionV1 projection,
+          }) async =>
+              projection,
+    );

@@ -15,22 +15,6 @@ import 'device_setup_ports.dart';
 /// not to the contract: a device class that speaks something else is another
 /// adapter beside this one, and nothing above has to learn about it.
 ///
-/// Whether the device enrolled is asked of the Host rather than of the device.
-/// The enrollment is a fact the Host holds, the device only caused it, and over
-/// an access-point session the answer could not travel anyway: joining the
-/// network the Owner chose is what takes that session down.
-typedef PendingEnrollmentLookup = Future<List<PendingDeviceEnrollment>>
-    Function();
-
-/// Whether the Host already holds this device, whatever state it is in.
-///
-/// Asking only the pending list would be asking whether the device is waiting to
-/// be approved, which a device the Host already admitted never is again. Setting
-/// up a device that already belongs here is an ordinary thing to do — after a
-/// reflash, or to move it to another network — and it must not look like a device
-/// that never arrived.
-typedef AdmittedDeviceLookup = Future<bool> Function(String deviceId);
-
 class DeviceProvisioningTransportException implements Exception {
   const DeviceProvisioningTransportException(this.code, this.message);
 
@@ -43,25 +27,13 @@ class DeviceProvisioningTransportException implements Exception {
 
 class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
   PlatformDeviceProvisioning({
-    required PendingEnrollmentLookup loadPendingEnrollments,
-    required AdmittedDeviceLookup isAlreadyAdmitted,
     MethodChannel? channel,
-    Duration enrollmentTimeout = const Duration(minutes: 3),
-    Duration enrollmentInterval = const Duration(seconds: 3),
     DateTime Function()? clock,
-  })  : _loadPendingEnrollments = loadPendingEnrollments,
-        _isAlreadyAdmitted = isAlreadyAdmitted,
-        _channel =
+  })  : _channel =
             channel ?? const MethodChannel('live.eidolon.mobile/platform'),
-        _enrollmentTimeout = enrollmentTimeout,
-        _enrollmentInterval = enrollmentInterval,
         _clock = clock ?? DateTime.now;
 
-  final PendingEnrollmentLookup _loadPendingEnrollments;
-  final AdmittedDeviceLookup _isAlreadyAdmitted;
   final MethodChannel _channel;
-  final Duration _enrollmentTimeout;
-  final Duration _enrollmentInterval;
   final DateTime Function() _clock;
 
   void _requireAndroid() {
@@ -175,11 +147,6 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
     return _PlatformProvisioningSession(
       channel: _channel,
       descriptor: _parseDescriptor(raw, now: _clock()),
-      loadPendingEnrollments: _loadPendingEnrollments,
-      isAlreadyAdmitted: _isAlreadyAdmitted,
-      enrollmentTimeout: _enrollmentTimeout,
-      enrollmentInterval: _enrollmentInterval,
-      clock: _clock,
     );
   }
 
@@ -194,24 +161,9 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
   _PlatformProvisioningSession({
     required MethodChannel channel,
     required this.descriptor,
-    required PendingEnrollmentLookup loadPendingEnrollments,
-    required AdmittedDeviceLookup isAlreadyAdmitted,
-    required Duration enrollmentTimeout,
-    required Duration enrollmentInterval,
-    required DateTime Function() clock,
-  })  : _channel = channel,
-        _loadPendingEnrollments = loadPendingEnrollments,
-        _isAlreadyAdmitted = isAlreadyAdmitted,
-        _enrollmentTimeout = enrollmentTimeout,
-        _enrollmentInterval = enrollmentInterval,
-        _clock = clock;
+  }) : _channel = channel;
 
   final MethodChannel _channel;
-  final PendingEnrollmentLookup _loadPendingEnrollments;
-  final AdmittedDeviceLookup _isAlreadyAdmitted;
-  final Duration _enrollmentTimeout;
-  final Duration _enrollmentInterval;
-  final DateTime Function() _clock;
 
   @override
   final DeviceProvisioningDescriptor descriptor;
@@ -232,6 +184,9 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
   Future<CommissioningStatusEvidenceV1> configureNetwork({
     required DeviceWifiCredentials credentials,
     required DeviceOnboardingTarget onboardingTarget,
+    required String createCommandId,
+    required String collectCommandId,
+    required String ackCommandId,
   }) async {
     // Trust first, network second. The order is the controller's to enforce
     // because the controller is the party that knows it — and it matters twice
@@ -249,6 +204,11 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
           'owner_root_certificate': onboardingTarget.ownerRootCertificate,
           'authority_signing_certificate':
               onboardingTarget.authoritySigningCertificate,
+          'admission_command_ids': {
+            'create': createCommandId,
+            'collect': collectCommandId,
+            'ack': ackCommandId,
+          },
         }),
       },
     );
@@ -337,54 +297,6 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
         'trust_handover_mismatch',
         '设备确认的 Owner Domain 与本次设置不一致。',
       );
-    }
-  }
-
-  @override
-  Future<DeviceEnrollmentReceipt> awaitEnrollment() async {
-    final deadline = _clock().add(_enrollmentTimeout);
-    while (true) {
-      // The phone is rejoining the Host's network as this begins, so the first
-      // attempts can fail for reasons that say nothing about the device. Only
-      // the deadline decides that it did not enrol.
-      List<PendingDeviceEnrollment> pending;
-      try {
-        pending = await _loadPendingEnrollments();
-      } catch (_) {
-        pending = const <PendingDeviceEnrollment>[];
-      }
-      for (final entry in pending) {
-        if (entry.deviceId == descriptor.deviceId) {
-          return DeviceEnrollmentReceipt(
-            deviceId: entry.deviceId,
-            // The Host's pending answer says that this device enrolled, not
-            // which enrollment it created. The identity check that matters is
-            // on the device, and that is the field carried here.
-            enrollmentId: '',
-            lifecycleState: 'pending-approval',
-          );
-        }
-      }
-      // A device the Host already holds has arrived, it is simply not waiting to
-      // be approved a second time.
-      try {
-        if (await _isAlreadyAdmitted(descriptor.deviceId)) {
-          return DeviceEnrollmentReceipt(
-            deviceId: descriptor.deviceId,
-            enrollmentId: '',
-            lifecycleState: 'approved',
-          );
-        }
-      } catch (_) {
-        // Same handover as above: the phone may still be rejoining.
-      }
-      if (!_clock().isBefore(deadline)) {
-        throw const DeviceProvisioningTransportException(
-          'enrollment_not_seen',
-          '设备已收到网络与 Host,但还没有在 Host 上登记。请确认它已通电并在同一网络。',
-        );
-      }
-      await Future<void>.delayed(_enrollmentInterval);
     }
   }
 

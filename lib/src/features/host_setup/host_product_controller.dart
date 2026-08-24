@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
+import '../device_setup/admission_projection.dart';
 import '../setup/commissioning_transport.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/host_registry.dart';
@@ -17,6 +18,7 @@ import 'host_product_session.dart';
 import 'host_service_models.dart';
 import 'host_vitals_models.dart';
 import '../../generated/management_v1.dart';
+import '../../generated/device_foundation_v1.dart';
 import '../../management/management_client.dart';
 import 'local_api_client.dart';
 import 'local_api_discovery.dart';
@@ -487,60 +489,100 @@ class HostProductController extends ChangeNotifier {
     return _deviceAdmissionRepository.fetchTarget();
   }
 
-  Future<List<PendingDeviceEnrollment>> listPendingDeviceEnrollments() {
+  Future<EnrollmentProposalPageV1> listEnrollmentRecovery({
+    AdmissionListCursorV1? after,
+  }) async {
     if (!(_workspace?.isReady ?? false)) {
       throw const HostControllerAuthorizationException(
         '请先完成 Owner Workspace，再添加设备',
       );
     }
-    return _deviceAdmissionRepository.listPending();
+    final target = await _deviceAdmissionRepository.fetchTarget();
+    return _deviceAdmissionRepository.listRecovery(
+      ownerDomainId: target.ownerDomainId,
+      after: after,
+    );
   }
 
   /// The Host this Owner's devices are being set up for.
   Future<DeviceOnboardingTarget> deviceOnboardingTarget() =>
       _deviceAdmissionRepository.fetchTarget();
 
-  /// Finish setting up a device that was just commissioned by this Controller.
-  ///
-  /// The person already confirmed this device when they handed it the Host, so
-  /// they are not asked to approve it a second time. The device still has to
-  /// boot, join the network and enroll, which is why this waits for it to
-  /// appear rather than assuming it already has.
-  Future<DeviceAdmissionProgress> claimCommissionedDevice({
-    required String deviceId,
-    Duration timeout = commissionedClaimTimeout,
-    Duration interval = commissionedClaimInterval,
-  }) =>
-      claimWhenBothEndsAreBack(
-        deviceId: deviceId,
-        listPending: listPendingDeviceEnrollments,
-        approve: () => approveDeviceEnrollment(
-          requestId: 'device-commissioned-$deviceId',
-          deviceId: deviceId,
-        ),
-        timeout: timeout,
-        interval: interval,
+  Future<EnrollmentRecoveryProjectionV1> recoverEnrollment({
+    required String enrollmentId,
+  }) async {
+    if (!(_workspace?.isReady ?? false)) {
+      throw const HostControllerAuthorizationException(
+        '请先完成 Owner Workspace，再读取设备接入状态',
       );
+    }
+    final projection = await _deviceAdmissionRepository.recover(
+      enrollmentId: enrollmentId,
+    );
+    final target = await _deviceAdmissionRepository.fetchTarget();
+    projection.validateForOwner(
+      target.ownerDomainId,
+      ownerDomainGeneration: target.ownerDomainDescriptor.ownerDomainGeneration,
+    );
+    return projection;
+  }
 
-  Future<DeviceAdmissionProgress> approveDeviceEnrollment({
-    required String requestId,
-    required String deviceId,
+  Future<EnrollmentRecoveryProjectionV1> decideEnrollment({
+    required String commandId,
+    required String correlationId,
+    required EnrollmentRecoveryProjectionV1 projection,
+    String? initialCompanionId,
   }) async {
     final workspace = _workspace;
-    if (workspace == null || !workspace.isReady) {
+    final businessOwnerId = workspace?.owner?.ownerId;
+    if (workspace == null || !workspace.isReady || businessOwnerId == null) {
       throw const HostControllerAuthorizationException(
         '请先完成 Owner Workspace，再认领设备',
       );
     }
-    final progress = await _deviceAdmissionRepository.approve(
-      requestId: requestId,
-      deviceId: deviceId,
-      companionId: workspace.workspace?.primaryCompanionId,
+    final target = await _deviceAdmissionRepository.fetchTarget();
+    final stage = projection.validateForOwner(
+      target.ownerDomainId,
+      ownerDomainGeneration: target.ownerDomainDescriptor.ownerDomainGeneration,
     );
-    if (progress.outcome == ActOutcome.done) {
-      await refreshDevices();
+    if (stage != AdmissionProjectionStage.pendingReview) {
+      return projection;
     }
-    return progress;
+    final proposal = projection.proposal;
+    final command = DecideEnrollmentV1.fromJson({
+      'enrollment_id': proposal.json['enrollment_id'],
+      'expected_proposal_revision': projection.sourceRevision,
+      'decision': 'approve',
+      'target_owner_domain_id': target.ownerDomainId,
+      'target_business_owner_id': businessOwnerId,
+      'target_space_id': null,
+      'reviewed_manifest_ref': proposal.json['manifest_ref'],
+      'initial_assignment_intent': initialCompanionId == null
+          ? null
+          : {'companion_id': initialCompanionId},
+      'initial_capability_policy_refs': const <String>[],
+    });
+    final result = await _deviceAdmissionRepository.decideCommand(
+      commandId: commandId,
+      correlationId: correlationId,
+      command: command,
+    );
+    if (result.json['decision'] != 'approve') {
+      throw const FormatException('Hub returned another Decision');
+    }
+    final recovered = await _deviceAdmissionRepository.recover(
+      enrollmentId: proposal.json['enrollment_id']! as String,
+    );
+    recovered.validateForOwner(
+      target.ownerDomainId,
+      ownerDomainGeneration: target.ownerDomainDescriptor.ownerDomainGeneration,
+    );
+    final decision = recovered.approvalDecision;
+    if (decision == null ||
+        decision.json['decision_id'] != result.json['decision_id']) {
+      throw const FormatException('Committed Decision is absent from recovery');
+    }
+    return recovered;
   }
 
   /// Take a device off this Host at the Owner's request.
@@ -738,66 +780,3 @@ class HostProductController extends ChangeNotifier {
 /// the phone is separately finding its own way back onto the home network. This
 /// is the sum of two waits, neither of which this side controls, so it is set
 /// well above what either takes rather than at the edge of what both do.
-const commissionedClaimTimeout = Duration(seconds: 150);
-const commissionedClaimInterval = Duration(seconds: 3);
-
-/// Wait for a commissioned device to reach the Host, then claim it.
-///
-/// Both ends are still finding their way back when this starts. The phone has
-/// just let go of the device's access point, and Android does not hand the home
-/// network back in the same breath — the first call after that handover reaches
-/// nothing at all. Treating that as a failed setup is what reported success as
-/// failure: the device was already commissioned and about to enroll.
-///
-/// So an unreachable Host is one of the things being waited for, alongside a
-/// device that has not enrolled yet. What is *not* waited on is a Host that
-/// answered: a refusal is something it decided, and it gets to say so at once.
-@visibleForTesting
-Future<DeviceAdmissionProgress> claimWhenBothEndsAreBack({
-  required String deviceId,
-  required Future<List<PendingDeviceEnrollment>> Function() listPending,
-  required Future<DeviceAdmissionProgress> Function() approve,
-  Duration timeout = commissionedClaimTimeout,
-  Duration interval = commissionedClaimInterval,
-  DateTime Function() clock = DateTime.now,
-  Future<void> Function(Duration) sleep = _sleep,
-}) async {
-  final deadline = clock().add(timeout);
-  // Which of the two waits is still outstanding, because they are different
-  // things to tell the person.
-  var hostOutOfReach = false;
-  while (true) {
-    try {
-      final pending = await listPending();
-      hostOutOfReach = false;
-      if (pending.any((enrollment) => enrollment.deviceId == deviceId)) {
-        return approve();
-      }
-    } on PinnedHttpException catch (error) {
-      if (!_hostMayNotBeBackYet(error)) rethrow;
-      hostOutOfReach = true;
-    }
-    if (!clock().isBefore(deadline)) {
-      throw HostControllerAuthorizationException(
-        hostOutOfReach
-            ? '手机还没有回到家庭 Wi-Fi，暂时联系不上主机；'
-                '设备已经配好，回到设备页就能认领它'
-            : '设备还没有连上主机；等它上线后可以在设备页认领它',
-      );
-    }
-    await sleep(interval);
-  }
-}
-
-Future<void> _sleep(Duration duration) => Future<void>.delayed(duration);
-
-/// Whether this failure is the transport being absent rather than the Host
-/// having an answer. A pinned channel that could not be opened, timed out, or
-/// broke mid-flight never reached the Host; anything else did.
-bool _hostMayNotBeBackYet(PinnedHttpException error) => switch (error.kind) {
-      PinnedHttpFailureKind.unreachable ||
-      PinnedHttpFailureKind.timeout ||
-      PinnedHttpFailureKind.io =>
-        true,
-      _ => false,
-    };

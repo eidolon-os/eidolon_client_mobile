@@ -62,9 +62,6 @@ class MainActivity : FlutterActivity() {
     private var setupScanResult: MethodChannel.Result? = null
     private var commissioningManager: BleCommissioningManager? = null
     private val pinnedHttpsClient by lazy { PinnedHttpsClient(mainHandler) }
-    private val deviceEnrollmentMaterialStore by lazy {
-        DeviceEnrollmentMaterialStore(applicationContext)
-    }
     private val deviceProvisioning by lazy {
         DeviceProvisioningManager(applicationContext, mainHandler)
     }
@@ -86,30 +83,6 @@ class MainActivity : FlutterActivity() {
                 "signRequest" -> result.success(signRequest(call))
                 "verifyOwnerDomainDescriptor" ->
                     result.success(verifyOwnerDomainDescriptor(call))
-                "loadOrCreateDeviceEnrollmentMaterial" -> result.success(
-                    deviceEnrollmentMaterialStore.loadOrCreate(
-                        call.argument<String>("ownerDomainId")
-                            ?: error("ownerDomainId is required"),
-                    ),
-                )
-                "saveDeviceEnrollmentReceipt" -> {
-                    deviceEnrollmentMaterialStore.saveReceipt(
-                        ownerDomainId = call.argument<String>("ownerDomainId")
-                            ?: error("ownerDomainId is required"),
-                        enrollmentId = call.argument<String>("enrollmentId")
-                            ?: error("enrollmentId is required"),
-                        retrievalExpiresAtMs = call.argument<Number>("retrievalExpiresAtMs")
-                            ?.toLong() ?: error("retrievalExpiresAtMs is required"),
-                    )
-                    result.success(null)
-                }
-                "clearDeviceEnrollmentMaterial" -> {
-                    deviceEnrollmentMaterialStore.clear(
-                        call.argument<String>("ownerDomainId")
-                            ?: error("ownerDomainId is required"),
-                    )
-                    result.success(null)
-                }
                 "getControllerIdentity" -> result.success(controllerIdentity())
                 "signControllerChallenge" -> result.success(signControllerChallenge(call))
                 "pinnedHttpsRequest" -> pinnedHttpsClient.request(call, result)

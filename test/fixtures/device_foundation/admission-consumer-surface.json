@@ -1,0 +1,141 @@
+{
+  "cases": [
+    {
+      "case_id": "DF-PH2B0-CANCEL-ENROLLMENT-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/admission/schemas.schema.json",
+      "definition": "CancelEnrollment",
+      "value": {"enrollment_id": "enrollment_01", "reason": "controller-canceled"}
+    },
+    {
+      "case_id": "DF-PH2B0-CANCEL-ENROLLMENT-RESULT-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/admission/schemas.schema.json",
+      "definition": "CancelEnrollmentResult",
+      "value": {"enrollment_id": "enrollment_01", "proposal_state": "canceled", "canceled_at": "2026-08-18T00:03:00Z"}
+    },
+    {
+      "case_id": "DF-PH2B0-GRANT-WIRE-ENVELOPE-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/admission/schemas.schema.json",
+      "definition": "ClaimGrantWireEnvelope",
+      "value": {
+        "contract": "eidolon.device-foundation.claim-grant-envelope",
+        "profile_id": "eidolon-trust-p256-hpke-v1",
+        "kem": "DHKEM-P256-HKDF-SHA256",
+        "kdf": "HKDF-SHA256",
+        "aead": "AES-128-GCM",
+        "recipient_handoff_key_id": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "encapsulated_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "ciphertext": "AAAAAAAAAAAAAAAAAAAAAA",
+        "aad": {
+          "contract": "eidolon.device-foundation.claim-grant-aad",
+          "profile_id": "eidolon-trust-p256-hpke-v1",
+          "enrollment_id": "enrollment_01",
+          "proposal_revision": 2,
+          "device_instance_id": "device_01",
+          "hardware_evidence_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "manifest_ref": {"manifest_id": "manifest_01", "revision": 2, "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"},
+          "owner_domain_id": "owner-domain_01",
+          "owner_domain_generation": 3,
+          "claim_generation": 2,
+          "trust_epoch": 1,
+          "grant_id": "grant_01"
+        }
+      }
+    },
+    {
+      "case_id": "DF-PH2B0-GRANT-DELIVERY-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/admission/schemas.schema.json",
+      "definition": "GrantDeliveryRecord",
+      "value": {"grant_id": "grant_01", "approval_decision_id": "decision_01", "state": "delivered", "delivered_at": "2026-08-18T00:04:00Z", "acknowledged_at": null}
+    },
+    {
+      "case_id": "DF-PH2B0-RECOVERY-PROJECTION-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/admission/schemas.schema.json",
+      "definition": "EnrollmentRecoveryProjection",
+      "value": {
+        "proposal": {
+          "enrollment_id": "enrollment_01", "proposal_revision": 2, "state": "grant_delivered",
+          "device_instance_candidate_id": "device_01", "requested_owner_domain_id": "owner-domain_01",
+          "hardware_evidence_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "manifest_ref": {"manifest_id": "manifest_01", "revision": 2, "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"},
+          "handoff_key_id": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "created_at": "2026-08-18T00:00:00Z", "expires_at": "2026-08-18T00:15:00Z"
+        },
+        "approval_decision": null,
+        "grant_delivery": {"grant_id": "grant_01", "approval_decision_id": "decision_01", "state": "delivered", "delivered_at": "2026-08-18T00:04:00Z", "acknowledged_at": null},
+        "claim": null,
+        "source_revision": 2,
+        "observed_at": "2026-08-18T00:04:01Z"
+      }
+    },
+    {
+      "case_id": "DF-PH2B0-ADMISSION-CURSOR-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/admission/schemas.schema.json",
+      "definition": "AdmissionListCursor",
+      "value": {"owner_domain_id": "owner-domain_01", "sort_key": "2026-08-18T00:00:00Z", "resource_id": "enrollment_01"}
+    },
+    {
+      "case_id": "DF-PH2B0-PROPOSAL-QUERY-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/admission/schemas.schema.json",
+      "definition": "EnrollmentProposalQuery",
+      "value": {"owner_domain_id": "owner-domain_01", "states": ["pending_review", "grant_delivered"], "cursor": null, "limit": 50}
+    },
+    {
+      "case_id": "DF-PH2B0-PROPOSAL-PAGE-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/admission/schemas.schema.json",
+      "definition": "EnrollmentProposalPage",
+      "value": {"owner_domain_id": "owner-domain_01", "items": [], "next_cursor": null, "observed_at": "2026-08-18T00:04:01Z"}
+    },
+    {
+      "case_id": "DF-PH2B0-CLAIM-QUERY-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/admission/schemas.schema.json",
+      "definition": "ClaimQuery",
+      "value": {"owner_domain_id": "owner-domain_01", "states": ["active", "revoked"], "cursor": null, "limit": 50}
+    },
+    {
+      "case_id": "DF-PH2B0-CLAIM-PAGE-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/admission/schemas.schema.json",
+      "definition": "ClaimPage",
+      "value": {"owner_domain_id": "owner-domain_01", "items": [], "next_cursor": null, "observed_at": "2026-08-18T00:04:01Z"}
+    },
+    {
+      "case_id": "DF-PH2B0-EVENT-CURSOR-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/events/schemas.schema.json",
+      "definition": "ClaimEventCursor",
+      "value": {"stream_id": "admission-claims-v1", "stream_position": 0}
+    },
+    {
+      "case_id": "DF-PH2B0-EVENT-ITEM-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/events/schemas.schema.json",
+      "definition": "ClaimEventStreamItem",
+      "value": {
+        "stream_position": 1,
+        "event": {
+          "specversion": "1.0", "id": "event_01", "source": "urn:eidolon:authority:admission",
+          "type": "live.eidolon.device.claim-activated.v1", "subject": "device-instances/device_01",
+          "time": "2026-08-18T00:05:00Z", "datacontenttype": "application/json",
+          "dataschema": "https://contracts.eidolon.live/device-foundation/v1/events/claim-activated-data.schema.json",
+          "audience": "eidolon-claim-consumers", "ownerdomainid": "owner-domain_01", "aggregaterev": 1,
+          "correlationid": "intent_01", "causationid": "command_01",
+          "data": {
+            "device_ref": {"device_instance_id": "device_01", "owner_domain_id": "owner-domain_01", "owner_domain_generation": 3, "claim_generation": 2, "trust_epoch": 1},
+            "manifest_ref": {"manifest_id": "manifest_01", "revision": 2, "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"},
+            "approval_decision_id": "decision_01", "activated_at": "2026-08-18T00:05:00Z"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "DF-PH2B0-EVENT-PAGE-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/events/schemas.schema.json",
+      "definition": "ClaimEventPage",
+      "value": {
+        "stream_id": "admission-claims-v1",
+        "requested_after": {"stream_id": "admission-claims-v1", "stream_position": 0},
+        "events": [],
+        "next_cursor": {"stream_id": "admission-claims-v1", "stream_position": 0},
+        "high_watermark": 0,
+        "observed_at": "2026-08-18T00:05:00Z"
+      }
+    }
+  ]
+}

@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly SDK_COMMIT="d88196757e8c054befd2c17f7cb9c7a9eb6f5253"
+readonly SDK_COMMIT="1f49abc43450734aefa811fd3622014633c6539b"
 readonly SDK_BINDING="contracts/device_foundation/v1/generated/dart/device_foundation_v1.dart"
 readonly MOBILE_BINDING="lib/src/generated/device_foundation_v1.dart"
+readonly SDK_CONSUMER_FIXTURE="contracts/device_foundation/v1/examples/valid/admission-consumer-surface.json"
+readonly MOBILE_CONSUMER_FIXTURE="test/fixtures/device_foundation/admission-consumer-surface.json"
+readonly SDK_ADMISSION_FIXTURE="contracts/device_foundation/v1/examples/valid/admission.json"
+readonly MOBILE_ADMISSION_FIXTURE="test/fixtures/device_foundation/admission.json"
+readonly SDK_ADMISSION_GOLDEN="contracts/device_foundation/v1/golden/admission-event-stream.json"
+readonly MOBILE_ADMISSION_GOLDEN="test/fixtures/device_foundation/admission-event-stream.json"
 
 mode="${1:---check}"
 sdk_root="${EIDOLON_SDK_ROOT:-../eidolon_sdk}"
@@ -13,24 +19,45 @@ if [[ "$mode" != "--check" && "$mode" != "--sync" ]]; then
   exit 64
 fi
 
-if ! git -C "$sdk_root" cat-file -e "$SDK_COMMIT:$SDK_BINDING" 2>/dev/null; then
-  echo "canonical SDK binding $SDK_COMMIT:$SDK_BINDING is unavailable" >&2
-  exit 66
-fi
+temporary_root="$(mktemp -d)"
+trap 'rm -rf "$temporary_root"' EXIT
 
-temporary_binding="$(mktemp)"
-trap 'rm -f "$temporary_binding"' EXIT
-git -C "$sdk_root" show "$SDK_COMMIT:$SDK_BINDING" >"$temporary_binding"
+sdk_paths=(
+  "$SDK_BINDING"
+  "$SDK_CONSUMER_FIXTURE"
+  "$SDK_ADMISSION_FIXTURE"
+  "$SDK_ADMISSION_GOLDEN"
+)
+mobile_paths=(
+  "$MOBILE_BINDING"
+  "$MOBILE_CONSUMER_FIXTURE"
+  "$MOBILE_ADMISSION_FIXTURE"
+  "$MOBILE_ADMISSION_GOLDEN"
+)
 
-if cmp -s "$temporary_binding" "$MOBILE_BINDING"; then
-  echo "device-foundation Dart binding matches SDK $SDK_COMMIT"
-  exit 0
-fi
+drifted=0
+for index in "${!sdk_paths[@]}"; do
+  sdk_path="${sdk_paths[$index]}"
+  mobile_path="${mobile_paths[$index]}"
+  temporary_path="$temporary_root/$index"
+  if ! git -C "$sdk_root" cat-file -e "$SDK_COMMIT:$sdk_path" 2>/dev/null; then
+    echo "canonical SDK artifact $SDK_COMMIT:$sdk_path is unavailable" >&2
+    exit 66
+  fi
+  git -C "$sdk_root" show "$SDK_COMMIT:$sdk_path" >"$temporary_path"
+  if ! cmp -s "$temporary_path" "$mobile_path"; then
+    if [[ "$mode" == "--check" ]]; then
+      echo "device-foundation artifact drifted: $mobile_path" >&2
+      drifted=1
+    else
+      mkdir -p "$(dirname "$mobile_path")"
+      cp "$temporary_path" "$mobile_path"
+      echo "synced $mobile_path from SDK $SDK_COMMIT"
+    fi
+  fi
+done
 
-if [[ "$mode" == "--check" ]]; then
-  echo "device-foundation Dart binding drifted from SDK $SDK_COMMIT" >&2
+if [[ "$drifted" -ne 0 ]]; then
   exit 1
 fi
-
-cp "$temporary_binding" "$MOBILE_BINDING"
-echo "synced device-foundation Dart binding from SDK $SDK_COMMIT"
+echo "device-foundation artifacts match SDK $SDK_COMMIT"

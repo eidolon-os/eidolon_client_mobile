@@ -42,7 +42,8 @@ class DeviceSetupPage extends StatefulWidget {
 
 enum _Step { introduction, choosingDevice, choosingNetwork, working, complete }
 
-class _DeviceSetupPageState extends State<DeviceSetupPage> {
+class _DeviceSetupPageState extends State<DeviceSetupPage>
+    with WidgetsBindingObserver {
   final _password = TextEditingController();
   final _hiddenSsid = TextEditingController();
   final _random = Random.secure();
@@ -57,9 +58,26 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
   String? _error;
   String? _progress;
   bool _busy = false;
+  String? _activeSetupId;
+  String? _activeRequestId;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_resumePersistedAdmission());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_busy) {
+      unawaited(_resumePersistedAdmission());
+    }
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _password.dispose();
     _hiddenSsid.dispose();
     unawaited(widget.transport.close());
@@ -138,36 +156,96 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
       if (target == null) {
         throw Exception('还没有读到这台 Host 的信息,请退回上一步重新查找设备。');
       }
-      final coordinator = DeviceSetupCoordinator(
-        // The session is already open, so the coordinator is handed a transport
-        // that returns it rather than opening a second one against the same
-        // device.
+      _activeSetupId ??= _uuidV4();
+      _activeRequestId ??= _uuidV4();
+      final coordinator = _coordinator(
         transport: _OpenSessionTransport(widget.transport, _session!),
-        admission: widget.admission,
-        checkpoints: widget.checkpoints,
-        ownerDirectoryVerifier: PlatformOwnerDomainDirectoryVerifier(),
-        allowDevelopmentTrust: widget.allowDevelopmentTrust,
       );
       final checkpoint = await coordinator.provisionAndAdmit(
-        setupId: _uuidV4(),
-        requestId: _uuidV4(),
+        setupId: _activeSetupId!,
+        requestId: _activeRequestId!,
         candidate: _candidate!,
         credentials:
             DeviceWifiCredentials(ssid: ssid, password: _password.text),
         onboardingTarget: target,
       );
-      if (checkpoint.failure != null) {
+      _showCheckpoint(checkpoint);
+      if (checkpoint.failure != null &&
+          checkpoint.provisioningState !=
+              DeviceProvisioningState.networkConfigured) {
         throw Exception(checkpoint.failure!.message);
       }
-      setState(() {
-        _step = _Step.complete;
-        _progress = null;
-      });
     });
     if (mounted && _step != _Step.complete) {
       setState(() => _step = _Step.choosingNetwork);
     }
   }
+
+  DeviceSetupCoordinator _coordinator(
+          {DeviceProvisioningTransport? transport}) =>
+      DeviceSetupCoordinator(
+        transport: transport ?? widget.transport,
+        admission: widget.admission,
+        checkpoints: widget.checkpoints,
+        ownerDirectoryVerifier: PlatformOwnerDomainDirectoryVerifier(),
+        allowDevelopmentTrust: widget.allowDevelopmentTrust,
+      );
+
+  Future<void> _resumePersistedAdmission() => _run(() async {
+        final target = _target ??= await widget.loadTarget();
+        final checkpoints = await widget.checkpoints.list();
+        final resumable = checkpoints.where(
+          (item) =>
+              item.onboardingTarget.ownerDomainId == target.ownerDomainId &&
+              item.provisioningState ==
+                  DeviceProvisioningState.networkConfigured &&
+              !item.isReady,
+        );
+        final checkpoint = _activeSetupId == null
+            ? resumable.firstOrNull
+            : resumable
+                .where((item) => item.setupId == _activeSetupId)
+                .firstOrNull;
+        if (checkpoint == null) return;
+        _activeSetupId = checkpoint.setupId;
+        _activeRequestId = checkpoint.requestId;
+        if (mounted) {
+          setState(() {
+            _step = _Step.working;
+            _progress = '正在从主机恢复设备接入状态';
+          });
+        }
+        final recovered =
+            await _coordinator().resumeAdmission(checkpoint.setupId);
+        _showCheckpoint(recovered);
+      });
+
+  void _showCheckpoint(DeviceSetupCheckpoint checkpoint) {
+    if (!mounted) return;
+    setState(() {
+      if (checkpoint.isReady) {
+        _step = _Step.complete;
+        _progress = null;
+        _error = null;
+      } else {
+        _step = _Step.working;
+        _progress = _admissionProgress(checkpoint.admissionState);
+        _error = checkpoint.failure?.message;
+      }
+    });
+  }
+
+  String _admissionProgress(DeviceAdmissionState state) => switch (state) {
+        DeviceAdmissionState.awaitingEnrollment => '网络已提交，等待设备创建 Enrollment',
+        DeviceAdmissionState.pendingReview => 'Enrollment 等待明确审批',
+        DeviceAdmissionState.approvedAwaitingHandoff =>
+          '已批准，等待设备领取 Grant；尚未 ClaimActive',
+        DeviceAdmissionState.grantDelivered => 'Grant 已交付；等待设备完成 ClaimActive',
+        DeviceAdmissionState.claimActive => '设备 Claim 已生效',
+        DeviceAdmissionState.rejected => 'Enrollment 已终止',
+        DeviceAdmissionState.failed => '暂时无法恢复 Admission；可安全重试',
+        DeviceAdmissionState.notStarted => '网络已提交，等待 Admission',
+      };
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -180,7 +258,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
               _Step.introduction => _introduction(),
               _Step.choosingDevice => _deviceList(),
               _Step.choosingNetwork => _networkForm(),
-              _Step.working => const SizedBox.shrink(),
+              _Step.working => _working(),
               _Step.complete => _complete(),
             },
             if (_progress != null) ...[
@@ -303,10 +381,15 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
             ),
           ),
           const SizedBox(height: 16),
+          const Text(
+            '这一次确认同时表达配网与审批意图：应用会先等待 network_committed，'
+            '再依据恢复到的 Enrollment 提交独立 ApprovalDecision；配网本身不代表批准。',
+          ),
+          const SizedBox(height: 12),
           FilledButton(
             key: const Key('confirm-device-setup'),
             onPressed: _busy ? null : _finish,
-            child: const Text('把网络和 Host 交给设备'),
+            child: const Text('确认配网并批准这次设备接入'),
           ),
         ],
       );
@@ -320,6 +403,22 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
           FilledButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('完成'),
+          ),
+        ],
+      );
+
+  Widget _working() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('设备接入进行中', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          const Text('配网完成不代表批准，批准也不代表 Claim 已生效。'),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            key: const Key('resume-device-admission'),
+            onPressed: _busy ? null : _resumePersistedAdmission,
+            icon: const Icon(Icons.refresh),
+            label: const Text('从主机恢复状态'),
           ),
         ],
       );

@@ -1,309 +1,103 @@
-import 'dart:convert';
-
-import 'package:eidolon_client_mobile/src/features/conversation/hub_onboarding_client.dart';
-import 'package:eidolon_client_mobile/src/features/conversation/hub_onboarding_models.dart';
-import 'package:eidolon_client_mobile/src/features/conversation/mobile_body_security.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/mobile_conversation_provisioner.dart';
-import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
+import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_ports.dart';
+import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:eidolon_client_mobile/src/models/hub_models.dart';
 import 'package:eidolon_client_mobile/src/platform/platform_bridge.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
-
+import 'support/admission_fixtures.dart';
 import 'support/owner_domain_fixtures.dart';
 
-const _enrollmentId = 'enrollment_abcdefghijklmnopqrstuvwx';
-const _retrievalToken = 'retrieval-token-abcdefghijklmnopqrstuvwxyz';
-
 void main() {
-  test('provisions Mobile through Owner approval and consumes Provider binding',
+  test('network/pending review never implies approval or active Channel',
       () async {
-    final expectedRevision = await canonicalManifestRevision(
-      mobileBodyManifest,
-    );
-    final security = _Security();
-    final requests = <http.Request>[];
-    final hubClient = _hubClient(
-      security,
-      requests,
-      handoffResponse: _handoffResponse(expectedRevision),
-    );
-    String? approvedDeviceId;
-    String? claimedRequestId;
-    final provisioner = MobileConversationProvisioner(
-      loadTarget: () async => _target,
-      approveAdmission: ({
-        required requestId,
-        required deviceId,
-      }) async {
-        approvedDeviceId = deviceId;
-        claimedRequestId = requestId;
-        return DeviceAdmissionProgress(
-          requestId: requestId,
-          deviceId: deviceId,
-          ownerId: 'owner-1',
-          outcome: ActOutcome.done,
-          stoppedAfter: 'companion-attached',
-          companionId: 'companion-1',
-        );
-      },
-      platform: _Platform(),
-      security: security,
-      hubClient: hubClient,
-      clock: () => DateTime.utc(2026, 8, 9),
-    );
+    final admission = _Admission([
+      _projection(
+        state: 'pending_review',
+        deviceId: 'mobile-android-test',
+      ),
+    ]);
+    final config = await _provisioner(admission).provision();
 
-    final config = await provisioner.provision();
-
-    expect(config.status, HubConfigStatus.active);
-    expect(config.registrationId, 'channel-mobile-1');
-    expect(config.session.roomName, 'mobile-channel');
-    expect(config.sampleRate, 16000);
-    expect(config.channels, 1);
-    expect(approvedDeviceId, 'mobile-android-test');
-    expect(claimedRequestId, startsWith('mobile-body-approval-'));
-    expect(
-      requests.map((request) => '${request.method} ${request.url.path}'),
-      [
-        'POST /api/device-onboarding/v1/enrollments',
-        'POST /api/device-onboarding/v1/enrollments/$_enrollmentId/handoff',
-      ],
-    );
+    expect(config.status, HubConfigStatus.pendingApproval);
+    expect(config.session.usable, isFalse);
+    expect(admission.decisions, 0);
   });
 
-  test('does not request Provider binding before Local admission is ready',
+  test('approved, GrantDelivered and ClaimActive remain honestly visible',
       () async {
-    final security = _Security();
-    final requests = <http.Request>[];
-    final provisioner = MobileConversationProvisioner(
-      loadTarget: () async => _target,
-      approveAdmission: ({
-        required requestId,
-        required deviceId,
-      }) async =>
-          DeviceAdmissionProgress(
-        requestId: requestId,
-        deviceId: deviceId,
-        ownerId: 'owner-1',
-        outcome: ActOutcome.unfinished,
-        stoppedAfter: 'kernel-mounted',
-        companionId: 'companion-1',
+    final cases = <EnrollmentRecoveryProjectionV1>[
+      _projection(
+        state: 'approved_awaiting_handoff',
+        deviceId: 'mobile-android-test',
+        withDecision: true,
       ),
-      platform: _Platform(),
-      security: security,
-      hubClient: _hubClient(
-        security,
-        requests,
-        handoffResponse: http.Response('must not hand off', 500),
+      _projection(
+        state: 'grant_delivered',
+        deviceId: 'mobile-android-test',
+        withDecision: true,
+        withDelivery: true,
       ),
-      clock: () => DateTime.utc(2026, 8, 9),
-    );
+      _projection(
+        state: 'grant_acknowledged',
+        deviceId: 'mobile-android-test',
+        withDecision: true,
+        withDelivery: true,
+        claimState: 'active',
+      ),
+    ];
 
-    final config = await provisioner.provision();
-
-    expect(config.status, HubConfigStatus.waitingBinding);
-    expect(requests, hasLength(1));
+    for (final projection in cases) {
+      final config = await _provisioner(_Admission([projection])).provision();
+      expect(config.status, HubConfigStatus.waitingBinding);
+      expect(config.session.usable, isFalse);
+    }
   });
 
-  test('an enrolled device hands off again after its pickup window passed',
-      () async {
-    // The window that was set when the owner approved this device says nothing
-    // about whether it may open another conversation today. Re-enrolling is
-    // what the Hub refuses, so the device must not try.
-    final expectedRevision = await canonicalManifestRevision(
-      mobileBodyManifest,
-    );
-    final security = _Security(
-      enrollmentId: _enrollmentId,
-      retrievalExpiresAt: DateTime.utc(2026, 8, 8),
-    );
-    final requests = <http.Request>[];
-    final provisioner = _provisioner(
-      security,
-      _hubClient(
-        security,
-        requests,
-        handoffResponse: _handoffResponse(expectedRevision),
-      ),
-    );
-
-    final config = await provisioner.provision();
-
-    expect(config.status, HubConfigStatus.active);
-    expect(security.cleared, 0);
-    expect(
-      requests.map((request) => '${request.method} ${request.url.path}'),
-      [
-        'POST /api/device-onboarding/v1/enrollments/$_enrollmentId/handoff',
-      ],
-    );
+  test('empty recovery does not mean ClaimActive', () async {
+    final config = await _provisioner(_Admission(const [])).provision();
+    expect(config.status, HubConfigStatus.pendingApproval);
   });
 
-  test('an enrollment the Hub no longer knows is discarded and replaced',
+  test('Owner Domain mismatch is rejected instead of cross-domain adoption',
       () async {
-    final expectedRevision = await canonicalManifestRevision(
-      mobileBodyManifest,
-    );
-    final security = _Security(enrollmentId: 'enrollment_stale_0123456789abc');
-    final requests = <http.Request>[];
-    final provisioner = _provisioner(
-      security,
-      _hubClient(
-        security,
-        requests,
-        handoffResponse: http.Response('enrollment not found', 404),
-        freshHandoffResponse: _handoffResponse(expectedRevision),
+    final admission = _Admission([
+      _projection(
+        ownerDomainId: 'owner-domain_other',
+        deviceId: 'mobile-android-test',
       ),
-    );
-
-    final config = await provisioner.provision();
-
-    expect(config.status, HubConfigStatus.active);
-    expect(security.cleared, 1);
-    expect(
-      requests.map((request) => '${request.method} ${request.url.path}'),
-      [
-        'POST /api/device-onboarding/v1/enrollments/'
-            'enrollment_stale_0123456789abc/handoff',
-        'POST /api/device-onboarding/v1/enrollments',
-        'POST /api/device-onboarding/v1/enrollments/$_enrollmentId/handoff',
-      ],
-    );
-  });
-
-  test('a device the Host already holds says where the remove control is',
-      () async {
-    final security = _Security();
-    final requests = <http.Request>[];
-    final provisioner = _provisioner(
-      security,
-      _hubClient(
-        security,
-        requests,
-        handoffResponse: http.Response('must not hand off', 500),
-        enrollmentResponse: http.Response('device is already enrolled', 409),
-      ),
-    );
-
-    // Retrying asks the Host the same question and gets the same 409, so the
-    // person is told which control clears it — and told it where it is, since
-    // the device list only offers removal once a device is opened.
+    ]);
     await expectLater(
-      provisioner.provision(),
-      throwsA(
-        isA<MobileProvisioningBlocked>()
-            .having((error) => error.message, 'message', contains('打开设备管理'))
-            .having((error) => error.message, 'message', contains('移除设备'))
-            .having((error) => error.detail, 'detail', contains('409')),
-      ),
+      _provisioner(admission).provision(),
+      throwsA(isA<FormatException>()),
     );
   });
 }
 
-MobileConversationProvisioner _provisioner(
-  _Security security,
-  HubOnboardingClient hubClient,
-) =>
+MobileConversationProvisioner _provisioner(DeviceAdmissionPort admission) =>
     MobileConversationProvisioner(
-      loadTarget: () async => _target,
-      approveAdmission: ({
-        required requestId,
-        required deviceId,
-      }) async =>
-          DeviceAdmissionProgress(
-        requestId: requestId,
-        deviceId: deviceId,
-        ownerId: 'owner-1',
-        outcome: ActOutcome.done,
-        stoppedAfter: 'companion-attached',
-        companionId: 'companion-1',
-      ),
+      loadTarget: () async => deviceOnboardingTargetFixture(),
+      admission: admission,
       platform: _Platform(),
-      security: security,
-      hubClient: hubClient,
-      clock: () => DateTime.utc(2026, 8, 9),
     );
 
-HubOnboardingClient _hubClient(
-  _Security security,
-  List<http.Request> requests, {
-  required http.Response handoffResponse,
-  http.Response? freshHandoffResponse,
-  http.Response? enrollmentResponse,
-}) {
-  var enrolled = false;
-  return HubOnboardingClient(
-    security: security,
-    directoryVerifier: const AcceptingOwnerDomainDirectoryVerifier(),
-    clientFactory: (ownerRootCertificate) {
-      expect(ownerRootCertificate, ownerRootCertificateFixture);
-      return MockClient((request) async {
-        requests.add(request);
-        final body = jsonDecode(request.body) as Map<String, dynamic>;
-        if (body['operation'] == 'device.enrollment') {
-          enrolled = true;
-          return enrollmentResponse ??
-              http.Response(
-                jsonEncode({
-                  'operation': 'device.enrollment-received',
-                  'request_id': 'mobile-enroll-1',
-                  'enrollment_id': _enrollmentId,
-                  'device_id': 'mobile-android-test',
-                  'lifecycle_state': 'pending-approval',
-                  'retrieval_expires_at_ms': 1893456000000,
-                }),
-                200,
-              );
-        }
-        if (enrolled && freshHandoffResponse != null) {
-          return freshHandoffResponse;
-        }
-        return handoffResponse;
-      });
-    },
-  );
-}
-
-http.Response _handoffResponse(String manifestRevision) {
-  final binding = utf8.encode(
-    jsonEncode({
-      'schema_version': 2,
-      'session': {
-        'server_url': 'wss://livekit.example',
-        'token': 'channel-token',
-        'identity': 'mobile-android-test',
-        'room_name': 'mobile-channel',
-      },
-      'audio': {'sample_rate': 16000, 'channels': 1},
-    }),
-  );
-  return http.Response(
-    jsonEncode({
-      'operation': 'device.handoff-outcome',
-      'request_id': 'mobile-handoff-1',
-      'enrollment_id': _enrollmentId,
-      'device_id': 'mobile-android-test',
-      'manifest_revision': manifestRevision,
-      'lifecycle_state': 'approved',
-      'channels': [
-        {
-          'channel_id': 'channel-mobile-1',
-          'purpose': 'voice',
-          'kinds': ['reliable-data', 'audio', 'video'],
-          'binding_format': mobileLiveKitBindingFormat,
-          'issued_at_ms': 1786240000000,
-          'expires_at_ms': 1893456000000,
-          'opaque_binding': base64Encode(binding),
-        },
-      ],
-    }),
-    200,
-  );
-}
-
-final _target = deviceOnboardingTargetFixture();
+EnrollmentRecoveryProjectionV1 _projection({
+  String state = 'pending_review',
+  String ownerDomainId = ownerDomainIdFixture,
+  String deviceId = 'device_01',
+  bool withDecision = false,
+  bool withDelivery = false,
+  String? claimState,
+}) =>
+    canonicalProjection(
+      state: state,
+      ownerDomainId: ownerDomainId,
+      deviceId: deviceId,
+      withDecision: withDecision,
+      withDelivery: withDelivery,
+      claimState: claimState,
+      claimOwnerDomainGeneration: 1,
+    );
 
 class _Platform extends PlatformBridge {
   @override
@@ -313,38 +107,32 @@ class _Platform extends PlatformBridge {
       );
 }
 
-class _Security implements MobileBodySecurity {
-  _Security({this.enrollmentId, this.retrievalExpiresAt});
+class _Admission implements DeviceAdmissionPort {
+  _Admission(this.items);
 
-  String? enrollmentId;
-  DateTime? retrievalExpiresAt;
-  int cleared = 0;
-
-  @override
-  Future<DeviceEnrollmentMaterial> loadOrCreateMaterial(
-          String ownerDomainId) async =>
-      DeviceEnrollmentMaterial(
-        enrollmentRequestId: 'mobile-enroll-1',
-        handoffRequestId: 'mobile-handoff-1',
-        retrievalToken: _retrievalToken,
-        enrollmentId: enrollmentId,
-        retrievalExpiresAt: retrievalExpiresAt,
-      );
+  final List<EnrollmentRecoveryProjectionV1> items;
+  int decisions = 0;
 
   @override
-  Future<void> clearMaterial(String ownerDomainId) async {
-    cleared += 1;
-    enrollmentId = null;
-    retrievalExpiresAt = null;
-  }
+  Future<EnrollmentProposalPageV1> listRecovery({
+    AdmissionListCursorV1? after,
+  }) async =>
+      canonicalRecoveryPage(items);
 
   @override
-  Future<void> saveEnrollmentReceipt({
-    required String ownerDomainId,
+  Future<EnrollmentRecoveryProjectionV1> recover({
     required String enrollmentId,
-    required DateTime retrievalExpiresAt,
+  }) async =>
+      items.single;
+
+  @override
+  Future<EnrollmentRecoveryProjectionV1> decide({
+    required String commandId,
+    required String correlationId,
+    required EnrollmentRecoveryProjectionV1 projection,
+    String? initialCompanionId,
   }) async {
-    this.enrollmentId = enrollmentId;
-    this.retrievalExpiresAt = retrievalExpiresAt;
+    decisions += 1;
+    return projection;
   }
 }

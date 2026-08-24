@@ -19,7 +19,7 @@ void main() {
       '{"directory_revision":7,"endpoints":[{"authority":"admission",'
       '"logical_audience":"owner-local:admission","priority":10,'
       '"transport_profile":"https-json","uri":"https://owner-a.local/'
-      'api/device-onboarding/v1"},{"authority":"device-control",'
+      'api/admission/v1"},{"authority":"device-control",'
       '"logical_audience":"owner-local:device-control","priority":10,'
       '"transport_profile":"https-json","uri":"https://owner-a.local/'
       'api/device-control/v1"}],"expires_at":"2036-08-18T00:00:00Z",'
@@ -104,7 +104,7 @@ DeviceOnboardingTarget _target({
     ..['endpoints'] = [
       {
         ...endpoints[0] as Map<String, dynamic>,
-        'uri': 'https://$host/api/device-onboarding/v1',
+        'uri': 'https://$host/api/admission/v1',
       },
       endpoints[1],
     ];

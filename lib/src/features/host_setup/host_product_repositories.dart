@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
-import '../device_setup/device_setup_ports.dart';
+import '../../generated/device_foundation_v1.dart';
 import 'activity_models.dart';
 import 'companion_face_models.dart';
 import 'controller_grant_models.dart';
@@ -384,7 +384,7 @@ class HostServicesRepository {
       );
 }
 
-class HostDeviceAdmissionRepository implements DeviceAdmissionPort {
+class HostDeviceAdmissionRepository {
   const HostDeviceAdmissionRepository(this._session);
 
   final HostProductSession _session;
@@ -396,27 +396,55 @@ class HostDeviceAdmissionRepository implements DeviceAdmissionPort {
         ),
       );
 
-  @override
-  Future<List<PendingDeviceEnrollment>> listPending() => _session.execute(
-        (client, baseUrl, accessToken) => client.fetchPendingDeviceEnrollments(
+  Future<EnrollmentProposalPageV1> listRecovery({
+    required String ownerDomainId,
+    AdmissionListCursorV1? after,
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.fetchEnrollmentRecoveryPage(
           baseUrl,
           accessToken: accessToken,
+          ownerDomainId: ownerDomainId,
+          after: after,
         ),
       );
 
-  @override
-  Future<DeviceAdmissionProgress> approve({
-    required String requestId,
-    required String deviceId,
-    String? companionId,
+  Future<EnrollmentRecoveryProjectionV1> recover({
+    required String enrollmentId,
   }) =>
       _session.execute(
-        (client, baseUrl, accessToken) => client.approveDeviceEnrollment(
+        (client, baseUrl, accessToken) => client.fetchEnrollmentRecovery(
           baseUrl,
           accessToken: accessToken,
-          requestId: requestId,
-          deviceId: deviceId,
-          companionId: companionId,
+          enrollmentId: enrollmentId,
+        ),
+      );
+
+  Future<DecideEnrollmentResultV1> decideCommand({
+    required String commandId,
+    required String correlationId,
+    required DecideEnrollmentV1 command,
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.decideEnrollment(
+          baseUrl,
+          accessToken: accessToken,
+          commandId: commandId,
+          correlationId: correlationId,
+          command: command,
+        ),
+      );
+
+  Future<ClaimPageV1> listClaims({
+    required String ownerDomainId,
+    AdmissionListCursorV1? after,
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.fetchClaimPage(
+          baseUrl,
+          accessToken: accessToken,
+          ownerDomainId: ownerDomainId,
+          after: after,
         ),
       );
 }

@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
+import '../../generated/device_foundation_v1.dart';
 import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
 import '../setup/controller_key_bridge.dart';
@@ -37,6 +38,24 @@ class LocalApiRequestException implements Exception {
 
   @override
   String toString() => reason == null ? message : '$message：$reason';
+}
+
+final class AdmissionRequestException implements Exception {
+  const AdmissionRequestException({
+    required this.operation,
+    required this.problem,
+    required this.statusCode,
+  });
+
+  final String operation;
+  final DeviceProblemV1 problem;
+  final int statusCode;
+
+  String get code => problem.json['code']! as String;
+  bool get retryable => problem.json['retryable'] == true;
+
+  @override
+  String toString() => problem.json['detail']! as String;
 }
 
 class LocalApiClient {
@@ -237,43 +256,130 @@ class LocalApiClient {
     ).reachedAt(origin.host);
   }
 
-  Future<List<PendingDeviceEnrollment>> fetchPendingDeviceEnrollments(
+  Future<EnrollmentProposalPageV1> fetchEnrollmentRecoveryPage(
     String baseUrl, {
     required String accessToken,
+    required String ownerDomainId,
+    AdmissionListCursorV1? after,
+    int limit = 50,
   }) async {
+    OwnerDomainIdV1.parse(ownerDomainId);
+    if (limit < 1 || limit > 50) {
+      throw const FormatException('Admission page limit is invalid');
+    }
+    final cursor = after?.json;
+    if (cursor != null && cursor['owner_domain_id'] != ownerDomainId) {
+      throw const FormatException('Admission cursor Owner Domain mismatch');
+    }
     final response = await _httpClient
         .get(
-          parseBaseUri(baseUrl)
-              .resolve('/api/local/v1/device-enrollments/pending'),
+          _admissionUri(baseUrl, const ['enrollments']).replace(
+            queryParameters: {
+              'states':
+                  'pending_review,approved_awaiting_handoff,grant_delivered,grant_acknowledged',
+              'limit': '$limit',
+              if (cursor != null) ...{
+                'after_sort_key': cursor['sort_key']! as String,
+                'after_resource_id': cursor['resource_id']! as String,
+              },
+            },
+          ),
           headers: _authorizedHeaders(accessToken),
         )
         .timeout(timeout);
-    return PendingDeviceEnrollmentPage.fromJson(
-      _decodeResponse(response, operation: 'Pending Device enrollments'),
-    ).devices;
+    final page = EnrollmentProposalPageV1.fromJson(
+      _decodeAdmissionResponse(
+        response,
+        operation: 'Enrollment recovery page',
+      ),
+    );
+    if (page.json['owner_domain_id'] != ownerDomainId) {
+      throw const FormatException('Admission page Owner Domain mismatch');
+    }
+    return page;
   }
 
-  Future<DeviceAdmissionProgress> approveDeviceEnrollment(
+  Future<EnrollmentRecoveryProjectionV1> fetchEnrollmentRecovery(
     String baseUrl, {
     required String accessToken,
-    required String requestId,
-    required String deviceId,
-    String? companionId,
+    required String enrollmentId,
   }) async {
     final response = await _httpClient
+        .get(
+          _admissionUri(
+            baseUrl,
+            ['enrollments', _boundedId(enrollmentId, 'Enrollment ID')],
+          ),
+          headers: _authorizedHeaders(accessToken),
+        )
+        .timeout(timeout);
+    return EnrollmentRecoveryProjectionV1.fromJson(
+      _decodeAdmissionResponse(response, operation: 'Enrollment recovery'),
+    );
+  }
+
+  Future<DecideEnrollmentResultV1> decideEnrollment(
+    String baseUrl, {
+    required String accessToken,
+    required String commandId,
+    required String correlationId,
+    required DecideEnrollmentV1 command,
+  }) async {
+    final enrollmentId =
+        _boundedId(command.json['enrollment_id']! as String, 'Enrollment ID');
+    final response = await _httpClient
         .post(
-          _deviceApprovalUri(baseUrl, deviceId),
+          _admissionUri(baseUrl, ['enrollments', enrollmentId, 'decisions']),
           headers: _authorizedHeaders(accessToken, json: true),
           body: jsonEncode({
-            'contract_version': '1',
-            'request_id': _boundedId(requestId, 'request ID'),
-            if (companionId != null) 'companion_id': companionId,
+            'command_id': _boundedId(commandId, 'Command ID'),
+            'correlation_id': _boundedId(correlationId, 'Correlation ID'),
+            ...command.toJson(),
           }),
         )
         .timeout(timeout);
-    return DeviceAdmissionProgress.fromJson(
-      _decodeResponse(response, operation: 'Device admission'),
+    return DecideEnrollmentResultV1.fromJson(
+      _decodeAdmissionResponse(response, operation: 'Enrollment Decision'),
     );
+  }
+
+  Future<ClaimPageV1> fetchClaimPage(
+    String baseUrl, {
+    required String accessToken,
+    required String ownerDomainId,
+    AdmissionListCursorV1? after,
+    int limit = 50,
+  }) async {
+    OwnerDomainIdV1.parse(ownerDomainId);
+    if (limit < 1 || limit > 50) {
+      throw const FormatException('Claim page limit is invalid');
+    }
+    final cursor = after?.json;
+    if (cursor != null && cursor['owner_domain_id'] != ownerDomainId) {
+      throw const FormatException('Claim cursor Owner Domain mismatch');
+    }
+    final response = await _httpClient
+        .get(
+          _admissionUri(baseUrl, const ['claims']).replace(
+            queryParameters: {
+              'states': 'active,suspended,revoked',
+              'limit': '$limit',
+              if (cursor != null) ...{
+                'after_sort_key': cursor['sort_key']! as String,
+                'after_resource_id': cursor['resource_id']! as String,
+              },
+            },
+          ),
+          headers: _authorizedHeaders(accessToken),
+        )
+        .timeout(timeout);
+    final page = ClaimPageV1.fromJson(
+      _decodeAdmissionResponse(response, operation: 'Claim page'),
+    );
+    if (page.json['owner_domain_id'] != ownerDomainId) {
+      throw const FormatException('Claim page Owner Domain mismatch');
+    }
+    return page;
   }
 
   Future<DeviceRemovalProgress> removeDevice(
@@ -684,20 +790,10 @@ class LocalApiClient {
     );
   }
 
-  static Uri _deviceApprovalUri(String baseUrl, String deviceId) {
-    final normalized = _boundedId(deviceId, 'device ID');
-    final base = parseBaseUri(baseUrl);
-    return base.replace(
-      pathSegments: [
-        'api',
-        'local',
-        'v1',
-        'device-enrollments',
-        normalized,
-        'approval',
-      ],
-    );
-  }
+  static Uri _admissionUri(String baseUrl, List<String> suffix) =>
+      parseBaseUri(baseUrl).replace(
+        pathSegments: ['api', 'admission', 'v1', ...suffix],
+      );
 
   static String _boundedId(String value, String label) {
     final normalized = value.trim();
@@ -738,6 +834,31 @@ class LocalApiClient {
       throw FormatException('Local API $operation 不是 JSON object');
     }
     return decoded;
+  }
+
+  static Map<String, dynamic> _decodeAdmissionResponse(
+    http.Response response, {
+    required String operation,
+    Set<int> success = const {200},
+  }) {
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(utf8.decode(response.bodyBytes));
+    } on FormatException {
+      throw FormatException('$operation response is not JSON');
+    }
+    if (decoded is! Map) {
+      throw FormatException('$operation response is not an object');
+    }
+    final object = Map<String, dynamic>.from(decoded);
+    if (!success.contains(response.statusCode)) {
+      throw AdmissionRequestException(
+        operation: operation,
+        problem: DeviceProblemV1.fromJson(object),
+        statusCode: response.statusCode,
+      );
+    }
+    return object;
   }
 
   /// The Host's own account of a refusal, when it wrote one for the person.

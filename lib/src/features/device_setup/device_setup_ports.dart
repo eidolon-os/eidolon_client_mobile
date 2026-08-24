@@ -23,23 +23,29 @@ abstract interface class DeviceProvisioningSession {
   Future<CommissioningStatusEvidenceV1> configureNetwork({
     required DeviceWifiCredentials credentials,
     required DeviceOnboardingTarget onboardingTarget,
+    required String createCommandId,
+    required String collectCommandId,
+    required String ackCommandId,
   });
-
-  /// Returns the enrollment created by the Device using its own identity.
-  Future<DeviceEnrollmentReceipt> awaitEnrollment();
 
   Future<void> close();
 }
 
 abstract interface class DeviceAdmissionPort {
-  Future<List<PendingDeviceEnrollment>> listPending();
+  Future<EnrollmentProposalPageV1> listRecovery({
+    AdmissionListCursorV1? after,
+  });
 
-  /// Records explicit Controller approval and continues the Owner-scoped,
-  /// forward-only Hub approval, Kernel mount and Companion attachment.
-  Future<DeviceAdmissionProgress> approve({
-    required String requestId,
-    required String deviceId,
-    String? companionId,
+  Future<EnrollmentRecoveryProjectionV1> recover({
+    required String enrollmentId,
+  });
+
+  /// Records one immutable, explicit Decision then re-reads recovery.
+  Future<EnrollmentRecoveryProjectionV1> decide({
+    required String commandId,
+    required String correlationId,
+    required EnrollmentRecoveryProjectionV1 projection,
+    String? initialCompanionId,
   });
 }
 
@@ -54,6 +60,8 @@ abstract interface class DeviceSetupCheckpointStore {
 
   Future<DeviceSetupCheckpoint?> load(String setupId);
 
+  Future<List<DeviceSetupCheckpoint>> list();
+
   Future<void> remove(String setupId);
 }
 
@@ -62,6 +70,13 @@ class InMemoryDeviceSetupCheckpointStore implements DeviceSetupCheckpointStore {
 
   @override
   Future<DeviceSetupCheckpoint?> load(String setupId) async => _values[setupId];
+
+  @override
+  Future<List<DeviceSetupCheckpoint>> list() async {
+    final values = _values.values.toList(growable: false)
+      ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+    return values;
+  }
 
   @override
   Future<void> remove(String setupId) async {

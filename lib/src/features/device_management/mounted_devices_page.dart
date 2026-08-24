@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../device_setup/device_setup_models.dart';
+import '../device_setup/device_setup_checkpoint_store.dart';
 import '../naming/ask_for_a_name.dart';
 import '../device_setup/device_setup_ports.dart';
 import '../device_setup/device_admission_page.dart';
@@ -50,23 +51,14 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
 
   Future<void> _openProvisioning() async {
     final admission = HostControllerDeviceAdmission(widget.controller);
-    final transport = widget.deviceProvisioning ??
-        PlatformDeviceProvisioning(
-          loadPendingEnrollments: admission.listPending,
-          isAlreadyAdmitted: (deviceId) async {
-            await widget.controller.refreshDevices();
-            final inventory = widget.controller.devices;
-            return inventory != null &&
-                inventory.devices.any((device) => device.deviceId == deviceId);
-          },
-        );
+    final transport = widget.deviceProvisioning ?? PlatformDeviceProvisioning();
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => DeviceSetupPage(
           transport: transport,
           admission: admission,
           checkpoints:
-              widget.checkpoints ?? InMemoryDeviceSetupCheckpointStore(),
+              widget.checkpoints ?? PersistentDeviceSetupCheckpointStore(),
           loadTarget: widget.controller.deviceOnboardingTarget,
         ),
       ),
@@ -75,12 +67,31 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
   }
 
   Future<void> _openAdmission() async {
+    final target = await widget.controller.fetchDeviceOnboardingTarget();
+    final owner = widget.controller.workspace?.owner;
+    final connection = widget.controller.connection;
+    if (!mounted || owner == null || connection == null) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => DeviceAdmissionPage(
-          hostId: widget.controller.host.hostId,
-          loadPending: widget.controller.listPendingDeviceEnrollments,
-          onApprove: widget.controller.approveDeviceEnrollment,
+          ownerDomainId: target.ownerDomainId,
+          ownerDomainGeneration:
+              target.ownerDomainDescriptor.ownerDomainGeneration,
+          businessOwnerId: owner.ownerId,
+          controllerId: connection.controllerId,
+          loadRecovery: widget.controller.listEnrollmentRecovery,
+          onDecide: ({
+            required commandId,
+            required correlationId,
+            required projection,
+          }) =>
+              widget.controller.decideEnrollment(
+            commandId: commandId,
+            correlationId: correlationId,
+            projection: projection,
+            initialCompanionId:
+                widget.controller.workspace?.workspace?.primaryCompanionId,
+          ),
         ),
       ),
     );

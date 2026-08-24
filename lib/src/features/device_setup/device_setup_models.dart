@@ -22,10 +22,11 @@ enum DeviceProvisioningState {
 enum DeviceAdmissionState {
   notStarted,
   awaitingEnrollment,
-  pendingApproval,
-  approved,
-  binding,
-  ready,
+  pendingReview,
+  approvedAwaitingHandoff,
+  grantDelivered,
+  claimActive,
+  rejected,
   failed,
 }
 
@@ -173,109 +174,6 @@ class DeviceOnboardingTarget {
   }
 }
 
-class PendingDeviceEnrollment {
-  const PendingDeviceEnrollment({
-    required this.deviceId,
-    required this.displayName,
-    required this.deviceKind,
-    required this.enrolledAt,
-  });
-
-  final String deviceId;
-  final String displayName;
-  final String deviceKind;
-  final DateTime enrolledAt;
-
-  factory PendingDeviceEnrollment.fromJson(Map<String, dynamic> value) {
-    final enrolledAt = DateTime.tryParse(
-      _boundedWireString(value, 'enrolled_at', 64),
-    );
-    if (enrolledAt == null) {
-      throw const FormatException('Local API 返回了无效的设备接入时间');
-    }
-    return PendingDeviceEnrollment(
-      deviceId: _boundedWireString(value, 'device_id', 128),
-      displayName: _boundedWireString(value, 'display_name', 128),
-      deviceKind: _boundedWireString(value, 'device_kind', 96),
-      enrolledAt: enrolledAt.toUtc(),
-    );
-  }
-}
-
-class PendingDeviceEnrollmentPage {
-  const PendingDeviceEnrollmentPage({required this.devices});
-
-  final List<PendingDeviceEnrollment> devices;
-
-  factory PendingDeviceEnrollmentPage.fromJson(Map<String, dynamic> value) {
-    if (value['operation'] != 'local.pending-device-enrollments' ||
-        value['contract_version'] != '1') {
-      throw const FormatException('Local API 返回了无效的待认领设备目录');
-    }
-    final raw = value['devices'];
-    if (raw is! List || raw.length > 100) {
-      throw const FormatException('Local API 返回了无效的待认领设备目录');
-    }
-    final devices = raw
-        .map((item) => item is Map
-            ? PendingDeviceEnrollment.fromJson(Map<String, dynamic>.from(item))
-            : throw const FormatException('待认领设备条目无效'))
-        .toList(growable: false);
-    if (devices.map((item) => item.deviceId).toSet().length != devices.length) {
-      throw const FormatException('待认领设备目录包含重复设备');
-    }
-    return PendingDeviceEnrollmentPage(devices: devices);
-  }
-}
-
-class DeviceEnrollmentReceipt {
-  const DeviceEnrollmentReceipt({
-    required this.deviceId,
-    required this.enrollmentId,
-    required this.lifecycleState,
-  });
-
-  final String deviceId;
-  final String enrollmentId;
-  final String lifecycleState;
-}
-
-class DeviceAdmissionProgress {
-  const DeviceAdmissionProgress({
-    required this.requestId,
-    required this.deviceId,
-    required this.ownerId,
-    required this.outcome,
-    required this.stoppedAfter,
-    this.companionId,
-  });
-
-  final String requestId;
-  final String deviceId;
-  final String ownerId;
-  final ActOutcome outcome;
-
-  /// How far it got. For someone diagnosing it — never the basis of what a
-  /// screen tells a person to do.
-  final String stoppedAfter;
-  final String? companionId;
-
-  factory DeviceAdmissionProgress.fromJson(Map<String, dynamic> value) {
-    if (value['operation'] != 'local.device-admission-progress' ||
-        value['contract_version'] != '1') {
-      throw const FormatException('Local API 返回了无效的设备接入状态');
-    }
-    return DeviceAdmissionProgress(
-      requestId: _boundedWireString(value, 'request_id', 128),
-      deviceId: _boundedWireString(value, 'device_id', 128),
-      ownerId: _boundedWireString(value, 'owner_id', 64),
-      outcome: _actOutcome(value['outcome']),
-      stoppedAfter: _boundedWireString(value, 'stopped_after', 64),
-      companionId: _optionalBoundedWireString(value, 'companion_id', 64),
-    );
-  }
-}
-
 /// What removing a device accomplished on the Host.
 ///
 /// [DeviceRemovalState.revoked] means the grant is gone — the device is off —
@@ -386,33 +284,45 @@ class DeviceSetupCheckpoint {
     required this.contractVersion,
     required this.setupId,
     required this.requestId,
+    required this.createCommandId,
+    required this.decisionCommandId,
+    required this.collectCommandId,
+    required this.ackCommandId,
     required this.provisioningState,
     required this.admissionState,
     required this.updatedAt,
     required this.onboardingTarget,
     this.deviceId,
     this.enrollmentId,
+    this.expectedProposalRevision,
+    this.recoveryCursor,
     this.companionId,
     this.failure,
   });
 
-  static const currentContractVersion = '2';
+  static const currentContractVersion = '3';
 
   final String contractVersion;
   final String setupId;
   final String requestId;
+  final String createCommandId;
+  final String decisionCommandId;
+  final String collectCommandId;
+  final String ackCommandId;
   final DeviceProvisioningState provisioningState;
   final DeviceAdmissionState admissionState;
   final DateTime updatedAt;
   final DeviceOnboardingTarget onboardingTarget;
   final String? deviceId;
   final String? enrollmentId;
+  final int? expectedProposalRevision;
+  final AdmissionListCursorV1? recoveryCursor;
   final String? companionId;
   final DeviceSetupFailure? failure;
 
   bool get isReady =>
       provisioningState == DeviceProvisioningState.networkConfigured &&
-      admissionState == DeviceAdmissionState.ready;
+      admissionState == DeviceAdmissionState.claimActive;
 
   DeviceSetupCheckpoint copyWith({
     DeviceProvisioningState? provisioningState,
@@ -420,20 +330,31 @@ class DeviceSetupCheckpoint {
     DateTime? updatedAt,
     String? deviceId,
     String? enrollmentId,
+    int? expectedProposalRevision,
+    AdmissionListCursorV1? recoveryCursor,
     String? companionId,
     DeviceSetupFailure? failure,
     bool clearFailure = false,
+    bool clearRecoveryCursor = false,
   }) =>
       DeviceSetupCheckpoint(
         contractVersion: contractVersion,
         setupId: setupId,
         requestId: requestId,
+        createCommandId: createCommandId,
+        decisionCommandId: decisionCommandId,
+        collectCommandId: collectCommandId,
+        ackCommandId: ackCommandId,
         provisioningState: provisioningState ?? this.provisioningState,
         admissionState: admissionState ?? this.admissionState,
         updatedAt: updatedAt ?? this.updatedAt,
         onboardingTarget: onboardingTarget,
         deviceId: deviceId ?? this.deviceId,
         enrollmentId: enrollmentId ?? this.enrollmentId,
+        expectedProposalRevision:
+            expectedProposalRevision ?? this.expectedProposalRevision,
+        recoveryCursor:
+            clearRecoveryCursor ? null : recoveryCursor ?? this.recoveryCursor,
         companionId: companionId ?? this.companionId,
         failure: clearFailure ? null : failure ?? this.failure,
       );
@@ -442,6 +363,10 @@ class DeviceSetupCheckpoint {
         'contract_version': contractVersion,
         'setup_id': setupId,
         'request_id': requestId,
+        'create_command_id': createCommandId,
+        'decision_command_id': decisionCommandId,
+        'collect_command_id': collectCommandId,
+        'ack_command_id': ackCommandId,
         'provisioning_state': provisioningState.name,
         'admission_state': admissionState.name,
         'updated_at': updatedAt.toUtc().toIso8601String(),
@@ -453,6 +378,8 @@ class DeviceSetupCheckpoint {
             onboardingTarget.authoritySigningCertificate,
         'device_id': deviceId,
         'enrollment_id': enrollmentId,
+        'expected_proposal_revision': expectedProposalRevision,
+        'recovery_cursor': recoveryCursor?.toJson(),
         'companion_id': companionId,
         'failure': failure?.toJson(),
       };
@@ -485,6 +412,10 @@ class DeviceSetupCheckpoint {
       contractVersion: currentContractVersion,
       setupId: setupId,
       requestId: requestId,
+      createCommandId: _boundedWireString(value, 'create_command_id', 128),
+      decisionCommandId: _boundedWireString(value, 'decision_command_id', 128),
+      collectCommandId: _boundedWireString(value, 'collect_command_id', 128),
+      ackCommandId: _boundedWireString(value, 'ack_command_id', 128),
       provisioningState: provisioning,
       admissionState: admission,
       updatedAt: updatedAt.toUtc(),
@@ -502,6 +433,13 @@ class DeviceSetupCheckpoint {
       ),
       deviceId: _optionalCheckpointString(value, 'device_id'),
       enrollmentId: _optionalCheckpointString(value, 'enrollment_id'),
+      expectedProposalRevision:
+          _optionalPositiveCheckpointInt(value, 'expected_proposal_revision'),
+      recoveryCursor: value['recovery_cursor'] == null
+          ? null
+          : AdmissionListCursorV1.fromJson(
+              Map<String, dynamic>.from(value['recovery_cursor']! as Map),
+            ),
       companionId: _optionalCheckpointString(value, 'companion_id'),
       failure: failureValue == null
           ? null
@@ -514,6 +452,18 @@ class DeviceSetupCheckpoint {
                 ),
     );
   }
+}
+
+int? _optionalPositiveCheckpointInt(
+  Map<String, dynamic> value,
+  String key,
+) {
+  final result = value[key];
+  if (result == null) return null;
+  if (result is! int || result < 1) {
+    throw FormatException('Invalid Device Setup checkpoint $key');
+  }
+  return result;
 }
 
 String _requiredCheckpointString(Map<String, dynamic> value, String key) {
@@ -551,13 +501,4 @@ String _boundedWireString(
     throw FormatException('Invalid Device Setup $key');
   }
   return result;
-}
-
-String? _optionalBoundedWireString(
-  Map<String, dynamic> value,
-  String key,
-  int maxLength,
-) {
-  if (value[key] == null) return null;
-  return _boundedWireString(value, key, maxLength);
 }

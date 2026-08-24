@@ -2,12 +2,13 @@ import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_checkpoint_store.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
+import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:eidolon_client_mobile/src/platform/app_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/owner_domain_fixtures.dart';
 
-const _preferenceKey = 'eidolon.device-setup-checkpoints.v2';
+const _preferenceKey = 'eidolon.device-setup-checkpoints.v3';
 
 DeviceSetupCheckpoint _checkpoint(
   String setupId, {
@@ -18,12 +19,22 @@ DeviceSetupCheckpoint _checkpoint(
       contractVersion: DeviceSetupCheckpoint.currentContractVersion,
       setupId: setupId,
       requestId: 'request-$setupId',
+      createCommandId: 'create-$setupId',
+      decisionCommandId: 'decision-$setupId',
+      collectCommandId: 'collect-$setupId',
+      ackCommandId: 'ack-$setupId',
       provisioningState: DeviceProvisioningState.networkConfigured,
-      admissionState: DeviceAdmissionState.pendingApproval,
+      admissionState: DeviceAdmissionState.pendingReview,
       updatedAt: DateTime.utc(2026, 8, 9, 10, minute),
       onboardingTarget: deviceOnboardingTargetFixture(),
       deviceId: deviceId ?? 'device-$setupId',
       enrollmentId: 'enrollment-$setupId',
+      expectedProposalRevision: 2,
+      recoveryCursor: AdmissionListCursorV1.fromJson({
+        'owner_domain_id': 'owner-domain_01',
+        'sort_key': '2026-08-18T00:00:00Z',
+        'resource_id': 'enrollment_01',
+      }),
     );
 
 void main() {
@@ -43,6 +54,9 @@ void main() {
 
     expect(loaded?.requestId, 'request-setup-1');
     expect(loaded?.deviceId, 'device-setup-1');
+    expect(loaded?.decisionCommandId, 'decision-setup-1');
+    expect(loaded?.expectedProposalRevision, 2);
+    expect(loaded?.recoveryCursor?.json['resource_id'], 'enrollment_01');
     expect(raw, isNot(contains('wifi-password')));
     expect(raw, isNot(contains('pairing-secret')));
   });
@@ -71,7 +85,7 @@ void main() {
     await preferences.writeString(
       _preferenceKey,
       jsonEncode({
-        'contract_version': '2',
+        'contract_version': '3',
         'checkpoints': [
           {'contract_version': '2', 'setup_id': 42},
           _checkpoint('setup-valid').toJson(),

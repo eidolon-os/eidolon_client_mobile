@@ -21,7 +21,7 @@ const ownerDomainDescriptorJsonFixture = <String, dynamic>{
     {
       'authority': 'admission',
       'logical_audience': '$ownerDomainIdFixture:admission',
-      'uri': 'https://owner-a.local/api/device-onboarding/v1',
+      'uri': 'https://owner-a.local/api/admission/v1',
       'transport_profile': 'https-json',
       'priority': 10,
     },

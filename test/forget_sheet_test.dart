@@ -82,7 +82,7 @@ void main() {
       http.Request? sent;
       final client = ManagementClient(
         httpClient: MockClient((request) async {
-          sent = request as http.Request;
+          sent = request;
           return _hostAnswer(proposalWire());
         }),
       );
@@ -105,7 +105,7 @@ void main() {
       http.Request? sent;
       final client = ManagementClient(
         httpClient: MockClient((request) async {
-          sent = request as http.Request;
+          sent = request;
           return _hostAnswer(proposalWire());
         }),
       );

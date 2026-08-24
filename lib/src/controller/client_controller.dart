@@ -7,7 +7,6 @@ import 'package:livekit_client/livekit_client.dart';
 
 import '../avatar/avatar_stage.dart';
 import '../features/conversation/conversation_provisioner.dart';
-import '../features/conversation/mobile_conversation_provisioner.dart';
 import '../models/client_ui_state.dart';
 import '../models/hub_models.dart';
 import '../platform/platform_bridge.dart';
@@ -758,18 +757,6 @@ class ClientController extends ChangeNotifier {
   }) {
     final details = exception.toString();
     final lower = details.toLowerCase();
-    if (exception is MobileProvisioningBlocked) {
-      // Answered before anything below gets to guess, because this failure
-      // already knows what it is: the Host has settled the matter, and the one
-      // thing not to offer is a retry that would ask it again.
-      return ClientFailure(
-        kind: ClientErrorKind.authorization,
-        title: exception.title,
-        message: exception.message,
-        technicalDetails: details,
-        retryable: false,
-      );
-    }
     if (lower.contains('microphone') ||
         lower.contains('麦克风') ||
         lower.contains('permission')) {

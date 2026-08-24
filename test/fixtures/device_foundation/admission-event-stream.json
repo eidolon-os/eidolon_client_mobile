@@ -1,0 +1,52 @@
+{
+  "vector_id": "DF-PH2B0-CLAIM-STREAM-001",
+  "event": {
+    "specversion": "1.0",
+    "id": "event_01",
+    "source": "urn:eidolon:authority:admission",
+    "type": "live.eidolon.device.claim-revoked.v1",
+    "subject": "device-instances/device_01",
+    "time": "2026-08-18T00:05:00Z",
+    "datacontenttype": "application/json",
+    "dataschema": "https://contracts.eidolon.live/device-foundation/v1/events/claim-revoked-data.schema.json",
+    "audience": "eidolon-claim-consumers",
+    "ownerdomainid": "owner-domain_01",
+    "aggregaterev": 2,
+    "correlationid": "intent_01",
+    "causationid": "command_01",
+    "data": {
+      "device_ref": {
+        "device_instance_id": "device_01",
+        "owner_domain_id": "owner-domain_01",
+        "owner_domain_generation": 3,
+        "claim_generation": 2,
+        "trust_epoch": 1
+      },
+      "reason": "owner-removed",
+      "revoked_at": "2026-08-18T00:05:00Z"
+    }
+  },
+  "business_event_sha256": "sha256:da77525f9653094f2d22127919a64bf599729a1e00529979a021f4cf459db27f",
+  "stream_items": [
+    {
+      "stream_position": 41,
+      "event_ref": "event_01"
+    },
+    {
+      "stream_position": 42,
+      "event_ref": "event_01"
+    }
+  ],
+  "transport_fields_excluded_from_event_equality": [
+    "stream_position",
+    "requested_after",
+    "next_cursor",
+    "high_watermark"
+  ],
+  "semantics": {
+    "duplicate": "same source+id+canonical event is one business fact",
+    "gap": "non-contiguous position fails closed with CURSOR_GAP",
+    "restart": "resume after the last transactionally checkpointed cursor",
+    "replay": "same cursor returns the same committed positions and event bytes"
+  }
+}

@@ -205,6 +205,10 @@ class HostProductSession {
       if (error.statusCode != 401) rethrow;
       await _reauthenticate();
       return _executeOnce(operation, _endpoint!, _controllerSession!);
+    } on AdmissionRequestException catch (error) {
+      if (error.statusCode != 401) rethrow;
+      await _reauthenticate();
+      return _executeOnce(operation, _endpoint!, _controllerSession!);
     } on PinnedHttpException catch (error) {
       if (!_hostDidNotAnswer(error)) rethrow;
       await _relocate();

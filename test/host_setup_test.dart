@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:eidolon_client_mobile/main.dart';
-import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_client.dart';
 import 'package:eidolon_client_mobile/src/features/setup/controller_key_bridge.dart';
@@ -226,114 +225,6 @@ void main() {
       'GET /api/local/v1/setup/workspace',
       'PUT /api/local/v1/setup/workspace',
     ]);
-  });
-
-  test('only a reason the Host tagged for the person becomes one', () async {
-    // A bare string detail is a diagnostic naming authorities and contracts,
-    // written for whoever reads the Host. Reading it as the Owner's reason is
-    // how showing what the Host said turns into leaking what it knows, so it
-    // has to leave `reason` unset and let the screen use its own words.
-    Future<LocalApiRequestException> refuse(Object detail) async {
-      final client = LocalApiClient(
-        httpClient: MockClient((request) async => http.Response(
-              jsonEncode({'detail': detail}),
-              409,
-              headers: const {'content-type': 'application/json'},
-            )),
-      );
-      try {
-        await client.approveDeviceEnrollment(
-          'https://eidolon.local:9002',
-          accessToken: validHostChallenge,
-          requestId: 'device-approval-1',
-          deviceId: '24:ec:4a:52:f3:54',
-        );
-      } on LocalApiRequestException catch (error) {
-        return error;
-      } finally {
-        client.close();
-      }
-      fail('a refused claim must not be reported as success');
-    }
-
-    final tagged = await refuse({'reason': '主机上已经没有这台设备了。'});
-    final diagnostic =
-        await refuse('Admin Device admission response violated its contract');
-    final fieldErrors = await refuse([
-      {
-        'loc': ['body', 'request_id'],
-        'msg': 'string does not match regex'
-      },
-    ]);
-
-    expect(tagged.reason, '主机上已经没有这台设备了。');
-    expect(tagged.statusCode, 409);
-    expect(diagnostic.reason, isNull);
-    expect(fieldErrors.reason, isNull);
-  });
-
-  test('LocalApiClient lists and explicitly approves pending enrollments',
-      () async {
-    final requests = <http.Request>[];
-    final client = LocalApiClient(
-      httpClient: MockClient((request) async {
-        requests.add(request);
-        expect(request.headers['authorization'], 'Bearer $validHostChallenge');
-        if (request.method == 'GET') {
-          return http.Response(
-            jsonEncode({
-              'operation': 'local.pending-device-enrollments',
-              'contract_version': '1',
-              'devices': [
-                {
-                  'device_id': 'esp32-device-1',
-                  'display_name': 'Desk Device',
-                  'device_kind': 'voice-client',
-                  'enrolled_at': '2026-08-09T10:00:00Z',
-                },
-              ],
-            }),
-            200,
-          );
-        }
-        return http.Response(
-          jsonEncode({
-            'operation': 'local.device-admission-progress',
-            'contract_version': '1',
-            'request_id': 'device-approval-1',
-            'device_id': 'esp32-device-1',
-            'owner_id': 'owner_primary',
-            'outcome': 'done',
-            'stopped_after': 'companion-attached',
-            'companion_id': 'companion_primary',
-          }),
-          200,
-        );
-      }),
-    );
-
-    final pending = await client.fetchPendingDeviceEnrollments(
-      'https://eidolon.local:9002',
-      accessToken: validHostChallenge,
-    );
-    final progress = await client.approveDeviceEnrollment(
-      'https://eidolon.local:9002',
-      accessToken: validHostChallenge,
-      requestId: 'device-approval-1',
-      deviceId: 'esp32-device-1',
-      companionId: 'companion_primary',
-    );
-
-    expect(pending.single.deviceId, 'esp32-device-1');
-    expect(progress.outcome, ActOutcome.done);
-    expect(requests.map((request) => '${request.method} ${request.url.path}'), [
-      'GET /api/local/v1/device-enrollments/pending',
-      'POST /api/local/v1/device-enrollments/esp32-device-1/approval',
-    ]);
-    final body = jsonDecode(requests.last.body) as Map<String, dynamic>;
-    expect(body['request_id'], 'device-approval-1');
-    expect(body, isNot(contains('owner_id')));
-    expect(body, isNot(contains('device_id')));
   });
 
   test('uses the BLE Host marker as the canonical generated display name', () {

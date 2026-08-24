@@ -4,9 +4,10 @@ import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_por
 import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/admission_fixtures.dart';
 import 'support/owner_domain_fixtures.dart';
 
-final _now = DateTime.parse('2026-08-07T10:00:00Z');
+final _now = DateTime.parse('2026-08-18T10:00:00Z');
 
 const _candidate = DeviceProvisioningCandidate(
   transportId: 'nearby-1',
@@ -17,7 +18,7 @@ const _candidate = DeviceProvisioningCandidate(
 
 final _descriptor = DeviceProvisioningDescriptor(
   contractVersion: '1',
-  deviceId: 'device-1',
+  deviceId: 'device_01',
   deviceKind: 'esp32-display',
   displayName: 'Eidolon Body 1',
   identityFingerprint: 'sha256:device-1',
@@ -26,33 +27,231 @@ final _descriptor = DeviceProvisioningDescriptor(
   trust: DeviceProvisioningTrust.manufacturerBound,
 );
 
-class _FakeSession implements DeviceProvisioningSession {
-  _FakeSession(this.descriptor);
+void main() {
+  test('network commit persists stable command IDs before explicit Decision',
+      () async {
+    final session = _Session(_descriptor);
+    final admission = _Admission(
+      _projection(state: 'pending_review'),
+    );
+    final store = InMemoryDeviceSetupCheckpointStore();
+    final coordinator = _coordinator(session, admission, store);
+
+    final result = await coordinator.provisionAndAdmit(
+      setupId: 'setup-1',
+      requestId: 'intent-1',
+      candidate: _candidate,
+      credentials: const DeviceWifiCredentials(
+        ssid: 'Home WiFi',
+        password: 'not-persisted',
+      ),
+      onboardingTarget: deviceOnboardingTargetFixture(),
+      companionId: 'companion-1',
+    );
+
+    expect(result.provisioningState, DeviceProvisioningState.networkConfigured);
+    expect(
+      result.admissionState,
+      DeviceAdmissionState.approvedAwaitingHandoff,
+    );
+    expect(result.isReady, isFalse);
+    expect(session.commandIds, {
+      'create': 'mobile-create-setup-1',
+      'collect': 'mobile-collect-setup-1',
+      'ack': 'mobile-ack-setup-1',
+    });
+    expect(admission.decisionIds, ['mobile-decision-setup-1']);
+    expect(admission.correlationIds, ['intent-1']);
+    expect(result.expectedProposalRevision, 2);
+    expect(result.encode(), isNot(contains('not-persisted')));
+  });
+
+  test('reply loss and coordinator restart recover before any replay',
+      () async {
+    final session = _Session(_descriptor);
+    final admission = _Admission(
+      _projection(state: 'pending_review'),
+      loseDecisionReply: true,
+    );
+    final store = InMemoryDeviceSetupCheckpointStore();
+
+    final failed =
+        await _coordinator(session, admission, store).provisionAndAdmit(
+      setupId: 'setup-reply-loss',
+      requestId: 'intent-reply-loss',
+      candidate: _candidate,
+      credentials: const DeviceWifiCredentials(ssid: 'Home', password: 'pw'),
+      onboardingTarget: deviceOnboardingTargetFixture(),
+    );
+    expect(failed.admissionState, DeviceAdmissionState.failed);
+    expect(failed.enrollmentId, 'enrollment_01');
+    expect(failed.decisionCommandId, 'mobile-decision-setup-reply-loss');
+
+    final restarted = _coordinator(_Session(_descriptor), admission, store);
+    final recovered = await restarted.resumeAdmission('setup-reply-loss');
+
+    expect(
+      recovered.admissionState,
+      DeviceAdmissionState.approvedAwaitingHandoff,
+    );
+    expect(admission.recoverCalls, 1);
+    expect(admission.decisionIds, ['mobile-decision-setup-reply-loss']);
+  });
+
+  test('duplicate resume reuses immutable Decision command and payload',
+      () async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    await store.save(_checkpoint('setup-duplicate'));
+    final admission = _Admission(_projection(state: 'pending_review'));
+    final coordinator = _coordinator(_Session(_descriptor), admission, store);
+
+    await coordinator.resumeAdmission('setup-duplicate');
+    admission.current = _projection(state: 'pending_review');
+    await store.save(_checkpoint('setup-duplicate'));
+    await coordinator.resumeAdmission('setup-duplicate');
+
+    expect(admission.decisionIds, [
+      'mobile-decision-setup-duplicate',
+      'mobile-decision-setup-duplicate',
+    ]);
+    expect(admission.payloads[1], admission.payloads[0]);
+  });
+
+  test('Hub unavailable is recoverable and never becomes completion', () async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    await store.save(_checkpoint('setup-offline'));
+    final admission = _Admission(_projection())..unavailable = true;
+
+    final result = await _coordinator(
+      _Session(_descriptor),
+      admission,
+      store,
+    ).resumeAdmission('setup-offline');
+
+    expect(result.admissionState, DeviceAdmissionState.failed);
+    expect(result.failure?.code, 'admission_unavailable');
+    expect(result.failure?.retryable, isTrue);
+    expect(result.isReady, isFalse);
+    expect(admission.decisionIds, isEmpty);
+  });
+
+  test('Owner mismatch and old Owner generation are contract failures',
+      () async {
+    for (final projection in [
+      _projection(ownerDomainId: 'owner-domain_other'),
+      _projection(
+        state: 'grant_acknowledged',
+        withDecision: true,
+        withDelivery: true,
+        claimState: 'active',
+        claimOwnerDomainGeneration: 2,
+      ),
+    ]) {
+      final store = InMemoryDeviceSetupCheckpointStore();
+      await store.save(_checkpoint('setup-mismatch'));
+      final result = await _coordinator(
+        _Session(_descriptor),
+        _Admission(projection),
+        store,
+      ).resumeAdmission('setup-mismatch');
+      expect(result.admissionState, DeviceAdmissionState.failed);
+      expect(result.failure?.code, 'admission_unavailable');
+    }
+  });
+
+  test('ClaimActive alone makes the recovered workflow ready', () async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    await store.save(_checkpoint('setup-active'));
+    final projection = _projection(
+      state: 'grant_acknowledged',
+      withDecision: true,
+      withDelivery: true,
+      claimState: 'active',
+    );
+
+    final result = await _coordinator(
+      _Session(_descriptor),
+      _Admission(projection),
+      store,
+    ).resumeAdmission('setup-active');
+
+    expect(result.admissionState, DeviceAdmissionState.claimActive);
+    expect(result.isReady, isTrue);
+  });
+}
+
+DeviceSetupCoordinator _coordinator(
+  _Session session,
+  DeviceAdmissionPort admission,
+  DeviceSetupCheckpointStore store,
+) =>
+    DeviceSetupCoordinator(
+      transport: _Transport(session),
+      admission: admission,
+      checkpoints: store,
+      ownerDirectoryVerifier: const AcceptingOwnerDomainDirectoryVerifier(),
+      clock: () => _now,
+      sleep: (_) async {},
+      enrollmentInterval: Duration.zero,
+    );
+
+EnrollmentRecoveryProjectionV1 _projection({
+  String state = 'pending_review',
+  String ownerDomainId = ownerDomainIdFixture,
+  bool withDecision = false,
+  bool withDelivery = false,
+  String? claimState,
+  int claimOwnerDomainGeneration = 1,
+}) =>
+    canonicalProjection(
+      state: state,
+      ownerDomainId: ownerDomainId,
+      withDecision: withDecision,
+      withDelivery: withDelivery,
+      claimState: claimState,
+      claimOwnerDomainGeneration: claimOwnerDomainGeneration,
+    );
+
+DeviceSetupCheckpoint _checkpoint(String setupId) => DeviceSetupCheckpoint(
+      contractVersion: DeviceSetupCheckpoint.currentContractVersion,
+      setupId: setupId,
+      requestId: 'intent-$setupId',
+      createCommandId: 'mobile-create-$setupId',
+      decisionCommandId: 'mobile-decision-$setupId',
+      collectCommandId: 'mobile-collect-$setupId',
+      ackCommandId: 'mobile-ack-$setupId',
+      provisioningState: DeviceProvisioningState.networkConfigured,
+      admissionState: DeviceAdmissionState.pendingReview,
+      updatedAt: _now,
+      onboardingTarget: deviceOnboardingTargetFixture(),
+      deviceId: 'device_01',
+      enrollmentId: 'enrollment_01',
+      expectedProposalRevision: 2,
+    );
+
+class _Session implements DeviceProvisioningSession {
+  _Session(this.descriptor);
 
   @override
   final DeviceProvisioningDescriptor descriptor;
-  bool configured = false;
-  bool closed = false;
-  DeviceWifiCredentials? receivedCredentials;
+  Map<String, String>? commandIds;
 
   @override
-  Future<DeviceEnrollmentReceipt> awaitEnrollment() async =>
-      const DeviceEnrollmentReceipt(
-        deviceId: 'device-1',
-        enrollmentId: 'enrollment-1',
-        lifecycleState: 'pending-approval',
-      );
-
-  @override
-  Future<void> close() async => closed = true;
+  Future<void> close() async {}
 
   @override
   Future<CommissioningStatusEvidenceV1> configureNetwork({
     required DeviceWifiCredentials credentials,
     required DeviceOnboardingTarget onboardingTarget,
+    required String createCommandId,
+    required String collectCommandId,
+    required String ackCommandId,
   }) async {
-    configured = true;
-    receivedCredentials = credentials;
+    commandIds = {
+      'create': createCommandId,
+      'collect': collectCommandId,
+      'ack': ackCommandId,
+    };
     return const CommissioningStatusEvidenceV1(
       sessionId: 'session-1',
       setupGeneration: 1,
@@ -72,14 +271,12 @@ class _FakeSession implements DeviceProvisioningSession {
   Future<List<DeviceWifiNetwork>> scanNetworks() async => const [];
 }
 
-class _FakeTransport implements DeviceProvisioningTransport {
-  _FakeTransport(this.session);
-
-  final _FakeSession session;
-  bool closed = false;
+class _Transport implements DeviceProvisioningTransport {
+  _Transport(this.session);
+  final _Session session;
 
   @override
-  Future<void> close() async => closed = true;
+  Future<void> close() async {}
 
   @override
   Future<List<DeviceProvisioningCandidate>> discover() async => [_candidate];
@@ -94,174 +291,55 @@ class _FakeTransport implements DeviceProvisioningTransport {
   Future<bool> requestPermission() async => true;
 }
 
-class _FakeAdmission implements DeviceAdmissionPort {
-  int calls = 0;
-  bool fail = false;
-  final List<String> requestIds = [];
+class _Admission implements DeviceAdmissionPort {
+  _Admission(this.current, {this.loseDecisionReply = false});
+
+  EnrollmentRecoveryProjectionV1 current;
+  final bool loseDecisionReply;
+  bool unavailable = false;
+  int recoverCalls = 0;
+  final List<String> decisionIds = [];
+  final List<String> correlationIds = [];
+  final List<Map<String, dynamic>> payloads = [];
 
   @override
-  Future<DeviceAdmissionProgress> approve({
-    required String requestId,
-    required String deviceId,
-    String? companionId,
+  Future<EnrollmentProposalPageV1> listRecovery({
+    AdmissionListCursorV1? after,
   }) async {
-    calls += 1;
-    requestIds.add(requestId);
-    if (fail) throw StateError('Hub is unavailable');
-    return DeviceAdmissionProgress(
-      requestId: requestId,
-      deviceId: deviceId,
-      ownerId: 'owner-1',
-      outcome: ActOutcome.done,
-      stoppedAfter: 'companion-attached',
-      companionId: companionId,
-    );
+    if (unavailable) throw StateError('Hub unavailable');
+    return canonicalRecoveryPage([current]);
   }
 
   @override
-  Future<List<PendingDeviceEnrollment>> listPending() async => const [];
-}
+  Future<EnrollmentRecoveryProjectionV1> recover({
+    required String enrollmentId,
+  }) async {
+    recoverCalls += 1;
+    if (unavailable) throw StateError('Hub unavailable');
+    return current;
+  }
 
-void main() {
-  test('keeps provisioning and admission as separately checkpointed stages',
-      () async {
-    final session = _FakeSession(_descriptor);
-    final transport = _FakeTransport(session);
-    final admission = _FakeAdmission();
-    final store = InMemoryDeviceSetupCheckpointStore();
-    final coordinator = DeviceSetupCoordinator(
-      transport: transport,
-      admission: admission,
-      checkpoints: store,
-      ownerDirectoryVerifier: const AcceptingOwnerDomainDirectoryVerifier(),
-      clock: () => _now,
+  @override
+  Future<EnrollmentRecoveryProjectionV1> decide({
+    required String commandId,
+    required String correlationId,
+    required EnrollmentRecoveryProjectionV1 projection,
+    String? initialCompanionId,
+  }) async {
+    decisionIds.add(commandId);
+    correlationIds.add(correlationId);
+    payloads.add({
+      'enrollment_id': projection.json['proposal']['enrollment_id'],
+      'revision': projection.json['source_revision'],
+      'companion_id': initialCompanionId,
+    });
+    current = _projection(
+      state: 'approved_awaiting_handoff',
+      withDecision: true,
     );
-
-    final result = await coordinator.provisionAndAdmit(
-      setupId: 'setup-1',
-      requestId: 'device-setup-1',
-      candidate: _candidate,
-      credentials: const DeviceWifiCredentials(
-        ssid: 'Home WiFi',
-        password: 'secret-not-persisted',
-      ),
-      onboardingTarget: deviceOnboardingTargetFixture(),
-      companionId: 'companion-1',
-    );
-
-    expect(result.provisioningState, DeviceProvisioningState.networkConfigured);
-    expect(result.admissionState, DeviceAdmissionState.ready);
-    expect(result.isReady, isTrue);
-    expect(result.deviceId, 'device-1');
-    expect(result.enrollmentId, 'enrollment-1');
-    expect(session.configured, isTrue);
-    expect(session.closed, isTrue);
-    expect(transport.closed, isTrue);
-    expect(admission.requestIds, ['device-setup-1']);
-    expect(result.encode(), isNot(contains('secret-not-persisted')));
-  });
-
-  test('retries admission forward without configuring Wi-Fi again', () async {
-    final session = _FakeSession(_descriptor);
-    final transport = _FakeTransport(session);
-    final admission = _FakeAdmission()..fail = true;
-    final store = InMemoryDeviceSetupCheckpointStore();
-    final coordinator = DeviceSetupCoordinator(
-      transport: transport,
-      admission: admission,
-      checkpoints: store,
-      ownerDirectoryVerifier: const AcceptingOwnerDomainDirectoryVerifier(),
-      clock: () => _now,
-    );
-
-    final failed = await coordinator.provisionAndAdmit(
-      setupId: 'setup-1',
-      requestId: 'stable-request-1',
-      candidate: _candidate,
-      credentials: const DeviceWifiCredentials(ssid: 'Home', password: 'pw'),
-      onboardingTarget: deviceOnboardingTargetFixture(),
-    );
-    expect(failed.provisioningState, DeviceProvisioningState.networkConfigured);
-    expect(failed.admissionState, DeviceAdmissionState.failed);
-    expect(failed.failure?.retryable, isTrue);
-
-    admission.fail = false;
-    final resumed = await coordinator.resumeAdmission('setup-1');
-
-    expect(resumed.isReady, isTrue);
-    expect(admission.requestIds, ['stable-request-1', 'stable-request-1']);
-    expect(session.configured, isTrue);
-  });
-
-  test('product coordinator rejects development TOFU provisioning', () async {
-    final descriptor = DeviceProvisioningDescriptor(
-      contractVersion: '1',
-      deviceId: 'device-dev',
-      deviceKind: 'esp32-display',
-      displayName: 'eidolon-1234',
-      identityFingerprint: '',
-      sessionId: 'dev-session',
-      expiresAt: _now.add(const Duration(minutes: 10)),
-      trust: DeviceProvisioningTrust.developmentTofu,
-    );
-    final session = _FakeSession(descriptor);
-    final store = InMemoryDeviceSetupCheckpointStore();
-    final coordinator = DeviceSetupCoordinator(
-      transport: _FakeTransport(session),
-      admission: _FakeAdmission(),
-      checkpoints: store,
-      ownerDirectoryVerifier: const AcceptingOwnerDomainDirectoryVerifier(),
-      clock: () => _now,
-    );
-    const candidate = DeviceProvisioningCandidate(
-      transportId: 'open-ap',
-      displayName: 'eidolon-1234',
-      transportKind: 'hotspot',
-      trust: DeviceProvisioningTrust.developmentTofu,
-    );
-
-    final result = await coordinator.provisionAndAdmit(
-      setupId: 'setup-dev',
-      requestId: 'request-dev',
-      candidate: candidate,
-      credentials: const DeviceWifiCredentials(ssid: 'Home', password: 'pw'),
-      onboardingTarget: deviceOnboardingTargetFixture(),
-    );
-
-    expect(result.provisioningState, DeviceProvisioningState.failed);
-    expect(result.failure?.code, 'untrusted_device_provisioning');
-    expect(session.configured, isFalse);
-  });
-
-  test('rejects an unauthenticated Owner directory before opening transport',
-      () async {
-    final session = _FakeSession(_descriptor);
-    final transport = _FakeTransport(session);
-    final coordinator = DeviceSetupCoordinator(
-      transport: transport,
-      admission: _FakeAdmission(),
-      checkpoints: InMemoryDeviceSetupCheckpointStore(),
-      ownerDirectoryVerifier: const RejectingOwnerDomainDirectoryVerifier(),
-      clock: () => _now,
-    );
-
-    await expectLater(
-      coordinator.provisionAndAdmit(
-        setupId: 'setup-rejected',
-        requestId: 'request-rejected',
-        candidate: _candidate,
-        credentials: const DeviceWifiCredentials(ssid: 'Home', password: 'pw'),
-        onboardingTarget: deviceOnboardingTargetFixture(),
-      ),
-      throwsA(
-        isA<DeviceSetupException>().having(
-          (error) => error.code,
-          'code',
-          'owner_directory_rejected',
-        ),
-      ),
-    );
-    expect(transport.closed, isFalse);
-    expect(session.configured, isFalse);
-  });
+    if (loseDecisionReply && decisionIds.length == 1) {
+      throw StateError('reply lost');
+    }
+    return current;
+  }
 }

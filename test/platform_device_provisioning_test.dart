@@ -60,17 +60,7 @@ void main() {
         'failure_code': null,
       };
 
-  PlatformDeviceProvisioning build({
-    PendingEnrollmentLookup? loadPending,
-    AdmittedDeviceLookup? isAlreadyAdmitted,
-    Duration timeout = const Duration(minutes: 3),
-  }) =>
-      PlatformDeviceProvisioning(
-        loadPendingEnrollments:
-            loadPending ?? () async => const <PendingDeviceEnrollment>[],
-        isAlreadyAdmitted: isAlreadyAdmitted ?? (_) async => false,
-        enrollmentTimeout: timeout,
-        enrollmentInterval: Duration.zero,
+  PlatformDeviceProvisioning build() => PlatformDeviceProvisioning(
         clock: () => now,
       );
 
@@ -166,6 +156,11 @@ void main() {
           payload['authority_signing_certificate'],
           target.authoritySigningCertificate,
         );
+        expect(payload['admission_command_ids'], {
+          'create': 'create-01',
+          'collect': 'collect-01',
+          'ack': 'ack-01',
+        });
         return jsonEncode({
           'contract_version': '1',
           'device_id': '10:51:db:7e:24:44',
@@ -191,6 +186,9 @@ void main() {
       credentials:
           const DeviceWifiCredentials(ssid: 'home', password: 'secret'),
       onboardingTarget: target,
+      createCommandId: 'create-01',
+      collectCommandId: 'collect-01',
+      ackCommandId: 'ack-01',
     );
 
     expect(
@@ -231,6 +229,9 @@ void main() {
       session.configureNetwork(
         credentials: const DeviceWifiCredentials(ssid: 'home', password: 'pw'),
         onboardingTarget: target,
+        createCommandId: 'create-01',
+        collectCommandId: 'collect-01',
+        ackCommandId: 'ack-01',
       ),
       throwsA(
         isA<DeviceProvisioningTransportException>().having(
@@ -278,6 +279,9 @@ void main() {
       session.configureNetwork(
         credentials: const DeviceWifiCredentials(ssid: 'home', password: 'pw'),
         onboardingTarget: target,
+        createCommandId: 'create-01',
+        collectCommandId: 'collect-01',
+        ackCommandId: 'ack-01',
       ),
       throwsA(
         isA<DeviceProvisioningTransportException>().having(
@@ -317,6 +321,9 @@ void main() {
       session.configureNetwork(
         credentials: const DeviceWifiCredentials(ssid: 'home', password: 'pw'),
         onboardingTarget: target,
+        createCommandId: 'create-01',
+        collectCommandId: 'collect-01',
+        ackCommandId: 'ack-01',
       ),
       throwsA(isA<DeviceProvisioningTransportException>()),
     );
@@ -349,87 +356,12 @@ void main() {
       session.configureNetwork(
         credentials: const DeviceWifiCredentials(ssid: 'home', password: 'pw'),
         onboardingTarget: target,
+        createCommandId: 'create-01',
+        collectCommandId: 'collect-01',
+        ackCommandId: 'ack-01',
       ),
       throwsA(isA<DeviceProvisioningTransportException>()),
     );
-  });
-
-  test('asks the Host whether the device enrolled, not the device', () async {
-    var asked = 0;
-    messenger.setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'openProvisioningSession') return descriptorJson();
-      return null;
-    });
-
-    final provisioning = build(
-      loadPending: () async {
-        asked++;
-        if (asked < 3) return const <PendingDeviceEnrollment>[];
-        return [
-          PendingDeviceEnrollment(
-            deviceId: '10:51:db:7e:24:44',
-            displayName: 'atk-dnesp32s3',
-            deviceKind: 'atk-dnesp32s3',
-            enrolledAt: now,
-          ),
-        ];
-      },
-    );
-    final session = await provisioning.open(
-      const DeviceProvisioningCandidate(
-        transportId: 't',
-        displayName: 'd',
-        transportKind: 'softap',
-        trust: DeviceProvisioningTrust.developmentTofu,
-      ),
-    );
-
-    final receipt = await session.awaitEnrollment();
-    expect(receipt.deviceId, '10:51:db:7e:24:44');
-    expect(receipt.lifecycleState, 'pending-approval');
-    expect(asked, 3);
-  });
-
-  test('gives up waiting rather than hanging when the device never enrolls',
-      () async {
-    messenger.setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'openProvisioningSession') return descriptorJson();
-      return null;
-    });
-    final session = await build(timeout: Duration.zero).open(
-      const DeviceProvisioningCandidate(
-        transportId: 't',
-        displayName: 'd',
-        transportKind: 'softap',
-        trust: DeviceProvisioningTrust.developmentTofu,
-      ),
-    );
-    await expectLater(
-      session.awaitEnrollment(),
-      throwsA(isA<DeviceProvisioningTransportException>()),
-    );
-  });
-
-  test('counts a device the Host already holds as having arrived', () async {
-    // Setting up a device that already belongs here — after a reflash, or to
-    // move it to another network — must not look like a device that never came.
-    messenger.setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'openProvisioningSession') return descriptorJson();
-      return null;
-    });
-    final session = await build(
-      isAlreadyAdmitted: (deviceId) async => deviceId == '10:51:db:7e:24:44',
-    ).open(
-      const DeviceProvisioningCandidate(
-        transportId: 't',
-        displayName: 'd',
-        transportKind: 'softap',
-        trust: DeviceProvisioningTrust.developmentTofu,
-      ),
-    );
-    final receipt = await session.awaitEnrollment();
-    expect(receipt.deviceId, '10:51:db:7e:24:44');
-    expect(receipt.lifecycleState, 'approved');
   });
 
   test('refuses a discovered candidate it cannot identify', () async {
@@ -454,8 +386,6 @@ void main() {
   group('what the phone said, said to a person', () {
     test('a refused scan is not reported as an empty room', () async {
       final transport = PlatformDeviceProvisioning(
-        loadPendingEnrollments: () async => const [],
-        isAlreadyAdmitted: (_) async => false,
         channel: _failing('DEVICE_SCAN_STALE', 'The phone did not scan'),
       );
 
@@ -473,8 +403,6 @@ void main() {
 
     test('Wi-Fi being off is said plainly', () async {
       final transport = PlatformDeviceProvisioning(
-        loadPendingEnrollments: () async => const [],
-        isAlreadyAdmitted: (_) async => false,
         channel: _failing('WIFI_DISABLED', 'Wi-Fi is switched off'),
       );
 
@@ -490,8 +418,6 @@ void main() {
     test('a platform failure never reaches the screen as a class name',
         () async {
       final transport = PlatformDeviceProvisioning(
-        loadPendingEnrollments: () async => const [],
-        isAlreadyAdmitted: (_) async => false,
         channel: _failing('SOMETHING_NEW', '设备暂时不可用'),
       );
 

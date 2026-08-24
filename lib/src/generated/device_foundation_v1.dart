@@ -631,8 +631,9 @@ class RevokeClaimV1 extends _AdmissionMapV1 {
         'device_ref',
         'reason',
       }) {
-    if (json['operation'] != 'device.claim-revocation')
+    if (json['operation'] != 'device.claim-revocation') {
       throw const FormatException('Invalid revoke operation');
+    }
     DeviceRefV1.fromJson(_map(json['device_ref']));
   }
 }
@@ -649,8 +650,9 @@ class RevokeClaimResultV1 extends _AdmissionMapV1 {
         'event_id',
         'lifecycle_state',
       }) {
-    if (json['operation'] != 'device.claim-revocation-result')
+    if (json['operation'] != 'device.claim-revocation-result') {
       throw const FormatException('Invalid revoke result');
+    }
     DeviceRefV1.fromJson(_map(json['device_ref']));
   }
 }
@@ -763,8 +765,9 @@ class CreateEnrollmentV1 extends _AdmissionMapV1 {
         'handoff_key',
         'operational_key',
       }) {
-    if (json['profile_id'] != 'eidolon-trust-p256-hpke-v1')
+    if (json['profile_id'] != 'eidolon-trust-p256-hpke-v1') {
       throw const FormatException('Invalid Admission profile');
+    }
     OwnerDomainIdV1.parse(json['requested_owner_domain_id']);
   }
 }
@@ -789,8 +792,9 @@ class CancelEnrollmentV1 extends _AdmissionMapV1 {
 class CancelEnrollmentResultV1 extends _AdmissionMapV1 {
   CancelEnrollmentResultV1.fromJson(Map<String, dynamic> value)
     : super(value, const {'enrollment_id', 'proposal_state', 'canceled_at'}) {
-    if (json['proposal_state'] != 'canceled')
+    if (json['proposal_state'] != 'canceled') {
       throw const FormatException('Invalid canceled Proposal state');
+    }
   }
 }
 
@@ -851,8 +855,9 @@ class ClaimGrantAADV1 extends _AdmissionMapV1 {
         'grant_id',
       }) {
     if (json['contract'] != 'eidolon.device-foundation.claim-grant-aad' ||
-        json['profile_id'] != 'eidolon-trust-p256-hpke-v1')
+        json['profile_id'] != 'eidolon-trust-p256-hpke-v1') {
       throw const FormatException('Invalid ClaimGrant AAD profile');
+    }
     OwnerDomainIdV1.parse(json['owner_domain_id']);
     ManifestRefV1.fromJson(_map(json['manifest_ref']));
     for (final name in const [
@@ -903,8 +908,9 @@ class CollectClaimGrantResultV1 extends _AdmissionMapV1 {
       _map(json['wire_envelope']),
     );
     if (envelope.json['aad'] is! Map ||
-        _map(envelope.json['aad'])['grant_id'] != json['grant_id'])
+        _map(envelope.json['aad'])['grant_id'] != json['grant_id']) {
       throw const FormatException('Collect result Grant mismatch');
+    }
   }
 }
 
@@ -1073,8 +1079,9 @@ class ClaimEventCursorV1 extends _AdmissionMapV1 {
     : super(value, const {'stream_id', 'stream_position'}) {
     if (json['stream_id'] != 'admission-claims-v1' ||
         json['stream_position'] is! int ||
-        (json['stream_position'] as int) < 0)
+        (json['stream_position'] as int) < 0) {
       throw const FormatException('Invalid Claim event cursor');
+    }
   }
 }
 
@@ -1095,8 +1102,9 @@ class ClaimEventPageV1 extends _AdmissionMapV1 {
         'high_watermark',
         'observed_at',
       }) {
-    if (json['stream_id'] != 'admission-claims-v1')
+    if (json['stream_id'] != 'admission-claims-v1') {
       throw const FormatException('Invalid Claim event stream');
+    }
     ClaimEventCursorV1.fromJson(_map(json['requested_after']));
     ClaimEventCursorV1.fromJson(_map(json['next_cursor']));
   }
@@ -1119,8 +1127,9 @@ Map<String, dynamic> _strictObject(
 }
 
 int _positive(Object? value) {
-  if (value is! int || value < 1)
+  if (value is! int || value < 1) {
     throw const FormatException('Expected positive generation/revision');
+  }
   return value;
 }
 
@@ -1134,13 +1143,15 @@ void _claimEventMetadata(
       value['type'] != type ||
       value['dataschema'] != schema ||
       value['audience'] != 'eidolon-claim-consumers' ||
-      value['datacontenttype'] != 'application/json')
+      value['datacontenttype'] != 'application/json') {
     throw const FormatException('Invalid Claim CloudEvent metadata');
+  }
   final data = _map(value['data']);
   final ref = DeviceRefV1.fromJson(_map(data['device_ref']));
   if (value['ownerdomainid'] != ref.ownerDomainId.value ||
-      value['subject'] != 'device-instances/${ref.deviceInstanceId}')
+      value['subject'] != 'device-instances/${ref.deviceInstanceId}') {
     throw const FormatException('Claim CloudEvent identity mismatch');
+  }
 }
 
 String _text(Object? value, int maximum) {
