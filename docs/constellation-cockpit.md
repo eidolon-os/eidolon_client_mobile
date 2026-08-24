@@ -101,7 +101,32 @@ roster 落地之后 N>4 是现实的,而原来的几何撑不住 —— 实测�
 顺带修一个交互副作用:聚焦会把卫星放回来、从而改变画布尺寸,而原来的重构图逻辑
 会在飞行动画之前先"跳"一下。现在只有视口变化（或无焦点时的画布变化）才重构图。
 
-### 3.5 完整 roster 进星图:一屏两源的边界（未决）
+### 3.5 完整 roster 进星图:已裁决 —— roster 是存在性的权威
+
+多 Companion 方案 §2.3 的待裁决点已由本线复查并写回该节:MC 属于管理面,而
+「两份契约都在投影 Companion」的根因不是平面。§6.2 那一行的参数是
+`?companion_id=...` —— **快照是按 companion 参数化的**,调用方已经从 roster 知道
+有哪些伙伴,再来问 MC 它们的运行事实。加上 roster 的身份字段是权威字段而不是投影,
+结论是:**伙伴列表从来不是 MC 该提供的东西**。
+
+所以不是"要不要一屏两源"的取舍,而是**分工本来就该这样**:
+
+| 事实 | 权威 |
+|---|---|
+| 主人是谁、默认是哪个 | `/api/management/v1/context` |
+| 有哪些伙伴、名字、生命周期、revision | `/api/management/v1/companions`（roster） |
+| 它们此刻在干什么(身体/活动/轮次/任务/记忆/底座/事件) | MC 快照,按 `companion_id` 索引 |
+
+我原先担心的"一屏两源会糊成一份"在这个分工下不成立:行星来自 roster 权威,运行卫星
+来自 MC 的 lane —— 而 lane 机制已经会在 MC 读不到时写「读不到」,不会画出一个看起来
+在运行的伙伴。剩下的真实代价只有新鲜度错位(roster 在 T1、MC 在 T2),用各 lane 已有的
+`observed_at` 和 roster 的 `revision` 表达。
+
+**待执行**:从契约移除 companions lane 与 `default_companion_id`;客户端改为
+composite feed(`/context` + roster + MC 的 join),constellation 模块仍只认
+`CockpitFeed`、不认传输。
+
+### 3.5.1 原先记在这里的顾虑（保留，因为它解释了为什么现在这样分工）
 
 `ManagementClient` 已经能读完整 roster，星图的 companions lane 却只能拿到默认那一个。
 直接拿 roster 喂星图**不违反**多 Companion 计划 L2906（那条禁的是反方向:从 MC

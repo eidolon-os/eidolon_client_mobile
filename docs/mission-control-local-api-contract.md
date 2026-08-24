@@ -2,6 +2,14 @@
 
 状态：**提案**。消费侧（Mobile）已按此形状定型；生产侧尚未实现。
 
+> **裁决已完成（2026-08-24）**：多 Companion 方案 §2.3 把「这条投影属于管理面，还是
+> 另一类可豁免的只读观测面」转交本线复查，结论是**属于管理面**，四条依据与处置已写回
+> 该节。其中一项**尚未执行**：伙伴列表与 `default_companion_id` 要从本契约移除
+> —— §6.2 的 `?companion_id=...` 说明快照是按 companion 参数化的，调用方已从 roster
+> 知道有哪些伙伴；roster 的身份字段是权威字段而不是投影。存在性与身份一律以
+> roster/`/context` 为准，客户端 join。本文下面的 companions lane 与
+> `default_companion_id` 按此待删。
+>
 > **平面已纠正（2026-08-24）**：本文最初把端点写在 `/api/local/v1/mission-control/*`。
 > 那是错的——[多 Companion 方案](../../docs/跨系统/EidolonOS多Companion统一管理架构方案.md)
 > §2.3 规定 `/api/local/v1` 上的 Owner 产品端点要迁入 `/api/management/v1` 后**删除**，
@@ -37,6 +45,13 @@ GET /api/management/v1/events?after_ingest_seq=<int>
 ## 2. 四条贯穿全文的规则
 
 ### 规则一：每个投影块自带健康状态（lane 封套）
+
+> **出处更正（2026-08-24）**：本节与规则四原先写成本文提出的规则。它们不是 ——
+> [多 Companion 方案](../../docs/跨系统/EidolonOS多Companion统一管理架构方案.md)
+> §6.1「统一 Management API · 契约原则」里早已写着「composite read 必须逐 source
+> 返回 `ok / degraded / unavailable + freshness`」与「空列表与来源不可用是两种状态，
+> 不能都返回 `[]`」。下面是这两条在本载荷上的具体形状与理由，不是它们的来源。
+> 这也是选定管理面的一条依据:本载荷的形状本来就是那个平面要求的形状。
 
 每一块都是同一个形状：
 
@@ -87,7 +102,7 @@ Console 侧的 `_device_presence` 已经定好了优先级，这份契约照抄�
 **一个源坏了不该让整屏黑。** 记忆服务抖一下就把整张星图变成一句「读不到」，
 是把可用性拱手让人 —— 主人的设备和伙伴明明还读得到。
 
-### 规则四：截断必须看得见
+### 规则四：截断必须看得见（见规则一的出处更正）
 
 每个列表都有上界。到界时同一个块里的 `truncated: true`。**静默截断读起来就是
 「全部就这些」**，这在观测面上是谎。
