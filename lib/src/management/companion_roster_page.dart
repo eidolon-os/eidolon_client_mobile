@@ -26,6 +26,9 @@ class CompanionRosterPage extends StatelessWidget {
     required this.roster,
     this.onOpen,
     this.onLoadMore,
+    this.onMakeDefault,
+    this.busyCompanionId,
+    this.refusal,
   });
 
   final CompanionRosterView roster;
@@ -36,13 +39,44 @@ class CompanionRosterPage extends StatelessWidget {
   /// Non-null only when the Host said there is another page.
   final VoidCallback? onLoadMore;
 
+  /// Offered only when this Host says it can change the default at all.
+  ///
+  /// Null hides the action rather than disabling it: a control that is visible
+  /// but dead is a promise the Host has not made.
+  final void Function(CompanionSummaryView companion)? onMakeDefault;
+
+  /// The row whose change is in flight, if any.
+  final String? busyCompanionId;
+
+  /// What the Host said when it refused the last attempt.
+  ///
+  /// Shown in the list rather than as a transient message, because the reason
+  /// matters: "someone else changed this" means look again, and a person who
+  /// missed a snackbar would just try the same thing.
+  final String? refusal;
+
   @override
   Widget build(BuildContext context) {
     final rows = roster.companions;
+    final refusalText = refusal;
     return Scaffold(
       key: const Key('companion-roster-page'),
       appBar: AppBar(title: const Text('你的 Eidolon')),
-      body: rows.isEmpty
+      body: refusalText == null ? _list(rows) : Column(
+        children: [
+          MaterialBanner(
+            key: const Key('roster-refusal'),
+            content: Text(refusalText),
+            actions: const [SizedBox.shrink()],
+          ),
+          Expanded(child: _list(rows)),
+        ],
+      ),
+    );
+  }
+
+  Widget _list(List<CompanionSummaryView> rows) {
+    return rows.isEmpty
           ? const Center(
               key: Key('roster-empty'),
               // Said plainly rather than as an error. An Owner with none is a
@@ -66,15 +100,16 @@ class CompanionRosterPage extends StatelessWidget {
                     ),
                   );
                 }
+                final companion = rows[index];
                 return _RosterRow(
-                  companion: rows[index],
-                  isDefault:
-                      rows[index].companionId == roster.defaultCompanionId,
+                  companion: companion,
+                  isDefault: companion.companionId == roster.defaultCompanionId,
                   onOpen: onOpen,
+                  onMakeDefault: onMakeDefault,
+                  busy: busyCompanionId == companion.companionId,
                 );
               },
-            ),
-    );
+            );
   }
 }
 
@@ -83,11 +118,24 @@ class _RosterRow extends StatelessWidget {
     required this.companion,
     required this.isDefault,
     required this.onOpen,
+    required this.onMakeDefault,
+    required this.busy,
   });
 
   final CompanionSummaryView companion;
   final bool isDefault;
   final void Function(CompanionSummaryView companion)? onOpen;
+  final void Function(CompanionSummaryView companion)? onMakeDefault;
+  final bool busy;
+
+  /// Offered on a row that is not already the default and is not on its way
+  /// out. Whether it is *allowed* stays the Host's answer — a guard is refused
+  /// there, and duplicating that rule here is how two clients come to disagree
+  /// about it.
+  bool get _offerDefault =>
+      onMakeDefault != null &&
+      !isDefault &&
+      companion.lifecycleState == 'active';
 
   @override
   Widget build(BuildContext context) {
@@ -112,9 +160,28 @@ class _RosterRow extends StatelessWidget {
         ],
       ),
       subtitle: Text(_lifecycleSentence(companion.lifecycleState)),
-      trailing: onOpen == null ? null : const Icon(Icons.chevron_right),
+      trailing: _trailing(),
       onTap: onOpen == null ? null : () => onOpen!(companion),
     );
+  }
+
+  Widget? _trailing() {
+    if (busy) {
+      return const SizedBox(
+        key: Key('roster-row-busy'),
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+    if (_offerDefault) {
+      return TextButton(
+        key: Key('roster-make-default-${companion.companionId}'),
+        onPressed: () => onMakeDefault!(companion),
+        child: const Text('设为默认'),
+      );
+    }
+    return onOpen == null ? null : const Icon(Icons.chevron_right);
   }
 }
 

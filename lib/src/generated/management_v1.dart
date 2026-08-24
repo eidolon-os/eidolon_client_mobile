@@ -12,6 +12,7 @@ class ManagementV1 {
   static const String companionsPath = '/api/management/v1/companions';
   static String companionsByCompanionIdPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}';
   static const String contextPath = '/api/management/v1/context';
+  static const String ownerDefaultCompanionPath = '/api/management/v1/owner/default-companion';
 }
 
 class CompanionDetailView {
@@ -112,6 +113,42 @@ class CompanionSummaryView {
       lifecycleState: value['lifecycle_state'] as String,
       revision: value['revision'] as int,
       updatedAt: value['updated_at'] as String,
+    );
+  }
+}
+
+class DefaultCompanionRequest {
+  const DefaultCompanionRequest({
+    required this.companionId,
+    required this.expectedRevision,
+  });
+
+  final String companionId;
+
+  final int expectedRevision;
+
+  factory DefaultCompanionRequest.fromJson(Map<String, dynamic> value) {
+    return DefaultCompanionRequest(
+      companionId: value['companion_id'] as String,
+      expectedRevision: value['expected_revision'] as int,
+    );
+  }
+}
+
+class DefaultCompanionView {
+  const DefaultCompanionView({
+    this.contractVersion,
+    this.defaultCompanionId,
+  });
+
+  final String? contractVersion;
+
+  final String? defaultCompanionId;
+
+  factory DefaultCompanionView.fromJson(Map<String, dynamic> value) {
+    return DefaultCompanionView(
+      contractVersion: value['contract_version'] as String?,
+      defaultCompanionId: value['default_companion_id'] as String?,
     );
   }
 }

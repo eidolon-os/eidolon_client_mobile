@@ -231,6 +231,12 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             load: ({String? cursor}) => _controller.roster(cursor: cursor),
             openCompanion: (companionId) =>
                 _controller.companion(companionId: companionId),
+            loadContext: _controller.managementContext,
+            setDefaultCompanion: (companionId, expectedRevision) =>
+                _controller.setDefaultCompanion(
+              companionId: companionId,
+              expectedRevision: expectedRevision,
+            ),
           ),
         ),
       );

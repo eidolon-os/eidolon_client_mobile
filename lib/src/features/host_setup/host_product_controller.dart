@@ -17,6 +17,7 @@ import 'host_product_session.dart';
 import 'host_service_models.dart';
 import 'host_vitals_models.dart';
 import '../../generated/management_v1.dart';
+import '../../management/management_client.dart';
 import 'local_api_client.dart';
 import 'local_api_discovery.dart';
 import 'persona_history_models.dart';
@@ -378,6 +379,20 @@ class HostProductController extends ChangeNotifier {
   /// One of them, opened.
   Future<CompanionDetailView> companion({required String companionId}) =>
       _managementRepository.companion(companionId: companionId);
+
+  /// Make one of them the one that answers when nothing named an Eidolon.
+  ///
+  /// [expectedRevision] comes from the context this app last read. Passing it
+  /// through rather than looking it up here keeps "which version am I changing"
+  /// a decision of the screen that showed the person that version.
+  Future<CompanionDetailOutcome> setDefaultCompanion({
+    required String companionId,
+    required int expectedRevision,
+  }) =>
+      _managementRepository.setDefaultCompanion(
+        companionId: companionId,
+        expectedRevision: expectedRevision,
+      );
 
   /// What this Host says it can do at all, for the authenticated Owner.
   Future<ManagementContextView> managementContext() =>

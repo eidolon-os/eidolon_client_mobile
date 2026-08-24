@@ -17,6 +17,13 @@ class ManagementRequestException implements Exception {
   final int? statusCode;
   final String? reason;
 
+  /// True when someone else changed this first and this app's view is stale.
+  ///
+  /// The one refusal a client must answer by re-reading rather than retrying:
+  /// retrying a stale write would mean whichever phone is more persistent wins,
+  /// which is not what the person at either phone asked for.
+  bool get someoneElseChangedIt => statusCode == 409;
+
   /// True when this Host has no Owner yet, so there is nothing to list.
   ///
   /// Deliberately not folded into "empty roster": a person with no Eidolons and
@@ -102,16 +109,66 @@ class ManagementClient {
     return CompanionDetailView.fromJson(body);
   }
 
+  /// Make one of this Owner's Eidolons the one that answers by default.
+  ///
+  /// [expectedRevision] is the Owner revision this app last read — from
+  /// `/context`. It is what stops this phone and another one both winning: the
+  /// second gets a 409 and has to look again, rather than silently overwriting
+  /// a change the person made elsewhere.
+  ///
+  /// Safe to repeat. The Host states an end rather than a step, so a lost
+  /// response is answered by asking again, which is the normal case on a phone.
+  Future<CompanionDetailOutcome> setDefaultCompanion(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+    required int expectedRevision,
+  }) async {
+    final body = await _send(
+      'PUT',
+      baseUri.resolve(ManagementV1.ownerDefaultCompanionPath),
+      accessToken: accessToken,
+      what: '设为默认',
+      body: {
+        'companion_id': companionId,
+        'expected_revision': expectedRevision,
+      },
+    );
+    final view = DefaultCompanionView.fromJson(body);
+    return CompanionDetailOutcome(
+      defaultCompanionId: view.defaultCompanionId,
+    );
+  }
+
   Future<Map<String, dynamic>> _get(
     Uri endpoint, {
     required String accessToken,
     required String what,
+  }) =>
+      _send('GET', endpoint, accessToken: accessToken, what: what);
+
+  /// One place that talks to the Host, whatever the verb.
+  ///
+  /// Reads and writes differ only in method and body, deliberately: "how a
+  /// refusal is reported" must not come to mean two different things.
+  Future<Map<String, dynamic>> _send(
+    String method,
+    Uri endpoint, {
+    required String accessToken,
+    required String what,
+    Map<String, dynamic>? body,
   }) async {
     final http.Response response;
     try {
-      response = await _httpClient
-          .get(endpoint, headers: {'Authorization': 'Bearer $accessToken'})
-          .timeout(timeout);
+      final request = http.Request(method, endpoint)
+        ..headers['Authorization'] = 'Bearer $accessToken';
+      if (body != null) {
+        request.headers['Content-Type'] = 'application/json; charset=utf-8';
+        request.body = jsonEncode(body);
+      }
+      response = await http.Response.fromStream(
+        await _httpClient.send(request),
+      ).timeout(timeout);
     } on TimeoutException {
       throw ManagementRequestException('$what超时');
     } catch (error) {
@@ -161,6 +218,16 @@ class ManagementClient {
       _httpClient.close();
     }
   }
+}
+
+/// Where the Owner's pointer ended up, as the Host read it back.
+///
+/// Its own type rather than a bare String? so a caller cannot mistake "the Host
+/// says there is no default" for "the call did not answer".
+class CompanionDetailOutcome {
+  const CompanionDetailOutcome({required this.defaultCompanionId});
+
+  final String? defaultCompanionId;
 }
 
 /// Whether the Host can do a thing at all — not whether this Controller may.

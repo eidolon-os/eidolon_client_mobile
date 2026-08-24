@@ -962,31 +962,44 @@ void main() {
             _hostOverview(workspaceState: 'ready'),
             workspaceReady: true,
           ),
+          // Answers per path: the roster screen reads /context first, to learn
+          // what this Host can do before drawing an action for it.
           managementClientFactory: (_) => ManagementClient(
-            httpClient: MockClient(
-              (_) async => http.Response.bytes(
-                utf8.encode(
-                  jsonEncode({
-                    'contract_version': '1',
-                    'default_companion_id': 'companion-a',
-                    'companions': [
-                      {
-                        'companion_id': 'companion-a',
-                        'display_name': '小忆',
-                        'kind': 'standard',
-                        'lifecycle_state': 'active',
-                        'revision': 2,
-                        'created_at': '2026-08-24T09:30:00+00:00',
-                        'updated_at': '2026-08-24T09:30:00+00:00',
+            httpClient: MockClient((request) async {
+              final body = request.url.path.endsWith('/context')
+                  ? {
+                      'contract_version': '1',
+                      'owner': {
+                        'owner_id': 'owner-1',
+                        'display_name': 'Manson',
+                        'revision': 3,
                       },
-                    ],
-                    'next_cursor': null,
-                  }),
-                ),
+                      'default_companion_id': 'companion-a',
+                      'capabilities': {'companion.read': true},
+                      'limits': {'max_active_companions': null},
+                    }
+                  : {
+                      'contract_version': '1',
+                      'default_companion_id': 'companion-a',
+                      'companions': [
+                        {
+                          'companion_id': 'companion-a',
+                          'display_name': '小忆',
+                          'kind': 'standard',
+                          'lifecycle_state': 'active',
+                          'revision': 2,
+                          'created_at': '2026-08-24T09:30:00+00:00',
+                          'updated_at': '2026-08-24T09:30:00+00:00',
+                        },
+                      ],
+                      'next_cursor': null,
+                    };
+              return http.Response.bytes(
+                utf8.encode(jsonEncode(body)),
                 200,
                 headers: const {'content-type': 'application/json'},
-              ),
-            ),
+              );
+            }),
           ),
           onHostUpdated: (_) async {},
         ),

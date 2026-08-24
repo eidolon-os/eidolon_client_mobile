@@ -9,6 +9,7 @@ import 'controller_grant_models.dart';
 import 'persona_history_models.dart';
 import 'recollection_models.dart';
 import '../../generated/management_v1.dart';
+import '../../management/management_client.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
 import 'host_vitals_models.dart';
@@ -211,6 +212,20 @@ class HostManagementRepository {
           baseUri,
           accessToken: accessToken,
           companionId: companionId,
+        ),
+      );
+
+  /// Make one of them the default. Returns where the pointer ended up.
+  Future<CompanionDetailOutcome> setDefaultCompanion({
+    required String companionId,
+    required int expectedRevision,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.setDefaultCompanion(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          expectedRevision: expectedRevision,
         ),
       );
 

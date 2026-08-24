@@ -314,6 +314,7 @@ void main() {
   });
 
   detailTests();
+  switcherTests();
 
   group('the roster page', () {
     testWidgets('marks the default once, from the page and not a row',
@@ -434,6 +435,246 @@ CompanionDetailView detail({bool isDefault = true, String kind = 'standard'}) =>
     });
 
 /// Opening one from the list.
+/// Two Eidolons, both active. The default fixture has an archived one, which is
+/// deliberately not a candidate for becoming the default.
+Map<String, dynamic> twoActiveWire({String? defaultCompanionId = 'companion-a'}) =>
+    rosterWire(
+      defaultCompanionId: defaultCompanionId,
+      companions: [
+        {
+          'companion_id': 'companion-a',
+          'display_name': '小忆',
+          'kind': 'standard',
+          'lifecycle_state': 'active',
+          'revision': 2,
+          'created_at': '2026-08-24T09:30:00+00:00',
+          'updated_at': '2026-08-24T09:30:00+00:00',
+        },
+        {
+          'companion_id': 'companion-b',
+          'display_name': '阿力',
+          'kind': 'standard',
+          'lifecycle_state': 'active',
+          'revision': 1,
+          'created_at': '2026-08-24T09:31:00+00:00',
+          'updated_at': '2026-08-24T09:31:00+00:00',
+        },
+      ],
+    );
+
+ManagementContextView context({bool canSetDefault = true, int revision = 3}) =>
+    ManagementContextView.fromJson({
+      'contract_version': '1',
+      'owner': {'owner_id': 'owner-1', 'display_name': 'Manson', 'revision': revision},
+      'default_companion_id': 'companion-a',
+      'capabilities': {
+        'companion.read': true,
+        'companion.set_default': canSetDefault,
+      },
+      'limits': {'max_active_companions': null},
+    });
+
+/// Making one the default, from the list.
+void switcherTests() {
+  group('the switcher', () {
+    testWidgets('is offered only where the Host says it can do it',
+        (tester) async {
+      // A control that is visible but dead is a promise the Host has not made,
+      // so the absence of the capability removes the button rather than
+      // disabling it.
+      for (final allowed in [true, false]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: CompanionRosterScreen(
+              // A distinct key per pass, so the second one is a fresh screen
+              // rather than the first one handed a new configuration — which
+              // would keep the context it had already read.
+              key: ValueKey(allowed),
+              load: ({String? cursor}) async =>
+                  CompanionRosterView.fromJson(twoActiveWire()),
+              loadContext: () async => context(canSetDefault: allowed),
+              setDefaultCompanion: (_, __) async =>
+                  const CompanionDetailOutcome(defaultCompanionId: 'companion-b'),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('roster-make-default-companion-b')),
+          allowed ? findsOneWidget : findsNothing,
+          reason: 'capability was $allowed',
+        );
+      }
+    });
+
+    testWidgets('is not offered for the one that already is', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterScreen(
+            load: ({String? cursor}) async =>
+                CompanionRosterView.fromJson(twoActiveWire()),
+            loadContext: () async => context(),
+            setDefaultCompanion: (_, __) async =>
+                const CompanionDetailOutcome(defaultCompanionId: 'companion-a'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('roster-make-default-companion-a')), findsNothing);
+    });
+
+    testWidgets('sends the revision the person was shown', (tester) async {
+      // Not one re-read a millisecond before writing: a compare-and-swap
+      // against a value nobody looked at protects nothing.
+      String? asked;
+      int? sentRevision;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterScreen(
+            load: ({String? cursor}) async =>
+                CompanionRosterView.fromJson(twoActiveWire()),
+            loadContext: () async => context(revision: 7),
+            setDefaultCompanion: (companionId, revision) async {
+              asked = companionId;
+              sentRevision = revision;
+              return const CompanionDetailOutcome(
+                defaultCompanionId: 'companion-b',
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('roster-make-default-companion-b')));
+      await tester.pumpAndSettle();
+
+      expect(asked, 'companion-b');
+      expect(sentRevision, 7);
+    });
+
+    testWidgets('believes the Host, not the tap', (tester) async {
+      // The list is re-read after the write. A screen that moved the badge
+      // itself would be showing the person their own request.
+      var reads = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterScreen(
+            load: ({String? cursor}) async {
+              reads++;
+              return CompanionRosterView.fromJson(
+                twoActiveWire(
+                  defaultCompanionId: reads > 1 ? 'companion-b' : 'companion-a',
+                ),
+              );
+            },
+            loadContext: () async => context(),
+            setDefaultCompanion: (_, __) async =>
+                const CompanionDetailOutcome(defaultCompanionId: 'companion-b'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('roster-make-default-companion-b')));
+      await tester.pumpAndSettle();
+
+      expect(reads, 2);
+      // companion-b is now the default, so it no longer offers the action.
+      expect(find.byKey(const Key('roster-make-default-companion-b')), findsNothing);
+      expect(find.byKey(const Key('roster-default-badge')), findsOneWidget);
+    });
+
+    testWidgets('a conflict re-reads and says so, rather than retrying',
+        (tester) async {
+      // Retrying a stale write would mean the more persistent phone wins, which
+      // is not what the person at either phone asked for.
+      var reads = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterScreen(
+            load: ({String? cursor}) async {
+              reads++;
+              return CompanionRosterView.fromJson(twoActiveWire());
+            },
+            loadContext: () async => context(),
+            setDefaultCompanion: (_, __) => Future.error(
+              const ManagementRequestException('拒绝', statusCode: 409),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('roster-make-default-companion-b')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('别的地方刚改过默认，已经重新读取'), findsOneWidget);
+      expect(reads, 2, reason: 'it looked again on its own');
+    });
+
+    testWidgets('a refusal the Host explains is not shown in its words',
+        (tester) async {
+      // 400 here is "a guard cannot be the default". The Host's sentence is
+      // written for an operator reading a log; the status is the contract.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterScreen(
+            load: ({String? cursor}) async =>
+                CompanionRosterView.fromJson(twoActiveWire()),
+            loadContext: () async => context(),
+            setDefaultCompanion: (_, __) => Future.error(
+              const ManagementRequestException(
+                '拒绝',
+                statusCode: 400,
+                reason: 'a guard companion cannot be the default',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('roster-make-default-companion-b')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('这台主机不允许把它设为默认'), findsOneWidget);
+      expect(find.textContaining('guard companion cannot'), findsNothing);
+    });
+
+    testWidgets('an archived Eidolon is not offered as a default',
+        (tester) async {
+      // It is shown — a person should see it exists — but making the Host
+      // refuse it would be a trip for nothing when the row already says so.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterScreen(
+            load: ({String? cursor}) async => CompanionRosterView.fromJson(
+              rosterWire(
+                companions: [
+                  {
+                    'companion_id': 'companion-z',
+                    'display_name': '旧的',
+                    'kind': 'standard',
+                    'lifecycle_state': 'archived',
+                    'revision': 9,
+                    'created_at': '2026-08-24T09:30:00+00:00',
+                    'updated_at': '2026-08-24T09:30:00+00:00',
+                  },
+                ],
+              ),
+            ),
+            loadContext: () async => context(),
+            setDefaultCompanion: (_, __) async =>
+                const CompanionDetailOutcome(defaultCompanionId: 'companion-z'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('roster-row-companion-z')), findsOneWidget);
+      expect(find.byKey(const Key('roster-make-default-companion-z')), findsNothing);
+    });
+  });
+}
+
 void detailTests() {
   group('one Eidolon, opened', () {
     testWidgets('a row opens the Eidolon it names', (tester) async {
