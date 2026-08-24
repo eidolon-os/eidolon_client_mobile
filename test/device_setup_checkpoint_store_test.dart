@@ -20,7 +20,7 @@ DeviceSetupCheckpoint _checkpoint(
       setupId: setupId,
       requestId: 'request-$setupId',
       createCommandId: 'create-$setupId',
-      decisionCommandId: 'decision-$setupId',
+      decisionRequestId: 'decision-$setupId',
       collectCommandId: 'collect-$setupId',
       ackCommandId: 'ack-$setupId',
       provisioningState: DeviceProvisioningState.networkConfigured,
@@ -54,7 +54,7 @@ void main() {
 
     expect(loaded?.requestId, 'request-setup-1');
     expect(loaded?.deviceId, 'device-setup-1');
-    expect(loaded?.decisionCommandId, 'decision-setup-1');
+    expect(loaded?.decisionRequestId, 'decision-setup-1');
     expect(loaded?.expectedProposalRevision, 2);
     expect(loaded?.recoveryCursor?.json['resource_id'], 'enrollment_01');
     expect(raw, isNot(contains('wifi-password')));

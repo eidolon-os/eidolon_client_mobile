@@ -13,8 +13,7 @@ typedef EnrollmentRecoveryLoader = Future<EnrollmentProposalPageV1> Function({
   AdmissionListCursorV1? after,
 });
 typedef EnrollmentDecision = Future<EnrollmentRecoveryProjectionV1> Function({
-  required String commandId,
-  required String correlationId,
+  required String requestId,
   required EnrollmentRecoveryProjectionV1 projection,
 });
 
@@ -111,8 +110,7 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage>
     try {
       final enrollmentId = selected.proposal.json['enrollment_id']! as String;
       final projection = await widget.onDecide(
-        commandId: await _decisionCommandId(selected),
-        correlationId: 'manual-admission-$enrollmentId',
+        requestId: await _decisionRequestId(selected),
         projection: selected,
       );
       projection.validateForOwner(
@@ -137,7 +135,13 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage>
     }
   }
 
-  Future<String> _decisionCommandId(
+  /// A stable idempotency key for approving exactly this Proposal revision.
+  ///
+  /// Derived rather than random so that a reply lost mid-approval resumes the
+  /// Host's one intent when the person taps again, and so that a Proposal that
+  /// changed underneath the screen produces a different key instead of
+  /// approving content nobody read.
+  Future<String> _decisionRequestId(
     EnrollmentRecoveryProjectionV1 projection,
   ) async {
     final proposal = projection.proposal.json;
@@ -152,7 +156,7 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage>
 
   String _message(Object error) => switch (error) {
         HostControllerAuthorizationException() => error.message,
-        AdmissionRequestException() => error.toString(),
+        LocalApiRequestException() => error.toString(),
         PinnedHttpException() => '与主机的安全连接中断，请重新连接后恢复。',
         FormatException() => '主机返回的 Admission 投影未通过契约校验。',
         _ => '暂时无法读取或更新设备接入状态，请稍后恢复。',

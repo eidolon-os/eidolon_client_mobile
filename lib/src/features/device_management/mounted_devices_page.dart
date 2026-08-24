@@ -80,14 +80,9 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
           businessOwnerId: owner.ownerId,
           controllerId: connection.controllerId,
           loadRecovery: widget.controller.listEnrollmentRecovery,
-          onDecide: ({
-            required commandId,
-            required correlationId,
-            required projection,
-          }) =>
+          onDecide: ({required requestId, required projection}) =>
               widget.controller.decideEnrollment(
-            commandId: commandId,
-            correlationId: correlationId,
+            requestId: requestId,
             projection: projection,
             initialCompanionId:
                 widget.controller.workspace?.workspace?.primaryCompanionId,

@@ -20,20 +20,17 @@ void main() {
       'one confirmation shows immutable actor/context and explicit Decision',
       (tester) async {
     var projection = canonicalProjection(state: 'pending_review');
-    String? sentCommandId;
-    String? sentCorrelationId;
+    String? sentRequestId;
     await tester.pumpWidget(
       MaterialApp(
         home: _page(
           load: (_) async => canonicalRecoveryPage([projection]),
           decide: ({
-            required String commandId,
-            required String correlationId,
+            required String requestId,
             required EnrollmentRecoveryProjectionV1 projection,
           }) async {
             expect(projection.json['approval_decision'], isNull);
-            sentCommandId = commandId;
-            sentCorrelationId = correlationId;
+            sentRequestId = requestId;
             return canonicalProjection(
               state: 'approved_awaiting_handoff',
               withDecision: true,
@@ -52,8 +49,7 @@ void main() {
     await tester.tap(find.byKey(const Key('confirm-enrollment-decision')));
     await tester.pumpAndSettle();
 
-    expect(sentCommandId, startsWith('mobile-decision-'));
-    expect(sentCorrelationId, 'manual-admission-enrollment_01');
+    expect(sentRequestId, startsWith('mobile-decision-'));
     expect(find.text('已批准，等待设备领取 Grant'), findsOneWidget);
     expect(find.byKey(const Key('confirm-enrollment-decision')), findsNothing);
   });
@@ -118,8 +114,7 @@ DeviceAdmissionPage _page({
       loadRecovery: ({AdmissionListCursorV1? after}) => load(after),
       onDecide: decide ??
           ({
-            required String commandId,
-            required String correlationId,
+            required String requestId,
             required EnrollmentRecoveryProjectionV1 projection,
           }) async =>
               projection,

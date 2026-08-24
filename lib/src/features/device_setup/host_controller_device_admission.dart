@@ -29,14 +29,12 @@ class HostControllerDeviceAdmission implements DeviceAdmissionPort {
 
   @override
   Future<EnrollmentRecoveryProjectionV1> decide({
-    required String commandId,
-    required String correlationId,
+    required String requestId,
     required EnrollmentRecoveryProjectionV1 projection,
     String? initialCompanionId,
   }) =>
       _controller.decideEnrollment(
-        commandId: commandId,
-        correlationId: correlationId,
+        requestId: requestId,
         projection: projection,
         initialCompanionId: initialCompanionId,
       );

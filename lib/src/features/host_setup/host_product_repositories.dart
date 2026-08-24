@@ -549,18 +549,26 @@ class HostDeviceAdmissionRepository {
         ),
       );
 
-  Future<DecideEnrollmentResultV1> decideCommand({
-    required String commandId,
-    required String correlationId,
-    required DecideEnrollmentV1 command,
+  Future<AdmissionDecisionOutcome> decide({
+    required String requestId,
+    required String enrollmentId,
+    required int expectedProposalRevision,
+    required Map<String, dynamic> reviewedManifestRef,
+    required String expectedOwnerDomainId,
+    required String expectedBusinessOwnerId,
+    String? initialCompanionId,
   }) =>
       _session.execute(
         (client, baseUrl, accessToken) => client.decideEnrollment(
           baseUrl,
           accessToken: accessToken,
-          commandId: commandId,
-          correlationId: correlationId,
-          command: command,
+          requestId: requestId,
+          enrollmentId: enrollmentId,
+          expectedProposalRevision: expectedProposalRevision,
+          reviewedManifestRef: reviewedManifestRef,
+          expectedOwnerDomainId: expectedOwnerDomainId,
+          expectedBusinessOwnerId: expectedBusinessOwnerId,
+          initialCompanionId: initialCompanionId,
         ),
       );
 

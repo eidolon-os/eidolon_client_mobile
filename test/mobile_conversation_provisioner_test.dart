@@ -127,8 +127,7 @@ class _Admission implements DeviceAdmissionPort {
 
   @override
   Future<EnrollmentRecoveryProjectionV1> decide({
-    required String commandId,
-    required String correlationId,
+    required String requestId,
     required EnrollmentRecoveryProjectionV1 projection,
     String? initialCompanionId,
   }) async {

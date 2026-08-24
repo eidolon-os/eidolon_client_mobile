@@ -64,7 +64,7 @@ DeviceSetupCheckpoint _checkpoint() => DeviceSetupCheckpoint(
       setupId: 'setup-page-recovery',
       requestId: 'intent-page-recovery',
       createCommandId: 'mobile-create-setup-page-recovery',
-      decisionCommandId: 'mobile-decision-setup-page-recovery',
+      decisionRequestId: 'mobile-decision-setup-page-recovery',
       collectCommandId: 'mobile-collect-setup-page-recovery',
       ackCommandId: 'mobile-ack-setup-page-recovery',
       provisioningState: DeviceProvisioningState.networkConfigured,
@@ -114,8 +114,7 @@ class _Admission implements DeviceAdmissionPort {
 
   @override
   Future<EnrollmentRecoveryProjectionV1> decide({
-    required String commandId,
-    required String correlationId,
+    required String requestId,
     required EnrollmentRecoveryProjectionV1 projection,
     String? initialCompanionId,
   }) async {

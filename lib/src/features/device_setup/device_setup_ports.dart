@@ -40,10 +40,12 @@ abstract interface class DeviceAdmissionPort {
     required String enrollmentId,
   });
 
-  /// Records one immutable, explicit Decision then re-reads recovery.
+  /// Records one immutable, explicit Decision and returns what became of it.
+  ///
+  /// [requestId] is an idempotency key over the Host's durable intent, so a
+  /// lost reply is resumed rather than decided again.
   Future<EnrollmentRecoveryProjectionV1> decide({
-    required String commandId,
-    required String correlationId,
+    required String requestId,
     required EnrollmentRecoveryProjectionV1 projection,
     String? initialCompanionId,
   });

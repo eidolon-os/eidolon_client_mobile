@@ -38,24 +38,6 @@ class LocalApiRequestException implements Exception {
   String toString() => reason == null ? message : '$message：$reason';
 }
 
-final class AdmissionRequestException implements Exception {
-  const AdmissionRequestException({
-    required this.operation,
-    required this.problem,
-    required this.statusCode,
-  });
-
-  final String operation;
-  final DeviceProblemV1 problem;
-  final int statusCode;
-
-  String get code => problem.json['code']! as String;
-  bool get retryable => problem.json['retryable'] == true;
-
-  @override
-  String toString() => problem.json['detail']! as String;
-}
-
 class LocalApiClient {
   LocalApiClient({
     http.Client? httpClient,
@@ -254,6 +236,12 @@ class LocalApiClient {
     ).reachedAt(origin.host);
   }
 
+  /// The Enrollments this Owner has waiting, as the Host projects them.
+  ///
+  /// The Host is the only Admission surface this phone talks to. Hub owns the
+  /// canonical Authority and the Host presents a short-lived, exactly-scoped
+  /// credential on this Controller's behalf; the phone holding one that could
+  /// approve a device would be a second place that decides.
   Future<EnrollmentProposalPageV1> fetchEnrollmentRecoveryPage(
     String baseUrl, {
     required String accessToken,
@@ -271,10 +259,14 @@ class LocalApiClient {
     }
     final response = await _httpClient
         .get(
-          _admissionUri(baseUrl, const ['enrollments']).replace(
-            queryParameters: {
-              'states':
-                  'pending_review,approved_awaiting_handoff,grant_delivered,grant_acknowledged',
+          _deviceEnrollmentsUri(baseUrl).replace(
+            queryParameters: <String, dynamic>{
+              'states': const [
+                'pending_review',
+                'approved_awaiting_handoff',
+                'grant_delivered',
+                'grant_acknowledged',
+              ],
               'limit': '$limit',
               if (cursor != null) ...{
                 'after_sort_key': cursor['sort_key']! as String,
@@ -286,10 +278,7 @@ class LocalApiClient {
         )
         .timeout(timeout);
     final page = EnrollmentProposalPageV1.fromJson(
-      _decodeAdmissionResponse(
-        response,
-        operation: 'Enrollment recovery page',
-      ),
+      _decodeResponse(response, operation: 'Enrollment recovery page'),
     );
     if (page.json['owner_domain_id'] != ownerDomainId) {
       throw const FormatException('Admission page Owner Domain mismatch');
@@ -304,41 +293,68 @@ class LocalApiClient {
   }) async {
     final response = await _httpClient
         .get(
-          _admissionUri(
+          _deviceEnrollmentsUri(
             baseUrl,
-            ['enrollments', _boundedId(enrollmentId, 'Enrollment ID')],
+            suffix: [_boundedId(enrollmentId, 'Enrollment ID')],
           ),
           headers: _authorizedHeaders(accessToken),
         )
         .timeout(timeout);
     return EnrollmentRecoveryProjectionV1.fromJson(
-      _decodeAdmissionResponse(response, operation: 'Enrollment recovery'),
+      _decodeResponse(response, operation: 'Enrollment recovery'),
     );
   }
 
-  Future<DecideEnrollmentResultV1> decideEnrollment(
+  /// Submits the Owner's one explicit Decision to the Host's workflow.
+  ///
+  /// [requestId] is the idempotency key, not a Hub command ID: replaying it
+  /// resumes the Host's durable intent instead of deciding a second time. The
+  /// expected Owner identities are what the confirming screen showed, and the
+  /// Host refuses the Decision if its own session no longer holds them.
+  Future<AdmissionDecisionOutcome> decideEnrollment(
     String baseUrl, {
     required String accessToken,
-    required String commandId,
-    required String correlationId,
-    required DecideEnrollmentV1 command,
+    required String requestId,
+    required String enrollmentId,
+    required int expectedProposalRevision,
+    required Map<String, dynamic> reviewedManifestRef,
+    required String expectedOwnerDomainId,
+    required String expectedBusinessOwnerId,
+    String? targetSpaceId,
+    String? initialCompanionId,
   }) async {
-    final enrollmentId =
-        _boundedId(command.json['enrollment_id']! as String, 'Enrollment ID');
     final response = await _httpClient
-        .post(
-          _admissionUri(baseUrl, ['enrollments', enrollmentId, 'decisions']),
+        .put(
+          _deviceEnrollmentsUri(
+            baseUrl,
+            suffix: [_boundedId(enrollmentId, 'Enrollment ID'), 'decision'],
+          ),
           headers: _authorizedHeaders(accessToken, json: true),
           body: jsonEncode({
-            'command_id': _boundedId(commandId, 'Command ID'),
-            'correlation_id': _boundedId(correlationId, 'Correlation ID'),
-            ...command.toJson(),
+            'contract_version': '1',
+            'request_id': _boundedId(requestId, 'Decision request ID'),
+            'expected_proposal_revision': expectedProposalRevision,
+            'decision': 'approve',
+            'reviewed_manifest_ref': reviewedManifestRef,
+            'expected_owner_domain_id':
+                OwnerDomainIdV1.parse(expectedOwnerDomainId).value,
+            'expected_business_owner_id':
+                _boundedId(expectedBusinessOwnerId, 'Owner ID'),
+            'target_space_id': targetSpaceId,
+            'initial_assignment_intent': initialCompanionId == null
+                ? null
+                : {'companion_id': initialCompanionId},
+            'initial_capability_policy_refs': const <String>[],
           }),
         )
         .timeout(timeout);
-    return DecideEnrollmentResultV1.fromJson(
-      _decodeAdmissionResponse(response, operation: 'Enrollment Decision'),
+    final outcome = AdmissionDecisionOutcome.fromJson(
+      _decodeResponse(response, operation: 'Enrollment Decision'),
     );
+    if (outcome.requestId != requestId) {
+      throw const FormatException('主机应答了另一次批准请求');
+    }
+    return outcome;
   }
 
   Future<ClaimPageV1> fetchClaimPage(
@@ -358,9 +374,9 @@ class LocalApiClient {
     }
     final response = await _httpClient
         .get(
-          _admissionUri(baseUrl, const ['claims']).replace(
-            queryParameters: {
-              'states': 'active,suspended,revoked',
+          _localUri(baseUrl, const ['device-claims']).replace(
+            queryParameters: <String, dynamic>{
+              'states': const ['active', 'suspended', 'revoked'],
               'limit': '$limit',
               if (cursor != null) ...{
                 'after_sort_key': cursor['sort_key']! as String,
@@ -372,7 +388,7 @@ class LocalApiClient {
         )
         .timeout(timeout);
     final page = ClaimPageV1.fromJson(
-      _decodeAdmissionResponse(response, operation: 'Claim page'),
+      _decodeResponse(response, operation: 'Claim page'),
     );
     if (page.json['owner_domain_id'] != ownerDomainId) {
       throw const FormatException('Claim page Owner Domain mismatch');
@@ -726,10 +742,16 @@ class LocalApiClient {
     );
   }
 
-  static Uri _admissionUri(String baseUrl, List<String> suffix) =>
+  static Uri _localUri(String baseUrl, List<String> suffix) =>
       parseBaseUri(baseUrl).replace(
-        pathSegments: ['api', 'admission', 'v1', ...suffix],
+        pathSegments: ['api', 'local', 'v1', ...suffix],
       );
+
+  static Uri _deviceEnrollmentsUri(
+    String baseUrl, {
+    List<String> suffix = const [],
+  }) =>
+      _localUri(baseUrl, ['device-enrollments', ...suffix]);
 
   static String _boundedId(String value, String label) {
     final normalized = value.trim();
@@ -770,31 +792,6 @@ class LocalApiClient {
       throw FormatException('Local API $operation 不是 JSON object');
     }
     return decoded;
-  }
-
-  static Map<String, dynamic> _decodeAdmissionResponse(
-    http.Response response, {
-    required String operation,
-    Set<int> success = const {200},
-  }) {
-    final Object? decoded;
-    try {
-      decoded = jsonDecode(utf8.decode(response.bodyBytes));
-    } on FormatException {
-      throw FormatException('$operation response is not JSON');
-    }
-    if (decoded is! Map) {
-      throw FormatException('$operation response is not an object');
-    }
-    final object = Map<String, dynamic>.from(decoded);
-    if (!success.contains(response.statusCode)) {
-      throw AdmissionRequestException(
-        operation: operation,
-        problem: DeviceProblemV1.fromJson(object),
-        statusCode: response.statusCode,
-      );
-    }
-    return object;
   }
 
   /// The Host's own account of a refusal, when it wrote one for the person.

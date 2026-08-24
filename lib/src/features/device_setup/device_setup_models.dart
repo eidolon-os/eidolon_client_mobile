@@ -174,6 +174,77 @@ class DeviceOnboardingTarget {
   }
 }
 
+/// What the Host's Admission workflow did with one Decision.
+///
+/// The Host, not this phone, owns the Decision as a durable intent: it derives
+/// the canonical command, submits it to the Admission Authority, and re-reads
+/// the resulting projection before answering. So this carries both halves — the
+/// checkpoint the workflow reached, and the Authority's own account of the
+/// Enrollment afterwards — and the phone never has to infer one from the other.
+class AdmissionDecisionOutcome {
+  const AdmissionDecisionOutcome({
+    required this.requestId,
+    required this.intentId,
+    required this.commandId,
+    required this.checkpoint,
+    required this.decisionId,
+    required this.recovery,
+  });
+
+  final String requestId;
+  final String intentId;
+  final String commandId;
+
+  /// `intent_recorded` means the Host holds the intent but the Authority has
+  /// not committed it. Deliberately not collapsed into a failure: the intent is
+  /// durable, so the same request ID resumes it rather than deciding twice.
+  final String checkpoint;
+
+  /// The committed Decision's identity, absent while the checkpoint is only
+  /// `intent_recorded`.
+  final String? decisionId;
+  final EnrollmentRecoveryProjectionV1 recovery;
+
+  bool get isCommitted => checkpoint == 'decision_committed';
+
+  factory AdmissionDecisionOutcome.fromJson(Map<String, dynamic> value) {
+    if (value['operation'] != 'admin.admission-decision-intent') {
+      throw const FormatException('主机返回了无效的设备批准结果');
+    }
+    final checkpoint = value['checkpoint'];
+    if (checkpoint != 'intent_recorded' && checkpoint != 'decision_committed') {
+      throw const FormatException('主机返回了未知的设备批准阶段');
+    }
+    final result = value['decision_result'];
+    if (result != null && result is! Map) {
+      throw const FormatException('主机返回了无效的设备批准结果');
+    }
+    if ((checkpoint == 'decision_committed') != (result != null)) {
+      throw const FormatException('主机的批准阶段与结果不一致');
+    }
+    final recovery = value['recovery'];
+    if (recovery is! Map) {
+      throw const FormatException('主机没有返回设备接入投影');
+    }
+    return AdmissionDecisionOutcome(
+      requestId: _boundedWireString(value, 'request_id', 128),
+      intentId: _boundedWireString(value, 'intent_id', 128),
+      commandId: _boundedWireString(value, 'command_id', 128),
+      checkpoint: checkpoint as String,
+      decisionId: result == null
+          ? null
+          : _boundedWireString(
+              Map<String, dynamic>.from(result),
+              'decision_id',
+              128,
+            ),
+      recovery: EnrollmentRecoveryProjectionV1.fromJson(
+        Map<String, dynamic>.from(recovery),
+      ),
+    );
+  }
+}
+
 /// What removing a device accomplished on the Host.
 ///
 /// [DeviceRemovalState.revoked] means the grant is gone — the device is off —
@@ -282,7 +353,7 @@ class DeviceSetupCheckpoint {
     required this.setupId,
     required this.requestId,
     required this.createCommandId,
-    required this.decisionCommandId,
+    required this.decisionRequestId,
     required this.collectCommandId,
     required this.ackCommandId,
     required this.provisioningState,
@@ -297,13 +368,20 @@ class DeviceSetupCheckpoint {
     this.failure,
   });
 
-  static const currentContractVersion = '3';
+  static const currentContractVersion = '4';
 
   final String contractVersion;
   final String setupId;
   final String requestId;
   final String createCommandId;
-  final String decisionCommandId;
+
+  /// Idempotency key for this setup's one Decision, as the Host names it.
+  ///
+  /// Not a Hub command ID: the Decision is submitted to the Host's own
+  /// Admission workflow, which owns the durable intent and derives the
+  /// canonical command from it. Replaying this ID replays that intent rather
+  /// than creating a second Decision.
+  final String decisionRequestId;
   final String collectCommandId;
   final String ackCommandId;
   final DeviceProvisioningState provisioningState;
@@ -339,7 +417,7 @@ class DeviceSetupCheckpoint {
         setupId: setupId,
         requestId: requestId,
         createCommandId: createCommandId,
-        decisionCommandId: decisionCommandId,
+        decisionRequestId: decisionRequestId,
         collectCommandId: collectCommandId,
         ackCommandId: ackCommandId,
         provisioningState: provisioningState ?? this.provisioningState,
@@ -361,7 +439,7 @@ class DeviceSetupCheckpoint {
         'setup_id': setupId,
         'request_id': requestId,
         'create_command_id': createCommandId,
-        'decision_command_id': decisionCommandId,
+        'decision_request_id': decisionRequestId,
         'collect_command_id': collectCommandId,
         'ack_command_id': ackCommandId,
         'provisioning_state': provisioningState.name,
@@ -410,7 +488,7 @@ class DeviceSetupCheckpoint {
       setupId: setupId,
       requestId: requestId,
       createCommandId: _boundedWireString(value, 'create_command_id', 128),
-      decisionCommandId: _boundedWireString(value, 'decision_command_id', 128),
+      decisionRequestId: _boundedWireString(value, 'decision_request_id', 128),
       collectCommandId: _boundedWireString(value, 'collect_command_id', 128),
       ackCommandId: _boundedWireString(value, 'ack_command_id', 128),
       provisioningState: provisioning,

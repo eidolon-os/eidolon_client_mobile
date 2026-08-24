@@ -592,9 +592,14 @@ class HostProductController extends ChangeNotifier {
     return projection;
   }
 
+  /// Records the Owner's one explicit approval for this Enrollment.
+  ///
+  /// The Host owns the Decision as a durable intent and re-reads the Authority
+  /// afterwards, so this returns that projection rather than a second read of
+  /// its own. [requestId] is the idempotency key: the same value resumes one
+  /// intent, and a lost reply never becomes two Decisions.
   Future<EnrollmentRecoveryProjectionV1> decideEnrollment({
-    required String commandId,
-    required String correlationId,
+    required String requestId,
     required EnrollmentRecoveryProjectionV1 projection,
     String? initialCompanionId,
   }) async {
@@ -606,46 +611,42 @@ class HostProductController extends ChangeNotifier {
       );
     }
     final target = await _deviceAdmissionRepository.fetchTarget();
+    final ownerDomainGeneration =
+        target.ownerDomainDescriptor.ownerDomainGeneration;
     final stage = projection.validateForOwner(
       target.ownerDomainId,
-      ownerDomainGeneration: target.ownerDomainDescriptor.ownerDomainGeneration,
+      ownerDomainGeneration: ownerDomainGeneration,
     );
     if (stage != AdmissionProjectionStage.pendingReview) {
       return projection;
     }
     final proposal = projection.proposal;
-    final command = DecideEnrollmentV1.fromJson({
-      'enrollment_id': proposal.json['enrollment_id'],
-      'expected_proposal_revision': projection.sourceRevision,
-      'decision': 'approve',
-      'target_owner_domain_id': target.ownerDomainId,
-      'target_business_owner_id': businessOwnerId,
-      'target_space_id': null,
-      'reviewed_manifest_ref': proposal.json['manifest_ref'],
-      'initial_assignment_intent': initialCompanionId == null
-          ? null
-          : {'companion_id': initialCompanionId},
-      'initial_capability_policy_refs': const <String>[],
-    });
-    final result = await _deviceAdmissionRepository.decideCommand(
-      commandId: commandId,
-      correlationId: correlationId,
-      command: command,
-    );
-    if (result.json['decision'] != 'approve') {
-      throw const FormatException('Hub returned another Decision');
+    final manifestRef = proposal.json['manifest_ref'];
+    if (manifestRef is! Map) {
+      throw const FormatException('Enrollment proposal has no Manifest');
     }
-    final recovered = await _deviceAdmissionRepository.recover(
+    final outcome = await _deviceAdmissionRepository.decide(
+      requestId: requestId,
       enrollmentId: proposal.json['enrollment_id']! as String,
+      expectedProposalRevision: projection.sourceRevision,
+      reviewedManifestRef: Map<String, dynamic>.from(manifestRef),
+      expectedOwnerDomainId: target.ownerDomainId,
+      expectedBusinessOwnerId: businessOwnerId,
+      initialCompanionId: initialCompanionId,
     );
+    final recovered = outcome.recovery;
     recovered.validateForOwner(
       target.ownerDomainId,
-      ownerDomainGeneration: target.ownerDomainDescriptor.ownerDomainGeneration,
+      ownerDomainGeneration: ownerDomainGeneration,
     );
     final decision = recovered.approvalDecision;
-    if (decision == null ||
-        decision.json['decision_id'] != result.json['decision_id']) {
+    if (!outcome.isCommitted ||
+        decision == null ||
+        decision.json['decision_id'] != outcome.decisionId) {
       throw const FormatException('Committed Decision is absent from recovery');
+    }
+    if (decision.json['decision'] != 'approve') {
+      throw const FormatException('Host recorded another Decision');
     }
     return recovered;
   }

@@ -23,7 +23,8 @@ typedef DeviceSetupClock = DateTime Function();
 /// Coordinates network commissioning and Admission as separate committed facts.
 ///
 /// A successful network terminal only advances [DeviceProvisioningState].
-/// Admission is recovered from Hub before any Decision is sent or replayed.
+/// Admission is recovered from the Authority before any Decision is sent or
+/// replayed.
 class DeviceSetupCoordinator {
   DeviceSetupCoordinator({
     required this.transport,
@@ -69,7 +70,7 @@ class DeviceSetupCoordinator {
       setupId: setupId,
       requestId: requestId,
       createCommandId: _commandId('create', setupId),
-      decisionCommandId: _commandId('decision', setupId),
+      decisionRequestId: _commandId('decision', setupId),
       collectCommandId: _commandId('collect', setupId),
       ackCommandId: _commandId('ack', setupId),
       provisioningState: DeviceProvisioningState.selected,
@@ -188,8 +189,7 @@ class DeviceSetupCoordinator {
         // The immutable Decision payload is derived from the recovered Proposal.
         // Reply loss is recovered on the next entry before this ID is reused.
         projection = await admission.decide(
-          commandId: current.decisionCommandId,
-          correlationId: current.requestId,
+          requestId: current.decisionRequestId,
           projection: projection,
           initialCompanionId: current.companionId,
         );

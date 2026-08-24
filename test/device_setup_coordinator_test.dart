@@ -60,8 +60,7 @@ void main() {
       'collect': 'mobile-collect-setup-1',
       'ack': 'mobile-ack-setup-1',
     });
-    expect(admission.decisionIds, ['mobile-decision-setup-1']);
-    expect(admission.correlationIds, ['intent-1']);
+    expect(admission.decisionRequestIds, ['mobile-decision-setup-1']);
     expect(result.expectedProposalRevision, 2);
     expect(result.encode(), isNot(contains('not-persisted')));
   });
@@ -85,7 +84,7 @@ void main() {
     );
     expect(failed.admissionState, DeviceAdmissionState.failed);
     expect(failed.enrollmentId, 'enrollment_01');
-    expect(failed.decisionCommandId, 'mobile-decision-setup-reply-loss');
+    expect(failed.decisionRequestId, 'mobile-decision-setup-reply-loss');
 
     final restarted = _coordinator(_Session(_descriptor), admission, store);
     final recovered = await restarted.resumeAdmission('setup-reply-loss');
@@ -95,7 +94,7 @@ void main() {
       DeviceAdmissionState.approvedAwaitingHandoff,
     );
     expect(admission.recoverCalls, 1);
-    expect(admission.decisionIds, ['mobile-decision-setup-reply-loss']);
+    expect(admission.decisionRequestIds, ['mobile-decision-setup-reply-loss']);
   });
 
   test('duplicate resume reuses immutable Decision command and payload',
@@ -110,7 +109,7 @@ void main() {
     await store.save(_checkpoint('setup-duplicate'));
     await coordinator.resumeAdmission('setup-duplicate');
 
-    expect(admission.decisionIds, [
+    expect(admission.decisionRequestIds, [
       'mobile-decision-setup-duplicate',
       'mobile-decision-setup-duplicate',
     ]);
@@ -132,7 +131,7 @@ void main() {
     expect(result.failure?.code, 'admission_unavailable');
     expect(result.failure?.retryable, isTrue);
     expect(result.isReady, isFalse);
-    expect(admission.decisionIds, isEmpty);
+    expect(admission.decisionRequestIds, isEmpty);
   });
 
   test('Owner mismatch and old Owner generation are contract failures',
@@ -217,7 +216,7 @@ DeviceSetupCheckpoint _checkpoint(String setupId) => DeviceSetupCheckpoint(
       setupId: setupId,
       requestId: 'intent-$setupId',
       createCommandId: 'mobile-create-$setupId',
-      decisionCommandId: 'mobile-decision-$setupId',
+      decisionRequestId: 'mobile-decision-$setupId',
       collectCommandId: 'mobile-collect-$setupId',
       ackCommandId: 'mobile-ack-$setupId',
       provisioningState: DeviceProvisioningState.networkConfigured,
@@ -298,8 +297,7 @@ class _Admission implements DeviceAdmissionPort {
   final bool loseDecisionReply;
   bool unavailable = false;
   int recoverCalls = 0;
-  final List<String> decisionIds = [];
-  final List<String> correlationIds = [];
+  final List<String> decisionRequestIds = [];
   final List<Map<String, dynamic>> payloads = [];
 
   @override
@@ -321,13 +319,11 @@ class _Admission implements DeviceAdmissionPort {
 
   @override
   Future<EnrollmentRecoveryProjectionV1> decide({
-    required String commandId,
-    required String correlationId,
+    required String requestId,
     required EnrollmentRecoveryProjectionV1 projection,
     String? initialCompanionId,
   }) async {
-    decisionIds.add(commandId);
-    correlationIds.add(correlationId);
+    decisionRequestIds.add(requestId);
     payloads.add({
       'enrollment_id': projection.json['proposal']['enrollment_id'],
       'revision': projection.json['source_revision'],
@@ -337,7 +333,7 @@ class _Admission implements DeviceAdmissionPort {
       state: 'approved_awaiting_handoff',
       withDecision: true,
     );
-    if (loseDecisionReply && decisionIds.length == 1) {
+    if (loseDecisionReply && decisionRequestIds.length == 1) {
       throw StateError('reply lost');
     }
     return current;
