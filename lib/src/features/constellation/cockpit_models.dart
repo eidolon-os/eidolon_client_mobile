@@ -597,6 +597,33 @@ CockpitTone devicePresenceTone(CockpitDevice device) {
   return CockpitTone.idle;
 }
 
+/// What a Companion's lifecycle means on screen.
+///
+/// `active` is the only one of the four that is running. The other three are
+/// each a different kind of "not running", and collapsing them into one idle
+/// grey — which is what a generic status-to-tone mapping does — loses the
+/// distinction an Owner most needs: whether their Companion is on its way out,
+/// already put away, or being destroyed.
+String companionLifecycleLabel(String state) => switch (state) {
+      'active' => '在册',
+      'retiring' => '退役中',
+      'archived' => '已归档',
+      'deleting' => '删除中',
+      // An unfamiliar value is carried, not guessed at: this app is routinely
+      // older than the Host beside it.
+      _ => state.isEmpty ? '未知' : state,
+    };
+
+CockpitTone companionLifecycleTone(String state) => switch (state) {
+      'active' => CockpitTone.ok,
+      // In transition, and the Owner may want to stop it.
+      'retiring' || 'deleting' => CockpitTone.warn,
+      'archived' => CockpitTone.off,
+      _ => CockpitTone.idle,
+    };
+
+bool isCompanionActive(String state) => state == 'active';
+
 String genomeStateLabel(String genomeId) => genomeId.isEmpty ? '未绑定' : '已绑定';
 
 String memoryRealmStateLabel(String realmId) => realmId.isEmpty ? '未开通' : '已配置';

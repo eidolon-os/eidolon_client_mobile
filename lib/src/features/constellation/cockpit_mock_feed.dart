@@ -431,9 +431,12 @@ class _MockWorld {
         writeDisposition: '全量写回',
       ),
       const CockpitCompanion(
+        // Archived, not `pending`: this world used to stage a lifecycle value
+        // the Companion authority never publishes, which is exactly the kind of
+        // fiction a mock is supposed to avoid.
         companionId: _third,
         displayName: '临渊',
-        status: 'pending',
+        status: 'archived',
         genomeId: '',
         realmId: '',
       ),

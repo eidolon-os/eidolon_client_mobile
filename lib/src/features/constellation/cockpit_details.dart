@@ -191,7 +191,8 @@ Widget ownerSheetBody(CockpitSnapshot snapshot) {
                   ? compactId(companion.companionId)
                   : companion.displayName,
               '${companion.isPrimary ? '主伙伴 · ' : ''}'
-                  '${companion.status} · 记忆${memoryRealmStateLabel(companion.realmId)}'
+                  '${companionLifecycleLabel(companion.status)}'
+                  ' · 记忆${memoryRealmStateLabel(companion.realmId)}'
             ),
         ],
       ),
@@ -436,7 +437,7 @@ Widget companionSheetBody(CompanionUnit unit) => Column(
           rows: <(String, String)>[
             ('名字', unit.name),
             ('角色', unit.isPrimary ? '主伙伴' : unit.companion.kind),
-            ('状态', unit.companion.status),
+            ('生命周期', companionLifecycleLabel(unit.companion.status)),
             ('基因 genome', genomeStateLabel(unit.genome)),
             ('记忆空间', memoryRealmStateLabel(unit.realm)),
           ],

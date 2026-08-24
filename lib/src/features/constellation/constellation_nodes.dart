@@ -262,7 +262,12 @@ class CompanionPlanet extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       CockpitLed(
-                        color: toneColor(statusTone(unit.companion.status)),
+                        // Lifecycle has its own four-value vocabulary; the
+                        // generic status mapping collapsed three of them to one
+                        // grey.
+                        color: toneColor(
+                          companionLifecycleTone(unit.companion.status),
+                        ),
                         size: 7,
                       ),
                       const SizedBox(height: 4),

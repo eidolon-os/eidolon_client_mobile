@@ -574,6 +574,16 @@ class RuntimeBadge {
 }
 
 RuntimeBadge runtimeBadge(CompanionUnit unit) {
+  // Lifecycle first. An archived Companion is not idle and a retiring one is
+  // not resting; showing either as 空闲 would put a Companion on its way out
+  // next to a live one wearing the same words.
+  final lifecycle = unit.companion.status;
+  if (!isCompanionActive(lifecycle)) {
+    return RuntimeBadge(
+      text: companionLifecycleLabel(lifecycle),
+      tone: companionLifecycleTone(lifecycle),
+    );
+  }
   if (!unit.activitiesReadable) {
     // "空闲" would be a claim nobody made.
     return const RuntimeBadge(text: '活动读不到', tone: CockpitTone.warn);

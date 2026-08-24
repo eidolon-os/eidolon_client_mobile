@@ -54,7 +54,9 @@ class CompanionInspectorCard extends StatelessWidget {
             Row(
               children: [
                 CockpitLed(
-                  color: toneColor(statusTone(unit.companion.status)),
+                  color: toneColor(
+                    companionLifecycleTone(unit.companion.status),
+                  ),
                   size: 7,
                 ),
                 const SizedBox(width: 7),

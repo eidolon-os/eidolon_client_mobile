@@ -46,11 +46,17 @@ const presenceSources = <String>{
 
 /// Lifecycle, not presence. Nothing publishes a companion heartbeat and the
 /// contract has no field for one.
+///
+/// These are the Companion authority's own words, defined once in
+/// `eidolon_sdk/biz/contracts/companion.py`. An earlier version of this mirror
+/// (mine) invented `pending / suspended / removed` — values no Host can send,
+/// and with no way to express an archived Companion at all. Four repositories
+/// had been spelling this set out by hand; that is why it now has one home.
 const companionLifecycleStates = <String>{
   'active',
-  'pending',
-  'suspended',
-  'removed',
+  'retiring',
+  'archived',
+  'deleting',
 };
 
 const roleKinds = <String>{'guard', 'persona', 'unbound'};
