@@ -83,6 +83,25 @@ class ManagementClient {
     return CompanionRosterView.fromJson(body);
   }
 
+  /// One Eidolon, opened.
+  ///
+  /// A Companion that is not this Owner's answers 404, and that is the whole
+  /// answer: asking about someone else's id must not tell you it exists.
+  Future<CompanionDetailView> fetchCompanion(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+  }) async {
+    final body = await _get(
+      // The generated helper builds and encodes the path, so nothing here
+      // concatenates an id into a URL.
+      baseUri.resolve(ManagementV1.companionsByCompanionIdPath(companionId)),
+      accessToken: accessToken,
+      what: '读取这个 Eidolon',
+    );
+    return CompanionDetailView.fromJson(body);
+  }
+
   Future<Map<String, dynamic>> _get(
     Uri endpoint, {
     required String accessToken,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
+import 'companion_detail_screen.dart';
 import 'companion_roster_page.dart';
 import 'management_client.dart';
 
@@ -18,10 +19,18 @@ import 'management_client.dart';
 /// empty roster tells a person they have no Eidolons, which is a lie in the one
 /// situation where they most need the truth.
 class CompanionRosterScreen extends StatefulWidget {
-  const CompanionRosterScreen({super.key, required this.load});
+  const CompanionRosterScreen({
+    super.key,
+    required this.load,
+    this.openCompanion,
+  });
 
   /// Asks the Host for one page. Given a cursor when asking for a later one.
   final Future<CompanionRosterView> Function({String? cursor}) load;
+
+  /// Reads one Eidolon. Null leaves the rows unopenable rather than opening
+  /// something that cannot load.
+  final Future<CompanionDetailView> Function(String companionId)? openCompanion;
 
   @override
   State<CompanionRosterScreen> createState() => _CompanionRosterScreenState();
@@ -76,6 +85,16 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
         children: [
           CompanionRosterPage(
             roster: roster,
+            onOpen: widget.openCompanion == null
+                ? null
+                : (companion) => Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) => CompanionDetailScreen(
+                          companionId: companion.companionId,
+                          load: widget.openCompanion!,
+                        ),
+                      ),
+                    ),
             onLoadMore:
                 roster.nextCursor == null ? null : () => _read(cursor: roster.nextCursor),
           ),

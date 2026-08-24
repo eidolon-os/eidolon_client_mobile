@@ -375,6 +375,10 @@ class HostProductController extends ChangeNotifier {
   Future<CompanionRosterView> roster({String? cursor}) =>
       _managementRepository.roster(cursor: cursor);
 
+  /// One of them, opened.
+  Future<CompanionDetailView> companion({required String companionId}) =>
+      _managementRepository.companion(companionId: companionId);
+
   /// What this Host says it can do at all, for the authenticated Owner.
   Future<ManagementContextView> managementContext() =>
       _managementRepository.context();

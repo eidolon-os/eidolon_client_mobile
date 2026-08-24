@@ -10,7 +10,46 @@ class ManagementV1 {
   const ManagementV1._();
 
   static const String companionsPath = '/api/management/v1/companions';
+  static String companionsByCompanionIdPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}';
   static const String contextPath = '/api/management/v1/context';
+}
+
+class CompanionDetailView {
+  const CompanionDetailView({
+    required this.companionId,
+    this.contractVersion,
+    this.displayName,
+    required this.isDefault,
+    required this.kind,
+    required this.lifecycleState,
+    required this.revision,
+  });
+
+  final String companionId;
+
+  final String? contractVersion;
+
+  final String? displayName;
+
+  final bool isDefault;
+
+  final String kind;
+
+  final String lifecycleState;
+
+  final int revision;
+
+  factory CompanionDetailView.fromJson(Map<String, dynamic> value) {
+    return CompanionDetailView(
+      companionId: value['companion_id'] as String,
+      contractVersion: value['contract_version'] as String?,
+      displayName: value['display_name'] as String?,
+      isDefault: value['is_default'] as bool,
+      kind: value['kind'] as String,
+      lifecycleState: value['lifecycle_state'] as String,
+      revision: value['revision'] as int,
+    );
+  }
 }
 
 class CompanionRosterView {

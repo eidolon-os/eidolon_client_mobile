@@ -205,6 +205,15 @@ class HostManagementRepository {
             client.fetchContext(baseUri, accessToken: accessToken),
       );
 
+  Future<CompanionDetailView> companion({required String companionId}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchCompanion(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+        ),
+      );
+
   /// One page. [cursor] is a value a previous page handed back, forwarded as-is.
   Future<CompanionRosterView> roster({String? cursor}) =>
       _session.executeManagement(

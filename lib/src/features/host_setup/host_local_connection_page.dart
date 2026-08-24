@@ -229,6 +229,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         MaterialPageRoute(
           builder: (_) => CompanionRosterScreen(
             load: ({String? cursor}) => _controller.roster(cursor: cursor),
+            openCompanion: (companionId) =>
+                _controller.companion(companionId: companionId),
           ),
         ),
       );

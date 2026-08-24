@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
+import 'package:eidolon_client_mobile/src/management/companion_detail_screen.dart';
 import 'package:eidolon_client_mobile/src/management/companion_roster_page.dart';
 import 'package:eidolon_client_mobile/src/management/companion_roster_screen.dart';
 import 'package:eidolon_client_mobile/src/management/management_client.dart';
@@ -312,6 +313,8 @@ void main() {
     });
   });
 
+  detailTests();
+
   group('the roster page', () {
     testWidgets('marks the default once, from the page and not a row',
         (tester) async {
@@ -414,6 +417,115 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('roster-load-more')));
       expect(asked, 1);
+    });
+  });
+}
+
+
+CompanionDetailView detail({bool isDefault = true, String kind = 'standard'}) =>
+    CompanionDetailView.fromJson({
+      'contract_version': '1',
+      'companion_id': 'companion-a',
+      'display_name': '小忆',
+      'kind': kind,
+      'lifecycle_state': 'active',
+      'revision': 2,
+      'is_default': isDefault,
+    });
+
+/// Opening one from the list.
+void detailTests() {
+  group('one Eidolon, opened', () {
+    testWidgets('a row opens the Eidolon it names', (tester) async {
+      String? opened;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterScreen(
+            load: ({String? cursor}) async =>
+                CompanionRosterView.fromJson(rosterWire()),
+            openCompanion: (companionId) async {
+              opened = companionId;
+              return detail();
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('roster-row-companion-b')));
+      await tester.pumpAndSettle();
+
+      expect(opened, 'companion-b');
+      expect(find.byKey(const Key('companion-detail-screen')), findsOneWidget);
+    });
+
+    testWidgets('rows do not pretend to open when nothing can load them',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterScreen(
+            load: ({String? cursor}) async =>
+                CompanionRosterView.fromJson(rosterWire()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('roster-row-companion-a')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('companion-detail-screen')), findsNothing);
+    });
+
+    testWidgets('the default badge comes from the Host, not from the list',
+        (tester) async {
+      // The roster compares against a page-level pointer; this screen shows a
+      // comparison the Host made. Both read the same one field, so they cannot
+      // disagree — and the detail screen must not infer it from the row it was
+      // opened from.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionDetailScreen(
+            companionId: 'companion-a',
+            load: (_) async => detail(isDefault: false),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('detail-default-badge')), findsNothing);
+    });
+
+    testWidgets('a kind this version does not know is still described',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionDetailScreen(
+            companionId: 'companion-a',
+            load: (_) async => detail(kind: 'a-kind-from-a-later-release'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('这台 Host 上的另一类 Eidolon'), findsOneWidget);
+      expect(find.text('a-kind-from-a-later-release'), findsNothing);
+    });
+
+    testWidgets('an Eidolon that is not yours reads as absent', (tester) async {
+      // Not "you may not see it": that would confirm the id exists, turning
+      // this screen into a way to test identifiers.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionDetailScreen(
+            companionId: 'someone-elses',
+            load: (_) => Future.error(
+              const ManagementRequestException('读取失败', statusCode: 404),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('这台主机上没有这个 Eidolon'), findsOneWidget);
     });
   });
 }
