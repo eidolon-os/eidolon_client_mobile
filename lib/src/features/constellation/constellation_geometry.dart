@@ -54,6 +54,26 @@ class ConstellationMetrics {
 
   /// Breathing room between the outermost node and the edge of the map.
   final double padding;
+
+  /// The portrait orbit: much taller than wide, so a phone's vertical extent
+  /// carries the domain.
+  static const ConstellationMetrics portrait = ConstellationMetrics();
+
+  /// The wide orbit, for a landscape phone, a tablet held sideways or any other
+  /// short-and-broad stage. Not a scaled-down portrait map: a 684-unit-tall
+  /// canvas in a 173-unit-tall stage fits at 0.25, which puts the moons at
+  /// fifteen pixels. The orbit itself has to turn, and then the same nodes are
+  /// twice the size on the same screen.
+  static const ConstellationMetrics wide = ConstellationMetrics(
+    orbitRadiusX: 290,
+    orbitRadiusY: 150,
+  );
+
+  /// Which orbit suits a stage of this shape. Keyed on the aspect ratio rather
+  /// than on the device orientation, because a short window and a landscape
+  /// phone are the same problem.
+  static ConstellationMetrics forStage(Size stage) =>
+      stage.height <= 0 || stage.width / stage.height > 1.15 ? wide : portrait;
 }
 
 class MoonNode {
@@ -171,6 +191,83 @@ class ConstellationLayout {
 }
 
 const double _deg = math.pi / 180;
+
+/// Which chrome arrangement shows the most map, and which orbit to draw in it.
+///
+/// There are two places the instruments can go — a deck under the map, or a rail
+/// beside it — and two orbits to draw, portrait and wide. Rather than keying off
+/// the reported orientation, all four combinations are measured and the one that
+/// draws the map largest wins. That is the same answer for a landscape phone, a
+/// short split-screen window and a tablet either way up, without a special case
+/// for any of them.
+class ChromeChoice {
+  const ChromeChoice({
+    required this.rail,
+    required this.metrics,
+    required this.stage,
+    required this.fit,
+  });
+
+  /// True to put the instruments on a rail beside the map instead of under it.
+  final bool rail;
+  final ConstellationMetrics metrics;
+  final Size stage;
+
+  /// The scale the map will open at, for whoever wants to sanity-check it.
+  final double fit;
+}
+
+ChromeChoice chooseChrome({
+  required Size viewport,
+  required List<CompanionUnit> units,
+  required double headerFull,
+  required double headerCompact,
+  required double deck,
+  required double rail,
+  double minRail = 200,
+}) {
+  ChromeChoice? best;
+  for (final withRail in const [false, true]) {
+    final stage = withRail
+        ? Size(viewport.width - rail, viewport.height - headerCompact)
+        : Size(viewport.width, viewport.height - headerFull - deck);
+    if (stage.width <= 0 || stage.height <= 0) continue;
+    // A rail narrower than this cannot hold a service chip, and one that leaves
+    // the map less than 300dp has taken more than it gave. Both then lose to the
+    // deck even where the arithmetic on map size alone would prefer them.
+    if (withRail && (rail < minRail || stage.width < 300)) continue;
+    for (final metrics in const [
+      ConstellationMetrics.portrait,
+      ConstellationMetrics.wide,
+    ]) {
+      final canvas = buildConstellationLayout(
+        units: units,
+        metrics: metrics,
+      ).canvas;
+      if (canvas.isEmpty) continue;
+      final fit = math.min(
+        stage.width / canvas.width,
+        stage.height / canvas.height,
+      );
+      // Ties go to the phone-native arrangement, which is listed first.
+      if (best == null || fit > best.fit * 1.02) {
+        best = ChromeChoice(
+          rail: withRail,
+          metrics: metrics,
+          stage: stage,
+          fit: fit,
+        );
+      }
+    }
+  }
+  return best ??
+      ChromeChoice(
+        rail: false,
+        metrics: ConstellationMetrics.portrait,
+        stage: viewport,
+        fit: 1,
+      );
+}
 
 /// Build the layout for one snapshot's companions.
 ConstellationLayout buildConstellationLayout({

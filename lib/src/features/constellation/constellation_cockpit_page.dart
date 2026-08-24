@@ -11,6 +11,7 @@ import 'cockpit_models.dart';
 import 'cockpit_theme.dart';
 import 'cockpit_ambience.dart';
 import 'companion_inspector.dart';
+import 'constellation_geometry.dart';
 import 'constellation_stage.dart';
 
 /// The sovereign domain of one Host, as a satellite map.
@@ -300,97 +301,180 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
         child: companionSheetBody(unit),
       );
 
+  /// The stage, wherever it ends up. The orbit shape is decided once for the
+  /// whole page (see [chooseChrome]) and handed down, so the chrome and the map
+  /// cannot disagree about which way round this screen is.
+  Widget _stageFor(
+    CockpitSnapshot snapshot,
+    List<CompanionUnit> units,
+    ConstellationMetrics metrics, {
+    double bottomInset = 0,
+  }) =>
+      ConstellationStage(
+        key: _stage,
+        metrics: metrics,
+        bottomInset: bottomInset,
+        units: units,
+        ownerName: snapshot.owner.displayName,
+        unboundDevices: snapshot.unboundDevices,
+        pulses: _pulses,
+        clock: _clock,
+        pipelineActive: snapshot.pipelineActive,
+        igniting: _igniting,
+        animate: _animate,
+        focusedId: _focusedId,
+        selectedKind: moonForTab(_tab),
+        highlightPulse: _highlight,
+        onOwnerTap: () => _openOwner(snapshot),
+        onCompanionTap: (unit) => _focus(unit.id, InspectorTab.overview),
+        onMoonTap: (moon) => _focus(moon.unit.id, tabForMoon(moon.kind)),
+        onDeviceTap: (port) => _openDevice(snapshot, port.device),
+        onActivityTap: (bead) => _openActivity(snapshot, bead.activity),
+        onBackgroundTap: _clearFocus,
+      );
+
   @override
   Widget build(BuildContext context) {
     final snapshot = _snapshot.value;
     final units = _units(snapshot);
     final focused = units.where((unit) => unit.id == _focusedId).firstOrNull;
+    // Measured, not assumed: both arrangements are costed against this window
+    // and the one that draws the map largest wins. A landscape phone, a short
+    // split-screen window and a tablet either way up all fall out of the same
+    // comparison.
+    final padding = MediaQuery.paddingOf(context);
+    final scale = chromeScale(context);
+    // A fixed 268 rail eats half of a small landscape phone, so it gives ground
+    // on narrow windows — and the same number is what the choice is costed with.
+    final railWidth =
+        (MediaQuery.sizeOf(context).width * 0.38).clamp(200.0, 268.0);
+    final chrome = chooseChrome(
+      viewport: Size(
+        MediaQuery.sizeOf(context).width,
+        MediaQuery.sizeOf(context).height - padding.top,
+      ),
+      units: units,
+      headerFull: 52 * scale + 38 * scale + 14,
+      headerCompact: 52 * scale + 12,
+      deck: kDeckHeight * scale + padding.bottom,
+      rail: railWidth,
+    );
+    final landscape = chrome.rail;
 
     return Scaffold(
       key: const Key('constellation-cockpit-page'),
       backgroundColor: Cockpit.bg,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Ambient depth, behind everything and never hit-testable.
-          IgnorePointer(child: StarField(clock: _clock)),
-          IgnorePointer(child: PerspectiveGrid(clock: _clock)),
-          SafeArea(
-            bottom: false,
-            child: Column(
-              children: [
-                CockpitHeader(
-                  snapshot: snapshot,
-                  clockText: _clockText,
-                  onBack: () => Navigator.of(context).maybePop(),
-                  onRefresh: _feed.refresh,
-                  onOwnerTap: () => _openOwner(snapshot),
-                ),
-                Expanded(
-                  child: ConstellationStage(
-                    key: _stage,
-                    units: units,
-                    ownerName: snapshot.owner.displayName,
-                    unboundDevices: snapshot.unboundDevices,
-                    pulses: _pulses,
-                    clock: _clock,
-                    pipelineActive: snapshot.pipelineActive,
-                    igniting: _igniting,
-                    animate: _animate,
-                    focusedId: _focusedId,
-                    selectedKind: moonForTab(_tab),
-                    highlightPulse: _highlight,
-                    onOwnerTap: () => _openOwner(snapshot),
-                    onCompanionTap: (unit) =>
-                        _focus(unit.id, InspectorTab.overview),
-                    onMoonTap: (moon) =>
-                        _focus(moon.unit.id, tabForMoon(moon.kind)),
-                    onDeviceTap: (port) => _openDevice(snapshot, port.device),
-                    onActivityTap: (bead) =>
-                        _openActivity(snapshot, bead.activity),
-                    onBackgroundTap: _clearFocus,
+      // The instrument chrome is bounded; the drill-down sheets are not. They
+      // are pushed on the Navigator above this subtree, so they keep the
+      // reader's full font size — which is right, since reading is what they
+      // are for.
+      body: MediaQuery.withClampedTextScaling(
+        maxScaleFactor: 1.3,
+        child: Builder(
+          builder: (context) => Stack(
+            fit: StackFit.expand,
+            children: [
+              // Ambient depth, behind everything and never hit-testable.
+              IgnorePointer(child: StarField(clock: _clock)),
+              IgnorePointer(child: PerspectiveGrid(clock: _clock)),
+              SafeArea(
+                bottom: false,
+                right: !landscape,
+                child: landscape
+                    // Sideways: instruments on a rail, map keeps the height.
+                    ? Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              children: [
+                                CockpitHeader(
+                                  snapshot: snapshot,
+                                  clockText: _clockText,
+                                  compact: true,
+                                  onBack: () =>
+                                      Navigator.of(context).maybePop(),
+                                  onRefresh: _feed.refresh,
+                                  onOwnerTap: () => _openOwner(snapshot),
+                                ),
+                                Expanded(
+                                  child: _stageFor(
+                                    snapshot,
+                                    units,
+                                    chrome.metrics,
+                                    // Sideways the stage reaches the bottom of
+                                    // the screen, gesture bar included.
+                                    bottomInset: padding.bottom,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          CockpitRail(
+                            width: railWidth,
+                            snapshot: snapshot,
+                            onExpand: () => _openDeck(snapshot, 0),
+                            onServiceTap: _openService,
+                            onEventTap: (event) => _openEvent(snapshot, event),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        children: [
+                          CockpitHeader(
+                            snapshot: snapshot,
+                            clockText: _clockText,
+                            onBack: () => Navigator.of(context).maybePop(),
+                            onRefresh: _feed.refresh,
+                            onOwnerTap: () => _openOwner(snapshot),
+                          ),
+                          Expanded(
+                              child:
+                                  _stageFor(snapshot, units, chrome.metrics)),
+                          KernelDeck(
+                            snapshot: snapshot,
+                            onExpand: () => _openDeck(snapshot, 0),
+                            onServiceTap: _openService,
+                            onEventTap: (event) => _openEvent(snapshot, event),
+                          ),
+                        ],
+                      ),
+              ),
+              // The focus card floats over the lower map; the camera has already
+              // lifted the focused planet above it.
+              Positioned(
+                left: 10,
+                right: landscape ? null : 10,
+                width: landscape ? 344 : null,
+                bottom: landscape ? 10 : deckHeight(context) + 10,
+                child: IgnorePointer(
+                  ignoring: focused == null,
+                  child: AnimatedSlide(
+                    offset:
+                        focused == null ? const Offset(0, 1.2) : Offset.zero,
+                    duration: Cockpit.slow,
+                    curve: Cockpit.easeOut,
+                    child: AnimatedOpacity(
+                      opacity: focused == null ? 0 : 1,
+                      duration: Cockpit.base,
+                      child: focused == null
+                          ? const SizedBox(height: 1)
+                          : CompanionInspectorCard(
+                              unit: focused,
+                              tab: _tab,
+                              onTab: (tab) => setState(() => _tab = tab),
+                              onClose: _clearFocus,
+                              onDetails: () => _openCompanion(focused),
+                            ),
+                    ),
                   ),
                 ),
-                KernelDeck(
-                  snapshot: snapshot,
-                  onExpand: () => _openDeck(snapshot, 0),
-                  onServiceTap: _openService,
-                  onEventTap: (event) => _openEvent(snapshot, event),
-                ),
-              ],
-            ),
-          ),
-          // The focus card floats over the lower map; the camera has already
-          // lifted the focused planet above it.
-          Positioned(
-            left: 10,
-            right: 10,
-            bottom: kDeckHeight + MediaQuery.paddingOf(context).bottom + 10,
-            child: IgnorePointer(
-              ignoring: focused == null,
-              child: AnimatedSlide(
-                offset: focused == null ? const Offset(0, 1.2) : Offset.zero,
-                duration: Cockpit.slow,
-                curve: Cockpit.easeOut,
-                child: AnimatedOpacity(
-                  opacity: focused == null ? 0 : 1,
-                  duration: Cockpit.base,
-                  child: focused == null
-                      ? const SizedBox(height: 1)
-                      : CompanionInspectorCard(
-                          unit: focused,
-                          tab: _tab,
-                          onTab: (tab) => setState(() => _tab = tab),
-                          onClose: _clearFocus,
-                          onDetails: () => _openCompanion(focused),
-                        ),
-                ),
               ),
-            ),
+              IgnorePointer(
+                  child: ScanlineVeil(clock: _clock, animate: _animate)),
+              const IgnorePointer(child: CockpitVignette()),
+            ],
           ),
-          IgnorePointer(child: ScanlineVeil(clock: _clock, animate: _animate)),
-          const IgnorePointer(child: CockpitVignette()),
-        ],
+        ),
       ),
     );
   }

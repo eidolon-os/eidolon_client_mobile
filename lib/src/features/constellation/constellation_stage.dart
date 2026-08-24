@@ -28,10 +28,11 @@ class ConstellationStage extends StatefulWidget {
     required this.pipelineActive,
     required this.animate,
     this.igniting = false,
+    this.bottomInset = 0,
     this.focusedId = '',
     this.selectedKind,
     this.highlightPulse,
-    this.metrics = const ConstellationMetrics(),
+    this.metrics,
     this.onOwnerTap,
     this.onCompanionTap,
     this.onMoonTap,
@@ -53,12 +54,19 @@ class ConstellationStage extends StatefulWidget {
   /// True for the moment a turn takes the pipeline idle → live, so the core can
   /// flare once instead of pulsing for as long as anything is running.
   final bool igniting;
+
+  /// How much of the stage's bottom edge is under a system gesture area. The map
+  /// may bleed into it; the controls sitting on top of the map may not.
+  final double bottomInset;
   final String focusedId;
   final MoonKind? selectedKind;
 
   /// A leg the reader is pointing at from the event list, drawn as a lit path.
   final CockpitPulse? highlightPulse;
-  final ConstellationMetrics metrics;
+
+  /// Forced orbit shape. Null lets the stage pick from its own aspect ratio,
+  /// which is what the app wants: the same screen rotated is a different map.
+  final ConstellationMetrics? metrics;
   final VoidCallback? onOwnerTap;
   final void Function(CompanionUnit unit)? onCompanionTap;
   final void Function(MoonNode moon)? onMoonTap;
@@ -80,6 +88,7 @@ class ConstellationStageState extends State<ConstellationStage>
   Animation<Matrix4>? _cameraTween;
   final _zoom = ValueNotifier<double>(1);
   Size _viewport = Size.zero;
+  Size _canvas = Size.zero;
   double _fitScale = 1;
   var _framed = false;
   String _cameraFocus = '';
@@ -104,8 +113,11 @@ class ConstellationStageState extends State<ConstellationStage>
 
   void _frame(Size viewport, ConstellationLayout layout) {
     if (viewport.isEmpty) return;
-    final changed = viewport != _viewport;
+    // A rotation changes both, and either one alone is enough to invalidate the
+    // framing: the map is re-shaped as well as re-sized.
+    final changed = viewport != _viewport || layout.canvas != _canvas;
     _viewport = viewport;
+    _canvas = layout.canvas;
     _fitScale = math.min(
       viewport.width / layout.canvas.width,
       viewport.height / layout.canvas.height,
@@ -192,82 +204,79 @@ class ConstellationStageState extends State<ConstellationStage>
   }
 
   @override
-  Widget build(BuildContext context) {
-    final layout = buildConstellationLayout(
-      units: widget.units,
-      metrics: widget.metrics,
-    );
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final viewport = Size(constraints.maxWidth, constraints.maxHeight);
-        // Framing is a layout consequence, not a build product: doing it here
-        // keeps the first frame correct instead of one frame late.
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _frame(viewport, layout);
-          final focused = widget.focusedId;
-          if (focused != _cameraFocus) {
-            _cameraFocus = focused;
-            final planet = layout.planet(focused);
-            if (planet != null) {
-              focusOn(planet, viewport);
-            } else if (focused.isEmpty && _framed) {
-              showWholeDomain(layout);
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, constraints) {
+          final viewport = Size(constraints.maxWidth, constraints.maxHeight);
+          final layout = buildConstellationLayout(
+            units: widget.units,
+            metrics: widget.metrics ?? ConstellationMetrics.forStage(viewport),
+          );
+          // Framing is a layout consequence, not a build product: doing it here
+          // keeps the first frame correct instead of one frame late.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _frame(viewport, layout);
+            final focused = widget.focusedId;
+            if (focused != _cameraFocus) {
+              _cameraFocus = focused;
+              final planet = layout.planet(focused);
+              if (planet != null) {
+                focusOn(planet, viewport);
+              } else if (focused.isEmpty && _framed) {
+                showWholeDomain(layout);
+              }
             }
-          }
-        });
+          });
 
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: widget.onBackgroundTap,
-              child: InteractiveViewer(
-                transformationController: _viewer,
-                minScale: 0.35,
-                maxScale: 2.6,
-                boundaryMargin: const EdgeInsets.all(160),
-                // Clipped to the stage: the map is allowed to be bigger than
-                // the viewport, and anything hanging past the edge must stop
-                // there rather than paint over the header and the deck.
-                clipBehavior: Clip.hardEdge,
-                // The map is bigger than the viewport by design: constraining
-                // the child to the viewport would squeeze the canvas and leave
-                // half the nodes painted where no finger can reach them.
-                constrained: false,
-                child: SizedBox(
-                  width: layout.canvas.width,
-                  height: layout.canvas.height,
-                  child: _StageContent(
-                    layout: layout,
-                    zoom: _zoom,
-                    fitScale: _fitScale,
-                    widgetRef: widget,
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onBackgroundTap,
+                child: InteractiveViewer(
+                  transformationController: _viewer,
+                  minScale: 0.35,
+                  maxScale: 2.6,
+                  boundaryMargin: const EdgeInsets.all(160),
+                  // Clipped to the stage: the map is allowed to be bigger than
+                  // the viewport, and anything hanging past the edge must stop
+                  // there rather than paint over the header and the deck.
+                  clipBehavior: Clip.hardEdge,
+                  // The map is bigger than the viewport by design: constraining
+                  // the child to the viewport would squeeze the canvas and leave
+                  // half the nodes painted where no finger can reach them.
+                  constrained: false,
+                  child: SizedBox(
+                    width: layout.canvas.width,
+                    height: layout.canvas.height,
+                    child: _StageContent(
+                      layout: layout,
+                      zoom: _zoom,
+                      fitScale: _fitScale,
+                      widgetRef: widget,
+                    ),
                   ),
                 ),
               ),
-            ),
-            if (widget.unboundDevices.isNotEmpty)
+              if (widget.unboundDevices.isNotEmpty)
+                Positioned(
+                  right: 10,
+                  bottom: 10,
+                  child: _UnboundBadge(devices: widget.unboundDevices),
+                ),
               Positioned(
-                right: 10,
+                left: 10,
                 bottom: 10,
-                child: _UnboundBadge(devices: widget.unboundDevices),
+                child: _ZoomControls(
+                  onFit: () => showWholeDomain(layout),
+                  zoom: _zoom,
+                ),
               ),
-            Positioned(
-              left: 10,
-              bottom: 10,
-              child: _ZoomControls(
-                onFit: () => showWholeDomain(layout),
-                zoom: _zoom,
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
+            ],
+          );
+        },
+      );
 }
 
 class _StageContent extends StatelessWidget {
@@ -541,7 +550,15 @@ class _StageNodes extends StatelessWidget {
       ),
     );
 
-    return Stack(clipBehavior: Clip.none, children: children);
+    // The chrome honours the reader's system font size; the nodes cannot. A
+    // circle is a fixed shape, and past about 1.15 the three lines inside a moon
+    // stop fitting no matter how they are laid out. Clamped here and fitted in
+    // the node, so a large-font device gets a map that draws instead of one
+    // striped with overflow warnings — the zoom is how you read it larger.
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.15,
+      child: Stack(clipBehavior: Clip.none, children: children),
+    );
   }
 }
 

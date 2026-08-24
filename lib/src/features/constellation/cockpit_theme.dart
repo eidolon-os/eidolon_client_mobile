@@ -202,6 +202,16 @@ Path _notchPath(Size size, double notch) {
     ..close();
 }
 
+/// How much the fixed-height chrome has to grow for the reader's font size.
+///
+/// The cockpit honours the system font setting, but a dial is a dial: the meter
+/// rail, the service chips and the deck have heights, and text that grows
+/// without them growing too just overflows. So the bars grow with the type — up
+/// to a bound, past which an instrument panel stops being one. The detail sheets
+/// are outside this: they scroll and reflow, so they keep the full setting.
+double chromeScale(BuildContext context) =>
+    MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.3);
+
 /// The LED every status in this cockpit is stated with: a dot that carries its
 /// own glow, so a colour never has to be read against the background alone.
 class CockpitLed extends StatelessWidget {

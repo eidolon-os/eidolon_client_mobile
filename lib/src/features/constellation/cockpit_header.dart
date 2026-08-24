@@ -19,6 +19,7 @@ class CockpitHeader extends StatelessWidget {
     required this.onRefresh,
     required this.onOwnerTap,
     this.refreshing = false,
+    this.compact = false,
   });
 
   final CockpitSnapshot snapshot;
@@ -27,6 +28,10 @@ class CockpitHeader extends StatelessWidget {
   final VoidCallback onRefresh;
   final VoidCallback onOwnerTap;
   final bool refreshing;
+
+  /// Sideways the meters move to the rail, so the header keeps one row and gives
+  /// the map back the height.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -114,20 +119,30 @@ class CockpitHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  _StreamChip(state: snapshot.streamState),
-                  const SizedBox(height: 3),
-                  Text(
-                    clockText,
-                    style: Cockpit.mono(
-                      size: 12,
-                      weight: FontWeight.w900,
-                      color: Cockpit.cyan,
-                    ),
+              // Bounded rather than flexible: a Flexible here took an equal
+              // share of the row and left the stream chip and clock floating in
+              // the middle of a landscape header instead of on its right edge.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 112),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _StreamChip(state: snapshot.streamState),
+                      const SizedBox(height: 3),
+                      Text(
+                        clockText,
+                        style: Cockpit.mono(
+                          size: 12,
+                          weight: FontWeight.w900,
+                          color: Cockpit.cyan,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
               const SizedBox(width: 6),
               _IconButton(
@@ -138,72 +153,77 @@ class CockpitHeader extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 38,
-            // The meters run off the right edge on purpose — dropping any of
-            // them would be the quiet downgrade. The fade says "there is more"
-            // instead of leaving a hard cut that reads as a layout mistake.
-            child: ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: <Color>[Colors.white, Colors.white, Colors.transparent],
-                stops: <double>[0, 0.88, 1],
-              ).createShader(bounds),
-              blendMode: BlendMode.dstIn,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.only(left: 2, right: 8),
-                children: [
-                  _Meter(
-                    glyph: '⬡',
-                    glyphColor: Cockpit.cyan,
-                    value: '$online',
-                    suffix: '/${devices.length}',
-                    label: '身体在线',
-                    ratio: devices.isEmpty ? 0 : online / devices.length,
-                  ),
-                  _Meter(
-                    glyph: '⚡',
-                    glyphColor: Cockpit.magenta,
-                    value: '$activeActivities',
-                    suffix: '/${snapshot.activities.length}',
-                    label: '活动链路',
-                  ),
-                  _Meter(
-                    glyph: '◉',
-                    glyphColor: Cockpit.cyan,
-                    value: '${snapshot.companions.length}',
-                    label: '伙伴',
-                  ),
-                  _Meter(
-                    glyph: '◈',
-                    glyphColor: Cockpit.yellow,
-                    value: '${snapshot.memory.realmsTotal}',
-                    label: '记忆空间',
-                  ),
-                  _Meter(
-                    glyph: '⟐',
-                    glyphColor: Cockpit.yellow,
-                    value: '${snapshot.memory.lastRecallHits}',
-                    label: '记忆召回',
-                  ),
-                  _Meter(
-                    glyph: '✦',
-                    glyphColor: Cockpit.purple,
-                    value: '$activeJobs',
-                    suffix: '/${snapshot.jobs.length}',
-                    label: '后台任务',
-                  ),
-                  _ServiceMeter(
-                    services: services,
-                    online: servicesOnline,
-                  ),
-                ],
+          if (compact) const SizedBox.shrink() else const SizedBox(height: 8),
+          if (!compact)
+            SizedBox(
+              height: 38 * chromeScale(context),
+              // The meters run off the right edge on purpose — dropping any of
+              // them would be the quiet downgrade. The fade says "there is more"
+              // instead of leaving a hard cut that reads as a layout mistake.
+              child: ShaderMask(
+                shaderCallback: (bounds) => const LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: <Color>[
+                    Colors.white,
+                    Colors.white,
+                    Colors.transparent
+                  ],
+                  stops: <double>[0, 0.88, 1],
+                ).createShader(bounds),
+                blendMode: BlendMode.dstIn,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.only(left: 2, right: 8),
+                  children: [
+                    _Meter(
+                      glyph: '⬡',
+                      glyphColor: Cockpit.cyan,
+                      value: '$online',
+                      suffix: '/${devices.length}',
+                      label: '身体在线',
+                      ratio: devices.isEmpty ? 0 : online / devices.length,
+                    ),
+                    _Meter(
+                      glyph: '⚡',
+                      glyphColor: Cockpit.magenta,
+                      value: '$activeActivities',
+                      suffix: '/${snapshot.activities.length}',
+                      label: '活动链路',
+                    ),
+                    _Meter(
+                      glyph: '◉',
+                      glyphColor: Cockpit.cyan,
+                      value: '${snapshot.companions.length}',
+                      label: '伙伴',
+                    ),
+                    _Meter(
+                      glyph: '◈',
+                      glyphColor: Cockpit.yellow,
+                      value: '${snapshot.memory.realmsTotal}',
+                      label: '记忆空间',
+                    ),
+                    _Meter(
+                      glyph: '⟐',
+                      glyphColor: Cockpit.yellow,
+                      value: '${snapshot.memory.lastRecallHits}',
+                      label: '记忆召回',
+                    ),
+                    _Meter(
+                      glyph: '✦',
+                      glyphColor: Cockpit.purple,
+                      value: '$activeJobs',
+                      suffix: '/${snapshot.jobs.length}',
+                      label: '后台任务',
+                    ),
+                    _ServiceMeter(
+                      services: services,
+                      online: servicesOnline,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

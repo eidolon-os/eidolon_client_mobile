@@ -23,6 +23,26 @@ import 'constellation_painter.dart' show dashPath;
 const double kDetailValue = 0.62;
 const double kDetailLabel = 0.8;
 
+/// Node interiors are fixed-geometry instruments, so their contents are fitted
+/// rather than allowed to push past the rim. Between this and the clamped text
+/// scaling the stage applies, a reader who has set a large system font gets a
+/// map that still draws — and the honest way to read it larger is the zoom this
+/// screen already has.
+class _NodeContent extends StatelessWidget {
+  const _NodeContent({required this.diameter, required this.child});
+
+  final double diameter;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: EdgeInsets.all(diameter * 0.08),
+          child: FittedBox(fit: BoxFit.scaleDown, child: child),
+        ),
+      );
+}
+
 class OwnerCore extends StatelessWidget {
   const OwnerCore({
     super.key,
@@ -110,7 +130,8 @@ class OwnerCore extends StatelessWidget {
               scale: igniting ? 1.09 : 1,
               duration: igniting ? Cockpit.fast : Cockpit.slow,
               curve: Cockpit.easeOut,
-              child: Center(
+              child: _NodeContent(
+                diameter: diameter,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -230,7 +251,8 @@ class CompanionPlanet extends StatelessWidget {
                     stops: const <double>[0, 0.9],
                   ),
                 ),
-                child: Center(
+                child: _NodeContent(
+                  diameter: diameter,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -378,7 +400,8 @@ class AssetMoon extends StatelessWidget {
                       stops: const <double>[0, 0.7],
                     ),
                   ),
-                  child: Center(
+                  child: _NodeContent(
+                    diameter: diameter,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -388,15 +411,17 @@ class AssetMoon extends StatelessWidget {
                             fontSize: 16,
                             height: 1,
                             color: color,
+                            // Tightened after reading it on glass: a wider halo
+                            // washed over the label a couple of pixels below.
                             shadows: <Shadow>[
                               Shadow(
-                                  color: color.withValues(alpha: 0.8),
-                                  blurRadius: 8),
+                                  color: color.withValues(alpha: 0.7),
+                                  blurRadius: 6),
                             ],
                           ),
                         ),
                         if (showLabel) ...[
-                          const SizedBox(height: 2),
+                          const SizedBox(height: 3.5),
                           Text(
                             moonLabel(moon.kind),
                             style: Cockpit.mono(size: 9, color: Cockpit.inkDim),

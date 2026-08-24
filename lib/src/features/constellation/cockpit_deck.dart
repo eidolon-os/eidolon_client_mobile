@@ -3,9 +3,14 @@ import 'package:flutter/material.dart';
 import 'cockpit_models.dart';
 import 'cockpit_theme.dart';
 
-/// How tall the collapsed rail is. Shared so anything floating above it can
-/// clear it without measuring.
+/// How tall the collapsed rail is at the reader's default font size.
 const double kDeckHeight = 122;
+
+/// What the collapsed rail actually occupies here, system font size and gesture
+/// inset included. Shared so anything floating above it clears it without
+/// measuring, and so it cannot drift out of step with the deck itself.
+double deckHeight(BuildContext context) =>
+    kDeckHeight * chromeScale(context) + MediaQuery.paddingOf(context).bottom;
 
 /// The runtime backplane, along the bottom edge.
 ///
@@ -23,14 +28,16 @@ class KernelDeck extends StatelessWidget {
     required this.onExpand,
     required this.onServiceTap,
     required this.onEventTap,
-    this.height = kDeckHeight,
+    this.height,
   });
 
   final CockpitSnapshot snapshot;
   final VoidCallback onExpand;
   final void Function(CockpitService service) onServiceTap;
   final void Function(CockpitEvent event) onEventTap;
-  final double height;
+
+  /// Null takes [deckHeight] for this context, which is what the app wants.
+  final double? height;
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +47,7 @@ class KernelDeck extends StatelessWidget {
     final latest = snapshot.events.isEmpty ? null : snapshot.events.first;
 
     return Container(
-      height: height + MediaQuery.paddingOf(context).bottom,
+      height: height ?? deckHeight(context),
       padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
       decoration: BoxDecoration(
         color: Cockpit.panel,
@@ -104,7 +111,7 @@ class KernelDeck extends StatelessWidget {
             ),
           ),
           SizedBox(
-            height: 44,
+            height: 44 * chromeScale(context),
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -141,6 +148,227 @@ class KernelDeck extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The same backplane, stood on its end.
+///
+/// A landscape phone has 390dp of height; a header of two rows plus a 122dp
+/// deck takes more than half of it and leaves the map a 173dp letterbox, where
+/// the moons come out twenty pixels wide. Sideways, the screen has width to
+/// spare and no height, so the instruments move to a rail and the map gets the
+/// height back. Same facts, same order, turned ninety degrees.
+class CockpitRail extends StatelessWidget {
+  const CockpitRail({
+    super.key,
+    required this.snapshot,
+    required this.onExpand,
+    required this.onServiceTap,
+    required this.onEventTap,
+    this.width = 268,
+  });
+
+  final CockpitSnapshot snapshot;
+  final VoidCallback onExpand;
+  final void Function(CockpitService service) onServiceTap;
+  final void Function(CockpitEvent event) onEventTap;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final services = snapshot.services;
+    final online = services.where((service) => service.online).length;
+    final live = snapshot.pipelineActive;
+    final devices = snapshot.devices;
+    final onlineDevices = devices.where((device) => device.online).length;
+    final activeJobs = snapshot.jobs
+        .where((job) => job.status == 'running' || job.status == 'pending')
+        .length;
+    final latest = snapshot.events.isEmpty ? null : snapshot.events.first;
+
+    return Container(
+      width: width,
+      decoration: BoxDecoration(
+        color: Cockpit.panel,
+        border: Border(
+          left: BorderSide(
+            color: (live ? Cockpit.cyan : Cockpit.hair)
+                .withValues(alpha: live ? 0.5 : 0.16),
+          ),
+        ),
+      ),
+      child: SafeArea(
+        left: false,
+        top: false,
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(11, 10, 11, 8),
+                children: [
+                  _RailRow(
+                    glyph: '⬡',
+                    color: Cockpit.cyan,
+                    label: '身体在线',
+                    value: '$onlineDevices/${devices.length}',
+                  ),
+                  _RailRow(
+                    glyph: '⚡',
+                    color: Cockpit.magenta,
+                    label: '活动链路',
+                    value:
+                        '${snapshot.activities.where(isActiveActivity).length}'
+                        '/${snapshot.activities.length}',
+                  ),
+                  _RailRow(
+                    glyph: '◉',
+                    color: Cockpit.cyan,
+                    label: '伙伴',
+                    value: '${snapshot.companions.length}',
+                  ),
+                  _RailRow(
+                    glyph: '◈',
+                    color: Cockpit.yellow,
+                    label: '记忆空间',
+                    value: '${snapshot.memory.realmsTotal}',
+                  ),
+                  _RailRow(
+                    glyph: '⟐',
+                    color: Cockpit.yellow,
+                    label: '记忆召回',
+                    value: '${snapshot.memory.lastRecallHits}',
+                  ),
+                  _RailRow(
+                    glyph: '✦',
+                    color: Cockpit.purple,
+                    label: '后台任务',
+                    value: '$activeJobs/${snapshot.jobs.length}',
+                  ),
+                  const SizedBox(height: 6),
+                  GestureDetector(
+                    onTap: onExpand,
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      child: Row(
+                        children: [
+                          CockpitLed(
+                            color: live ? Cockpit.ok : Cockpit.idle,
+                            size: 7,
+                          ),
+                          const SizedBox(width: 7),
+                          Flexible(
+                            child: Text(
+                              'LIVE KERNEL',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Cockpit.mono(size: 9.5, tracking: 0.12),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '$online/${services.length}',
+                            style: Cockpit.mono(
+                              size: 9.5,
+                              color: online == services.length
+                                  ? Cockpit.ok
+                                  : Cockpit.warn,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '展开 ›',
+                            style: Cockpit.mono(size: 9.5, color: Cockpit.cyan),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  for (final service in services)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: _ServiceChip(
+                        service: service,
+                        onTap: () => onServiceTap(service),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: latest == null ? onExpand : () => onEventTap(latest),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(11, 8, 11, 10),
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: Cockpit.hair)),
+                ),
+                child: latest == null
+                    ? Text(
+                        '待命中',
+                        style: Cockpit.mono(
+                          size: 9.5,
+                          weight: FontWeight.w600,
+                          color: Cockpit.inkDim,
+                        ),
+                      )
+                    : _EventLine(event: latest, stacked: true),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RailRow extends StatelessWidget {
+  const _RailRow({
+    required this.glyph,
+    required this.color,
+    required this.label,
+    required this.value,
+  });
+
+  final String glyph;
+  final Color color;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            Text(
+              glyph,
+              style: TextStyle(
+                fontSize: 15,
+                height: 1,
+                color: color,
+                shadows: <Shadow>[
+                  Shadow(color: color.withValues(alpha: 0.7), blurRadius: 9),
+                ],
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Cockpit.mono(
+                  size: 9.5,
+                  weight: FontWeight.w600,
+                  color: Cockpit.inkDim,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(value, style: Cockpit.mono(size: 14, weight: FontWeight.w900)),
+          ],
+        ),
+      );
 }
 
 class _ServiceChip extends StatelessWidget {
@@ -200,10 +428,16 @@ class _ServiceChip extends StatelessWidget {
 }
 
 class _EventLine extends StatelessWidget {
-  const _EventLine({required this.event, this.dense = false});
+  const _EventLine(
+      {required this.event, this.dense = false, this.stacked = false});
 
   final CockpitEvent event;
   final bool dense;
+
+  /// Two lines instead of one. The metadata prefix — time, origin badge, source
+  /// — has a floor width that a 268dp rail cannot hold at a large system font,
+  /// and dropping any of it loses provenance. So it wraps instead.
+  final bool stacked;
 
   @override
   Widget build(BuildContext context) {
@@ -213,50 +447,65 @@ class _EventLine extends StatelessWidget {
       PulseTone.warn => Cockpit.warn,
       PulseTone.normal => Cockpit.ink,
     };
-    return Row(
-      children: [
-        Text(
-          formatClock(event.ts),
-          style: Cockpit.mono(
-            size: 9.5,
-            weight: FontWeight.w600,
-            color: Cockpit.inkDim,
-          ),
+    final meta = <Widget>[
+      Text(
+        formatClock(event.ts),
+        style: Cockpit.mono(
+          size: 9.5,
+          weight: FontWeight.w600,
+          color: Cockpit.inkDim,
         ),
-        const SizedBox(width: 7),
-        if (event.origin == 'mock')
-          Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              decoration: BoxDecoration(
-                border:
-                    Border.all(color: Cockpit.yellow.withValues(alpha: 0.5)),
-              ),
-              child: Text(
-                'MOCK',
-                style: Cockpit.mono(size: 7.5, color: Cockpit.yellow),
-              ),
+      ),
+      const SizedBox(width: 7),
+      if (event.origin == 'mock')
+        Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+            decoration: BoxDecoration(
+              border: Border.all(color: Cockpit.yellow.withValues(alpha: 0.5)),
+            ),
+            child: Text(
+              'MOCK',
+              style: Cockpit.mono(size: 7.5, color: Cockpit.yellow),
             ),
           ),
-        Text(
+        ),
+      Flexible(
+        child: Text(
           event.source.toUpperCase(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: Cockpit.mono(size: 9, color: hue),
         ),
+      ),
+    ];
+    final summary = Text(
+      event.summary,
+      maxLines: dense ? 1 : 2,
+      overflow: TextOverflow.ellipsis,
+      style: Cockpit.sans(
+        size: 11.5,
+        weight: FontWeight.w600,
+        color: tone,
+        height: 1.3,
+      ),
+    );
+    if (stacked) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: meta),
+          const SizedBox(height: 4),
+          summary,
+        ],
+      );
+    }
+    return Row(
+      children: [
+        ...meta,
         const SizedBox(width: 7),
-        Expanded(
-          child: Text(
-            event.summary,
-            maxLines: dense ? 1 : 2,
-            overflow: TextOverflow.ellipsis,
-            style: Cockpit.sans(
-              size: 11.5,
-              weight: FontWeight.w600,
-              color: tone,
-              height: 1.3,
-            ),
-          ),
-        ),
+        Expanded(child: summary),
       ],
     );
   }
