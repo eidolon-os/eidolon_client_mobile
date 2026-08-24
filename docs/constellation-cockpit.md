@@ -122,9 +122,25 @@ roster 落地之后 N>4 是现实的,而原来的几何撑不住 —— 实测�
 在运行的伙伴。剩下的真实代价只有新鲜度错位(roster 在 T1、MC 在 T2),用各 lane 已有的
 `observed_at` 和 roster 的 `revision` 表达。
 
-**待执行**:从契约移除 companions lane 与 `default_companion_id`;客户端改为
-composite feed(`/context` + roster + MC 的 join),constellation 模块仍只认
-`CockpitFeed`、不认传输。
+**已执行**(`eidolon_sdk@7f3226d`,mobile 本次):契约里的 owner/companions lane 与
+`default_companion_id` 已移除,只留按 `companion_id` 索引的运行事实;解析拆成
+`parseMissionControlRuntime` → `CockpitRuntime`;`CockpitComposer` 把三个来源 join
+成屏幕要的 `CockpitSnapshot`。
+
+**它今天就能用。** roster 和 `/context` 在线,MC 还没有 producer —— 所以
+`CockpitComposer` 的 `readRuntime` 是可空的:不传就是每条运行 lane 都
+`unavailable` 并带上原因(「Mission Control 投影尚未在管理面提供」)。于是星图能画出
+**主人真实的伙伴**,同时**不假装**知道它们在干什么。
+
+边界:composer 收的是**注入的函数**,不 import `management_client.dart` ——
+constellation 不认传输,而那个 client 正被另一条线逐能力重塑(512 行、6 个近期提交)。
+它只依赖 `generated/management_v1.dart`,这是纲领明确允许的
+（「客户端 feature repository 只能依赖 generated client 和自己的 presentation model」）。
+
+两条分工细节写在测试里:**身份读不到就抛**(没有主人没有伙伴的星图无物可画,让页面
+显示首次读取失败比画一张空图诚实),而**运行读不到只落进 lane**;默认指针**优先用
+随 roster 同一次读取回来的那个**,`/context` 只作回落 —— 一个过期的指针会把标记打在
+错误的行星上。
 
 ### 3.5.1 原先记在这里的顾虑（保留，因为它解释了为什么现在这样分工）
 

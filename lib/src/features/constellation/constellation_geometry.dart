@@ -462,9 +462,7 @@ ConstellationLayout buildConstellationLayout({
         ),
       );
     }
-    final body = moons
-        .where((moon) => moon.kind == MoonKind.body)
-        .firstOrNull;
+    final body = moons.where((moon) => moon.kind == MoonKind.body).firstOrNull;
     final activeDeviceIds = <String>{
       for (final activity in unit.activities)
         if (isActiveActivity(activity)) ...[
@@ -474,7 +472,8 @@ ConstellationLayout buildConstellationLayout({
     }..removeWhere((id) => id.isEmpty);
 
     final ports = <DevicePortNode>[];
-    for (var index = 0; index < placement.devices.length && body != null;
+    for (var index = 0;
+        index < placement.devices.length && body != null;
         index += 1) {
       final device = placement.devices[index];
       ports.add(
@@ -725,7 +724,6 @@ List<ActivityBeadGroup> summarizeActivityBeads(
       )
       .toList(growable: false);
 }
-
 
 extension _FirstOrNullMoons<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;

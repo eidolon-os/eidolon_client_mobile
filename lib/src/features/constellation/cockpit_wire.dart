@@ -85,7 +85,52 @@ List<E> _items<E>(Object? raw, E Function(Map<String, Object?>) parse) {
       .toList(growable: false);
 }
 
-CockpitSnapshot parseCockpitSnapshot(Map<String, Object?> json) {
+/// What Mission Control observed, with no claim about who exists.
+///
+/// The route takes `?companion_id=`, which is the tell: a caller that has to
+/// name the Companion already knows which ones there are. So identity is not
+/// here — the roster owns which Companions exist and `/context` owns the Owner
+/// and the default pointer, and both are authority fields rather than
+/// projections. This is only what was seen, keyed by ids the caller holds.
+class CockpitRuntime {
+  const CockpitRuntime({
+    required this.observedAt,
+    required this.devices,
+    required this.activities,
+    required this.turns,
+    required this.jobs,
+    required this.memory,
+    required this.services,
+    required this.events,
+    this.cursor,
+  });
+
+  /// Every lane unavailable, because Mission Control has no producer yet. Not an
+  /// empty domain — a domain nobody could ask about.
+  factory CockpitRuntime.unavailable(String detail) => CockpitRuntime(
+        observedAt: DateTime.now().toUtc(),
+        devices: CockpitLane<List<CockpitDevice>>.missing(const [], detail),
+        activities:
+            CockpitLane<List<CockpitActivity>>.missing(const [], detail),
+        turns: CockpitLane<List<CockpitTurn>>.missing(const [], detail),
+        jobs: CockpitLane<List<CockpitJob>>.missing(const [], detail),
+        memory: CockpitLane<CockpitMemory?>.missing(null, detail),
+        services: CockpitLane<List<CockpitService>>.missing(const [], detail),
+        events: CockpitLane<List<CockpitEvent>>.missing(const [], detail),
+      );
+
+  final DateTime observedAt;
+  final int? cursor;
+  final CockpitLane<List<CockpitDevice>> devices;
+  final CockpitLane<List<CockpitActivity>> activities;
+  final CockpitLane<List<CockpitTurn>> turns;
+  final CockpitLane<List<CockpitJob>> jobs;
+  final CockpitLane<CockpitMemory?> memory;
+  final CockpitLane<List<CockpitService>> services;
+  final CockpitLane<List<CockpitEvent>> events;
+}
+
+CockpitRuntime parseMissionControlRuntime(Map<String, Object?> json) {
   if (json['contract_version'] != wire.missionControlContractVersion) {
     _bad('contract_version 是 ${json['contract_version']}');
   }
@@ -93,56 +138,38 @@ CockpitSnapshot parseCockpitSnapshot(Map<String, Object?> json) {
     _bad('coverage 是 ${json['coverage']}');
   }
   final cursor = json['cursor'];
-  return CockpitSnapshot(
-    generatedAt: _time(json['generated_at'], 'generated_at 无法解析'),
+  return CockpitRuntime(
+    observedAt: _time(json['generated_at'], 'generated_at 无法解析'),
     cursor: cursor is Map ? _intOrNull(cursor[wire.cursorField]) : null,
-    defaultCompanionId: _stringOr(json['default_companion_id']).isEmpty
-        ? null
-        : _stringOr(json['default_companion_id']),
-    ownerLane: _lane<CockpitOwner?>(
-      json['owner'],
-      '主人',
-      (payload) =>
-          payload == null ? null : _owner(_object(payload, 'owner.value 不是对象')),
-      payloadKey: 'value',
-      empty: null,
-    ),
-    companionsLane: _lane<List<CockpitCompanion>>(
-      json['companions'],
-      '伙伴',
-      (payload) => _items(payload, _companion),
-      payloadKey: 'items',
-      empty: const [],
-    ),
-    devicesLane: _lane<List<CockpitDevice>>(
+    devices: _lane<List<CockpitDevice>>(
       json['devices'],
       '身体',
       (payload) => _items(payload, _device),
       payloadKey: 'items',
       empty: const [],
     ),
-    activitiesLane: _lane<List<CockpitActivity>>(
+    activities: _lane<List<CockpitActivity>>(
       json['activities'],
       '活动',
       (payload) => _items(payload, _activity),
       payloadKey: 'items',
       empty: const [],
     ),
-    turnsLane: _lane<List<CockpitTurn>>(
+    turns: _lane<List<CockpitTurn>>(
       json['turns'],
       '对话轮次',
       (payload) => _items(payload, _turn),
       payloadKey: 'items',
       empty: const [],
     ),
-    jobsLane: _lane<List<CockpitJob>>(
+    jobs: _lane<List<CockpitJob>>(
       json['jobs'],
       '后台任务',
       (payload) => _items(payload, _job),
       payloadKey: 'items',
       empty: const [],
     ),
-    memoryLane: _lane<CockpitMemory?>(
+    memory: _lane<CockpitMemory?>(
       json['memory'],
       '记忆',
       (payload) => payload == null
@@ -151,14 +178,14 @@ CockpitSnapshot parseCockpitSnapshot(Map<String, Object?> json) {
       payloadKey: 'value',
       empty: null,
     ),
-    servicesLane: _lane<List<CockpitService>>(
+    services: _lane<List<CockpitService>>(
       json['services'],
       '底座',
       (payload) => _items(payload, _service),
       payloadKey: 'items',
       empty: const [],
     ),
-    eventsLane: _lane<List<CockpitEvent>>(
+    events: _lane<List<CockpitEvent>>(
       json['events'],
       '事件',
       (payload) => _items(payload, parseCockpitEvent),
@@ -167,23 +194,6 @@ CockpitSnapshot parseCockpitSnapshot(Map<String, Object?> json) {
     ),
   );
 }
-
-CockpitOwner _owner(Map<String, Object?> json) => CockpitOwner(
-      ownerId: _string(json['owner_id'], 'owner_id 缺失'),
-      displayName: _stringOr(json['display_name']),
-    );
-
-CockpitCompanion _companion(Map<String, Object?> json) => CockpitCompanion(
-      companionId: _string(json['companion_id'], 'companion_id 缺失'),
-      displayName: _stringOr(json['display_name']),
-      status: _stringOr(json['lifecycle_state'], 'active'),
-      genomeId: _stringOr(json['genome_id']),
-      realmId: _stringOr(json['memory_realm_id']),
-      // Recall is not a companion field on the wire — it is read off this
-      // companion's own turn, which is why asking the memory service per
-      // companion never had to happen. Filled in by [attachRecall].
-      recallHits: null,
-    );
 
 CockpitDevice _device(Map<String, Object?> json) {
   final presence = _object(json['presence'], 'device.presence 缺失');
