@@ -16,6 +16,8 @@ import 'host_product_repositories.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
 import 'host_vitals_models.dart';
+import '../../generated/management_v1.dart';
+import '../../management/management_client.dart';
 import 'local_api_client.dart';
 import 'local_api_discovery.dart';
 import 'persona_history_models.dart';
@@ -35,6 +37,7 @@ class HostProductController extends ChangeNotifier {
     ControllerKeyBridge? controllerKeys,
     LocalApiDiscovery? discovery,
     LocalApiClientFactory? localApiClientFactory,
+    ManagementClientFactory? managementClientFactory,
     NetworkChanges? networkChanges,
   })  : _host = host,
         _onHostUpdated = onHostUpdated,
@@ -45,6 +48,7 @@ class HostProductController extends ChangeNotifier {
           controllerKeys: controllerKeys,
           discovery: discovery,
           clientFactory: localApiClientFactory,
+          managementClientFactory: managementClientFactory,
         ) {
     _workspaceRepository = HostWorkspaceRepository(_session);
     _devicesRepository = HostDevicesRepository(_session);
@@ -56,6 +60,7 @@ class HostProductController extends ChangeNotifier {
     _recollectionsRepository = HostRecollectionsRepository(_session);
     _activityRepository = HostActivityRepository(_session);
     _deviceNamingRepository = HostDeviceNamingRepository(_session);
+    _managementRepository = HostManagementRepository(_session);
     // Where the Host was is only true for as long as this phone is on the
     // network it learned it from. Watching for that keeps the recovery the
     // session already does from costing a timeout first.
@@ -78,6 +83,7 @@ class HostProductController extends ChangeNotifier {
   late final HostRecollectionsRepository _recollectionsRepository;
   late final HostActivityRepository _activityRepository;
   late final HostDeviceNamingRepository _deviceNamingRepository;
+  late final HostManagementRepository _managementRepository;
 
   bool _connecting = false;
   bool _workspaceBusy = false;
@@ -361,6 +367,50 @@ class HostProductController extends ChangeNotifier {
   /// would show it again beside the next question.
   Future<Recollections> recollections({required String query}) =>
       _recollectionsRepository.search(query: query);
+
+  /// Every Eidolon this Owner has.
+  ///
+  /// Not cached on this controller. The roster is what the Host says right now,
+  /// and a stale copy held here would be a second answer to "what do I have" —
+  /// the page asks when it opens and when a person asks for more.
+  Future<CompanionRosterView> roster({String? cursor}) =>
+      _managementRepository.roster(cursor: cursor);
+
+  /// One of them, opened.
+  Future<CompanionDetailView> companion({required String companionId}) =>
+      _managementRepository.companion(companionId: companionId);
+
+  /// Add another Eidolon.
+  ///
+  /// The operation id comes from the screen that asked, not from here: it has
+  /// to survive a retry, and a controller minting one per call would make every
+  /// retry a new operation.
+  Future<CreatedCompanion> createCompanion({
+    required String operationId,
+    required String displayName,
+  }) =>
+      _managementRepository.createCompanion(
+        operationId: operationId,
+        displayName: displayName,
+      );
+
+  /// Make one of them the one that answers when nothing named an Eidolon.
+  ///
+  /// [expectedRevision] comes from the context this app last read. Passing it
+  /// through rather than looking it up here keeps "which version am I changing"
+  /// a decision of the screen that showed the person that version.
+  Future<CompanionDetailOutcome> setDefaultCompanion({
+    required String companionId,
+    required int expectedRevision,
+  }) =>
+      _managementRepository.setDefaultCompanion(
+        companionId: companionId,
+        expectedRevision: expectedRevision,
+      );
+
+  /// What this Host says it can do at all, for the authenticated Owner.
+  Future<ManagementContextView> managementContext() =>
+      _managementRepository.context();
 
   /// What this Eidolon has been.
   Future<PersonaHistory> personaHistory({required String companionId}) =>

@@ -8,6 +8,8 @@ import 'companion_face_models.dart';
 import 'controller_grant_models.dart';
 import 'persona_history_models.dart';
 import 'recollection_models.dart';
+import '../../generated/management_v1.dart';
+import '../../management/management_client.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
 import 'host_vitals_models.dart';
@@ -185,6 +187,69 @@ class HostRecollectionsRepository {
           accessToken: accessToken,
           query: query,
           limit: limit,
+        ),
+      );
+}
+
+/// Every Eidolon this Owner has, and what the Host says it can do.
+///
+/// The one repository here that speaks the management contract rather than
+/// `/api/local/v1`. Kept apart for that reason: everything it returns is a
+/// generated type, so nothing in this app hand-maintains a copy of that wire.
+class HostManagementRepository {
+  HostManagementRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<ManagementContextView> context() => _session.executeManagement(
+        (client, baseUri, accessToken) =>
+            client.fetchContext(baseUri, accessToken: accessToken),
+      );
+
+  Future<CompanionDetailView> companion({required String companionId}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchCompanion(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+        ),
+      );
+
+  /// Add another Eidolon. [operationId] must be stable across retries.
+  Future<CreatedCompanion> createCompanion({
+    required String operationId,
+    required String displayName,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.createCompanion(
+          baseUri,
+          accessToken: accessToken,
+          operationId: operationId,
+          displayName: displayName,
+        ),
+      );
+
+  /// Make one of them the default. Returns where the pointer ended up.
+  Future<CompanionDetailOutcome> setDefaultCompanion({
+    required String companionId,
+    required int expectedRevision,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.setDefaultCompanion(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          expectedRevision: expectedRevision,
+        ),
+      );
+
+  /// One page. [cursor] is a value a previous page handed back, forwarded as-is.
+  Future<CompanionRosterView> roster({String? cursor}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchRoster(
+          baseUri,
+          accessToken: accessToken,
+          cursor: cursor,
         ),
       );
 }
