@@ -40,7 +40,8 @@ class KernelDeck extends StatelessWidget {
     final latest = snapshot.events.isEmpty ? null : snapshot.events.first;
 
     return Container(
-      height: height,
+      height: height + MediaQuery.paddingOf(context).bottom,
+      padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
       decoration: BoxDecoration(
         color: Cockpit.panel,
         border: Border(
@@ -70,12 +71,18 @@ class KernelDeck extends StatelessWidget {
                     style: Cockpit.mono(size: 9.5, tracking: 0.12),
                   ),
                   const SizedBox(width: 7),
-                  Text(
-                    '主权内核运行背板',
-                    style: Cockpit.mono(
-                      size: 9.5,
-                      weight: FontWeight.w600,
-                      color: Cockpit.inkDim,
+                  // Gives way first on a narrow phone: the subtitle is the one
+                  // thing in this row that is decoration rather than state.
+                  Flexible(
+                    child: Text(
+                      '主权内核运行背板',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Cockpit.mono(
+                        size: 9.5,
+                        weight: FontWeight.w600,
+                        color: Cockpit.inkDim,
+                      ),
                     ),
                   ),
                   const Spacer(),

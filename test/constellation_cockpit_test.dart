@@ -3,6 +3,7 @@ import 'package:eidolon_client_mobile/src/features/constellation/cockpit_models.
 import 'package:eidolon_client_mobile/src/features/constellation/companion_inspector.dart';
 import 'package:eidolon_client_mobile/src/features/constellation/constellation_cockpit_page.dart';
 import 'package:eidolon_client_mobile/src/features/constellation/constellation_nodes.dart';
+import 'package:eidolon_client_mobile/src/features/constellation/constellation_stage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -11,9 +12,14 @@ import 'package:flutter_test/flutter_test.dart';
 /// wrong: a planet that cannot be tapped, an asset that opens the wrong tab, a
 /// dead service shown as healthy.
 
-Future<void> _openCockpit(WidgetTester tester, MockCockpitFeed feed) async {
-  tester.view.physicalSize = const Size(1170, 2532);
-  tester.view.devicePixelRatio = 3;
+Future<void> _openCockpit(
+  WidgetTester tester,
+  MockCockpitFeed feed, {
+  Size physicalSize = const Size(1170, 2532),
+  double devicePixelRatio = 3,
+}) async {
+  tester.view.physicalSize = physicalSize;
+  tester.view.devicePixelRatio = devicePixelRatio;
   addTearDown(tester.view.reset);
 
   await tester.pumpWidget(
@@ -94,6 +100,40 @@ void main() {
     expect(card.tab, InspectorTab.overview);
 
     await _close(tester);
+  });
+
+  testWidgets('打开时整张地图都在舞台里，不压到顶栏和背板', (tester) async {
+    // 这条是照着真机上的一次事故写的：镜头对准的是主人核心，而画布贴着内容算，
+    // 竖向轨道让核心以上的地图比以下多得多 —— 于是平板上顶部的卫星画到了顶栏上。
+    // 对准的必须是地图中心，不是核心。
+    for (final surface in <Size>[
+      const Size(1170, 2532), // 手机
+      const Size(2136, 3200), // 平板
+      const Size(1080, 1920), // 矮一点的手机
+    ]) {
+      final feed = MockCockpitFeed(autoplay: false);
+      await _openCockpit(tester, feed, physicalSize: surface);
+
+      final stage = tester.getRect(find.byType(ConstellationStage));
+      for (final finder in <Finder>[
+        find.byType(CompanionPlanet),
+        find.byType(AssetMoon),
+        find.byType(OwnerCore),
+      ]) {
+        for (final element in finder.evaluate()) {
+          final box = tester.getRect(find.byWidget(element.widget));
+          expect(
+            stage.contains(box.topLeft) && stage.contains(box.bottomRight),
+            isTrue,
+            reason: '$surface 上 ${element.widget.runtimeType} 越出舞台：'
+                '$box 不在 $stage 里',
+          );
+        }
+      }
+
+      await _close(tester);
+      feed.dispose();
+    }
   });
 
   testWidgets('聚焦时镜头飞向那颗行星，把它抬到检查器上方', (tester) async {

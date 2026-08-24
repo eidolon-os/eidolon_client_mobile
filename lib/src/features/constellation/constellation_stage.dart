@@ -113,7 +113,7 @@ class ConstellationStageState extends State<ConstellationStage>
     if (!_framed || changed) {
       _framed = true;
       _viewer.value = _matrixFor(
-        layout.ownerCenter,
+        layout.canvas.center(Offset.zero),
         _openingScale,
         viewport,
         Alignment.center,
@@ -124,8 +124,9 @@ class ConstellationStageState extends State<ConstellationStage>
   /// Where the map opens: the whole domain, as large as it goes without cutting
   /// anything off. Opening zoomed-in past the edges was tried and rejected —
   /// two labelled moons clipped on the first frame reads as a broken screen,
-  /// not as an invitation to pan.
-  double get _openingScale => _fitScale;
+  /// not as an invitation to pan. Capped so a tablet does not blow the nodes up
+  /// to poster size.
+  double get _openingScale => math.min(_fitScale, 1.45);
 
   /// The transform that puts [target] (in canvas coordinates) at [anchor] of the
   /// viewport at scale [scale].
@@ -173,9 +174,20 @@ class ConstellationStageState extends State<ConstellationStage>
   }
 
   /// Back to the whole domain in one frame.
+  ///
+  /// Centres the map, not the owner core. The two are not the same point: the
+  /// canvas hugs its contents, and with companions spread up the portrait orbit
+  /// there is far more map above the core than below it. Centring the core put
+  /// the top of the map off screen — which on a tablet meant moons painting over
+  /// the header.
   void showWholeDomain(ConstellationLayout layout) {
     _flyTo(
-      _matrixFor(layout.ownerCenter, _fitScale, _viewport, Alignment.center),
+      _matrixFor(
+        layout.canvas.center(Offset.zero),
+        _fitScale,
+        _viewport,
+        Alignment.center,
+      ),
     );
   }
 
@@ -217,7 +229,10 @@ class ConstellationStageState extends State<ConstellationStage>
                 minScale: 0.35,
                 maxScale: 2.6,
                 boundaryMargin: const EdgeInsets.all(160),
-                clipBehavior: Clip.none,
+                // Clipped to the stage: the map is allowed to be bigger than
+                // the viewport, and anything hanging past the edge must stop
+                // there rather than paint over the header and the deck.
+                clipBehavior: Clip.hardEdge,
                 // The map is bigger than the viewport by design: constraining
                 // the child to the viewport would squeeze the canvas and leave
                 // half the nodes painted where no finger can reach them.
