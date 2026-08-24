@@ -18,6 +18,7 @@ class ManagementV1 {
   static const String memoryForgetConfirmPath = '/api/management/v1/memory/forget/confirm';
   static const String memoryForgetPreviewPath = '/api/management/v1/memory/forget/preview';
   static const String memoryLibraryPath = '/api/management/v1/memory/library';
+  static const String memoryRecollectionsPath = '/api/management/v1/memory/recollections';
   static const String ownerDefaultCompanionPath = '/api/management/v1/owner/default-companion';
 }
 
@@ -685,6 +686,46 @@ class OwnerContextView {
       displayName: value['display_name'] as String?,
       ownerId: value['owner_id'] as String,
       revision: value['revision'] as int,
+    );
+  }
+}
+
+class RecollectionView {
+  const RecollectionView({
+    this.rememberedAt,
+    this.text,
+  });
+
+  final String? rememberedAt;
+
+  final String? text;
+
+  factory RecollectionView.fromJson(Map<String, dynamic> value) {
+    return RecollectionView(
+      rememberedAt: value['remembered_at'] as String?,
+      text: value['text'] as String?,
+    );
+  }
+}
+
+class RecollectionsView {
+  const RecollectionsView({
+    this.contractVersion,
+    required this.query,
+    required this.recollections,
+  });
+
+  final String? contractVersion;
+
+  final String query;
+
+  final List<RecollectionView> recollections;
+
+  factory RecollectionsView.fromJson(Map<String, dynamic> value) {
+    return RecollectionsView(
+      contractVersion: value['contract_version'] as String?,
+      query: value['query'] as String,
+      recollections: ((value['recollections'] as List<dynamic>).map((entry) => RecollectionView.fromJson(entry as Map<String, dynamic>)).toList()),
     );
   }
 }

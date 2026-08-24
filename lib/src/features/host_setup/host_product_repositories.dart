@@ -7,7 +7,6 @@ import 'activity_models.dart';
 import 'companion_face_models.dart';
 import 'controller_grant_models.dart';
 import 'persona_history_models.dart';
-import 'recollection_models.dart';
 import '../../generated/management_v1.dart';
 import '../../management/management_client.dart';
 import 'host_product_session.dart';
@@ -175,22 +174,6 @@ class HostCompanionRepository {
 }
 
 /// What this Eidolon remembers.
-class HostRecollectionsRepository {
-  HostRecollectionsRepository(this._session);
-
-  final HostProductSession _session;
-
-  Future<Recollections> search({required String query, int limit = 10}) =>
-      _session.execute(
-        (client, baseUrl, accessToken) => client.fetchRecollections(
-          baseUrl,
-          accessToken: accessToken,
-          query: query,
-          limit: limit,
-        ),
-      );
-}
-
 /// Every Eidolon this Owner has, and what the Host says it can do.
 ///
 /// The one repository here that speaks the management contract rather than
@@ -250,6 +233,23 @@ class HostManagementRepository {
           baseUri,
           accessToken: accessToken,
           since: since,
+          limit: limit,
+          companionId: companionId,
+        ),
+      );
+
+  /// What it remembers about [query]. A sentence and a time, nothing about how
+  /// it was found.
+  Future<RecollectionsView> recollections({
+    required String query,
+    int limit = 10,
+    String? companionId,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchRecollections(
+          baseUri,
+          accessToken: accessToken,
+          query: query,
           limit: limit,
           companionId: companionId,
         ),

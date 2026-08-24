@@ -12,7 +12,6 @@ import '../setup/controller_key_bridge.dart';
 import '../setup/setup_trust.dart';
 import 'activity_models.dart';
 import 'companion_face_models.dart';
-import 'recollection_models.dart';
 import 'controller_grant_models.dart';
 import 'controller_session.dart';
 import 'host_models.dart';
@@ -407,26 +406,6 @@ class LocalApiClient {
   ///
   /// No Owner is named: the session already says whose it is, and the Host
   /// refuses to be told otherwise.
-  /// Ask this Eidolon what it remembers about something.
-  Future<Recollections> fetchRecollections(
-    String baseUrl, {
-    required String accessToken,
-    required String query,
-    int limit = 10,
-  }) async {
-    final response = await _httpClient
-        .get(
-          parseBaseUri(baseUrl).resolve('/api/local/v1/recollections').replace(
-            queryParameters: {'q': query, 'limit': '$limit'},
-          ),
-          headers: _authorizedHeaders(accessToken),
-        )
-        .timeout(timeout);
-    return Recollections.fromJson(
-      _decodeResponse(response, operation: 'Recollections'),
-    );
-  }
-
   /// Whether this Eidolon has a face, and which one.
   ///
   /// Asked before the face itself, and cheap enough to ask on every refresh:

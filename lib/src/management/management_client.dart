@@ -222,6 +222,34 @@ class ManagementClient {
     return MemoryDayView.fromJson(body);
   }
 
+  /// 你还记得…吗 — what it remembers about something.
+  ///
+  /// The question a person arrives with, and the first memory read this app ever
+  /// had: it used to be a hand-written call to `/api/local/v1/recollections`,
+  /// which is now deleted. What comes back is a sentence and, when the Host knows
+  /// it, when it was laid down — the wings, rooms and scores memory carries are
+  /// how it found something rather than what it remembers.
+  Future<RecollectionsView> fetchRecollections(
+    Uri baseUri, {
+    required String accessToken,
+    required String query,
+    int limit = 10,
+    String? companionId,
+  }) async {
+    final body = await _get(
+      baseUri.resolve(ManagementV1.memoryRecollectionsPath).replace(
+        queryParameters: {
+          'q': query,
+          'limit': '$limit',
+          if (companionId != null) 'companion_id': companionId,
+        },
+      ),
+      accessToken: accessToken,
+      what: '问它记得什么',
+    );
+    return RecollectionsView.fromJson(body);
+  }
+
   /// A copy of everything my Eidolon remembers that I can see.
   ///
   /// The one read here that shortens nothing. The library rolls up and the day

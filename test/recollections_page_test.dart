@@ -1,14 +1,14 @@
-import 'package:eidolon_client_mobile/src/features/host_setup/recollection_models.dart';
+import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/recollections_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Recollections _answer(String query, List<Recollection> items) =>
-    Recollections(query: query, items: items);
+RecollectionsView _answer(String query, List<RecollectionView> items) =>
+    RecollectionsView(query: query, recollections: items);
 
 Future<void> _open(
   WidgetTester tester,
-  Future<Recollections> Function(String query) onSearch,
+  Future<RecollectionsView> Function(String query) onSearch,
 ) =>
     tester.pumpWidget(
       MaterialApp(
@@ -37,11 +37,11 @@ void main() {
     await _open(
       tester,
       (query) async => _answer(query, [
-        Recollection(
+        const RecollectionView(
           text: '他喜欢在下午散步',
-          rememberedAt: DateTime.utc(2026, 8, 16, 9, 30),
+          rememberedAt: '2026-08-16T09:30:00Z',
         ),
-        const Recollection(text: '没有时间的那一条'),
+        const RecollectionView(text: '没有时间的那一条'),
       ]),
     );
 
@@ -89,25 +89,22 @@ void main() {
   });
 
   group('what the Host answered', () {
-    test('a record without text is refused rather than shown blank', () {
-      expect(
-        () => Recollection.fromJson({'remembered_at': '2026-08-16T09:30:00Z'}),
-        throwsFormatException,
+    testWidgets('a record with no time is shown without one', (tester) async {
+      // The parsing tests that used to live here belonged to hand-written
+      // models; the generated client owns that wire now, and a test of it would
+      // be a test of the generator. What is still this app's decision is what a
+      // missing or unreadable time does to the row.
+      await _open(
+        tester,
+        (query) async => _answer(query, const [
+          RecollectionView(text: '他喜欢在下午散步', rememberedAt: 'not a time'),
+        ]),
       );
-      expect(
-        () => Recollections.fromJson({'query': 'x'}),
-        throwsFormatException,
-      );
-    });
+      await _ask(tester, '散步');
 
-    test('an unparseable time leaves the record without one', () {
-      final recollection = Recollection.fromJson({
-        'text': '他喜欢在下午散步',
-        'remembered_at': 'not a time',
-      });
-
-      expect(recollection.text, '他喜欢在下午散步');
-      expect(recollection.rememberedAt, isNull);
+      expect(find.text('他喜欢在下午散步'), findsOneWidget);
+      expect(find.textContaining('not a time'), findsNothing);
+      expect(find.textContaining('年'), findsNothing);
     });
   });
 }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'recollection_models.dart';
+import '../../generated/management_v1.dart';
 
 /// Ask an Eidolon what it remembers.
 ///
@@ -16,7 +16,7 @@ class RecollectionsPage extends StatefulWidget {
   });
 
   final String companionName;
-  final Future<Recollections> Function(String query) onSearch;
+  final Future<RecollectionsView> Function(String query) onSearch;
 
   @override
   State<RecollectionsPage> createState() => _RecollectionsPageState();
@@ -24,7 +24,7 @@ class RecollectionsPage extends StatefulWidget {
 
 class _RecollectionsPageState extends State<RecollectionsPage> {
   final _question = TextEditingController();
-  Recollections? _answer;
+  RecollectionsView? _answer;
   String? _failure;
   bool _asking = false;
 
@@ -105,7 +105,7 @@ class _RecollectionsPageState extends State<RecollectionsPage> {
                 ),
               ),
             )
-          else if (answer.items.isEmpty)
+          else if (answer.recollections.isEmpty)
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(18),
@@ -116,14 +116,14 @@ class _RecollectionsPageState extends State<RecollectionsPage> {
               ),
             )
           else
-            ...answer.items.map(
+            ...answer.recollections.map(
               (item) => Card(
                 child: ListTile(
                   leading: const Icon(Icons.format_quote),
-                  title: Text(item.text),
-                  subtitle: item.rememberedAt == null
+                  title: Text(item.text ?? ''),
+                  subtitle: _day(item.rememberedAt) == null
                       ? null
-                      : Text(_day(item.rememberedAt!)),
+                      : Text(_day(item.rememberedAt)!),
                 ),
               ),
             ),
@@ -133,8 +133,17 @@ class _RecollectionsPageState extends State<RecollectionsPage> {
   }
 
   /// The day it was remembered, in this phone's own time.
-  String _day(DateTime value) {
-    final local = value.toLocal();
+  ///
+  /// Null when the Host recorded no time, or one this phone cannot read. The
+  /// subtitle is then absent rather than showing the raw string: here the time is
+  /// context for a sentence, and an unreadable one adds nothing a person can use.
+  /// (今日 shows its raw value instead, because there the time is what places the
+  /// entry in the list.)
+  String? _day(String? value) {
+    if (value == null || value.isEmpty) return null;
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) return null;
+    final local = parsed.toLocal();
     return '${local.year}年${local.month}月${local.day}日';
   }
 }
