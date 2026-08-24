@@ -170,6 +170,29 @@ class ManagementClient {
     );
   }
 
+  /// What this Owner's Eidolons remember, by category.
+  ///
+  /// [companionId] names an *audience*, not a scope: the memory belongs to the
+  /// Owner and every one of their Eidolons reads it. Naming one adds what the
+  /// Owner told that one in particular; naming none asks for the shared layer,
+  /// which is the safe direction when this app does not know which to ask for.
+  Future<MemoryLibraryView> fetchMemoryLibrary(
+    Uri baseUri, {
+    required String accessToken,
+    String? companionId,
+  }) async {
+    var endpoint = baseUri.resolve(ManagementV1.memoryLibraryPath);
+    if (companionId != null) {
+      endpoint = endpoint.replace(queryParameters: {'companion_id': companionId});
+    }
+    final body = await _get(
+      endpoint,
+      accessToken: accessToken,
+      what: '读取记忆库',
+    );
+    return MemoryLibraryView.fromJson(body);
+  }
+
   Future<Map<String, dynamic>> _get(
     Uri endpoint, {
     required String accessToken,

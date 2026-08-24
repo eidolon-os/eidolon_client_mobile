@@ -14,6 +14,7 @@ import '../setup/host_registry.dart';
 import 'face_picker.dart';
 import 'host_product_controller.dart';
 import '../../management/companion_roster_screen.dart';
+import '../../management/memory_library_screen.dart';
 import 'companion_page.dart';
 import 'managed_controllers_page.dart';
 import 'mission_control_page.dart';
@@ -246,6 +247,17 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         ),
       );
 
+  /// Everything it has filed, not just what a search turns up.
+  ///
+  /// The search box answers "do you remember X"; this answers "what do you
+  /// have", which is the question someone asks before they know what to search
+  /// for.
+  Future<void> _openMemoryLibrary() => Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => MemoryLibraryScreen(load: _controller.memoryLibrary),
+        ),
+      );
+
   /// Ask this Eidolon what it remembers.
   Future<void> _openRecollections(WorkspaceRuntime runtime) {
     final name = runtime.primaryCompanion.displayName;
@@ -443,6 +455,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               onOpenPersona: _openPersonaHistory,
               onOpenCompanion: _openCompanion,
               onOpenRoster: _openRoster,
+              onOpenMemoryLibrary: _openMemoryLibrary,
               onRenameOwner: _renameOwner,
               onChangeNetwork: _openNetworkChange,
             ),
@@ -628,6 +641,7 @@ class _WorkspaceCard extends StatelessWidget {
     required this.onOpenPersona,
     required this.onOpenCompanion,
     required this.onOpenRoster,
+    required this.onOpenMemoryLibrary,
     required this.onRenameOwner,
   });
 
@@ -646,6 +660,10 @@ class _WorkspaceCard extends StatelessWidget {
   /// question the management contract answers on its own, and a Host that
   /// cannot report a running Companion may still have a roster to show.
   final VoidCallback onOpenRoster;
+
+  /// Reachable whether or not the runtime answered: what is remembered is the
+  /// Owner's memory, and it does not depend on a Companion running right now.
+  final VoidCallback onOpenMemoryLibrary;
 
   /// Null until the Host has a Workspace to name anyone in.
   final VoidCallback? onRenameOwner;
@@ -842,6 +860,10 @@ class _WorkspaceCard extends StatelessWidget {
               detail: '这台主机上属于你的每一个,以及哪一个是默认',
             ),
             _WorkspaceResourceStatus(
+              key: const Key('memory-library-row'),
+              onOpen: onOpenMemoryLibrary,
+              openKey: const Key('open-memory-library'),
+              openTooltip: '看它记住的',
               icon: Icons.auto_stories_outlined,
               label: '它的记忆',
               statusLabel: runtime == null ? '已创建' : '运行中',

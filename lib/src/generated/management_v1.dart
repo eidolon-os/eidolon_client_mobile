@@ -12,6 +12,7 @@ class ManagementV1 {
   static const String companionsPath = '/api/management/v1/companions';
   static String companionsByCompanionIdPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}';
   static const String contextPath = '/api/management/v1/context';
+  static const String memoryLibraryPath = '/api/management/v1/memory/library';
   static const String ownerDefaultCompanionPath = '/api/management/v1/owner/default-companion';
 }
 
@@ -257,6 +258,92 @@ class ManagementContextView {
       defaultCompanionId: value['default_companion_id'] as String?,
       limits: ((value['limits'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as int?))),
       owner: OwnerContextView.fromJson(value['owner'] as Map<String, dynamic>),
+    );
+  }
+}
+
+class MemoryLibraryView {
+  const MemoryLibraryView({
+    this.contractVersion,
+    required this.entryCount,
+    required this.truncated,
+    required this.wings,
+    required this.withheldCount,
+  });
+
+  final String? contractVersion;
+
+  final int entryCount;
+
+  final bool truncated;
+
+  final List<MemoryWingView> wings;
+
+  final int withheldCount;
+
+  factory MemoryLibraryView.fromJson(Map<String, dynamic> value) {
+    return MemoryLibraryView(
+      contractVersion: value['contract_version'] as String?,
+      entryCount: value['entry_count'] as int,
+      truncated: value['truncated'] as bool,
+      wings: ((value['wings'] as List<dynamic>).map((entry) => MemoryWingView.fromJson(entry as Map<String, dynamic>)).toList()),
+      withheldCount: value['withheld_count'] as int,
+    );
+  }
+}
+
+class MemoryRoomView {
+  const MemoryRoomView({
+    required this.entryCount,
+    required this.more,
+    required this.roomId,
+    required this.titles,
+  });
+
+  final int entryCount;
+
+  final bool more;
+
+  final String roomId;
+
+  final List<String> titles;
+
+  factory MemoryRoomView.fromJson(Map<String, dynamic> value) {
+    return MemoryRoomView(
+      entryCount: value['entry_count'] as int,
+      more: value['more'] as bool,
+      roomId: value['room_id'] as String,
+      titles: ((value['titles'] as List<dynamic>).map((entry) => entry as String).toList()),
+    );
+  }
+}
+
+class MemoryWingView {
+  const MemoryWingView({
+    this.description,
+    this.displayName,
+    required this.entryCount,
+    required this.rooms,
+    required this.wingId,
+  });
+
+  final String? description;
+
+  final String? displayName;
+
+  final int entryCount;
+
+  final List<MemoryRoomView> rooms;
+
+  final String wingId;
+
+  factory MemoryWingView.fromJson(Map<String, dynamic> value) {
+    return MemoryWingView(
+      description: value['description'] as String?,
+      displayName: value['display_name'] as String?,
+      entryCount: value['entry_count'] as int,
+      rooms: ((value['rooms'] as List<dynamic>).map((entry) => MemoryRoomView.fromJson(entry as Map<String, dynamic>)).toList()),
+      wingId: value['wing_id'] as String,
     );
   }
 }

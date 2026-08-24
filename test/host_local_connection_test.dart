@@ -1017,4 +1017,70 @@ void main() {
     expect(find.byKey(const Key('roster-row-companion-a')), findsOneWidget);
     expect(find.byKey(const Key('roster-default-badge')), findsOneWidget);
   });
+
+  testWidgets('the memory library is reachable, not merely built', (tester) async {
+    // The row for "它的记忆" carried no way in until now: it said the memory
+    // exists and left the person there. Same assertion as the cockpit's and the
+    // roster's, for the same reason.
+    await tester.binding.setSurfaceSize(const Size(900, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(
+            _hostOverview(workspaceState: 'ready'),
+            workspaceReady: true,
+          ),
+          managementClientFactory: (_) => ManagementClient(
+            httpClient: MockClient(
+              (_) async => http.Response.bytes(
+                utf8.encode(
+                  jsonEncode({
+                    'contract_version': '1',
+                    'wings': [
+                      {
+                        'wing_id': 'Wing_Life',
+                        'display_name': '生活',
+                        'description': '',
+                        'entry_count': 1,
+                        'rooms': [
+                          {
+                            'room_id': '饮食',
+                            'entry_count': 1,
+                            'titles': ['乌龙茶'],
+                            'more': false,
+                          },
+                        ],
+                      },
+                    ],
+                    'entry_count': 1,
+                    'withheld_count': 0,
+                    'truncated': false,
+                  }),
+                ),
+                200,
+                headers: const {'content-type': 'application/json'},
+              ),
+            ),
+          ),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final entry = find.byKey(const Key('open-memory-library'));
+    expect(entry, findsOneWidget);
+    await tester.ensureVisible(entry);
+    await tester.pumpAndSettle();
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('memory-wing-Wing_Life')), findsOneWidget);
+    expect(find.text('饮食'), findsOneWidget);
+  });
 }

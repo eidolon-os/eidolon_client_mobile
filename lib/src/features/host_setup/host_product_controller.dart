@@ -408,6 +408,10 @@ class HostProductController extends ChangeNotifier {
         expectedRevision: expectedRevision,
       );
 
+  /// What is remembered, by category.
+  Future<MemoryLibraryView> memoryLibrary({String? companionId}) =>
+      _managementRepository.memoryLibrary(companionId: companionId);
+
   /// What this Host says it can do at all, for the authenticated Owner.
   Future<ManagementContextView> managementContext() =>
       _managementRepository.context();

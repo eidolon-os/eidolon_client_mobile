@@ -229,6 +229,16 @@ class HostManagementRepository {
         ),
       );
 
+  /// What is remembered, by category. [companionId] selects an audience.
+  Future<MemoryLibraryView> memoryLibrary({String? companionId}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchMemoryLibrary(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+        ),
+      );
+
   /// Make one of them the default. Returns where the pointer ended up.
   Future<CompanionDetailOutcome> setDefaultCompanion({
     required String companionId,
