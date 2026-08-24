@@ -1,6 +1,97 @@
 // GENERATED from eidolon_sdk/contracts/device_foundation/v1/common/schemas.schema.json.
 // Do not edit by hand; contracts/device_foundation/v1/generation/generate.py owns this file.
 
+final class OwnerDomainIdV1 {
+  const OwnerDomainIdV1._(this.value);
+  final String value;
+  factory OwnerDomainIdV1.parse(Object? raw) {
+    final value = _text(raw, 128);
+    if (!RegExp(r'^owner-[A-Za-z0-9][A-Za-z0-9._:-]*$').hasMatch(value)) {
+      throw const FormatException(
+        'Business Owner ID is not an Owner Domain ID',
+      );
+    }
+    return OwnerDomainIdV1._(value);
+  }
+}
+
+final class BusinessOwnerIdV1 {
+  const BusinessOwnerIdV1._(this.value);
+  final String value;
+  factory BusinessOwnerIdV1.parse(Object? raw) {
+    final value = _text(raw, 128);
+    if (!RegExp(r'^owner_[A-Za-z0-9][A-Za-z0-9._:-]*$').hasMatch(value)) {
+      throw const FormatException('Owner Domain ID is not a business Owner ID');
+    }
+    return BusinessOwnerIdV1._(value);
+  }
+}
+
+final class DeviceRefV1 {
+  const DeviceRefV1({
+    required this.deviceInstanceId,
+    required this.ownerDomainId,
+    required this.ownerDomainGeneration,
+    required this.claimGeneration,
+    required this.trustEpoch,
+  });
+  final String deviceInstanceId;
+  final OwnerDomainIdV1 ownerDomainId;
+  final int ownerDomainGeneration;
+  final int claimGeneration;
+  final int trustEpoch;
+  factory DeviceRefV1.fromJson(Map<String, dynamic> value) {
+    const keys = {
+      'device_instance_id',
+      'owner_domain_id',
+      'owner_domain_generation',
+      'claim_generation',
+      'trust_epoch',
+    };
+    if (value.keys.toSet().difference(keys).isNotEmpty ||
+        keys.difference(value.keys.toSet()).isNotEmpty) {
+      throw const FormatException('Invalid DeviceRef fields');
+    }
+    final domainGeneration = value['owner_domain_generation'];
+    final claimGeneration = value['claim_generation'];
+    final trustEpoch = value['trust_epoch'];
+    if (domainGeneration is! int ||
+        domainGeneration < 1 ||
+        claimGeneration is! int ||
+        claimGeneration < 1 ||
+        trustEpoch is! int ||
+        trustEpoch < 1) {
+      throw const FormatException('Invalid DeviceRef generation');
+    }
+    return DeviceRefV1(
+      deviceInstanceId: _text(value['device_instance_id'], 128),
+      ownerDomainId: OwnerDomainIdV1.parse(value['owner_domain_id']),
+      ownerDomainGeneration: domainGeneration,
+      claimGeneration: claimGeneration,
+      trustEpoch: trustEpoch,
+    );
+  }
+}
+
+final class ManifestRefV1 {
+  const ManifestRefV1({
+    required this.manifestId,
+    required this.revision,
+    required this.digest,
+  });
+  final String manifestId;
+  final int revision;
+  final String digest;
+  factory ManifestRefV1.fromJson(Map<String, dynamic> value) {
+    _strictObject(value, const {'manifest_id', 'revision', 'digest'});
+    return ManifestRefV1(
+      manifestId: _identifier(value['manifest_id']),
+      revision: _positive(value['revision']),
+      digest: _digest(value['digest']),
+    );
+  }
+}
+
 class OwnerDomainDescriptorV1 {
   const OwnerDomainDescriptorV1({
     required this.ownerDomainId,
@@ -62,8 +153,9 @@ class OwnerDomainDescriptorV1 {
         !expiresAt.isAfter(issuedAt)) {
       throw const FormatException('Invalid Owner Domain descriptor');
     }
-    final trustRoots =
-        roots.map((item) => _digest(item)).toList(growable: false);
+    final trustRoots = roots
+        .map((item) => _digest(item))
+        .toList(growable: false);
     if (trustRoots.toSet().length != trustRoots.length) {
       throw const FormatException('Duplicate Owner root reference');
     }
@@ -72,14 +164,16 @@ class OwnerDomainDescriptorV1 {
       ownerDomainGeneration: ownerDomainGeneration,
       directoryRevision: revision,
       trustRootRefs: trustRoots,
-      endpoints: rawEndpoints.map((item) {
-        if (item is! Map) {
-          throw const FormatException('Invalid Authority endpoint');
-        }
-        return AuthorityEndpointV1.fromJson(
-          Map<String, dynamic>.from(item),
-        );
-      }).toList(growable: false),
+      endpoints: rawEndpoints
+          .map((item) {
+            if (item is! Map) {
+              throw const FormatException('Invalid Authority endpoint');
+            }
+            return AuthorityEndpointV1.fromJson(
+              Map<String, dynamic>.from(item),
+            );
+          })
+          .toList(growable: false),
       issuedAt: value['issued_at']! as String,
       expiresAt: value['expires_at']! as String,
       signingKeyId: _digest(value['signing_key_id']),
@@ -88,17 +182,16 @@ class OwnerDomainDescriptorV1 {
   }
 
   Map<String, dynamic> toJson() => {
-        'owner_domain_id': ownerDomainId,
-        'owner_domain_generation': ownerDomainGeneration,
-        'directory_revision': directoryRevision,
-        'trust_root_refs': trustRootRefs,
-        'endpoints':
-            endpoints.map((item) => item.toJson()).toList(growable: false),
-        'issued_at': issuedAt,
-        'expires_at': expiresAt,
-        'signing_key_id': signingKeyId,
-        'signature': signature,
-      };
+    'owner_domain_id': ownerDomainId,
+    'owner_domain_generation': ownerDomainGeneration,
+    'directory_revision': directoryRevision,
+    'trust_root_refs': trustRootRefs,
+    'endpoints': endpoints.map((item) => item.toJson()).toList(growable: false),
+    'issued_at': issuedAt,
+    'expires_at': expiresAt,
+    'signing_key_id': signingKeyId,
+    'signature': signature,
+  };
 }
 
 class AuthorityEndpointV1 {
@@ -158,12 +251,12 @@ class AuthorityEndpointV1 {
   }
 
   Map<String, dynamic> toJson() => {
-        'authority': authority,
-        'logical_audience': logicalAudience,
-        'uri': uri.toString(),
-        'transport_profile': transportProfile,
-        'priority': priority,
-      };
+    'authority': authority,
+    'logical_audience': logicalAudience,
+    'uri': uri.toString(),
+    'transport_profile': transportProfile,
+    'priority': priority,
+  };
 }
 
 enum DeviceLocalEraseStateV1 {
@@ -425,12 +518,629 @@ class CommissioningTerminalAckV1 {
   final int observedStateRevision;
 
   Map<String, dynamic> toJson() => {
-        'contract': 'eidolon.device-foundation.commissioning-terminal-ack',
-        'contract_version': '1.0',
-        'session_id': sessionId,
-        'setup_generation': setupGeneration,
-        'observed_state_revision': observedStateRevision,
-      };
+    'contract': 'eidolon.device-foundation.commissioning-terminal-ack',
+    'contract_version': '1.0',
+    'session_id': sessionId,
+    'setup_generation': setupGeneration,
+    'observed_state_revision': observedStateRevision,
+  };
+}
+
+enum EnrollmentProposalStateV1 {
+  pendingReview('pending_review'),
+  approvedAwaitingHandoff('approved_awaiting_handoff'),
+  grantDelivered('grant_delivered'),
+  grantAcknowledged('grant_acknowledged'),
+  rejected('rejected'),
+  expired('expired'),
+  canceled('canceled'),
+  claimRevoked('claim_revoked');
+
+  const EnrollmentProposalStateV1(this.wireValue);
+  final String wireValue;
+}
+
+enum AdmissionEventTypeV1 {
+  proposalCreated('live.eidolon.device.enrollment-proposal-created.v1'),
+  approved('live.eidolon.device.enrollment-approved.v1'),
+  rejected('live.eidolon.device.enrollment-rejected.v1'),
+  expired('live.eidolon.device.enrollment-expired.v1'),
+  canceled('live.eidolon.device.enrollment-canceled.v1'),
+  grantDelivered('live.eidolon.device.claim-grant-delivered.v1'),
+  grantAcknowledged('live.eidolon.device.claim-grant-acknowledged.v1'),
+  claimActivated('live.eidolon.device.claim-activated.v1'),
+  claimSuspended('live.eidolon.device.claim-suspended.v1'),
+  claimResumed('live.eidolon.device.claim-resumed.v1'),
+  claimRevoked('live.eidolon.device.claim-revoked.v1'),
+  trustEpochChanged('live.eidolon.device.claim-trust-epoch-changed.v1'),
+  manifestAccepted('live.eidolon.device.manifest-accepted.v1');
+
+  const AdmissionEventTypeV1(this.wireValue);
+  final String wireValue;
+}
+
+const admissionEventSourceV1 = 'urn:eidolon:authority:admission';
+
+enum ClaimStateV1 {
+  active('active'),
+  suspended('suspended'),
+  revoked('revoked');
+
+  const ClaimStateV1(this.wireValue);
+  final String wireValue;
+}
+
+class _AdmissionMapV1 {
+  _AdmissionMapV1(Map<String, dynamic> value, Set<String> fields)
+    : json = Map.unmodifiable(_strictObject(value, fields));
+  final Map<String, dynamic> json;
+  Map<String, dynamic> toJson() => Map<String, dynamic>.from(json);
+}
+
+class CommandEnvelopeV1 extends _AdmissionMapV1 {
+  CommandEnvelopeV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'contract',
+        'contract_version',
+        'command_type',
+        'command_id',
+        'correlation_id',
+        'causation_id',
+        'issued_at',
+        'deadline',
+        'payload',
+        'extensions',
+      });
+}
+
+class CommandResultV1 extends _AdmissionMapV1 {
+  CommandResultV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'command_id',
+        'outcome',
+        'resource_ref',
+        'resource_revision',
+        'occurred_at',
+        'extensions',
+      });
+}
+
+class DeviceProblemV1 extends _AdmissionMapV1 {
+  DeviceProblemV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'code',
+        'category',
+        'retryable',
+        'authority',
+        'command_id',
+        'resource_ref',
+        'current_revision',
+        'current_generation',
+        'retry_after_ms',
+        'detail',
+        'incident_id',
+      });
+}
+
+class RevokeClaimV1 extends _AdmissionMapV1 {
+  RevokeClaimV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'operation',
+        'command_id',
+        'correlation_id',
+        'device_ref',
+        'reason',
+      }) {
+    if (json['operation'] != 'device.claim-revocation')
+      throw const FormatException('Invalid revoke operation');
+    DeviceRefV1.fromJson(_map(json['device_ref']));
+  }
+}
+
+class RevokeClaimResultV1 extends _AdmissionMapV1 {
+  RevokeClaimResultV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'operation',
+        'command_id',
+        'outcome',
+        'device_ref',
+        'aggregate_revision',
+        'occurred_at',
+        'event_id',
+        'lifecycle_state',
+      }) {
+    if (json['operation'] != 'device.claim-revocation-result')
+      throw const FormatException('Invalid revoke result');
+    DeviceRefV1.fromJson(_map(json['device_ref']));
+  }
+}
+
+class EnrollmentProposalV1 extends _AdmissionMapV1 {
+  EnrollmentProposalV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'enrollment_id',
+        'proposal_revision',
+        'state',
+        'device_instance_candidate_id',
+        'requested_owner_domain_id',
+        'hardware_evidence_digest',
+        'manifest_ref',
+        'handoff_key_id',
+        'created_at',
+        'expires_at',
+      }) {
+    OwnerDomainIdV1.parse(json['requested_owner_domain_id']);
+    ManifestRefV1.fromJson(_map(json['manifest_ref']));
+    _positive(json['proposal_revision']);
+  }
+}
+
+class ApprovalDecisionV1 extends _AdmissionMapV1 {
+  ApprovalDecisionV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'decision_id',
+        'enrollment_id',
+        'decision',
+        'actor',
+        'target_owner_domain_id',
+        'target_business_owner_id',
+        'reviewed_manifest_ref',
+        'expected_proposal_revision',
+        'decided_at',
+      }) {
+    final actor = _map(json['actor']);
+    _strictObject(actor, const {
+      'principal_id',
+      'principal_type',
+      'owner_domain_id',
+      'granted_scopes',
+      'authentication_strength',
+    });
+    final owner = OwnerDomainIdV1.parse(json['target_owner_domain_id']).value;
+    if (actor['principal_type'] != 'controller' ||
+        actor['owner_domain_id'] != owner) {
+      throw const FormatException('Decision actor Owner Domain mismatch');
+    }
+    BusinessOwnerIdV1.parse(json['target_business_owner_id']);
+  }
+}
+
+class ClaimGrantV1 extends _AdmissionMapV1 {
+  ClaimGrantV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'grant_id',
+        'enrollment_id',
+        'device_ref',
+        'manifest_ref',
+        'approval_decision_id',
+        'handoff_key_id',
+        'operational_key_id',
+        'issued_at',
+        'expires_at',
+      }) {
+    DeviceRefV1.fromJson(_map(json['device_ref']));
+    ManifestRefV1.fromJson(_map(json['manifest_ref']));
+  }
+}
+
+class GrantAckV1 extends _AdmissionMapV1 {
+  GrantAckV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'enrollment_id',
+        'grant_id',
+        'device_ref',
+        'acknowledged_at',
+      }) {
+    DeviceRefV1.fromJson(_map(json['device_ref']));
+  }
+}
+
+class ClaimRecordV1 extends _AdmissionMapV1 {
+  ClaimRecordV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'device_ref',
+        'business_owner_id',
+        'manifest_ref',
+        'state',
+        'revision',
+        'updated_at',
+      }) {
+    DeviceRefV1.fromJson(_map(json['device_ref']));
+    BusinessOwnerIdV1.parse(json['business_owner_id']);
+    ManifestRefV1.fromJson(_map(json['manifest_ref']));
+  }
+}
+
+class CreateEnrollmentV1 extends _AdmissionMapV1 {
+  CreateEnrollmentV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'profile_id',
+        'device_instance_candidate_id',
+        'requested_owner_domain_id',
+        'hardware_identity_evidence',
+        'commissioning_proof',
+        'manifest',
+        'handoff_key',
+        'operational_key',
+      }) {
+    if (json['profile_id'] != 'eidolon-trust-p256-hpke-v1')
+      throw const FormatException('Invalid Admission profile');
+    OwnerDomainIdV1.parse(json['requested_owner_domain_id']);
+  }
+}
+
+class CreateEnrollmentResultV1 extends _AdmissionMapV1 {
+  CreateEnrollmentResultV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'enrollment_id',
+        'proposal_revision',
+        'state',
+        'expires_at',
+        'reviewed_manifest_digest',
+        'collection_challenge',
+      });
+}
+
+class CancelEnrollmentV1 extends _AdmissionMapV1 {
+  CancelEnrollmentV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {'enrollment_id', 'reason'});
+}
+
+class CancelEnrollmentResultV1 extends _AdmissionMapV1 {
+  CancelEnrollmentResultV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {'enrollment_id', 'proposal_state', 'canceled_at'}) {
+    if (json['proposal_state'] != 'canceled')
+      throw const FormatException('Invalid canceled Proposal state');
+  }
+}
+
+class DecideEnrollmentV1 extends _AdmissionMapV1 {
+  DecideEnrollmentV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'enrollment_id',
+        'expected_proposal_revision',
+        'decision',
+        'target_owner_domain_id',
+        'target_business_owner_id',
+        'target_space_id',
+        'reviewed_manifest_ref',
+        'initial_assignment_intent',
+        'initial_capability_policy_refs',
+      }) {
+    OwnerDomainIdV1.parse(json['target_owner_domain_id']);
+    BusinessOwnerIdV1.parse(json['target_business_owner_id']);
+    ManifestRefV1.fromJson(_map(json['reviewed_manifest_ref']));
+  }
+}
+
+class DecideEnrollmentResultV1 extends _AdmissionMapV1 {
+  DecideEnrollmentResultV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'decision_id',
+        'decision',
+        'decided_by',
+        'decided_at',
+        'proposal_revision',
+      });
+}
+
+class CollectClaimGrantV1 extends _AdmissionMapV1 {
+  CollectClaimGrantV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'enrollment_id',
+        'proposal_revision',
+        'collection_challenge',
+        'handoff_key_proof',
+      });
+}
+
+class ClaimGrantAADV1 extends _AdmissionMapV1 {
+  ClaimGrantAADV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'contract',
+        'profile_id',
+        'enrollment_id',
+        'proposal_revision',
+        'device_instance_id',
+        'hardware_evidence_digest',
+        'manifest_ref',
+        'owner_domain_id',
+        'owner_domain_generation',
+        'claim_generation',
+        'trust_epoch',
+        'grant_id',
+      }) {
+    if (json['contract'] != 'eidolon.device-foundation.claim-grant-aad' ||
+        json['profile_id'] != 'eidolon-trust-p256-hpke-v1')
+      throw const FormatException('Invalid ClaimGrant AAD profile');
+    OwnerDomainIdV1.parse(json['owner_domain_id']);
+    ManifestRefV1.fromJson(_map(json['manifest_ref']));
+    for (final name in const [
+      'proposal_revision',
+      'owner_domain_generation',
+      'claim_generation',
+      'trust_epoch',
+    ]) {
+      _positive(json[name]);
+    }
+  }
+}
+
+class ClaimGrantWireEnvelopeV1 extends _AdmissionMapV1 {
+  ClaimGrantWireEnvelopeV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'contract',
+        'profile_id',
+        'kem',
+        'kdf',
+        'aead',
+        'recipient_handoff_key_id',
+        'encapsulated_key',
+        'ciphertext',
+        'aad',
+      }) {
+    if (json['contract'] != 'eidolon.device-foundation.claim-grant-envelope' ||
+        json['profile_id'] != 'eidolon-trust-p256-hpke-v1' ||
+        json['kem'] != 'DHKEM-P256-HKDF-SHA256' ||
+        json['kdf'] != 'HKDF-SHA256' ||
+        json['aead'] != 'AES-128-GCM') {
+      throw const FormatException('Invalid ClaimGrant HPKE suite');
+    }
+    _digest(json['recipient_handoff_key_id']);
+    ClaimGrantAADV1.fromJson(_map(json['aad']));
+  }
+}
+
+class CollectClaimGrantResultV1 extends _AdmissionMapV1 {
+  CollectClaimGrantResultV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'grant_id',
+        'wire_envelope',
+        'expires_at',
+        'approval_decision_id',
+      }) {
+    final envelope = ClaimGrantWireEnvelopeV1.fromJson(
+      _map(json['wire_envelope']),
+    );
+    if (envelope.json['aad'] is! Map ||
+        _map(envelope.json['aad'])['grant_id'] != json['grant_id'])
+      throw const FormatException('Collect result Grant mismatch');
+  }
+}
+
+class AckClaimGrantV1 extends _AdmissionMapV1 {
+  AckClaimGrantV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'enrollment_id',
+        'grant_id',
+        'operational_key_proof',
+        'stored_claim_generation',
+        'stored_trust_epoch',
+      });
+}
+
+class AckClaimGrantResultV1 extends _AdmissionMapV1 {
+  AckClaimGrantResultV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {'device_ref', 'claim_state'}) {
+    DeviceRefV1.fromJson(_map(json['device_ref']));
+  }
+}
+
+class AdmissionListCursorV1 extends _AdmissionMapV1 {
+  AdmissionListCursorV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {'owner_domain_id', 'sort_key', 'resource_id'}) {
+    OwnerDomainIdV1.parse(json['owner_domain_id']);
+  }
+}
+
+class EnrollmentRecoveryProjectionV1 extends _AdmissionMapV1 {
+  EnrollmentRecoveryProjectionV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'proposal',
+        'approval_decision',
+        'grant_delivery',
+        'claim',
+        'source_revision',
+        'observed_at',
+      }) {
+    EnrollmentProposalV1.fromJson(_map(json['proposal']));
+  }
+}
+
+class GrantDeliveryRecordV1 extends _AdmissionMapV1 {
+  GrantDeliveryRecordV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'grant_id',
+        'approval_decision_id',
+        'state',
+        'delivered_at',
+        'acknowledged_at',
+      });
+}
+
+class EnrollmentProposalQueryV1 extends _AdmissionMapV1 {
+  EnrollmentProposalQueryV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {'owner_domain_id', 'states', 'cursor', 'limit'}) {
+    OwnerDomainIdV1.parse(json['owner_domain_id']);
+  }
+}
+
+class EnrollmentProposalPageV1 extends _AdmissionMapV1 {
+  EnrollmentProposalPageV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'owner_domain_id',
+        'items',
+        'next_cursor',
+        'observed_at',
+      }) {
+    OwnerDomainIdV1.parse(json['owner_domain_id']);
+  }
+}
+
+class ClaimQueryV1 extends _AdmissionMapV1 {
+  ClaimQueryV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {'owner_domain_id', 'states', 'cursor', 'limit'}) {
+    OwnerDomainIdV1.parse(json['owner_domain_id']);
+  }
+}
+
+class ClaimPageV1 extends _AdmissionMapV1 {
+  ClaimPageV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'owner_domain_id',
+        'items',
+        'next_cursor',
+        'observed_at',
+      }) {
+    OwnerDomainIdV1.parse(json['owner_domain_id']);
+  }
+}
+
+class ClaimActivatedEventV1 extends _AdmissionMapV1 {
+  ClaimActivatedEventV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'specversion',
+        'id',
+        'source',
+        'type',
+        'subject',
+        'time',
+        'datacontenttype',
+        'dataschema',
+        'audience',
+        'ownerdomainid',
+        'aggregaterev',
+        'correlationid',
+        'causationid',
+        'data',
+      }) {
+    _claimEventMetadata(
+      json,
+      'live.eidolon.device.claim-activated.v1',
+      'https://contracts.eidolon.live/device-foundation/v1/events/claim-activated-data.schema.json',
+    );
+  }
+}
+
+class ClaimActivatedDataV1 extends _AdmissionMapV1 {
+  ClaimActivatedDataV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'device_ref',
+        'manifest_ref',
+        'approval_decision_id',
+        'activated_at',
+      }) {
+    DeviceRefV1.fromJson(_map(json['device_ref']));
+    ManifestRefV1.fromJson(_map(json['manifest_ref']));
+  }
+}
+
+class ClaimRevokedEventV1 extends _AdmissionMapV1 {
+  ClaimRevokedEventV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'specversion',
+        'id',
+        'source',
+        'type',
+        'subject',
+        'time',
+        'datacontenttype',
+        'dataschema',
+        'audience',
+        'ownerdomainid',
+        'aggregaterev',
+        'correlationid',
+        'causationid',
+        'data',
+      }) {
+    _claimEventMetadata(
+      json,
+      'live.eidolon.device.claim-revoked.v1',
+      'https://contracts.eidolon.live/device-foundation/v1/events/claim-revoked-data.schema.json',
+    );
+  }
+}
+
+class ClaimRevokedDataV1 extends _AdmissionMapV1 {
+  ClaimRevokedDataV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {'device_ref', 'reason', 'revoked_at'}) {
+    DeviceRefV1.fromJson(_map(json['device_ref']));
+  }
+}
+
+class ClaimEventCursorV1 extends _AdmissionMapV1 {
+  ClaimEventCursorV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {'stream_id', 'stream_position'}) {
+    if (json['stream_id'] != 'admission-claims-v1' ||
+        json['stream_position'] is! int ||
+        (json['stream_position'] as int) < 0)
+      throw const FormatException('Invalid Claim event cursor');
+  }
+}
+
+class ClaimEventStreamItemV1 extends _AdmissionMapV1 {
+  ClaimEventStreamItemV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {'stream_position', 'event'}) {
+    _positive(json['stream_position']);
+  }
+}
+
+class ClaimEventPageV1 extends _AdmissionMapV1 {
+  ClaimEventPageV1.fromJson(Map<String, dynamic> value)
+    : super(value, const {
+        'stream_id',
+        'requested_after',
+        'events',
+        'next_cursor',
+        'high_watermark',
+        'observed_at',
+      }) {
+    if (json['stream_id'] != 'admission-claims-v1')
+      throw const FormatException('Invalid Claim event stream');
+    ClaimEventCursorV1.fromJson(_map(json['requested_after']));
+    ClaimEventCursorV1.fromJson(_map(json['next_cursor']));
+  }
+}
+
+Map<String, dynamic> _map(Object? value) {
+  if (value is! Map) throw const FormatException('Expected contract object');
+  return Map<String, dynamic>.from(value);
+}
+
+Map<String, dynamic> _strictObject(
+  Map<String, dynamic> value,
+  Set<String> fields,
+) {
+  if (value.keys.toSet().difference(fields).isNotEmpty ||
+      fields.difference(value.keys.toSet()).isNotEmpty) {
+    throw const FormatException('Invalid canonical contract fields');
+  }
+  return value;
+}
+
+int _positive(Object? value) {
+  if (value is! int || value < 1)
+    throw const FormatException('Expected positive generation/revision');
+  return value;
+}
+
+void _claimEventMetadata(
+  Map<String, dynamic> value,
+  String type,
+  String schema,
+) {
+  if (value['specversion'] != '1.0' ||
+      value['source'] != 'urn:eidolon:authority:admission' ||
+      value['type'] != type ||
+      value['dataschema'] != schema ||
+      value['audience'] != 'eidolon-claim-consumers' ||
+      value['datacontenttype'] != 'application/json')
+    throw const FormatException('Invalid Claim CloudEvent metadata');
+  final data = _map(value['data']);
+  final ref = DeviceRefV1.fromJson(_map(data['device_ref']));
+  if (value['ownerdomainid'] != ref.ownerDomainId.value ||
+      value['subject'] != 'device-instances/${ref.deviceInstanceId}')
+    throw const FormatException('Claim CloudEvent identity mismatch');
 }
 
 String _text(Object? value, int maximum) {
@@ -438,6 +1148,15 @@ String _text(Object? value, int maximum) {
     throw const FormatException('Invalid bounded contract string');
   }
   return value;
+}
+
+String _identifier(Object? value) {
+  final text = _text(value, 128);
+  if (!RegExp(r'^[A-Za-z0-9][A-Za-z0-9._:-]*$').hasMatch(text) ||
+      text.length < 3) {
+    throw const FormatException('Invalid canonical identifier');
+  }
+  return text;
 }
 
 String _digest(Object? value) {
