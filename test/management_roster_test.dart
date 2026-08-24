@@ -315,6 +315,7 @@ void main() {
 
   detailTests();
   switcherTests();
+  creationTests();
 
   group('the roster page', () {
     testWidgets('marks the default once, from the page and not a row',
@@ -671,6 +672,196 @@ void switcherTests() {
 
       expect(find.byKey(const Key('roster-row-companion-z')), findsOneWidget);
       expect(find.byKey(const Key('roster-make-default-companion-z')), findsNothing);
+    });
+  });
+}
+
+/// Adding one.
+void creationTests() {
+  const operation = '32c421a3-e0df-40f9-8f75-68745ae39d81';
+
+  Future<void> pumpRoster(
+    WidgetTester tester, {
+    required Future<CreatedCompanion> Function(String, String) create,
+    Future<CompanionRosterView> Function({String? cursor})? load,
+    bool canCreate = true,
+  }) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CompanionRosterScreen(
+          load: load ??
+              ({String? cursor}) async =>
+                  CompanionRosterView.fromJson(twoActiveWire()),
+          loadContext: () async => ManagementContextView.fromJson({
+            'contract_version': '1',
+            'owner': {
+              'owner_id': 'owner-1',
+              'display_name': 'Manson',
+              'revision': 3,
+            },
+            'default_companion_id': 'companion-a',
+            'capabilities': {
+              'companion.read': true,
+              'companion.create': canCreate,
+            },
+            'limits': {'max_active_companions': null},
+          }),
+          createCompanion: create,
+          newOperationId: () => operation,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> tapAddAndName(WidgetTester tester, String name) async {
+    await tester.tap(find.byKey(const Key('roster-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('new-companion-name-field')), name);
+    await tester.tap(find.byKey(const Key('confirm-new-companion')));
+    await tester.pumpAndSettle();
+  }
+
+  group('adding one', () {
+    testWidgets('is offered only where the Host says it can create',
+        (tester) async {
+      for (final allowed in [true, false]) {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await pumpRoster(
+          tester,
+          canCreate: allowed,
+          create: (_, __) async => const CreatedCompanion(
+            companionId: 'cp-1',
+            displayName: '小南',
+            created: true,
+            memoryReady: true,
+          ),
+        );
+        expect(
+          find.byKey(const Key('roster-add')),
+          allowed ? findsOneWidget : findsNothing,
+          reason: 'capability was $allowed',
+        );
+      }
+    });
+
+    testWidgets('asks for a name and sends one operation id', (tester) async {
+      final operations = <String>[];
+      String? sentName;
+      await pumpRoster(
+        tester,
+        create: (operationId, name) async {
+          operations.add(operationId);
+          sentName = name;
+          return const CreatedCompanion(
+            companionId: 'cp-1',
+            displayName: '小南',
+            created: true,
+            memoryReady: true,
+          );
+        },
+      );
+
+      await tapAddAndName(tester, '小南');
+
+      expect(sentName, '小南');
+      expect(operations, [operation]);
+      expect(find.text('小南 已经在这台主机上了'), findsOneWidget);
+    });
+
+    testWidgets('a memory still starting is said, not hidden or feared',
+        (tester) async {
+      // The Eidolon exists and is active; only its memory is coming up. Calling
+      // that a failure would invite a retry, and hiding it would leave the
+      // person wondering why it is quiet.
+      await pumpRoster(
+        tester,
+        create: (_, __) async => const CreatedCompanion(
+          companionId: 'cp-1',
+          displayName: '小南',
+          created: true,
+          memoryReady: false,
+        ),
+      );
+
+      await tapAddAndName(tester, '小南');
+
+      expect(find.text('小南 已经建好，记忆还在启动'), findsOneWidget);
+      expect(find.byKey(const Key('roster-refusal')), findsNothing);
+    });
+
+    testWidgets('a failed attempt keeps its operation id', (tester) async {
+      // The case a stable id exists for. Pressing add again must continue the
+      // same operation, not start a second one that could leave two Eidolons.
+      final operations = <String>[];
+      var attempts = 0;
+      await pumpRoster(
+        tester,
+        create: (operationId, name) async {
+          operations.add(operationId);
+          attempts++;
+          if (attempts == 1) {
+            throw const ManagementRequestException('读取失败', statusCode: 503);
+          }
+          return const CreatedCompanion(
+            companionId: 'cp-1',
+            displayName: '小南',
+            created: false,
+            memoryReady: true,
+          );
+        },
+      );
+
+      await tapAddAndName(tester, '小南');
+      expect(find.byKey(const Key('roster-refusal')), findsOneWidget);
+
+      await tapAddAndName(tester, '小南');
+
+      expect(operations, [operation, operation], reason: 'the same operation');
+    });
+
+    testWidgets('the list is re-read rather than patched', (tester) async {
+      var reads = 0;
+      await pumpRoster(
+        tester,
+        load: ({String? cursor}) async {
+          reads++;
+          return CompanionRosterView.fromJson(twoActiveWire());
+        },
+        create: (_, __) async => const CreatedCompanion(
+          companionId: 'cp-1',
+          displayName: '小南',
+          created: true,
+          memoryReady: true,
+        ),
+      );
+
+      await tapAddAndName(tester, '小南');
+
+      expect(reads, 2, reason: 'the Host says what exists, not this screen');
+    });
+
+    testWidgets('cancelling the name asks the Host nothing', (tester) async {
+      var calls = 0;
+      await pumpRoster(
+        tester,
+        create: (_, __) async {
+          calls++;
+          return const CreatedCompanion(
+            companionId: 'cp-1',
+            displayName: '小南',
+            created: true,
+            memoryReady: true,
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const Key('roster-add')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+
+      expect(calls, 0);
     });
   });
 }

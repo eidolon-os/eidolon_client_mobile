@@ -29,6 +29,8 @@ class CompanionRosterPage extends StatelessWidget {
     this.onMakeDefault,
     this.busyCompanionId,
     this.refusal,
+    this.onAdd,
+    this.notice,
   });
 
   final CompanionRosterView roster;
@@ -48,6 +50,14 @@ class CompanionRosterPage extends StatelessWidget {
   /// The row whose change is in flight, if any.
   final String? busyCompanionId;
 
+  /// Offered only when this Host says it can create one at all.
+  final VoidCallback? onAdd;
+
+  /// Something that happened and is worth keeping on screen — an Eidolon added,
+  /// or its memory still starting. Not a snackbar: "记忆还在启动" is a state a
+  /// person may want to read twice.
+  final String? notice;
+
   /// What the Host said when it refused the last attempt.
   ///
   /// Shown in the list rather than as a transient message, because the reason
@@ -61,14 +71,32 @@ class CompanionRosterPage extends StatelessWidget {
     final refusalText = refusal;
     return Scaffold(
       key: const Key('companion-roster-page'),
-      appBar: AppBar(title: const Text('你的 Eidolon')),
-      body: refusalText == null ? _list(rows) : Column(
+      appBar: AppBar(
+        title: const Text('你的 Eidolon'),
+        actions: [
+          if (onAdd != null)
+            IconButton(
+              key: const Key('roster-add'),
+              onPressed: onAdd,
+              tooltip: '再要一个',
+              icon: const Icon(Icons.add),
+            ),
+        ],
+      ),
+      body: Column(
         children: [
-          MaterialBanner(
-            key: const Key('roster-refusal'),
-            content: Text(refusalText),
-            actions: const [SizedBox.shrink()],
-          ),
+          if (refusalText != null)
+            MaterialBanner(
+              key: const Key('roster-refusal'),
+              content: Text(refusalText),
+              actions: const [SizedBox.shrink()],
+            ),
+          if (notice != null)
+            MaterialBanner(
+              key: const Key('roster-notice'),
+              content: Text(notice!),
+              actions: const [SizedBox.shrink()],
+            ),
           Expanded(child: _list(rows)),
         ],
       ),

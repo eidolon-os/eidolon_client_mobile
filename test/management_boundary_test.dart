@@ -32,8 +32,11 @@ void main() {
         isNot(contains('local_api_client.dart')),
         reason: '${file.path} imports the hand-written client',
       );
-      // The feature folder is where the composition root lives; depending on it
-      // from here would invert the direction that keeps this surface generated.
+      // Only host_setup is named, and deliberately: that folder is where this
+      // surface's composition root lives, so depending on it from here would
+      // invert the direction that keeps the surface generated. Generic UI that
+      // happens to live under features/ (the naming dialog) is not that — it
+      // composes nothing and knows nothing about a wire.
       expect(
         source,
         isNot(contains("features/host_setup")),

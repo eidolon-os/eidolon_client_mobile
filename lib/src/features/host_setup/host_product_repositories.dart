@@ -215,6 +215,20 @@ class HostManagementRepository {
         ),
       );
 
+  /// Add another Eidolon. [operationId] must be stable across retries.
+  Future<CreatedCompanion> createCompanion({
+    required String operationId,
+    required String displayName,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.createCompanion(
+          baseUri,
+          accessToken: accessToken,
+          operationId: operationId,
+          displayName: displayName,
+        ),
+      );
+
   /// Make one of them the default. Returns where the pointer ended up.
   Future<CompanionDetailOutcome> setDefaultCompanion({
     required String companionId,

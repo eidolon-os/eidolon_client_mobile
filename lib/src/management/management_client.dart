@@ -140,6 +140,35 @@ class ManagementClient {
     );
   }
 
+  /// Add another Eidolon for this Owner.
+  ///
+  /// [operationId] is this app's, and it must be **the same value on a retry**.
+  /// Every identifier the Host derives comes from it, so asking twice with one
+  /// id yields one Eidolon; asking twice with two ids yields two. That is the
+  /// difference between a lost response costing nothing and costing a duplicate
+  /// the person then has to find and remove.
+  Future<CreatedCompanion> createCompanion(
+    Uri baseUri, {
+    required String accessToken,
+    required String operationId,
+    required String displayName,
+  }) async {
+    final body = await _send(
+      'PUT',
+      baseUri.resolve(ManagementV1.companionsPath),
+      accessToken: accessToken,
+      what: '新建 Eidolon',
+      body: {'operation_id': operationId, 'display_name': displayName},
+    );
+    final view = CompanionCreatedView.fromJson(body);
+    return CreatedCompanion(
+      companionId: view.companionId,
+      displayName: view.displayName ?? '',
+      created: view.created,
+      memoryReady: view.memoryReady,
+    );
+  }
+
   Future<Map<String, dynamic>> _get(
     Uri endpoint, {
     required String accessToken,
@@ -218,6 +247,28 @@ class ManagementClient {
       _httpClient.close();
     }
   }
+}
+
+/// An Eidolon that now exists, and what is still coming up behind it.
+class CreatedCompanion {
+  const CreatedCompanion({
+    required this.companionId,
+    required this.displayName,
+    required this.created,
+    required this.memoryReady,
+  });
+
+  final String companionId;
+  final String displayName;
+
+  /// False when the Host found this operation already carried out. The Eidolon
+  /// is there either way; saying "created" twice for one intent would be
+  /// telling the person something that did not happen.
+  final bool created;
+
+  /// False means its memory is not running yet — not that anything failed. The
+  /// Host converges on its own, so the honest word is "still starting".
+  final bool memoryReady;
 }
 
 /// Where the Owner's pointer ended up, as the Host read it back.

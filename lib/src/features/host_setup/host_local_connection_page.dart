@@ -237,6 +237,11 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               companionId: companionId,
               expectedRevision: expectedRevision,
             ),
+            createCompanion: (operationId, displayName) =>
+                _controller.createCompanion(
+              operationId: operationId,
+              displayName: displayName,
+            ),
           ),
         ),
       );

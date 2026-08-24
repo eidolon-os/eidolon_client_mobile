@@ -380,6 +380,20 @@ class HostProductController extends ChangeNotifier {
   Future<CompanionDetailView> companion({required String companionId}) =>
       _managementRepository.companion(companionId: companionId);
 
+  /// Add another Eidolon.
+  ///
+  /// The operation id comes from the screen that asked, not from here: it has
+  /// to survive a retry, and a controller minting one per call would make every
+  /// retry a new operation.
+  Future<CreatedCompanion> createCompanion({
+    required String operationId,
+    required String displayName,
+  }) =>
+      _managementRepository.createCompanion(
+        operationId: operationId,
+        displayName: displayName,
+      );
+
   /// Make one of them the one that answers when nothing named an Eidolon.
   ///
   /// [expectedRevision] comes from the context this app last read. Passing it

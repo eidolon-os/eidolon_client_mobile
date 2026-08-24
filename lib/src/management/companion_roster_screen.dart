@@ -1,4 +1,8 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
+
+import '../features/naming/ask_for_a_name.dart';
 
 import '../generated/management_v1.dart';
 import 'companion_detail_screen.dart';
@@ -25,6 +29,8 @@ class CompanionRosterScreen extends StatefulWidget {
     this.openCompanion,
     this.loadContext,
     this.setDefaultCompanion,
+    this.createCompanion,
+    this.newOperationId,
   });
 
   /// Asks the Host for one page. Given a cursor when asking for a later one.
@@ -47,6 +53,15 @@ class CompanionRosterScreen extends StatefulWidget {
     int expectedRevision,
   )? setDefaultCompanion;
 
+  /// Adds one. Given an operation id this screen holds, not one per attempt.
+  final Future<CreatedCompanion> Function(
+    String operationId,
+    String displayName,
+  )? createCompanion;
+
+  /// Injected so a test can pin the id; a real screen mints a random one.
+  final String Function()? newOperationId;
+
   @override
   State<CompanionRosterScreen> createState() => _CompanionRosterScreenState();
 }
@@ -58,6 +73,14 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
   bool _busy = true;
   String? _changing;
   String? _refusal;
+  String? _notice;
+  bool _adding = false;
+
+  /// Held across retries, exactly like the device-removal request id: the whole
+  /// point of the operation id is that a second attempt is the *same* attempt.
+  /// Cleared only once the Host has answered for it, one way or the other.
+  String? _pendingOperationId;
+  final Random _random = Random.secure();
 
   @override
   void initState() {
@@ -150,6 +173,62 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
     return '没有改成：$error';
   }
 
+  /// Ask for another Eidolon, and keep the operation id if it does not answer.
+  Future<void> _add() async {
+    final create = widget.createCompanion;
+    if (create == null || _adding) return;
+    final name = await askForAName(
+      context,
+      question: '新的 Eidolon 叫什么？',
+      hint: '比如「小南」',
+      dialogKey: const Key('new-companion-dialog'),
+      fieldKey: const Key('new-companion-name-field'),
+      confirmKey: const Key('confirm-new-companion'),
+    );
+    if (name == null || !mounted) return;
+    setState(() {
+      _adding = true;
+      _refusal = null;
+      _notice = null;
+    });
+    final operationId = _pendingOperationId ??= _newOperationId();
+    try {
+      final created = await create(operationId, name);
+      if (!mounted) return;
+      // Answered, so this operation is finished — a later "add" is a new one.
+      _pendingOperationId = null;
+      setState(() {
+        _adding = false;
+        _notice = created.memoryReady
+            ? '${created.displayName} 已经在这台主机上了'
+            : '${created.displayName} 已经建好，记忆还在启动';
+      });
+      await _read();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _adding = false;
+        // The id is *kept*: this is exactly the case a stable operation id
+        // exists for, and pressing add again must not make a second Eidolon.
+        _refusal = _refusalSentence(error);
+      });
+    }
+  }
+
+  String _newOperationId() {
+    if (widget.newOperationId != null) return widget.newOperationId!();
+    // A version-4 UUID, because the Host's operation id is one. Built from
+    // Random.secure like every other identifier this app mints.
+    final bytes = List<int>.generate(16, (_) => _random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    String hex(int start, int end) => bytes
+        .sublist(start, end)
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return '${hex(0, 4)}-${hex(4, 6)}-${hex(6, 8)}-${hex(8, 10)}-${hex(10, 16)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final roster = _roster;
@@ -177,6 +256,12 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
                 : _makeDefault,
             busyCompanionId: _changing,
             refusal: _refusal,
+            notice: _notice,
+            onAdd: widget.createCompanion == null ||
+                    _context == null ||
+                    !hostCan(_context!, 'companion.create')
+                ? null
+                : _add,
           ),
           if (_busy)
             const Positioned(

@@ -15,6 +15,70 @@ class ManagementV1 {
   static const String ownerDefaultCompanionPath = '/api/management/v1/owner/default-companion';
 }
 
+class CompanionCreateRequest {
+  const CompanionCreateRequest({
+    required this.displayName,
+    this.kind,
+    required this.operationId,
+  });
+
+  final String displayName;
+
+  final String? kind;
+
+  final String operationId;
+
+  factory CompanionCreateRequest.fromJson(Map<String, dynamic> value) {
+    return CompanionCreateRequest(
+      displayName: value['display_name'] as String,
+      kind: value['kind'] as String?,
+      operationId: value['operation_id'] as String,
+    );
+  }
+}
+
+class CompanionCreatedView {
+  const CompanionCreatedView({
+    required this.companionId,
+    this.contractVersion,
+    required this.created,
+    this.displayName,
+    required this.kind,
+    required this.lifecycleState,
+    required this.memoryReady,
+    required this.revision,
+  });
+
+  final String companionId;
+
+  final String? contractVersion;
+
+  final bool created;
+
+  final String? displayName;
+
+  final String kind;
+
+  final String lifecycleState;
+
+  final bool memoryReady;
+
+  final int revision;
+
+  factory CompanionCreatedView.fromJson(Map<String, dynamic> value) {
+    return CompanionCreatedView(
+      companionId: value['companion_id'] as String,
+      contractVersion: value['contract_version'] as String?,
+      created: value['created'] as bool,
+      displayName: value['display_name'] as String?,
+      kind: value['kind'] as String,
+      lifecycleState: value['lifecycle_state'] as String,
+      memoryReady: value['memory_ready'] as bool,
+      revision: value['revision'] as int,
+    );
+  }
+}
+
 class CompanionDetailView {
   const CompanionDetailView({
     required this.companionId,
