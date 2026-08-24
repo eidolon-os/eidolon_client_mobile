@@ -294,6 +294,21 @@ final List<_Beat> _script = <_Beat>[
     );
     emit(world.pulse(_second, MoonKind.mem, PulseDirection.outward));
   }),
+  _Beat(const Duration(milliseconds: 1500), (world, emit) {
+    // A lane goes away. Nothing else about the domain changed — and the screen
+    // has to say that rather than showing zeroes.
+    world.memoryReadable = false;
+    world.log(
+      source: 'memory',
+      type: 'memory.probe.failed',
+      summary: '读不到记忆服务，这一屏的记忆一栏是未知，不是 0',
+      severity: 'warn',
+      outcome: 'failure',
+    );
+  }),
+  _Beat(const Duration(milliseconds: 2600), (world, emit) {
+    world.memoryReadable = true;
+  }),
   _Beat(const Duration(milliseconds: 1900), (world, emit) {
     world.denyGuardEvent(_third);
     world.log(
@@ -526,6 +541,7 @@ class _MockWorld {
     );
     _voiceActivityId = '';
     _voiceTurnId = '';
+    memoryReadable = true;
   }
 
   String _id(String prefix) {
@@ -990,25 +1006,32 @@ class _MockWorld {
         _ => deviceId,
       };
 
+  /// Whether the staged memory service is answering. One beat of the script
+  /// takes it away, so the degraded-lane path is something you can watch rather
+  /// than only assert.
+  var memoryReadable = true;
+
   CockpitSnapshot snapshot(StreamState state) => CockpitSnapshot(
         generatedAt: DateTime.now(),
-        owner: const CockpitOwner(
-          ownerId: 'owner-shenyi',
-          displayName: '沈亦',
+        ownerLane: const CockpitLane<CockpitOwner?>.ok(
+          CockpitOwner(ownerId: 'owner-shenyi', displayName: '沈亦'),
         ),
-        companions: _companions,
-        devices: _devices,
-        services: _services,
-        activities: _activities,
-        turns: _turns,
-        jobs: _jobs,
-        events: _events,
-        memory: _memory,
+        companionsLane: CockpitLane<List<CockpitCompanion>>.ok(_companions),
+        devicesLane: CockpitLane<List<CockpitDevice>>.ok(_devices),
+        servicesLane: CockpitLane<List<CockpitService>>.ok(_services),
+        activitiesLane: CockpitLane<List<CockpitActivity>>.ok(_activities),
+        turnsLane: CockpitLane<List<CockpitTurn>>.ok(_turns),
+        jobsLane: CockpitLane<List<CockpitJob>>.ok(_jobs),
+        eventsLane: CockpitLane<List<CockpitEvent>>.ok(_events),
+        memoryLane: memoryReadable
+            ? CockpitLane<CockpitMemory?>.ok(_memory)
+            : const CockpitLane<CockpitMemory?>.missing(
+                null,
+                '记忆服务没有回应（连接超时 2s）',
+              ),
         streamState: state,
         traceId: _voiceTurnId.isEmpty ? '—' : compactId(_voiceTurnId),
-        // Named out loud rather than folded into a healthy-looking whole: the
-        // extension bay is not answering, and this cockpit says which one.
-        degradedSources: const ['mementos'],
+        cursor: _seq,
       );
 }
 

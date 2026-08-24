@@ -242,7 +242,41 @@ void main() {
     expect(find.text('Mementos'), findsOneWidget);
     expect(find.text('离线'), findsWidgets);
     expect(find.text('外挂扩展（非核心链路）'), findsOneWidget);
+    // 「一个服务离线」和「一条 lane 读不到」是两件事。这一屏所有 lane 都读到了，
+    // 所以不该出现「读不到」的点名 —— 早先的实现把两者混成一个字段。
+    expect(find.textContaining('它们的状态是未知'), findsNothing);
+
+    await _close(tester);
+  });
+
+  testWidgets('某条 lane 读不到时，表盘显示 — 而不是 0，并被点名', (tester) async {
+    final feed = MockCockpitFeed(autoplay: false);
+    addTearDown(feed.dispose);
+    await _openCockpit(tester, feed);
+
+    // 推进到脚本里记忆服务不回应的那一拍（对脚本改动稳健）。
+    var guard = 0;
+    while ((feed.snapshot?.memoryLane.readable ?? true) && guard < 40) {
+      feed.step();
+      guard += 1;
+    }
+    await _settle(tester);
+    expect(feed.snapshot!.memoryLane.readable, isFalse);
+    expect(feed.snapshot!.unreadableLanes, contains('记忆'));
+
+    // 记忆空间那一格必须是「—」：0 是一次测量，读不到不是。
+    // 表盘条是横向滚动的，窄屏上第四格没被构建，所以先滚过去。
+    await tester.drag(find.byType(ListView).first, const Offset(-260, 0));
+    await _settle(tester);
+    expect(find.text('记忆空间'), findsOneWidget);
+    expect(find.text('—'), findsWidgets);
+
+    await tester.tap(find.text('展开 ⌃'));
+    await _settle(tester);
+    await tester.tap(find.textContaining('底座 ').last);
+    await _settle(tester);
     expect(find.textContaining('它们的状态是未知'), findsOneWidget);
+    expect(find.textContaining('记忆'), findsWidgets);
 
     await _close(tester);
   });

@@ -185,49 +185,68 @@ class CockpitHeader extends StatelessWidget {
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.only(left: 2, right: 8),
                   children: [
+                    // A meter whose lane did not read shows '—'. A zero is a
+                    // measurement; this is the absence of one.
                     _Meter(
                       glyph: '⬡',
                       glyphColor: Cockpit.cyan,
-                      value: '$online',
-                      suffix: '/${devices.length}',
+                      value: snapshot.devicesLane.readable ? '$online' : '—',
+                      suffix: snapshot.devicesLane.readable
+                          ? '/${devices.length}'
+                          : null,
                       label: '身体在线',
-                      ratio: devices.isEmpty ? 0 : online / devices.length,
+                      ratio: !snapshot.devicesLane.readable || devices.isEmpty
+                          ? null
+                          : online / devices.length,
                     ),
                     _Meter(
                       glyph: '⚡',
                       glyphColor: Cockpit.magenta,
-                      value: '$activeActivities',
-                      suffix: '/${snapshot.activities.length}',
+                      value: snapshot.activitiesLane.readable
+                          ? '$activeActivities'
+                          : '—',
+                      suffix: snapshot.activitiesLane.readable
+                          ? '/${snapshot.activities.length}'
+                          : null,
                       label: '活动链路',
                     ),
                     _Meter(
                       glyph: '◉',
                       glyphColor: Cockpit.cyan,
-                      value: '${snapshot.companions.length}',
+                      value: snapshot.companionsLane.readable
+                          ? '${snapshot.companions.length}'
+                          : '—',
                       label: '伙伴',
                     ),
                     _Meter(
                       glyph: '◈',
                       glyphColor: Cockpit.yellow,
-                      value: '${snapshot.memory.realmsTotal}',
+                      value: snapshot.memoryLane.readable
+                          ? '${snapshot.memory.realmsTotal}'
+                          : '—',
                       label: '记忆空间',
                     ),
                     _Meter(
                       glyph: '⟐',
                       glyphColor: Cockpit.yellow,
-                      value: '${snapshot.memory.lastRecallHits}',
+                      value: snapshot.turnsLane.readable
+                          ? '${snapshot.memory.lastRecallHits}'
+                          : '—',
                       label: '记忆召回',
                     ),
                     _Meter(
                       glyph: '✦',
                       glyphColor: Cockpit.purple,
-                      value: '$activeJobs',
-                      suffix: '/${snapshot.jobs.length}',
+                      value: snapshot.jobsLane.readable ? '$activeJobs' : '—',
+                      suffix: snapshot.jobsLane.readable
+                          ? '/${snapshot.jobs.length}'
+                          : null,
                       label: '后台任务',
                     ),
                     _ServiceMeter(
                       services: services,
                       online: servicesOnline,
+                      readable: snapshot.servicesLane.readable,
                     ),
                   ],
                 ),
@@ -368,10 +387,15 @@ class _Meter extends StatelessWidget {
 }
 
 class _ServiceMeter extends StatelessWidget {
-  const _ServiceMeter({required this.services, required this.online});
+  const _ServiceMeter({
+    required this.services,
+    required this.online,
+    required this.readable,
+  });
 
   final List<CockpitService> services;
   final int online;
+  final bool readable;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -407,7 +431,7 @@ class _ServiceMeter extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '底座 $online/${services.length}',
+                  readable ? '底座 $online/${services.length}' : '底座 —',
                   style: Cockpit.mono(
                     size: 9,
                     weight: FontWeight.w600,

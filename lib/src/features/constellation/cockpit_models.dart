@@ -11,6 +11,67 @@
 // anything nobody publishes presence for. Device presence is carried, service
 // health is carried, and everything else says what it is.
 
+/// One projection block, carrying its own health.
+///
+/// The contract's first rule (`docs/mission-control-local-api-contract.md` §2):
+/// "read it, it was empty" and "could not read it" must not share a shape. A
+/// lane that failed still ships an empty payload — so callers never crash — but
+/// it says so, and every screen that shows it has to decide what to say instead
+/// of quietly showing nothing.
+enum LaneState { ok, degraded, unavailable }
+
+class CockpitLane<T> {
+  const CockpitLane({
+    required this.state,
+    required this.value,
+    this.detail = '',
+    this.observedAt,
+    this.latencyMs,
+    this.truncated = false,
+  });
+
+  /// A lane that was read.
+  const CockpitLane.ok(
+    this.value, {
+    this.observedAt,
+    this.latencyMs,
+    this.truncated = false,
+  })  : state = LaneState.ok,
+        detail = '';
+
+  /// A lane that could not be read. [value] is the caller's chosen empty — an
+  /// empty list, or null — and [detail] is why.
+  const CockpitLane.missing(this.value, this.detail)
+      : state = LaneState.unavailable,
+        observedAt = null,
+        latencyMs = null,
+        truncated = false;
+
+  final LaneState state;
+  final T value;
+
+  /// Which authority did not answer, and why. Shown to the reader when the lane
+  /// is not ok — a degraded lane with no detail is an unactionable screen.
+  final String detail;
+  final DateTime? observedAt;
+  final int? latencyMs;
+
+  /// The list hit its bound. Silent truncation reads as "that is all there is".
+  final bool truncated;
+
+  bool get readable => state != LaneState.unavailable;
+  bool get healthy => state == LaneState.ok;
+}
+
+LaneState laneStateFromWire(Object? value) => switch (value) {
+      'ok' => LaneState.ok,
+      'degraded' => LaneState.degraded,
+      'unavailable' => LaneState.unavailable,
+      // An unknown state is not assumed healthy. The contract's whole point is
+      // that this screen never guesses in the optimistic direction.
+      _ => LaneState.unavailable,
+    };
+
 /// The tones every runtime fact collapses to. Anything richer invites a screen
 /// where "quiet" and "could not tell" look the same.
 enum CockpitTone { ok, live, warn, bad, idle, off }
@@ -323,39 +384,71 @@ class CockpitMemory {
 }
 
 /// Everything the cockpit draws at one instant.
+///
+/// Each block is a lane, so a screen can tell "this Owner has no jobs" from
+/// "nobody could tell us about jobs". The plain getters return the payload for
+/// the many places that only need the facts; the `*Lane` fields are for the
+/// places that have to say something when a lane did not read.
 class CockpitSnapshot {
   const CockpitSnapshot({
     required this.generatedAt,
-    required this.owner,
-    required this.companions,
-    required this.devices,
-    required this.services,
-    this.activities = const <CockpitActivity>[],
-    this.turns = const <CockpitTurn>[],
-    this.jobs = const <CockpitJob>[],
-    this.events = const <CockpitEvent>[],
-    this.memory = const CockpitMemory(),
+    required this.ownerLane,
+    required this.companionsLane,
+    required this.devicesLane,
+    required this.servicesLane,
+    this.activitiesLane = const CockpitLane<List<CockpitActivity>>.ok(
+      <CockpitActivity>[],
+    ),
+    this.turnsLane = const CockpitLane<List<CockpitTurn>>.ok(<CockpitTurn>[]),
+    this.jobsLane = const CockpitLane<List<CockpitJob>>.ok(<CockpitJob>[]),
+    this.eventsLane =
+        const CockpitLane<List<CockpitEvent>>.ok(<CockpitEvent>[]),
+    this.memoryLane = const CockpitLane<CockpitMemory?>.ok(null),
     this.streamState = StreamState.live,
     this.traceId = '',
-    this.degradedSources = const <String>[],
+    this.cursor,
   });
 
   final DateTime generatedAt;
-  final CockpitOwner owner;
-  final List<CockpitCompanion> companions;
-  final List<CockpitDevice> devices;
-  final List<CockpitService> services;
-  final List<CockpitActivity> activities;
-  final List<CockpitTurn> turns;
-  final List<CockpitJob> jobs;
-  final List<CockpitEvent> events;
-  final CockpitMemory memory;
+  final CockpitLane<CockpitOwner?> ownerLane;
+  final CockpitLane<List<CockpitCompanion>> companionsLane;
+  final CockpitLane<List<CockpitDevice>> devicesLane;
+  final CockpitLane<List<CockpitService>> servicesLane;
+  final CockpitLane<List<CockpitActivity>> activitiesLane;
+  final CockpitLane<List<CockpitTurn>> turnsLane;
+  final CockpitLane<List<CockpitJob>> jobsLane;
+  final CockpitLane<List<CockpitEvent>> eventsLane;
+  final CockpitLane<CockpitMemory?> memoryLane;
   final StreamState streamState;
   final String traceId;
 
-  /// Sources the projection could not read. Named out loud rather than folded
-  /// into an empty list somewhere.
-  final List<String> degradedSources;
+  /// Where the event stream should resume: the audit index's own total order.
+  final int? cursor;
+
+  CockpitOwner get owner =>
+      ownerLane.value ?? const CockpitOwner(ownerId: '', displayName: '');
+  List<CockpitCompanion> get companions => companionsLane.value;
+  List<CockpitDevice> get devices => devicesLane.value;
+  List<CockpitService> get services => servicesLane.value;
+  List<CockpitActivity> get activities => activitiesLane.value;
+  List<CockpitTurn> get turns => turnsLane.value;
+  List<CockpitJob> get jobs => jobsLane.value;
+  List<CockpitEvent> get events => eventsLane.value;
+  CockpitMemory get memory => memoryLane.value ?? const CockpitMemory();
+
+  /// Lanes that could not be read at all, by name. Said out loud on screen
+  /// rather than folded into a healthy-looking whole.
+  List<String> get unreadableLanes => <String>[
+        if (!ownerLane.readable) '主人',
+        if (!companionsLane.readable) '伙伴',
+        if (!devicesLane.readable) '身体',
+        if (!activitiesLane.readable) '活动',
+        if (!turnsLane.readable) '对话轮次',
+        if (!jobsLane.readable) '后台任务',
+        if (!memoryLane.readable) '记忆',
+        if (!servicesLane.readable) '底座',
+        if (!eventsLane.readable) '事件',
+      ];
 
   /// Bodies nobody has claimed yet. They belong to the frame, not to a planet.
   List<CockpitDevice> get unboundDevices => devices
@@ -374,6 +467,9 @@ class CompanionUnit {
     required this.activities,
     required this.turns,
     required this.jobs,
+    this.bodiesReadable = true,
+    this.activitiesReadable = true,
+    this.recallReadable = true,
   });
 
   final CockpitCompanion companion;
@@ -381,6 +477,12 @@ class CompanionUnit {
   final List<CockpitActivity> activities;
   final List<CockpitTurn> turns;
   final List<CockpitJob> jobs;
+
+  /// Whether the lane each of this companion's assets is drawn from actually
+  /// read. An empty list from a failed lane must not be drawn as "none".
+  final bool bodiesReadable;
+  final bool activitiesReadable;
+  final bool recallReadable;
 
   String get id => companion.companionId;
   String get name => companion.displayName.isEmpty

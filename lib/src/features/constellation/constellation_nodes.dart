@@ -48,6 +48,7 @@ class OwnerCore extends StatelessWidget {
     super.key,
     required this.name,
     required this.companionCount,
+    required this.companionsReadable,
     required this.clock,
     required this.pipelineActive,
     required this.igniting,
@@ -58,6 +59,10 @@ class OwnerCore extends StatelessWidget {
 
   final String name;
   final int companionCount;
+
+  /// False when the companions lane did not read. "0 位伙伴" would then be a
+  /// claim nobody made — the core says the count is unknown instead.
+  final bool companionsReadable;
   final Animation<double> clock;
   final bool pipelineActive;
 
@@ -163,7 +168,7 @@ class OwnerCore extends StatelessWidget {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      '$companionCount 位伙伴',
+                      companionsReadable ? '$companionCount 位伙伴' : '伙伴读不到',
                       style: Cockpit.mono(
                         size: 9,
                         weight: FontWeight.w600,

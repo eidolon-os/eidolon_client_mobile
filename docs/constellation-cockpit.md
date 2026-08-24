@@ -188,10 +188,28 @@ abstract class CockpitFeed {
 `event_id` 双端去重，`producer_seq` 用来发现单个生产者的缺口，失效只有「行被清掉」
 和「`reset_epoch` 变了」两种。`CockpitObservation.cursor` 是它在消费侧的落点。
 
-**还没做、等拍板的一件事**：契约 §7.1 建议把载荷改成 lane 封套（每块自带
-`state / detail / observed_at`）。今天的 `CockpitSnapshot` 还是「非空列表 +
-`degradedSources`」的老形状。lane 化会动消费侧约 6 处解析和 3 处渲染，
-所以先等这条结论被接受再一起做 —— 免得先按一个还没定的形状改一遍。
+### 7.2.1 载荷已经 lane 化
+
+`CockpitSnapshot` 的每一块现在是一条 `CockpitLane<T>`（`state / detail /
+observed_at / latency_ms / truncated` + 载荷）。读不到的 lane **即使载荷里带了
+东西也不采用** —— 没被观测到的东西不能因为躺在 JSON 里就被画出来。
+
+界面上「读不到」和「空」是四处不同的画法：
+
+| 位置 | lane 读不到时 | 而不是 |
+|---|---|---|
+| 表盘条 | `—` | `0`（0 是一次测量） |
+| 身体/活动卫星 | `读不到`（警示色，`unreadable`） | `未绑定` / `空闲` |
+| 行星徽标 | `活动读不到` | `空闲` |
+| 主人核心 | `伙伴读不到` | `0 位伙伴` |
+| 底座轨 | `读不到底座：<原因>`、`CORE ?` | 0 个芯片 + `CORE 0/0` |
+| 底座页末尾 | 逐条点名读不到的 lane | 静默 |
+
+解析在 `cockpit_wire.dart`，是全 App 唯一知道 wire 存在的地方。契约违反（版本、
+coverage、缺字段）**拒绝**，不半懂着渲染；不认识的枚举值**照常携带**（App 常比
+旁边的 Host 新，也常比它旧）；`lane.state` 认不出来时按**读不到**处理，不按正常。
+
+mock 世界里有一拍会让记忆服务不回应，所以这条路径是**看得见**的，不只是断言。
 
 ### 7.3 读失败已经有位置了
 

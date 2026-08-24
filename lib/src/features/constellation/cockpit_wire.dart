@@ -1,0 +1,367 @@
+import '../../protocol/mission_control_contract.dart' as wire;
+import 'cockpit_models.dart';
+
+/// Parses the Mission Control Local API payloads into the view models.
+///
+/// The contract is `eidolon_sdk/contracts/local_api/v1/*.schema.json`; the
+/// vocabulary it uses is mirrored in `lib/src/protocol/mission_control_contract.dart`
+/// and pinned to the SDK by that repository's mirror tests. This file is the
+/// only place in the app that knows the wire exists.
+///
+/// It is deliberately unforgiving in one direction and forgiving in the other.
+/// A malformed document is refused — a screen built from a half-understood
+/// payload is worse than one that says it could not read. But an *unfamiliar*
+/// value is not malformed: an App is routinely older than the Host beside it,
+/// and a lane state or activity kind this version has never heard of is a fact
+/// it should carry rather than a reason to show nothing.
+class CockpitWireException implements Exception {
+  const CockpitWireException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'Mission Control 投影不符合契约：$message';
+}
+
+Never _bad(String what) => throw CockpitWireException(what);
+
+Map<String, Object?> _object(Object? value, String what) =>
+    value is Map ? Map<String, Object?>.from(value) : _bad(what);
+
+String _string(Object? value, String what) =>
+    value is String ? value : _bad(what);
+
+String _stringOr(Object? value, [String fallback = '']) =>
+    value is String ? value : fallback;
+
+int? _intOrNull(Object? value) => value is num ? value.toInt() : null;
+
+bool _boolOr(Object? value, bool fallback) => value is bool ? value : fallback;
+
+DateTime? _timeOrNull(Object? value) =>
+    value is String ? DateTime.tryParse(value)?.toUtc() : null;
+
+DateTime _time(Object? value, String what) => _timeOrNull(value) ?? _bad(what);
+
+List<String> _strings(Object? value) => value is List
+    ? value.whereType<String>().toList(growable: false)
+    : const <String>[];
+
+/// One lane, health and payload together.
+CockpitLane<T> _lane<T>(
+  Object? raw,
+  String what,
+  T Function(Object? payload) parse, {
+  required String payloadKey,
+  required T empty,
+}) {
+  final map = _object(raw, what);
+  final state = laneStateFromWire(map['state']);
+  final detail = _stringOr(map['detail']);
+  if (state == LaneState.unavailable) {
+    // A failed lane's payload is not read even if one was sent: whatever is in
+    // there was not observed, and carrying it would make the failure invisible.
+    return CockpitLane<T>(
+      state: state,
+      value: empty,
+      detail: detail.isEmpty ? '$what 没有读到' : detail,
+    );
+  }
+  return CockpitLane<T>(
+    state: state,
+    value: parse(map[payloadKey]),
+    detail: detail,
+    observedAt: _timeOrNull(map['observed_at']),
+    latencyMs: _intOrNull(map['latency_ms']),
+    truncated: _boolOr(map['truncated'], false),
+  );
+}
+
+List<E> _items<E>(Object? raw, E Function(Map<String, Object?>) parse) {
+  if (raw is! List) return const [];
+  return raw
+      .whereType<Map>()
+      .map((item) => parse(Map<String, Object?>.from(item)))
+      .toList(growable: false);
+}
+
+CockpitSnapshot parseCockpitSnapshot(Map<String, Object?> json) {
+  if (json['contract_version'] != wire.missionControlContractVersion) {
+    _bad('contract_version 是 ${json['contract_version']}');
+  }
+  if (json['coverage'] != wire.missionControlSnapshotCoverage) {
+    _bad('coverage 是 ${json['coverage']}');
+  }
+  final cursor = json['cursor'];
+  return CockpitSnapshot(
+    generatedAt: _time(json['generated_at'], 'generated_at 无法解析'),
+    cursor: cursor is Map ? _intOrNull(cursor[wire.cursorField]) : null,
+    ownerLane: _lane<CockpitOwner?>(
+      json['owner'],
+      '主人',
+      (payload) =>
+          payload == null ? null : _owner(_object(payload, 'owner.value 不是对象')),
+      payloadKey: 'value',
+      empty: null,
+    ),
+    companionsLane: _lane<List<CockpitCompanion>>(
+      json['companions'],
+      '伙伴',
+      (payload) => _items(payload, _companion),
+      payloadKey: 'items',
+      empty: const [],
+    ),
+    devicesLane: _lane<List<CockpitDevice>>(
+      json['devices'],
+      '身体',
+      (payload) => _items(payload, _device),
+      payloadKey: 'items',
+      empty: const [],
+    ),
+    activitiesLane: _lane<List<CockpitActivity>>(
+      json['activities'],
+      '活动',
+      (payload) => _items(payload, _activity),
+      payloadKey: 'items',
+      empty: const [],
+    ),
+    turnsLane: _lane<List<CockpitTurn>>(
+      json['turns'],
+      '对话轮次',
+      (payload) => _items(payload, _turn),
+      payloadKey: 'items',
+      empty: const [],
+    ),
+    jobsLane: _lane<List<CockpitJob>>(
+      json['jobs'],
+      '后台任务',
+      (payload) => _items(payload, _job),
+      payloadKey: 'items',
+      empty: const [],
+    ),
+    memoryLane: _lane<CockpitMemory?>(
+      json['memory'],
+      '记忆',
+      (payload) => payload == null
+          ? null
+          : _memory(_object(payload, 'memory.value 不是对象')),
+      payloadKey: 'value',
+      empty: null,
+    ),
+    servicesLane: _lane<List<CockpitService>>(
+      json['services'],
+      '底座',
+      (payload) => _items(payload, _service),
+      payloadKey: 'items',
+      empty: const [],
+    ),
+    eventsLane: _lane<List<CockpitEvent>>(
+      json['events'],
+      '事件',
+      (payload) => _items(payload, parseCockpitEvent),
+      payloadKey: 'items',
+      empty: const [],
+    ),
+  );
+}
+
+CockpitOwner _owner(Map<String, Object?> json) => CockpitOwner(
+      ownerId: _string(json['owner_id'], 'owner_id 缺失'),
+      displayName: _stringOr(json['display_name']),
+    );
+
+CockpitCompanion _companion(Map<String, Object?> json) => CockpitCompanion(
+      companionId: _string(json['companion_id'], 'companion_id 缺失'),
+      displayName: _stringOr(json['display_name']),
+      status: _stringOr(json['lifecycle_state'], 'active'),
+      isPrimary: _boolOr(json['is_primary'], false),
+      genomeId: _stringOr(json['genome_id']),
+      realmId: _stringOr(json['memory_realm_id']),
+      // Recall is not a companion field on the wire — it is read off this
+      // companion's own turn, which is why asking the memory service per
+      // companion never had to happen. Filled in by [attachRecall].
+      recallHits: null,
+    );
+
+CockpitDevice _device(Map<String, Object?> json) {
+  final presence = _object(json['presence'], 'device.presence 缺失');
+  final state = _stringOr(presence['state'], wire.presenceUnknown);
+  final source = _stringOr(presence['source'], wire.presenceSourceNone);
+  return CockpitDevice(
+    deviceId: _string(json['device_id'], 'device_id 缺失'),
+    name: _stringOr(json['display_name']),
+    kind: _stringOr(json['device_kind']),
+    // The app's own device model speaks in lifecycle words; presence is carried
+    // separately and never inferred from them.
+    status: switch (state) {
+      wire.presenceOnline => 'active',
+      wire.presenceDegraded => 'degraded',
+      wire.presenceOffline => 'offline',
+      _ => 'unknown',
+    },
+    online: state == wire.presenceOnline,
+    companionId: _stringOr(json['companion_id']),
+    role: _stringOr(json['role']),
+    lastSeenAt: _timeOrNull(presence['observed_at']),
+    capabilities: _strings(json['capabilities']),
+    // A web body nobody has answered for is "prepared", not offline — and only
+    // when the absence of an answer is what happened.
+    preparedWebBody: state == wire.presenceUnknown &&
+        source == wire.presenceSourceNone &&
+        _stringOr(json['device_kind']).toLowerCase().contains('web'),
+  );
+}
+
+CockpitActivity _activity(Map<String, Object?> json) => CockpitActivity(
+      activityId: _string(json['activity_id'], 'activity_id 缺失'),
+      kind: _string(json['kind'], 'activity.kind 缺失'),
+      companionId: _stringOr(json['companion_id']),
+      status: _string(json['status'], 'activity.status 缺失'),
+      summary: _stringOr(json['summary']),
+      outcome: _stringOr(json['outcome'], 'success'),
+      turnId: _stringOr(json['turn_id']),
+      originDeviceId: _stringOr(json['origin_device_id']),
+      targetDeviceIds: _strings(json['target_device_ids']),
+      currentHopId: _stringOr(json['current_hop_id']),
+      startedAt: _timeOrNull(json['started_at']),
+      updatedAt: _timeOrNull(json['updated_at']),
+      route: _items(json['route'], _hop),
+    );
+
+CockpitHop _hop(Map<String, Object?> json) => CockpitHop(
+      hopId: _string(json['hop_id'], 'hop_id 缺失'),
+      label: _string(json['label'], 'hop.label 缺失'),
+      stage: _stringOr(json['stage']),
+      status: _string(json['status'], 'hop.status 缺失'),
+      nodeType: _stringOr(json['node_type']),
+      latencyMs: _intOrNull(json['latency_ms']),
+    );
+
+CockpitTurn _turn(Map<String, Object?> json) => CockpitTurn(
+      turnId: _string(json['turn_id'], 'turn_id 缺失'),
+      companionId: _string(json['companion_id'], 'turn.companion_id 缺失'),
+      status: _string(json['status'], 'turn.status 缺失'),
+      trigger: _stringOr(json['trigger']),
+      latencyMs: _intOrNull(json['latency_ms']),
+      memoryHits: _intOrNull(json['memory_hits']) ?? 0,
+      toolNames: _strings(json['tool_names']),
+      deviceId: _stringOr(json['device_id']),
+      stages: _items(
+        json['stages'],
+        (stage) => CockpitTurnStage(
+          key: _string(stage['key'], 'stage.key 缺失'),
+          label: _string(stage['label'], 'stage.label 缺失'),
+          status: _string(stage['status'], 'stage.status 缺失'),
+          latencyMs: _intOrNull(stage['latency_ms']),
+        ),
+      ),
+    );
+
+CockpitJob _job(Map<String, Object?> json) => CockpitJob(
+      jobId: _string(json['job_id'], 'job_id 缺失'),
+      companionId: _stringOr(json['companion_id']),
+      kind: _string(json['kind'], 'job.kind 缺失'),
+      status: _string(json['status'], 'job.status 缺失'),
+      summary: _stringOr(json['summary']),
+    );
+
+CockpitMemory _memory(Map<String, Object?> json) => CockpitMemory(
+      realmsTotal: _intOrNull(json['realms_total']) ?? 0,
+      activeRealmId: _stringOr(json['active_realm_id']),
+      runnersOnline: _intOrNull(json['runners_online']) ?? 0,
+      runnersTotal: _intOrNull(json['runners_total']) ?? 0,
+      lastWriteDisposition: _stringOr(json['last_write_disposition']),
+    );
+
+CockpitService _service(Map<String, Object?> json) => CockpitService(
+      serviceId: _string(json['service_id'], 'service_id 缺失'),
+      name: _stringOr(json['display_name']),
+      code: _stringOr(json['code']),
+      role: '',
+      mode: _stringOr(json['mode']),
+      tier: switch (_stringOr(json['tier'])) {
+        'middleware' => ServiceTier.middleware,
+        'external' => ServiceTier.external,
+        _ => ServiceTier.service,
+      },
+      glyph: '·',
+      online: _boolOr(json['online'], false),
+      // Absent means unprobed, never healthy. This is the one default that must
+      // fall the pessimistic way.
+      checked: _boolOr(json['checked'], false),
+      latencyMs: _intOrNull(json['latency_ms']),
+      detail: _stringOr(json['detail']),
+    );
+
+CockpitEvent parseCockpitEvent(Map<String, Object?> json) => CockpitEvent(
+      eventId: _string(json['event_id'], 'event_id 缺失'),
+      ts: _time(json['ts'], 'event.ts 无法解析'),
+      source: _string(json['source'], 'event.source 缺失'),
+      type: _string(json['type'], 'event.type 缺失'),
+      summary: _stringOr(json['summary']),
+      severity: _stringOr(json['severity'], 'info'),
+      outcome: _stringOr(json['outcome'], 'success'),
+      origin: _stringOr(json['origin'], 'live'),
+      companionId: _stringOr(json['companion_id']),
+      deviceId: _stringOr(json['device_id']),
+      turnId: _stringOr(json['turn_id']),
+      milestone: _stringOr(json['milestone']),
+    );
+
+/// The event stream's cursor, from one event.
+int? eventCursor(Map<String, Object?> json) =>
+    _intOrNull(json[wire.cursorField]);
+
+/// Whether an event is the stream telling a client its cursor is no longer
+/// honourable. The client drops it and re-reads a snapshot.
+bool isStreamReset(CockpitEvent event) => event.type == wire.streamResetEvent;
+
+/// Fill each companion's recall from its own most recent turn.
+///
+/// The contract carries no per-companion recall, on purpose: it is already on
+/// the turn, and asking the memory service per companion would be a cross
+/// service read for a number that was in hand.
+CockpitSnapshot attachRecall(CockpitSnapshot snapshot) {
+  if (!snapshot.turnsLane.readable) return snapshot;
+  final latest = <String, CockpitTurn>{};
+  for (final turn in snapshot.turns) {
+    latest.putIfAbsent(turn.companionId, () => turn);
+  }
+  return CockpitSnapshot(
+    generatedAt: snapshot.generatedAt,
+    cursor: snapshot.cursor,
+    ownerLane: snapshot.ownerLane,
+    companionsLane: CockpitLane<List<CockpitCompanion>>(
+      state: snapshot.companionsLane.state,
+      detail: snapshot.companionsLane.detail,
+      observedAt: snapshot.companionsLane.observedAt,
+      latencyMs: snapshot.companionsLane.latencyMs,
+      truncated: snapshot.companionsLane.truncated,
+      value: snapshot.companions
+          .map(
+            (companion) => CockpitCompanion(
+              companionId: companion.companionId,
+              displayName: companion.displayName,
+              status: companion.status,
+              kind: companion.kind,
+              isPrimary: companion.isPrimary,
+              genomeId: companion.genomeId,
+              realmId: companion.realmId,
+              recallHits: latest[companion.companionId]?.memoryHits,
+              runners: companion.runners,
+              writeDisposition: companion.writeDisposition,
+            ),
+          )
+          .toList(growable: false),
+    ),
+    devicesLane: snapshot.devicesLane,
+    activitiesLane: snapshot.activitiesLane,
+    turnsLane: snapshot.turnsLane,
+    jobsLane: snapshot.jobsLane,
+    memoryLane: snapshot.memoryLane,
+    servicesLane: snapshot.servicesLane,
+    eventsLane: snapshot.eventsLane,
+    streamState: snapshot.streamState,
+    traceId: snapshot.traceId,
+  );
+}

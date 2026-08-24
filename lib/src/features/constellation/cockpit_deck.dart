@@ -112,16 +112,38 @@ class KernelDeck extends StatelessWidget {
           ),
           SizedBox(
             height: 44 * chromeScale(context),
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              itemCount: services.length,
-              separatorBuilder: (context, index) => const SizedBox(width: 7),
-              itemBuilder: (context, index) => _ServiceChip(
-                service: services[index],
-                onTap: () => onServiceTap(services[index]),
-              ),
-            ),
+            // A services lane that did not read shows no chips and says so.
+            // Zero chips with a "CORE 0/0" beside them would read as a Host
+            // running nothing, which is a different and much worse claim.
+            child: snapshot.servicesLane.readable
+                ? ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    itemCount: services.length,
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(width: 7),
+                    itemBuilder: (context, index) => _ServiceChip(
+                      service: services[index],
+                      onTap: () => onServiceTap(services[index]),
+                    ),
+                  )
+                : Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '读不到底座：${snapshot.servicesLane.detail}',
+                        key: const Key('deck-services-unreadable'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Cockpit.mono(
+                          size: 10,
+                          weight: FontWeight.w600,
+                          color: Cockpit.warn,
+                        ),
+                      ),
+                    ),
+                  ),
           ),
           Expanded(
             child: GestureDetector(
@@ -630,7 +652,7 @@ class _CockpitDeckSheetState extends State<CockpitDeckSheet> {
                   ),
                 _ => _ServiceList(
                     services: snapshot.services,
-                    degraded: snapshot.degradedSources,
+                    degraded: snapshot.unreadableLanes,
                     controller: widget.controller,
                     onTap: widget.onServiceTap,
                   ),

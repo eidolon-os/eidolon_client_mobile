@@ -85,6 +85,7 @@ class MoonNode {
     required this.value,
     required this.tone,
     required this.empty,
+    this.unreadable = false,
   });
 
   final MoonKind kind;
@@ -94,6 +95,7 @@ class MoonNode {
   final String value;
   final CockpitTone tone;
   final bool empty;
+  final bool unreadable;
 
   String get key => '${unit.id}:${kind.name}';
 }
@@ -389,6 +391,7 @@ ConstellationLayout buildConstellationLayout({
           value: facts.value,
           tone: facts.tone,
           empty: facts.empty,
+          unreadable: facts.unreadable,
         ),
       );
     }
@@ -478,16 +481,23 @@ class MoonFacts {
     required this.value,
     required this.tone,
     required this.empty,
+    this.unreadable = false,
   });
 
   final String value;
   final CockpitTone tone;
   final bool empty;
+
+  /// The lane this asset is drawn from did not read. Distinct from [empty]:
+  /// "no bodies" and "could not ask about bodies" are different facts and this
+  /// screen exists to keep them apart.
+  final bool unreadable;
 }
 
 MoonFacts moonFacts(CompanionUnit unit, MoonKind kind) {
   switch (kind) {
     case MoonKind.body:
+      if (!unit.bodiesReadable) return _unreadable;
       final total = unit.devices.length;
       if (total == 0) {
         return const MoonFacts(
@@ -513,11 +523,19 @@ MoonFacts moonFacts(CompanionUnit unit, MoonKind kind) {
       }
       final recall = unit.companion.recallHits;
       return MoonFacts(
-        value: recall == null ? '已配置' : '$recall 召回',
+        // The realm is known from the companion itself; only the recall count
+        // comes from the turns lane, so a failure there costs the number and
+        // not the whole fact.
+        value: !unit.recallReadable
+            ? '已配置 · 召回未知'
+            : recall == null
+                ? '已配置'
+                : '$recall 召回',
         tone: CockpitTone.ok,
         empty: false,
       );
     case MoonKind.act:
+      if (!unit.activitiesReadable) return _unreadable;
       final active = unit.activeActivity;
       if (active != null) {
         return MoonFacts(
@@ -539,6 +557,14 @@ MoonFacts moonFacts(CompanionUnit unit, MoonKind kind) {
   }
 }
 
+/// What a moon says when its lane did not read.
+const _unreadable = MoonFacts(
+  value: '读不到',
+  tone: CockpitTone.warn,
+  empty: false,
+  unreadable: true,
+);
+
 /// A companion's runtime state, in the one line its planet can hold.
 class RuntimeBadge {
   const RuntimeBadge({required this.text, required this.tone});
@@ -548,6 +574,10 @@ class RuntimeBadge {
 }
 
 RuntimeBadge runtimeBadge(CompanionUnit unit) {
+  if (!unit.activitiesReadable) {
+    // "空闲" would be a claim nobody made.
+    return const RuntimeBadge(text: '活动读不到', tone: CockpitTone.warn);
+  }
   final activity = unit.activeActivity;
   if (activity != null) {
     if (activity.kind == 'voice_turn') {

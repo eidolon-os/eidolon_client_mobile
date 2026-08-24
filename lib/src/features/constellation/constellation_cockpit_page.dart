@@ -210,6 +210,9 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
                     (job.status == 'running' || job.status == 'pending'),
               )
               .toList(growable: false),
+          bodiesReadable: snapshot.devicesLane.readable,
+          activitiesReadable: snapshot.activitiesLane.readable,
+          recallReadable: snapshot.turnsLane.readable,
         ),
       )
       .toList(growable: false);
@@ -380,6 +383,7 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
         bottomInset: bottomInset,
         units: units,
         ownerName: snapshot.owner.displayName,
+        companionsReadable: snapshot.companionsLane.readable,
         unboundDevices: snapshot.unboundDevices,
         pulses: _pulses,
         clock: _clock,

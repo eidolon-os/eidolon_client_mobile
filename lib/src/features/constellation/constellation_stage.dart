@@ -22,6 +22,7 @@ class ConstellationStage extends StatefulWidget {
     super.key,
     required this.units,
     required this.ownerName,
+    this.companionsReadable = true,
     required this.unboundDevices,
     required this.pulses,
     required this.clock,
@@ -43,6 +44,10 @@ class ConstellationStage extends StatefulWidget {
 
   final List<CompanionUnit> units;
   final String ownerName;
+
+  /// Passed through to the core: a count of zero and an unread count are not
+  /// the same statement.
+  final bool companionsReadable;
   final List<CockpitDevice> unboundDevices;
 
   /// Darts fired since the last frame, with their own launch times.
@@ -541,6 +546,7 @@ class _StageNodes extends StatelessWidget {
           diameter: layout.metrics.ownerRadius * 2,
           name: widgetRef.ownerName,
           companionCount: widgetRef.units.length,
+          companionsReadable: widgetRef.companionsReadable,
           clock: widgetRef.clock,
           pipelineActive: widgetRef.pipelineActive,
           igniting: widgetRef.igniting,
