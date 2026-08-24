@@ -1,0 +1,79 @@
+# Mobile 星图（Constellation Cockpit）
+
+状态：UI 已实现，数据仍是 mock；未接入产品导航
+基线：2026-08-24，`lib/src/features/constellation/`
+
+## 1. 这是什么
+
+Admin Web 的 Mission Control 有一张「主权域星图」：主人核心在中心，伙伴作为行星挂
+在轨道上，每个伙伴带三颗资产卫星（身体 / 记忆 / 活动），身体作为端口挂在身体卫星
+上，链路上有光点在跑。这个模块把**同一个信息模型**搬到手机上。
+
+搬的是模型和质感，不是那张图的尺寸。桌面靠一屏看全，手机靠**移动地图**：
+
+- 打开即「全域」：整张地图完整装进视口，什么都不裁。
+- 双指缩放、拖动平移；`⤢ 全域` 回到全景。
+- 点行星＝聚焦：镜头飞过去把那一簇抬到检查器卡片上方，兄弟节点后退（语义缩放）。
+- 点卫星＝直接落到检查器对应的那一页，不用先进伙伴再翻页。
+- 细节随缩放出现：概览缩放下卫星只有字形和颜色，放大到能读了才画标签。
+  四像素的标签不如一个诚实的字形。
+
+## 2. 文件
+
+| 文件 | 职责 |
+|---|---|
+| `cockpit_theme.dart` | 设计令牌（与 Admin 的 `cockpit.tokens.css` 同源）、面板与 LED |
+| `cockpit_models.dart` | 视图模型 + 纯语义（状态色调、事件→脉冲、循环腿、阶段→卫星） |
+| `cockpit_feed.dart` | 数据来源的接缝：`snapshot` / `updates` / `pulses` |
+| `cockpit_mock_feed.dart` | 演示世界：按脚本跑一轮对话、召回、后台任务、被拒绝的守护、发不出去的指令 |
+| `constellation_geometry.dart` | 纯几何：行星、卫星、身体端口、活动珠的位置；画布贴着内容算 |
+| `constellation_painter.dart` | 节点之间的一切：轨道、归属线、资产腿、身体链、循环光点、事件飞镖 |
+| `constellation_nodes.dart` | 可点的节点本体（主人核心、行星、卫星、端口、活动珠） |
+| `constellation_stage.dart` | 可缩放平移的舞台、镜头飞行、细节分级 |
+| `cockpit_header.dart` | 顶部仪表条（横向滚动，不靠删表盘来适配手机） |
+| `cockpit_deck.dart` | 底部运行背板：收起是一条轨；展开是活动 / 事件 / 底座三页 |
+| `companion_inspector.dart` | 聚焦卡片（概览 / 身体 / 记忆 / 活动） |
+| `cockpit_details.dart` | 各类下钻详情 sheet |
+| `constellation_cockpit_page.dart` | 页面装配：一个时钟、一个 feed、聚焦与下钻状态 |
+
+## 3. 看效果
+
+```sh
+flutter run -t lib/constellation_demo.dart
+```
+
+`lib/constellation_demo.dart` 是独立入口，产品导航里没有任何地方指向星图 —— mock
+世界不能被当成主机说过的话。演示数据在两处显式标注：顶部的 `MOCK` 徽标，和每条
+事件行前的 `MOCK` 来路。
+
+可选的视觉回归参考（默认关闭，像素比较受渲染器和字体摆布，不该让别人的机器无故
+变红）：
+
+```sh
+EIDOLON_GOLDENS=1 flutter test --update-goldens test/constellation_golden_test.dart
+```
+
+## 4. 保留下来的产品纪律
+
+- **没有伙伴心跳。** 这套系统从未为伙伴发布过在场信号，所以星图不给伙伴画在线点。
+  身体的在场是身体的，逐台标注（在线 / 已准备 / 已绑定 / 不稳定 / 未探测 / 离线）。
+- **没人探测过的服务是「未探测」，不是「正常」。** 背板不做「大概没事」这种推断。
+- **读不到的来源被点名。** `degradedSources` 在底座页末尾明说，不折进一个看起来
+  健康的整体里。
+- **未开通的资产是虚线圈，不是暗一点的实心圈。** 「还没有」和「有但安静」不能是
+  同一张画。
+- **降低动效（reduced motion）下飞镖直接消失**，而不是被冻在半路 —— 停住的光点读
+  起来像故障，不像信号。亮起来的链路仍然亮着。
+
+## 5. 接真实数据要做的
+
+`CockpitFeed` 是唯一的接缝。等 Local API 落地
+`GET /api/local/v1/mission-control/snapshot` 与事件流（见
+[product-surface-plan.md](product-surface-plan.md) §5）之后：
+
+1. 写一个 pinned adapter 填同一批结构，`MockCockpitFeed` 只留给演示；
+2. `streamState` 与 `degradedSources` 来自逐 source 的 `ok / degraded / unavailable`
+   与 freshness，不由客户端猜；
+3. 事件流用稳定 cursor / event ID 去重，前后台切换时暂停恢复；流断只表示观测降级，
+   不能推导主机、伙伴、设备或语音轮次停了；
+4. 然后才把入口放进产品导航。

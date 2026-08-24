@@ -1,0 +1,507 @@
+import 'dart:math' as math;
+import 'dart:ui' show Offset, Rect, Size;
+
+import 'cockpit_models.dart';
+
+/// Where every node of the sovereign constellation sits.
+///
+/// Pure geometry, no widgets: the layout is the part most likely to be wrong in
+/// a way a screenshot hides (a moon tucked under its planet, a body port off
+/// the canvas), so it is computed somewhere a test can measure it.
+///
+/// The console lays its companions on a wide ellipse because it is drawn for a
+/// wall. Here the ellipse is much taller than it is wide and the first companion
+/// starts at the top, so a phone's vertical extent carries the domain instead of
+/// leaving voids above and below.
+///
+/// The canvas is not a fixed rectangle either: it is the bounding box of what
+/// was actually placed, plus a margin. A fixed canvas means dead bands whose
+/// size depends on how many companions there are — one companion leaves two
+/// thirds of the map empty and the whole thing is drawn small to fit nothing.
+class ConstellationMetrics {
+  const ConstellationMetrics({
+    this.orbitRadiusX = 152,
+    this.orbitRadiusY = 260,
+    this.ownerRadius = 66,
+    this.planetRadius = 48,
+    this.moonRadius = 31,
+    this.moonOrbit = 100,
+    this.moonSpreadDegrees = 52,
+    this.portRadius = 12,
+    this.portOrbit = 54,
+    this.beadOrbit = 44,
+    this.startDegrees = -90,
+    this.padding = 18,
+  });
+
+  final double orbitRadiusX;
+  final double orbitRadiusY;
+  final double ownerRadius;
+  final double planetRadius;
+  final double moonRadius;
+
+  /// Distance from a planet's centre to its moons' centres. Large enough that a
+  /// visible length of leg shows between the two: the wires are what make this a
+  /// constellation rather than a scatter of circles, and a leg that is five
+  /// pixels long is a leg nobody can see. It also keeps a moon off its planet's
+  /// rim, which on a touch screen would make two different things one target.
+  final double moonOrbit;
+  final double moonSpreadDegrees;
+  final double portRadius;
+  final double portOrbit;
+  final double beadOrbit;
+  final double startDegrees;
+
+  /// Breathing room between the outermost node and the edge of the map.
+  final double padding;
+}
+
+class MoonNode {
+  const MoonNode({
+    required this.kind,
+    required this.unit,
+    required this.center,
+    required this.planetCenter,
+    required this.value,
+    required this.tone,
+    required this.empty,
+  });
+
+  final MoonKind kind;
+  final CompanionUnit unit;
+  final Offset center;
+  final Offset planetCenter;
+  final String value;
+  final CockpitTone tone;
+  final bool empty;
+
+  String get key => '${unit.id}:${kind.name}';
+}
+
+class DevicePortNode {
+  const DevicePortNode({
+    required this.device,
+    required this.unit,
+    required this.center,
+    required this.bodyCenter,
+    required this.active,
+  });
+
+  final CockpitDevice device;
+  final CompanionUnit unit;
+  final Offset center;
+  final Offset bodyCenter;
+
+  /// Whether a live activity currently names this body as origin or target.
+  final bool active;
+}
+
+class ActivityBeadNode {
+  const ActivityBeadNode({
+    required this.activity,
+    required this.unit,
+    required this.center,
+    required this.label,
+    required this.live,
+  });
+
+  final CockpitActivity activity;
+  final CompanionUnit unit;
+  final Offset center;
+  final String label;
+  final bool live;
+}
+
+class PlanetNode {
+  const PlanetNode({
+    required this.unit,
+    required this.center,
+    required this.moons,
+    required this.ports,
+    required this.beads,
+    required this.angle,
+  });
+
+  final CompanionUnit unit;
+  final Offset center;
+  final List<MoonNode> moons;
+  final List<DevicePortNode> ports;
+  final List<ActivityBeadNode> beads;
+
+  /// Radians from the owner core, for anything that needs to point outward.
+  final double angle;
+
+  bool get active => unit.activeActivity != null;
+
+  MoonNode? moon(MoonKind kind) {
+    for (final moon in moons) {
+      if (moon.kind == kind) return moon;
+    }
+    return null;
+  }
+}
+
+class ConstellationLayout {
+  const ConstellationLayout({
+    required this.metrics,
+    required this.ownerCenter,
+    required this.planets,
+    required this.canvas,
+  });
+
+  final ConstellationMetrics metrics;
+  final Offset ownerCenter;
+  final List<PlanetNode> planets;
+
+  /// The map's own size: the bounding box of everything placed on it.
+  final Size canvas;
+
+  Iterable<MoonNode> get moons => planets.expand((planet) => planet.moons);
+  Iterable<DevicePortNode> get ports =>
+      planets.expand((planet) => planet.ports);
+  Iterable<ActivityBeadNode> get beads =>
+      planets.expand((planet) => planet.beads);
+
+  PlanetNode? planet(String companionId) {
+    for (final planet in planets) {
+      if (planet.unit.id == companionId) return planet;
+    }
+    return null;
+  }
+}
+
+const double _deg = math.pi / 180;
+
+/// Build the layout for one snapshot's companions.
+ConstellationLayout buildConstellationLayout({
+  required List<CompanionUnit> units,
+  ConstellationMetrics metrics = const ConstellationMetrics(),
+  DateTime? now,
+}) {
+  final at = now ?? DateTime.now();
+  final count = units.isEmpty ? 1 : units.length;
+
+  // First pass: place everything around an origin at (0, 0).
+  final placements = <_Placement>[];
+  for (var index = 0; index < units.length; index += 1) {
+    final unit = units[index];
+    final angle = (metrics.startDegrees + (index * 360) / count) * _deg;
+    final center = Offset(
+      metrics.orbitRadiusX * math.cos(angle),
+      metrics.orbitRadiusY * math.sin(angle),
+    );
+
+    // Moons fan outward from the core, so the crowded side of a planet always
+    // faces empty sky rather than the sun.
+    final outward = math.atan2(center.dy, center.dx);
+    final moons = <MoonKind, Offset>{};
+    const order = [MoonKind.body, MoonKind.mem, MoonKind.act];
+    for (var slot = 0; slot < order.length; slot += 1) {
+      final moonAngle = outward + (slot - 1) * metrics.moonSpreadDegrees * _deg;
+      moons[order[slot]] = Offset(
+        center.dx + metrics.moonOrbit * math.cos(moonAngle),
+        center.dy + metrics.moonOrbit * math.sin(moonAngle),
+      );
+    }
+
+    final body = moons[MoonKind.body]!;
+    final shown = unit.devices.take(5).toList(growable: false);
+    final ports = <Offset>[];
+    for (var portIndex = 0; portIndex < shown.length; portIndex += 1) {
+      // A fan centred on the body moon's own outward direction: one body sits
+      // straight out, several spread evenly across a 150° arc.
+      final span = shown.length == 1 ? 0.0 : 150.0;
+      final step = shown.length == 1 ? 0.0 : span / (shown.length - 1);
+      final portAngle = outward -
+          metrics.moonSpreadDegrees * _deg +
+          (-span / 2 + step * portIndex) * _deg;
+      ports.add(
+        Offset(
+          body.dx + metrics.portOrbit * math.cos(portAngle),
+          body.dy + metrics.portOrbit * math.sin(portAngle),
+        ),
+      );
+    }
+
+    final activity = moons[MoonKind.act]!;
+    final groups = summarizeActivityBeads(unit.activities, at);
+    final beads = <Offset>[];
+    for (var beadIndex = 0; beadIndex < groups.length; beadIndex += 1) {
+      final beadAngle = outward +
+          metrics.moonSpreadDegrees * _deg +
+          (-42 + beadIndex * 42) * _deg;
+      beads.add(
+        Offset(
+          activity.dx + metrics.beadOrbit * math.cos(beadAngle),
+          activity.dy + metrics.beadOrbit * math.sin(beadAngle),
+        ),
+      );
+    }
+
+    placements.add(
+      _Placement(
+        unit: unit,
+        center: center,
+        angle: outward,
+        moons: moons,
+        ports: ports,
+        beads: beads,
+        devices: shown,
+        groups: groups,
+      ),
+    );
+  }
+
+  // Second pass: the map is the bounding box of what was placed. Each node
+  // contributes its own footprint, so nothing ends up half over the edge.
+  var bounds =
+      Rect.fromCircle(center: Offset.zero, radius: metrics.ownerRadius);
+  Rect grow(Rect box, Offset point, double radius) =>
+      box.expandToInclude(Rect.fromCircle(center: point, radius: radius));
+  for (final placement in placements) {
+    bounds = grow(bounds, placement.center, metrics.planetRadius);
+    for (final moon in placement.moons.values) {
+      bounds = grow(bounds, moon, metrics.moonRadius);
+    }
+    for (final port in placement.ports) {
+      bounds = grow(bounds, port, metrics.portRadius);
+    }
+    for (final bead in placement.beads) {
+      // A bead is a pill, wider than tall; its width is bounded by the label.
+      bounds = bounds.expandToInclude(
+        Rect.fromCenter(center: bead, width: 64, height: 22),
+      );
+    }
+  }
+  bounds = bounds.inflate(metrics.padding);
+  final shift = -bounds.topLeft;
+
+  final planets = <PlanetNode>[];
+  for (final placement in placements) {
+    final unit = placement.unit;
+    final center = placement.center + shift;
+    final moons = <MoonNode>[];
+    for (final kind in const [MoonKind.body, MoonKind.mem, MoonKind.act]) {
+      final facts = moonFacts(unit, kind);
+      moons.add(
+        MoonNode(
+          kind: kind,
+          unit: unit,
+          center: placement.moons[kind]! + shift,
+          planetCenter: center,
+          value: facts.value,
+          tone: facts.tone,
+          empty: facts.empty,
+        ),
+      );
+    }
+    final body = moons.firstWhere((moon) => moon.kind == MoonKind.body);
+    final activeDeviceIds = <String>{
+      for (final activity in unit.activities)
+        if (isActiveActivity(activity)) ...[
+          activity.originDeviceId,
+          ...activity.targetDeviceIds,
+        ],
+    }..removeWhere((id) => id.isEmpty);
+
+    final ports = <DevicePortNode>[];
+    for (var index = 0; index < placement.devices.length; index += 1) {
+      final device = placement.devices[index];
+      ports.add(
+        DevicePortNode(
+          device: device,
+          unit: unit,
+          center: placement.ports[index] + shift,
+          bodyCenter: body.center,
+          active: activeDeviceIds.contains(device.deviceId),
+        ),
+      );
+    }
+
+    final beads = <ActivityBeadNode>[];
+    for (var index = 0; index < placement.groups.length; index += 1) {
+      final group = placement.groups[index];
+      beads.add(
+        ActivityBeadNode(
+          activity: group.activity,
+          unit: unit,
+          center: placement.beads[index] + shift,
+          label: group.label,
+          live: isActiveActivity(group.activity),
+        ),
+      );
+    }
+
+    planets.add(
+      PlanetNode(
+        unit: unit,
+        center: center,
+        moons: moons,
+        ports: ports,
+        beads: beads,
+        angle: placement.angle,
+      ),
+    );
+  }
+
+  return ConstellationLayout(
+    metrics: metrics,
+    ownerCenter: shift,
+    planets: planets,
+    canvas: bounds.size,
+  );
+}
+
+/// One companion's raw geometry, before the map is centred on its own contents.
+class _Placement {
+  const _Placement({
+    required this.unit,
+    required this.center,
+    required this.angle,
+    required this.moons,
+    required this.ports,
+    required this.beads,
+    required this.devices,
+    required this.groups,
+  });
+
+  final CompanionUnit unit;
+  final Offset center;
+  final double angle;
+  final Map<MoonKind, Offset> moons;
+  final List<Offset> ports;
+  final List<Offset> beads;
+  final List<CockpitDevice> devices;
+  final List<ActivityBeadGroup> groups;
+}
+
+/// What one moon says, in the two or three words it has room for.
+class MoonFacts {
+  const MoonFacts({
+    required this.value,
+    required this.tone,
+    required this.empty,
+  });
+
+  final String value;
+  final CockpitTone tone;
+  final bool empty;
+}
+
+MoonFacts moonFacts(CompanionUnit unit, MoonKind kind) {
+  switch (kind) {
+    case MoonKind.body:
+      final total = unit.devices.length;
+      if (total == 0) {
+        return const MoonFacts(
+          value: '未绑定',
+          tone: CockpitTone.off,
+          empty: true,
+        );
+      }
+      return MoonFacts(
+        value: total == 1 ? deviceTypeLabel(unit.devices.first) : '$total 个身体',
+        tone: unit.devices.any((device) => device.online)
+            ? CockpitTone.ok
+            : CockpitTone.idle,
+        empty: false,
+      );
+    case MoonKind.mem:
+      if (unit.realm.isEmpty) {
+        return const MoonFacts(
+          value: '无空间',
+          tone: CockpitTone.off,
+          empty: true,
+        );
+      }
+      final recall = unit.companion.recallHits;
+      return MoonFacts(
+        value: recall == null ? '已配置' : '$recall 召回',
+        tone: CockpitTone.ok,
+        empty: false,
+      );
+    case MoonKind.act:
+      final active = unit.activeActivity;
+      if (active != null) {
+        return MoonFacts(
+          value: activityKindLabel(active.kind),
+          tone: CockpitTone.live,
+          empty: false,
+        );
+      }
+      if (unit.activities.isEmpty) {
+        return const MoonFacts(value: '空闲', tone: CockpitTone.off, empty: true);
+      }
+      return MoonFacts(
+        value: '${unit.activities.length} 条',
+        tone: unit.activities.any((item) => item.outcome == 'failure')
+            ? CockpitTone.bad
+            : CockpitTone.ok,
+        empty: false,
+      );
+  }
+}
+
+/// A companion's runtime state, in the one line its planet can hold.
+class RuntimeBadge {
+  const RuntimeBadge({required this.text, required this.tone});
+
+  final String text;
+  final CockpitTone tone;
+}
+
+RuntimeBadge runtimeBadge(CompanionUnit unit) {
+  final activity = unit.activeActivity;
+  if (activity != null) {
+    if (activity.kind == 'voice_turn') {
+      final latency = unit.activeVoiceTurn?.latencyMs;
+      return RuntimeBadge(
+        text: latency == null ? '对话中' : '对话中 · ${formatLatency(latency)}',
+        tone: CockpitTone.live,
+      );
+    }
+    final hop = currentActivityHop(activity);
+    return RuntimeBadge(
+      text:
+          '${activityKindLabel(activity.kind)} · ${hop?.label ?? activity.status}',
+      tone: CockpitTone.live,
+    );
+  }
+  if (unit.jobs.isNotEmpty) {
+    return RuntimeBadge(
+        text: '${unit.jobs.length} 个任务', tone: CockpitTone.warn);
+  }
+  return const RuntimeBadge(text: '空闲', tone: CockpitTone.idle);
+}
+
+/// The activity beads one planet shows: live ones first, then the most recent,
+/// capped at three so a busy companion does not bury its own planet.
+class ActivityBeadGroup {
+  const ActivityBeadGroup({required this.activity, required this.label});
+
+  final CockpitActivity activity;
+  final String label;
+}
+
+List<ActivityBeadGroup> summarizeActivityBeads(
+  List<CockpitActivity> activities,
+  DateTime now,
+) {
+  final ordered = [...activities]..sort((a, b) {
+      final liveA = isActiveActivity(a) ? 0 : 1;
+      final liveB = isActiveActivity(b) ? 0 : 1;
+      if (liveA != liveB) return liveA - liveB;
+      final atA = a.updatedAt ?? a.startedAt ?? now;
+      final atB = b.updatedAt ?? b.startedAt ?? now;
+      return atB.compareTo(atA);
+    });
+  return ordered
+      .take(3)
+      .map(
+        (activity) => ActivityBeadGroup(
+          activity: activity,
+          label: activityKindLabel(activity.kind),
+        ),
+      )
+      .toList(growable: false);
+}
