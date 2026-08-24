@@ -12,6 +12,8 @@ class ManagementV1 {
   static const String companionsPath = '/api/management/v1/companions';
   static String companionsByCompanionIdPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}';
   static const String contextPath = '/api/management/v1/context';
+  static const String memoryForgetConfirmPath = '/api/management/v1/memory/forget/confirm';
+  static const String memoryForgetPreviewPath = '/api/management/v1/memory/forget/preview';
   static const String memoryLibraryPath = '/api/management/v1/memory/library';
   static const String ownerDefaultCompanionPath = '/api/management/v1/owner/default-companion';
 }
@@ -214,6 +216,136 @@ class DefaultCompanionView {
     return DefaultCompanionView(
       contractVersion: value['contract_version'] as String?,
       defaultCompanionId: value['default_companion_id'] as String?,
+    );
+  }
+}
+
+class ForgetConfirmRequest {
+  const ForgetConfirmRequest({
+    required this.confirmationToken,
+  });
+
+  final String confirmationToken;
+
+  factory ForgetConfirmRequest.fromJson(Map<String, dynamic> value) {
+    return ForgetConfirmRequest(
+      confirmationToken: value['confirmation_token'] as String,
+    );
+  }
+}
+
+class ForgetEntryView {
+  const ForgetEntryView({
+    required this.entryId,
+    this.preview,
+    required this.score,
+  });
+
+  final String entryId;
+
+  final String? preview;
+
+  final double score;
+
+  factory ForgetEntryView.fromJson(Map<String, dynamic> value) {
+    return ForgetEntryView(
+      entryId: value['entry_id'] as String,
+      preview: value['preview'] as String?,
+      score: value['score'] as double,
+    );
+  }
+}
+
+class ForgetProposalView {
+  const ForgetProposalView({
+    this.action,
+    this.confirmationToken,
+    this.contractVersion,
+    this.detail,
+    required this.entries,
+    this.expiresAt,
+    required this.needsConfirmation,
+    required this.status,
+    required this.target,
+  });
+
+  final String? action;
+
+  final String? confirmationToken;
+
+  final String? contractVersion;
+
+  final String? detail;
+
+  final List<ForgetEntryView> entries;
+
+  final int? expiresAt;
+
+  final bool needsConfirmation;
+
+  final String status;
+
+  final String target;
+
+  factory ForgetProposalView.fromJson(Map<String, dynamic> value) {
+    return ForgetProposalView(
+      action: value['action'] as String?,
+      confirmationToken: value['confirmation_token'] as String?,
+      contractVersion: value['contract_version'] as String?,
+      detail: value['detail'] as String?,
+      entries: ((value['entries'] as List<dynamic>).map((entry) => ForgetEntryView.fromJson(entry as Map<String, dynamic>)).toList()),
+      expiresAt: value['expires_at'] as int?,
+      needsConfirmation: value['needs_confirmation'] as bool,
+      status: value['status'] as String,
+      target: value['target'] as String,
+    );
+  }
+}
+
+class ForgetResultView {
+  const ForgetResultView({
+    required this.action,
+    this.contractVersion,
+    required this.entryCount,
+    required this.status,
+    required this.target,
+  });
+
+  final String action;
+
+  final String? contractVersion;
+
+  final int entryCount;
+
+  final String status;
+
+  final String target;
+
+  factory ForgetResultView.fromJson(Map<String, dynamic> value) {
+    return ForgetResultView(
+      action: value['action'] as String,
+      contractVersion: value['contract_version'] as String?,
+      entryCount: value['entry_count'] as int,
+      status: value['status'] as String,
+      target: value['target'] as String,
+    );
+  }
+}
+
+class ForgetTargetRequest {
+  const ForgetTargetRequest({
+    this.action,
+    required this.target,
+  });
+
+  final String? action;
+
+  final String target;
+
+  factory ForgetTargetRequest.fromJson(Map<String, dynamic> value) {
+    return ForgetTargetRequest(
+      action: value['action'] as String?,
+      target: value['target'] as String,
     );
   }
 }

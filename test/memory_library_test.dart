@@ -203,6 +203,91 @@ void main() {
   });
 
   group('the memory library screen', () {
+    ManagementContextView context({bool canGovern = true}) =>
+        ManagementContextView.fromJson({
+          'contract_version': '1',
+          'owner': {
+            'owner_id': 'owner-1',
+            'display_name': 'Manson',
+            'revision': 3,
+          },
+          'default_companion_id': 'companion-a',
+          'capabilities': {'memory.read': true, 'memory.govern': canGovern},
+          'limits': {'max_active_companions': null},
+        });
+
+    testWidgets('offers forgetting only where the Host says it can govern',
+        (tester) async {
+      // A visible dead control is a promise the Host has not made.
+      for (final allowed in [true, false]) {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MemoryLibraryScreen(
+              key: ValueKey(allowed),
+              load: () async => library(),
+              loadContext: () async => context(canGovern: allowed),
+              previewForget: (_) async => throw StateError('not asked'),
+              confirmForget: (_) async => throw StateError('not asked'),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('memory-library-forget')),
+          allowed ? findsOneWidget : findsNothing,
+          reason: 'capability was $allowed',
+        );
+      }
+    });
+
+    testWidgets('re-reads the library after something is forgotten',
+        (tester) async {
+      // A stale library after a deletion is the moment a person stops trusting
+      // this screen, so the Host is asked again rather than the list patched.
+      var reads = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MemoryLibraryScreen(
+            load: () async {
+              reads++;
+              return library();
+            },
+            loadContext: () async => context(),
+            previewForget: (_) async => ForgetProposalView.fromJson({
+              'contract_version': '1',
+              'status': 'preview',
+              'target': 'x',
+              'action': 'delete',
+              'entries': [
+                {'entry_id': 'drawer_1', 'preview': 'x', 'score': 1.0},
+              ],
+              'needs_confirmation': false,
+              'confirmation_token': 'opaque',
+              'expires_at': 1900000000,
+              'detail': '',
+            }),
+            confirmForget: (_) async => ForgetResultView.fromJson({
+              'contract_version': '1',
+              'action': 'delete',
+              'target': 'x',
+              'entry_count': 1,
+              'status': 'applied',
+            }),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(reads, 1);
+
+      await tester.tap(find.byKey(const Key('memory-library-forget')));
+      await tester.pumpAndSettle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(reads, 2);
+    });
+
     testWidgets('a memory that could not be read is not shown as an empty one',
         (tester) async {
       // "它还没记下什么" and "我读不到" are different sentences, and only one of

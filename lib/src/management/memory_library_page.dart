@@ -20,7 +20,12 @@ import '../generated/management_v1.dart';
 /// - **A category the Host cannot name gets this app's word for it**, never the
 ///   identifier. Nobody ever called a memory `Wing_FromALaterRelease`.
 class MemoryLibraryPage extends StatelessWidget {
-  const MemoryLibraryPage({super.key, required this.library, this.onOpenRoom});
+  const MemoryLibraryPage({
+    super.key,
+    required this.library,
+    this.onOpenRoom,
+    this.onForget,
+  });
 
   final MemoryLibraryView library;
 
@@ -28,12 +33,28 @@ class MemoryLibraryPage extends StatelessWidget {
   /// opening something that cannot fill itself.
   final void Function(MemoryWingView wing, MemoryRoomView room)? onOpenRoom;
 
+  /// Offered only where the Host says it can govern this memory at all. Null
+  /// hides the action rather than disabling it: a visible dead control is a
+  /// promise the Host has not made.
+  final VoidCallback? onForget;
+
   @override
   Widget build(BuildContext context) {
     final wings = library.wings;
     return Scaffold(
       key: const Key('memory-library-page'),
-      appBar: AppBar(title: const Text('它记住的')),
+      appBar: AppBar(
+        title: const Text('它记住的'),
+        actions: [
+          if (onForget != null)
+            IconButton(
+              key: const Key('memory-library-forget'),
+              onPressed: onForget,
+              tooltip: '让它忘掉',
+              icon: const Icon(Icons.delete_outline),
+            ),
+        ],
+      ),
       body: wings.isEmpty
           ? const Center(
               key: Key('memory-library-empty'),

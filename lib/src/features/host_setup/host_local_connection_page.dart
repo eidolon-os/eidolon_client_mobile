@@ -254,7 +254,13 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   /// for.
   Future<void> _openMemoryLibrary() => Navigator.of(context).push<void>(
         MaterialPageRoute(
-          builder: (_) => MemoryLibraryScreen(load: _controller.memoryLibrary),
+          builder: (_) => MemoryLibraryScreen(
+            load: _controller.memoryLibrary,
+            loadContext: _controller.managementContext,
+            previewForget: (target) => _controller.previewForget(target: target),
+            confirmForget: (token) =>
+                _controller.confirmForget(confirmationToken: token),
+          ),
         ),
       );
 

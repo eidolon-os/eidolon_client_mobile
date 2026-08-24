@@ -412,6 +412,17 @@ class HostProductController extends ChangeNotifier {
   Future<MemoryLibraryView> memoryLibrary({String? companionId}) =>
       _managementRepository.memoryLibrary(companionId: companionId);
 
+  /// What forgetting [target] would remove. Nothing changes.
+  Future<ForgetProposalView> previewForget({
+    required String target,
+    String? action,
+  }) =>
+      _managementRepository.previewForget(target: target, action: action);
+
+  /// Forget exactly what a preview showed.
+  Future<ForgetResultView> confirmForget({required String confirmationToken}) =>
+      _managementRepository.confirmForget(confirmationToken: confirmationToken);
+
   /// What this Host says it can do at all, for the authenticated Owner.
   Future<ManagementContextView> managementContext() =>
       _managementRepository.context();

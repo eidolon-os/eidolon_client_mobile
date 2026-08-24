@@ -193,6 +193,48 @@ class ManagementClient {
     return MemoryLibraryView.fromJson(body);
   }
 
+  /// What forgetting this would remove. Nothing changes.
+  ///
+  /// Two steps because a topic is not a set. The Host resolves the words once,
+  /// shows what it found, and binds *that* into a token; the confirm acts on the
+  /// token. Between the two the words could match something else, and acting on
+  /// that would remove what the person never saw.
+  Future<ForgetProposalView> previewForget(
+    Uri baseUri, {
+    required String accessToken,
+    required String target,
+    String? action,
+  }) async {
+    final body = await _send(
+      'POST',
+      baseUri.resolve(ManagementV1.memoryForgetPreviewPath),
+      accessToken: accessToken,
+      what: '查看会忘掉什么',
+      body: {'target': target, if (action != null) 'action': action},
+    );
+    return ForgetProposalView.fromJson(body);
+  }
+
+  /// Forget exactly what a preview showed.
+  ///
+  /// [confirmationToken] is passed back unread. This app cannot interpret it and
+  /// must not try to build one: it is what ties the decision to the entries the
+  /// person actually looked at.
+  Future<ForgetResultView> confirmForget(
+    Uri baseUri, {
+    required String accessToken,
+    required String confirmationToken,
+  }) async {
+    final body = await _send(
+      'POST',
+      baseUri.resolve(ManagementV1.memoryForgetConfirmPath),
+      accessToken: accessToken,
+      what: '忘掉它',
+      body: {'confirmation_token': confirmationToken},
+    );
+    return ForgetResultView.fromJson(body);
+  }
+
   Future<Map<String, dynamic>> _get(
     Uri endpoint, {
     required String accessToken,

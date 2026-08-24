@@ -1035,37 +1035,50 @@ void main() {
             _hostOverview(workspaceState: 'ready'),
             workspaceReady: true,
           ),
+          // Answers per path: the library screen reads /context first, to learn
+          // whether this Host can govern memory before drawing the action.
           managementClientFactory: (_) => ManagementClient(
-            httpClient: MockClient(
-              (_) async => http.Response.bytes(
-                utf8.encode(
-                  jsonEncode({
-                    'contract_version': '1',
-                    'wings': [
-                      {
-                        'wing_id': 'Wing_Life',
-                        'display_name': '生活',
-                        'description': '',
-                        'entry_count': 1,
-                        'rooms': [
-                          {
-                            'room_id': '饮食',
-                            'entry_count': 1,
-                            'titles': ['乌龙茶'],
-                            'more': false,
-                          },
-                        ],
+            httpClient: MockClient((request) async {
+              final body = request.url.path.endsWith('/context')
+                  ? {
+                      'contract_version': '1',
+                      'owner': {
+                        'owner_id': 'owner-1',
+                        'display_name': 'Manson',
+                        'revision': 3,
                       },
-                    ],
-                    'entry_count': 1,
-                    'withheld_count': 0,
-                    'truncated': false,
-                  }),
-                ),
+                      'default_companion_id': 'companion-a',
+                      'capabilities': {'memory.read': true},
+                      'limits': {'max_active_companions': null},
+                    }
+                  : {
+                      'contract_version': '1',
+                      'wings': [
+                        {
+                          'wing_id': 'Wing_Life',
+                          'display_name': '生活',
+                          'description': '',
+                          'entry_count': 1,
+                          'rooms': [
+                            {
+                              'room_id': '饮食',
+                              'entry_count': 1,
+                              'titles': ['乌龙茶'],
+                              'more': false,
+                            },
+                          ],
+                        },
+                      ],
+                      'entry_count': 1,
+                      'withheld_count': 0,
+                      'truncated': false,
+                    };
+              return http.Response.bytes(
+                utf8.encode(jsonEncode(body)),
                 200,
                 headers: const {'content-type': 'application/json'},
-              ),
-            ),
+              );
+            }),
           ),
           onHostUpdated: (_) async {},
         ),

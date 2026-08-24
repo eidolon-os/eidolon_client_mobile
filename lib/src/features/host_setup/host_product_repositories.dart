@@ -239,6 +239,30 @@ class HostManagementRepository {
         ),
       );
 
+  /// What forgetting [target] would remove. Nothing changes.
+  Future<ForgetProposalView> previewForget({
+    required String target,
+    String? action,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.previewForget(
+          baseUri,
+          accessToken: accessToken,
+          target: target,
+          action: action,
+        ),
+      );
+
+  /// Forget exactly what a preview showed. The token is passed back unread.
+  Future<ForgetResultView> confirmForget({required String confirmationToken}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.confirmForget(
+          baseUri,
+          accessToken: accessToken,
+          confirmationToken: confirmationToken,
+        ),
+      );
+
   /// Make one of them the default. Returns where the pointer ended up.
   Future<CompanionDetailOutcome> setDefaultCompanion({
     required String companionId,
