@@ -1,3 +1,5 @@
+import '../../protocol/companion_contract.dart';
+
 // The view model the constellation is drawn from.
 //
 // It is deliberately the console cockpit's information model — Owner ▸
@@ -597,32 +599,23 @@ CockpitTone devicePresenceTone(CockpitDevice device) {
   return CockpitTone.idle;
 }
 
-/// What a Companion's lifecycle means on screen.
+/// How a Companion's lifecycle reads in this cockpit's palette.
 ///
-/// `active` is the only one of the four that is running. The other three are
-/// each a different kind of "not running", and collapsing them into one idle
-/// grey — which is what a generic status-to-tone mapping does — loses the
-/// distinction an Owner most needs: whether their Companion is on its way out,
-/// already put away, or being destroyed.
-String companionLifecycleLabel(String state) => switch (state) {
-      'active' => '在册',
-      'retiring' => '退役中',
-      'archived' => '已归档',
-      'deleting' => '删除中',
-      // An unfamiliar value is carried, not guessed at: this app is routinely
-      // older than the Host beside it.
-      _ => state.isEmpty ? '未知' : state,
-    };
-
+/// The words and the vocabulary live in `protocol/companion_contract.dart`,
+/// shared with the management surface. Only the tone is here, because a tone is
+/// this surface's own decision and the protocol layer has no business knowing
+/// about a cockpit palette.
+///
+/// Three of the four values mean "not running", and they are not the same thing
+/// to an Owner: on its way out, already put away, being destroyed. A generic
+/// status-to-tone mapping collapses all three into one idle grey.
 CockpitTone companionLifecycleTone(String state) => switch (state) {
-      'active' => CockpitTone.ok,
-      // In transition, and the Owner may want to stop it.
-      'retiring' || 'deleting' => CockpitTone.warn,
-      'archived' => CockpitTone.off,
+      lifecycleActive => CockpitTone.ok,
+      // In transition, and the Owner may still want to stop it.
+      lifecycleRetiring || lifecycleDeleting => CockpitTone.warn,
+      lifecycleArchived => CockpitTone.off,
       _ => CockpitTone.idle,
     };
-
-bool isCompanionActive(String state) => state == 'active';
 
 String genomeStateLabel(String genomeId) => genomeId.isEmpty ? '未绑定' : '已绑定';
 

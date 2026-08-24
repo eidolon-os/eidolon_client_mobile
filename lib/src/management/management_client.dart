@@ -11,7 +11,8 @@ import '../generated/management_v1.dart';
 /// Host has not been given an Owner yet" from "the authority behind it is
 /// down", and a screen keyed on the code has to offer one guess for both.
 class ManagementRequestException implements Exception {
-  const ManagementRequestException(this.message, {this.statusCode, this.reason});
+  const ManagementRequestException(this.message,
+      {this.statusCode, this.reason});
 
   final String message;
   final int? statusCode;
@@ -224,7 +225,8 @@ class ManagementClient {
   /// would turn an Eidolon named 小忆 into mojibake — silently, because latin-1
   /// decoding never fails. Reading the bytes is one line and removes the
   /// question, which is also what the older Local API client does.
-  static String _text(http.Response response) => utf8.decode(response.bodyBytes);
+  static String _text(http.Response response) =>
+      utf8.decode(response.bodyBytes);
 
   /// The Host's own words, when it gave any.
   static String? _reason(String body) {

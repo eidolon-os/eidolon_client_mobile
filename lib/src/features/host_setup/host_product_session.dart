@@ -475,7 +475,8 @@ class HostProductSession {
         ),
       );
 
-  static ManagementClient _platformManagementClientFactory(String fingerprint) =>
+  static ManagementClient _platformManagementClientFactory(
+          String fingerprint) =>
       ManagementClient(
         httpClient: PlatformPinnedHttpClient(
           tlsSpkiFingerprint: fingerprint,

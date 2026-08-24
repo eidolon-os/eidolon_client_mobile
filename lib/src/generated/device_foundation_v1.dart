@@ -62,9 +62,8 @@ class OwnerDomainDescriptorV1 {
         !expiresAt.isAfter(issuedAt)) {
       throw const FormatException('Invalid Owner Domain descriptor');
     }
-    final trustRoots = roots
-        .map((item) => _digest(item))
-        .toList(growable: false);
+    final trustRoots =
+        roots.map((item) => _digest(item)).toList(growable: false);
     if (trustRoots.toSet().length != trustRoots.length) {
       throw const FormatException('Duplicate Owner root reference');
     }
@@ -73,16 +72,14 @@ class OwnerDomainDescriptorV1 {
       ownerDomainGeneration: ownerDomainGeneration,
       directoryRevision: revision,
       trustRootRefs: trustRoots,
-      endpoints: rawEndpoints
-          .map((item) {
-            if (item is! Map) {
-              throw const FormatException('Invalid Authority endpoint');
-            }
-            return AuthorityEndpointV1.fromJson(
-              Map<String, dynamic>.from(item),
-            );
-          })
-          .toList(growable: false),
+      endpoints: rawEndpoints.map((item) {
+        if (item is! Map) {
+          throw const FormatException('Invalid Authority endpoint');
+        }
+        return AuthorityEndpointV1.fromJson(
+          Map<String, dynamic>.from(item),
+        );
+      }).toList(growable: false),
       issuedAt: value['issued_at']! as String,
       expiresAt: value['expires_at']! as String,
       signingKeyId: _digest(value['signing_key_id']),
@@ -91,16 +88,17 @@ class OwnerDomainDescriptorV1 {
   }
 
   Map<String, dynamic> toJson() => {
-    'owner_domain_id': ownerDomainId,
-    'owner_domain_generation': ownerDomainGeneration,
-    'directory_revision': directoryRevision,
-    'trust_root_refs': trustRootRefs,
-    'endpoints': endpoints.map((item) => item.toJson()).toList(growable: false),
-    'issued_at': issuedAt,
-    'expires_at': expiresAt,
-    'signing_key_id': signingKeyId,
-    'signature': signature,
-  };
+        'owner_domain_id': ownerDomainId,
+        'owner_domain_generation': ownerDomainGeneration,
+        'directory_revision': directoryRevision,
+        'trust_root_refs': trustRootRefs,
+        'endpoints':
+            endpoints.map((item) => item.toJson()).toList(growable: false),
+        'issued_at': issuedAt,
+        'expires_at': expiresAt,
+        'signing_key_id': signingKeyId,
+        'signature': signature,
+      };
 }
 
 class AuthorityEndpointV1 {
@@ -160,12 +158,12 @@ class AuthorityEndpointV1 {
   }
 
   Map<String, dynamic> toJson() => {
-    'authority': authority,
-    'logical_audience': logicalAudience,
-    'uri': uri.toString(),
-    'transport_profile': transportProfile,
-    'priority': priority,
-  };
+        'authority': authority,
+        'logical_audience': logicalAudience,
+        'uri': uri.toString(),
+        'transport_profile': transportProfile,
+        'priority': priority,
+      };
 }
 
 enum DeviceLocalEraseStateV1 {
@@ -427,12 +425,12 @@ class CommissioningTerminalAckV1 {
   final int observedStateRevision;
 
   Map<String, dynamic> toJson() => {
-    'contract': 'eidolon.device-foundation.commissioning-terminal-ack',
-    'contract_version': '1.0',
-    'session_id': sessionId,
-    'setup_generation': setupGeneration,
-    'observed_state_revision': observedStateRevision,
-  };
+        'contract': 'eidolon.device-foundation.commissioning-terminal-ack',
+        'contract_version': '1.0',
+        'session_id': sessionId,
+        'setup_generation': setupGeneration,
+        'observed_state_revision': observedStateRevision,
+      };
 }
 
 String _text(Object? value, int maximum) {

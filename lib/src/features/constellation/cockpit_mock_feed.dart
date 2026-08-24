@@ -1,3 +1,4 @@
+import '../../protocol/companion_contract.dart';
 import 'dart:async';
 
 import 'cockpit_feed.dart';
@@ -436,7 +437,7 @@ class _MockWorld {
         // fiction a mock is supposed to avoid.
         companionId: _third,
         displayName: '临渊',
-        status: 'archived',
+        status: lifecycleArchived,
         genomeId: '',
         realmId: '',
       ),

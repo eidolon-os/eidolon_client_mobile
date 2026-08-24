@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:eidolon_client_mobile/src/features/constellation/cockpit_models.dart';
 import 'package:eidolon_client_mobile/src/features/constellation/constellation_geometry.dart';
-import 'package:eidolon_client_mobile/src/protocol/mission_control_contract.dart';
+import 'package:eidolon_client_mobile/src/protocol/companion_contract.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The Companion lifecycle vocabulary, checked against its single definition.
@@ -72,6 +72,17 @@ void main() {
     expect(companionLifecycleStates, _producerStates(file));
   });
 
+  test('同一套词有两种语域:句子给行,短标给徽标', () {
+    // management 的行和星图的徽标不是两套词,是同一套词的两种长度。
+    expect(companionLifecycleSentence('archived'), '你已归档，记忆还留着');
+    expect(companionLifecycleLabel('archived'), '已归档');
+    for (final state in companionLifecycleStates) {
+      expect(companionLifecycleLabel(state).length, lessThanOrEqualTo(4),
+          reason: '$state 的短标塞不进徽标');
+      expect(companionLifecycleSentence(state), isNotEmpty);
+    }
+  });
+
   test('这四个值都能被说成人话，并且各有自己的色调', () {
     // 三个「不在运行」不能都塌成同一片灰：正在退役、已经归档、正在删除，
     // 对主人是三件不同的事。
@@ -85,8 +96,13 @@ void main() {
     expect(companionLifecycleTone('deleting'), CockpitTone.warn);
     expect(companionLifecycleTone('archived'), CockpitTone.off);
 
-    // 不认识的值照常携带，不猜成 active。
-    expect(companionLifecycleLabel('something-new'), 'something-new');
+    // 不认识的值:两种语域都说「不认识」,既不原样显示也不当成 active ——
+    // 这条规则是 management 那条线定的,这里跟着它,不另立一套。
+    expect(companionLifecycleLabel('something-new'), '未知状态');
+    expect(
+      companionLifecycleSentence('something-new'),
+      '这台 Host 说的状态，这个版本还不认识',
+    );
     expect(companionLifecycleTone('something-new'), CockpitTone.idle);
     expect(isCompanionActive('something-new'), isFalse);
   });

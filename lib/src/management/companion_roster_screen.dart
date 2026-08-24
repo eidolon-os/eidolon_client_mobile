@@ -247,8 +247,9 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
                         ),
                       ),
                     ),
-            onLoadMore:
-                roster.nextCursor == null ? null : () => _read(cursor: roster.nextCursor),
+            onLoadMore: roster.nextCursor == null
+                ? null
+                : () => _read(cursor: roster.nextCursor),
             onMakeDefault: widget.setDefaultCompanion == null ||
                     _context == null ||
                     !hostCan(_context!, 'companion.set_default')
@@ -287,7 +288,8 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
                   children: [
                     Text(
                       _error is ManagementRequestException &&
-                              (_error as ManagementRequestException).hostHasNoOwner
+                              (_error as ManagementRequestException)
+                                  .hostHasNoOwner
                           // A Host nobody owns yet. Not "you have none": there
                           // is no Owner to have any, and the way forward is
                           // setup rather than a create button.

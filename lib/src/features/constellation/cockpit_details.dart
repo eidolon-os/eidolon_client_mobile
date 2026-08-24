@@ -1,3 +1,4 @@
+import '../../protocol/companion_contract.dart';
 import 'package:flutter/material.dart';
 
 import 'cockpit_models.dart';

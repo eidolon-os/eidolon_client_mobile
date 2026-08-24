@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
 import 'management_client.dart';
+import '../protocol/companion_contract.dart';
 
 /// One Eidolon, opened from the roster.
 ///
@@ -89,7 +90,9 @@ class _CompanionDetailScreenState extends State<CompanionDetailScreen> {
                       // answer when the id never existed. Saying more would
                       // turn this screen into a way to test identifiers.
                       _error is ManagementRequestException &&
-                              (_error as ManagementRequestException).statusCode == 404
+                              (_error as ManagementRequestException)
+                                      .statusCode ==
+                                  404
                           ? '这台主机上没有这个 Eidolon'
                           : '$_error',
                       textAlign: TextAlign.center,
@@ -129,7 +132,7 @@ class _CompanionDetailScreenState extends State<CompanionDetailScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                Text(_lifecycleSentence(companion.lifecycleState)),
+                Text(companionLifecycleSentence(companion.lifecycleState)),
                 const SizedBox(height: 6),
                 Text(
                   _kindSentence(companion.kind),
@@ -141,21 +144,6 @@ class _CompanionDetailScreenState extends State<CompanionDetailScreen> {
         ),
       ],
     );
-  }
-}
-
-String _lifecycleSentence(String lifecycleState) {
-  switch (lifecycleState) {
-    case 'active':
-      return '在这台 Host 上运行';
-    case 'retiring':
-      return '正在退出，暂时还在';
-    case 'archived':
-      return '你已归档，记忆还留着';
-    case 'deleting':
-      return '正在删除';
-    default:
-      return '这台 Host 说的状态，这个版本还不认识';
   }
 }
 

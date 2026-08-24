@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
+import '../protocol/companion_contract.dart';
 
 /// Everything this Owner has, on one screen.
 ///
@@ -105,39 +106,39 @@ class CompanionRosterPage extends StatelessWidget {
 
   Widget _list(List<CompanionSummaryView> rows) {
     return rows.isEmpty
-          ? const Center(
-              key: Key('roster-empty'),
-              // Said plainly rather than as an error. An Owner with none is a
-              // real state, and it is not the same as a Host that could not
-              // answer — that case never reaches this widget.
-              child: Text('这里还没有 Eidolon'),
-            )
-          : ListView.separated(
-              key: const Key('roster-list'),
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: rows.length + (onLoadMore == null ? 0 : 1),
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                if (index == rows.length) {
-                  return Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: OutlinedButton(
-                      key: const Key('roster-load-more'),
-                      onPressed: onLoadMore,
-                      child: const Text('看更多'),
-                    ),
-                  );
-                }
-                final companion = rows[index];
-                return _RosterRow(
-                  companion: companion,
-                  isDefault: companion.companionId == roster.defaultCompanionId,
-                  onOpen: onOpen,
-                  onMakeDefault: onMakeDefault,
-                  busy: busyCompanionId == companion.companionId,
+        ? const Center(
+            key: Key('roster-empty'),
+            // Said plainly rather than as an error. An Owner with none is a
+            // real state, and it is not the same as a Host that could not
+            // answer — that case never reaches this widget.
+            child: Text('这里还没有 Eidolon'),
+          )
+        : ListView.separated(
+            key: const Key('roster-list'),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: rows.length + (onLoadMore == null ? 0 : 1),
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              if (index == rows.length) {
+                return Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: OutlinedButton(
+                    key: const Key('roster-load-more'),
+                    onPressed: onLoadMore,
+                    child: const Text('看更多'),
+                  ),
                 );
-              },
-            );
+              }
+              final companion = rows[index];
+              return _RosterRow(
+                companion: companion,
+                isDefault: companion.companionId == roster.defaultCompanionId,
+                onOpen: onOpen,
+                onMakeDefault: onMakeDefault,
+                busy: busyCompanionId == companion.companionId,
+              );
+            },
+          );
   }
 }
 
@@ -163,7 +164,7 @@ class _RosterRow extends StatelessWidget {
   bool get _offerDefault =>
       onMakeDefault != null &&
       !isDefault &&
-      companion.lifecycleState == 'active';
+      isCompanionActive(companion.lifecycleState);
 
   @override
   Widget build(BuildContext context) {
@@ -187,7 +188,7 @@ class _RosterRow extends StatelessWidget {
             ),
         ],
       ),
-      subtitle: Text(_lifecycleSentence(companion.lifecycleState)),
+      subtitle: Text(companionLifecycleSentence(companion.lifecycleState)),
       trailing: _trailing(),
       onTap: onOpen == null ? null : () => onOpen!(companion),
     );
@@ -215,20 +216,3 @@ class _RosterRow extends StatelessWidget {
 
 /// What a state means to the person, not what the column says.
 ///
-/// A value this app has never seen is described as unknown rather than shown
-/// raw or treated as active: the Host is entitled to grow this set, and a row
-/// must stay readable when it does.
-String _lifecycleSentence(String lifecycleState) {
-  switch (lifecycleState) {
-    case 'active':
-      return '在这台 Host 上运行';
-    case 'retiring':
-      return '正在退出，暂时还在';
-    case 'archived':
-      return '你已归档，记忆还留着';
-    case 'deleting':
-      return '正在删除';
-    default:
-      return '这台 Host 说的状态，这个版本还不认识';
-  }
-}

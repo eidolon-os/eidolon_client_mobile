@@ -1,3 +1,4 @@
+import '../../protocol/companion_contract.dart';
 import 'dart:math' as math;
 import 'dart:ui' show Offset, Rect, Size;
 

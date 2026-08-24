@@ -118,7 +118,9 @@ class _RuntimeCockpitPageState extends State<RuntimeCockpitPage> {
                 devicesError: widget.devicesError,
               ),
             const SizedBox(height: 16),
-            _VitalsSection(lane: _vitals, onRetry: () => _read(widget.loadVitals, (l) => _vitals = l)),
+            _VitalsSection(
+                lane: _vitals,
+                onRetry: () => _read(widget.loadVitals, (l) => _vitals = l)),
             const SizedBox(height: 16),
             _ServicesSection(
               lane: _services,
@@ -128,7 +130,8 @@ class _RuntimeCockpitPageState extends State<RuntimeCockpitPage> {
             _ControllersSection(
               lane: _controllers,
               thisControllerId: widget.thisControllerId,
-              onRetry: () => _read(widget.listControllers, (l) => _controllers = l),
+              onRetry: () =>
+                  _read(widget.listControllers, (l) => _controllers = l),
             ),
             const SizedBox(height: 16),
             _ActivitySection(
@@ -150,9 +153,16 @@ class _RuntimeCockpitPageState extends State<RuntimeCockpitPage> {
 /// are three different things. Collapsing the last two into an empty list is
 /// what makes a dashboard lie.
 class _Lane<T> {
-  const _Lane.loading() : value = null, error = null, loading = true;
-  const _Lane.value(this.value) : error = null, loading = false;
-  const _Lane.failed(this.error) : value = null, loading = false;
+  const _Lane.loading()
+      : value = null,
+        error = null,
+        loading = true;
+  const _Lane.value(this.value)
+      : error = null,
+        loading = false;
+  const _Lane.failed(this.error)
+      : value = null,
+        loading = false;
 
   final T? value;
   final String? error;
@@ -196,7 +206,8 @@ class _SovereignDomain extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(companion.displayName, style: theme.textTheme.titleMedium),
+                  Text(companion.displayName,
+                      style: theme.textTheme.titleMedium),
                   Text(
                     '人格 v${runtime.persona.version}',
                     style: theme.textTheme.bodySmall,
