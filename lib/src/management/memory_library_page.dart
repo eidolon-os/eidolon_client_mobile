@@ -26,6 +26,7 @@ class MemoryLibraryPage extends StatelessWidget {
     this.onOpenRoom,
     this.onForget,
     this.onOpenToday,
+    this.onExport,
   });
 
   final MemoryLibraryView library;
@@ -43,6 +44,11 @@ class MemoryLibraryPage extends StatelessWidget {
   /// is held overall. Null while nothing is behind it.
   final VoidCallback? onOpenToday;
 
+  /// Taking a copy away. A different kind of question from the other two — not
+  /// "what does it hold" but "can I have it" — and null while nothing is behind
+  /// it, for the same reason as the rest.
+  final VoidCallback? onExport;
+
   @override
   Widget build(BuildContext context) {
     final wings = library.wings;
@@ -57,6 +63,13 @@ class MemoryLibraryPage extends StatelessWidget {
               onPressed: onOpenToday,
               tooltip: '今天记下的',
               icon: const Icon(Icons.today_outlined),
+            ),
+          if (onExport != null)
+            IconButton(
+              key: const Key('memory-library-export'),
+              onPressed: onExport,
+              tooltip: '导出记忆',
+              icon: const Icon(Icons.download_outlined),
             ),
           if (onForget != null)
             IconButton(

@@ -222,6 +222,30 @@ class ManagementClient {
     return MemoryDayView.fromJson(body);
   }
 
+  /// A copy of everything my Eidolon remembers that I can see.
+  ///
+  /// The one read here that shortens nothing. The library rolls up and the day
+  /// list pages, because those are pages someone scrolls; this is a file they
+  /// keep, and a preview in it would be data loss dressed as a working read.
+  ///
+  /// [companionId] selects an audience exactly as the library does, for the
+  /// same reason: a copy must not be able to see what recall cannot.
+  Future<MemoryCopyView> fetchMemoryCopy(
+    Uri baseUri, {
+    required String accessToken,
+    String? companionId,
+  }) async {
+    final endpoint = baseUri.resolve(ManagementV1.memoryExportPath);
+    final body = await _get(
+      companionId == null
+          ? endpoint
+          : endpoint.replace(queryParameters: {'companion_id': companionId}),
+      accessToken: accessToken,
+      what: '导出记忆',
+    );
+    return MemoryCopyView.fromJson(body);
+  }
+
   /// What forgetting this would remove. Nothing changes.
   ///
   /// Two steps because a topic is not a set. The Host resolves the words once,

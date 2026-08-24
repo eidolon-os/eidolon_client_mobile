@@ -275,6 +275,77 @@ void main() {
       }
     });
 
+    testWidgets('offers the copy only when something can load it', (tester) async {
+      // Same rule as the day page, and it matters more here: a way into an
+      // export that cannot fill itself would offer someone a copy of nothing.
+      for (final wired in [true, false]) {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MemoryLibraryScreen(
+              key: ValueKey('copy-$wired'),
+              load: () async => library(),
+              loadContext: () async => context(),
+              loadCopy: wired
+                  ? () async => MemoryCopyView.fromJson({
+                        'contract_version': '1',
+                        'taken_at': '2026-08-24T12:31:00+00:00',
+                        'records': [],
+                        'record_count': 0,
+                        'undated_count': 0,
+                        'truncated': false,
+                      })
+                  : null,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('memory-library-export')),
+          wired ? findsOneWidget : findsNothing,
+          reason: 'loadCopy wired: $wired',
+        );
+      }
+    });
+
+    testWidgets('opens the copy as its own screen', (tester) async {
+      // Not a sheet beside the roll-up: this is the one page that must not
+      // shorten anything, and a page sharing room with a summary is under
+      // pressure to.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MemoryLibraryScreen(
+            load: () async => library(),
+            loadContext: () async => context(),
+            loadCopy: () async => MemoryCopyView.fromJson({
+              'contract_version': '1',
+              'taken_at': '2026-08-24T12:31:00+00:00',
+              'records': [
+                {
+                  'entry_id': 'drawer_1',
+                  'recorded_at': '2026-08-24T09:05:00+00:00',
+                  'recorded_at_source': 'occurred_at',
+                  'wing_id': 'Wing_Life',
+                  'room_id': '饮食',
+                  'memory_type': 'preference',
+                  'value': '他喜欢喝乌龙茶',
+                },
+              ],
+              'record_count': 1,
+              'undated_count': 0,
+              'truncated': false,
+            }),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('memory-library-export')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('memory-copy-page')), findsOneWidget);
+      expect(find.text('他喜欢喝乌龙茶'), findsOneWidget);
+    });
+
     testWidgets('re-reads the library after something is forgotten',
         (tester) async {
       // A stale library after a deletion is the moment a person stops trusting

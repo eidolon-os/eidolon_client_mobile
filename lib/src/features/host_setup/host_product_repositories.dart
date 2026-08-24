@@ -255,6 +255,16 @@ class HostManagementRepository {
         ),
       );
 
+  /// A copy of the whole visible memory. [companionId] selects an audience.
+  Future<MemoryCopyView> memoryCopy({String? companionId}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchMemoryCopy(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+        ),
+      );
+
   /// What forgetting [target] would remove. Nothing changes.
   Future<ForgetProposalView> previewForget({
     required String target,

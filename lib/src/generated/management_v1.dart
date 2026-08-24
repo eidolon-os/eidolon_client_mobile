@@ -13,6 +13,7 @@ class ManagementV1 {
   static String companionsByCompanionIdPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}';
   static const String contextPath = '/api/management/v1/context';
   static const String memoryEntriesPath = '/api/management/v1/memory/entries';
+  static const String memoryExportPath = '/api/management/v1/memory/export';
   static const String memoryForgetConfirmPath = '/api/management/v1/memory/forget/confirm';
   static const String memoryForgetPreviewPath = '/api/management/v1/memory/forget/preview';
   static const String memoryLibraryPath = '/api/management/v1/memory/library';
@@ -395,6 +396,40 @@ class ManagementContextView {
   }
 }
 
+class MemoryCopyView {
+  const MemoryCopyView({
+    this.contractVersion,
+    required this.recordCount,
+    required this.records,
+    required this.takenAt,
+    required this.truncated,
+    required this.undatedCount,
+  });
+
+  final String? contractVersion;
+
+  final int recordCount;
+
+  final List<MemoryExportRecordView> records;
+
+  final String takenAt;
+
+  final bool truncated;
+
+  final int undatedCount;
+
+  factory MemoryCopyView.fromJson(Map<String, dynamic> value) {
+    return MemoryCopyView(
+      contractVersion: value['contract_version'] as String?,
+      recordCount: value['record_count'] as int,
+      records: ((value['records'] as List<dynamic>).map((entry) => MemoryExportRecordView.fromJson(entry as Map<String, dynamic>)).toList()),
+      takenAt: value['taken_at'] as String,
+      truncated: value['truncated'] as bool,
+      undatedCount: value['undated_count'] as int,
+    );
+  }
+}
+
 class MemoryDayView {
   const MemoryDayView({
     this.contractVersion,
@@ -462,6 +497,44 @@ class MemoryEntryView {
       recordedAt: value['recorded_at'] as String,
       recordedAtSource: value['recorded_at_source'] as String?,
       roomId: value['room_id'] as String?,
+      wingId: value['wing_id'] as String?,
+    );
+  }
+}
+
+class MemoryExportRecordView {
+  const MemoryExportRecordView({
+    required this.entryId,
+    this.memoryType,
+    this.recordedAt,
+    this.recordedAtSource,
+    this.roomId,
+    required this.value,
+    this.wingId,
+  });
+
+  final String entryId;
+
+  final String? memoryType;
+
+  final String? recordedAt;
+
+  final String? recordedAtSource;
+
+  final String? roomId;
+
+  final String value;
+
+  final String? wingId;
+
+  factory MemoryExportRecordView.fromJson(Map<String, dynamic> value) {
+    return MemoryExportRecordView(
+      entryId: value['entry_id'] as String,
+      memoryType: value['memory_type'] as String?,
+      recordedAt: value['recorded_at'] as String?,
+      recordedAtSource: value['recorded_at_source'] as String?,
+      roomId: value['room_id'] as String?,
+      value: value['value'] as String,
       wingId: value['wing_id'] as String?,
     );
   }

@@ -426,6 +426,10 @@ class HostProductController extends ChangeNotifier {
         companionId: companionId,
       );
 
+  /// A copy of everything remembered that this Owner can see.
+  Future<MemoryCopyView> memoryCopy({String? companionId}) =>
+      _managementRepository.memoryCopy(companionId: companionId);
+
   /// What forgetting [target] would remove. Nothing changes.
   Future<ForgetProposalView> previewForget({
     required String target,
