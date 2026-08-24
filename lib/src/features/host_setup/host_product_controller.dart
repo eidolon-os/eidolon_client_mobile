@@ -16,6 +16,7 @@ import 'host_product_repositories.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
 import 'host_vitals_models.dart';
+import '../../generated/management_v1.dart';
 import 'local_api_client.dart';
 import 'local_api_discovery.dart';
 import 'persona_history_models.dart';
@@ -35,6 +36,7 @@ class HostProductController extends ChangeNotifier {
     ControllerKeyBridge? controllerKeys,
     LocalApiDiscovery? discovery,
     LocalApiClientFactory? localApiClientFactory,
+    ManagementClientFactory? managementClientFactory,
     NetworkChanges? networkChanges,
   })  : _host = host,
         _onHostUpdated = onHostUpdated,
@@ -45,6 +47,7 @@ class HostProductController extends ChangeNotifier {
           controllerKeys: controllerKeys,
           discovery: discovery,
           clientFactory: localApiClientFactory,
+          managementClientFactory: managementClientFactory,
         ) {
     _workspaceRepository = HostWorkspaceRepository(_session);
     _devicesRepository = HostDevicesRepository(_session);
@@ -56,6 +59,7 @@ class HostProductController extends ChangeNotifier {
     _recollectionsRepository = HostRecollectionsRepository(_session);
     _activityRepository = HostActivityRepository(_session);
     _deviceNamingRepository = HostDeviceNamingRepository(_session);
+    _managementRepository = HostManagementRepository(_session);
     // Where the Host was is only true for as long as this phone is on the
     // network it learned it from. Watching for that keeps the recovery the
     // session already does from costing a timeout first.
@@ -78,6 +82,7 @@ class HostProductController extends ChangeNotifier {
   late final HostRecollectionsRepository _recollectionsRepository;
   late final HostActivityRepository _activityRepository;
   late final HostDeviceNamingRepository _deviceNamingRepository;
+  late final HostManagementRepository _managementRepository;
 
   bool _connecting = false;
   bool _workspaceBusy = false;
@@ -361,6 +366,18 @@ class HostProductController extends ChangeNotifier {
   /// would show it again beside the next question.
   Future<Recollections> recollections({required String query}) =>
       _recollectionsRepository.search(query: query);
+
+  /// Every Eidolon this Owner has.
+  ///
+  /// Not cached on this controller. The roster is what the Host says right now,
+  /// and a stale copy held here would be a second answer to "what do I have" —
+  /// the page asks when it opens and when a person asks for more.
+  Future<CompanionRosterView> roster({String? cursor}) =>
+      _managementRepository.roster(cursor: cursor);
+
+  /// What this Host says it can do at all, for the authenticated Owner.
+  Future<ManagementContextView> managementContext() =>
+      _managementRepository.context();
 
   /// What this Eidolon has been.
   Future<PersonaHistory> personaHistory({required String companionId}) =>

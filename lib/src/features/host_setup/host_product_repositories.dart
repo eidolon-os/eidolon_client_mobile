@@ -8,6 +8,7 @@ import 'companion_face_models.dart';
 import 'controller_grant_models.dart';
 import 'persona_history_models.dart';
 import 'recollection_models.dart';
+import '../../generated/management_v1.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
 import 'host_vitals_models.dart';
@@ -185,6 +186,32 @@ class HostRecollectionsRepository {
           accessToken: accessToken,
           query: query,
           limit: limit,
+        ),
+      );
+}
+
+/// Every Eidolon this Owner has, and what the Host says it can do.
+///
+/// The one repository here that speaks the management contract rather than
+/// `/api/local/v1`. Kept apart for that reason: everything it returns is a
+/// generated type, so nothing in this app hand-maintains a copy of that wire.
+class HostManagementRepository {
+  HostManagementRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<ManagementContextView> context() => _session.executeManagement(
+        (client, baseUri, accessToken) =>
+            client.fetchContext(baseUri, accessToken: accessToken),
+      );
+
+  /// One page. [cursor] is a value a previous page handed back, forwarded as-is.
+  Future<CompanionRosterView> roster({String? cursor}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchRoster(
+          baseUri,
+          accessToken: accessToken,
+          cursor: cursor,
         ),
       );
 }

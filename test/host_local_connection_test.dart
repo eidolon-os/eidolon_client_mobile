@@ -8,6 +8,7 @@ import 'package:eidolon_client_mobile/src/features/setup/commissioning_transport
 import 'package:eidolon_client_mobile/src/features/setup/controller_key_bridge.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
 import 'package:eidolon_client_mobile/src/features/setup/setup_models.dart';
+import 'package:eidolon_client_mobile/src/management/management_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -659,6 +660,11 @@ void main() {
     expect(find.byKey(const Key('workspace-runtime-error')), findsOneWidget);
     expect(find.textContaining('日常运行状态暂时不可用'), findsOneWidget);
     runtimeAvailable = true;
+    // Scrolled to rather than tapped where it used to be: the card grew a row
+    // (the roster entry), and a fixed drag distance stops landing on this
+    // button — which then reads as "the runtime never came back".
+    await tester.ensureVisible(find.byKey(const Key('retry-workspace-runtime')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('retry-workspace-runtime')));
     await tester.pumpAndSettle();
 
@@ -937,5 +943,65 @@ void main() {
     // The sovereign domain is the reason this screen exists; if the Workspace
     // is ready it has to be drawn.
     expect(find.byKey(const Key('cockpit-sovereign-domain')), findsOneWidget);
+  });
+
+  testWidgets('the roster is reachable, not merely built', (tester) async {
+    // Same fault as the cockpit's, and worth its own assertion for the same
+    // reason: the roster is the first screen that can show a second Eidolon,
+    // and a screen nothing links to cannot be told from one that is broken.
+    await tester.binding.setSurfaceSize(const Size(900, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(
+            _hostOverview(workspaceState: 'ready'),
+            workspaceReady: true,
+          ),
+          managementClientFactory: (_) => ManagementClient(
+            httpClient: MockClient(
+              (_) async => http.Response.bytes(
+                utf8.encode(
+                  jsonEncode({
+                    'contract_version': '1',
+                    'default_companion_id': 'companion-a',
+                    'companions': [
+                      {
+                        'companion_id': 'companion-a',
+                        'display_name': '小忆',
+                        'kind': 'standard',
+                        'lifecycle_state': 'active',
+                        'revision': 2,
+                        'created_at': '2026-08-24T09:30:00+00:00',
+                        'updated_at': '2026-08-24T09:30:00+00:00',
+                      },
+                    ],
+                    'next_cursor': null,
+                  }),
+                ),
+                200,
+                headers: const {'content-type': 'application/json'},
+              ),
+            ),
+          ),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final entry = find.byKey(const Key('open-companion-roster'));
+    expect(entry, findsOneWidget);
+    await tester.ensureVisible(entry);
+    await tester.pumpAndSettle();
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('roster-row-companion-a')), findsOneWidget);
+    expect(find.byKey(const Key('roster-default-badge')), findsOneWidget);
   });
 }

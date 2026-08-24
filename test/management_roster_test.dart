@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:eidolon_client_mobile/src/management/companion_roster_page.dart';
+import 'package:eidolon_client_mobile/src/management/companion_roster_screen.dart';
 import 'package:eidolon_client_mobile/src/management/management_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -192,6 +193,122 @@ void main() {
 
       expect(context.limits['max_active_companions'], isNull);
       expect(context.defaultCompanionId, isNull);
+    });
+  });
+
+  group('the roster screen', () {
+    testWidgets('a Host that refused is not shown as an empty roster',
+        (tester) async {
+      // The lie this prevents: "you have no Eidolons", told to a person at the
+      // exact moment they need to know the Host would not answer.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterScreen(
+            load: ({String? cursor}) => Future.error(
+              const ManagementRequestException(
+                '读取失败',
+                statusCode: 503,
+                reason: 'data authority is down',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('roster-error')), findsOneWidget);
+      expect(find.byKey(const Key('roster-empty')), findsNothing);
+      expect(find.textContaining('data authority is down'), findsOneWidget);
+    });
+
+    testWidgets('a Host with no Owner is told apart from an Owner with none',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterScreen(
+            load: ({String? cursor}) => Future.error(
+              const ManagementRequestException('读取失败', statusCode: 409),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('这台主机还没有主人，先完成设置'), findsOneWidget);
+    });
+
+    testWidgets('asking for more appends rather than replacing', (tester) async {
+      final pages = <Map<String, dynamic>>[
+        rosterWire(
+          nextCursor: 'page-2',
+          companions: [
+            {
+              'companion_id': 'companion-a',
+              'display_name': '小忆',
+              'kind': 'standard',
+              'lifecycle_state': 'active',
+              'revision': 2,
+              'created_at': '2026-08-24T09:30:00+00:00',
+              'updated_at': '2026-08-24T09:30:00+00:00',
+            },
+          ],
+        ),
+        rosterWire(
+          companions: [
+            {
+              'companion_id': 'companion-c',
+              'display_name': '阿力',
+              'kind': 'standard',
+              'lifecycle_state': 'active',
+              'revision': 1,
+              'created_at': '2026-08-24T09:32:00+00:00',
+              'updated_at': '2026-08-24T09:32:00+00:00',
+            },
+          ],
+        ),
+      ];
+      var asked = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterScreen(
+            load: ({String? cursor}) async =>
+                CompanionRosterView.fromJson(pages[asked++]),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('roster-load-more')));
+      await tester.pumpAndSettle();
+
+      // What a person was already reading must not vanish because they asked
+      // to see more.
+      expect(find.byKey(const Key('roster-row-companion-a')), findsOneWidget);
+      expect(find.byKey(const Key('roster-row-companion-c')), findsOneWidget);
+      expect(find.byKey(const Key('roster-load-more')), findsNothing);
+    });
+
+    testWidgets('retrying after a refusal asks again', (tester) async {
+      var attempts = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterScreen(
+            load: ({String? cursor}) async {
+              attempts++;
+              if (attempts == 1) {
+                throw const ManagementRequestException('读取失败', statusCode: 503);
+              }
+              return CompanionRosterView.fromJson(rosterWire());
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('roster-retry')));
+      await tester.pumpAndSettle();
+
+      expect(attempts, 2);
+      expect(find.byKey(const Key('roster-row-companion-a')), findsOneWidget);
     });
   });
 

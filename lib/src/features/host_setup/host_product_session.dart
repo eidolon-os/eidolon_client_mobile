@@ -11,15 +11,29 @@ import '../setup/setup_trust.dart';
 import 'controller_session.dart';
 import 'host_locator.dart';
 import 'host_models.dart';
+import '../../management/management_client.dart';
 import 'local_api_client.dart';
 import 'local_api_discovery.dart';
 import 'pinned_http_client.dart';
 
 typedef LocalApiClientFactory = LocalApiClient Function(String fingerprint);
+
+/// The management boundary gets its own factory for the same reason the client
+/// is a separate class: it is generated from a shared contract rather than
+/// hand-written here. Both factories produce clients over the *same* pinned
+/// transport — a management call that skipped the pin would be a second, weaker
+/// way into the same Host.
+typedef ManagementClientFactory = ManagementClient Function(String fingerprint);
 typedef HostConnectionProgress = void Function(String message);
 typedef LocalApiOperation<T> = Future<T> Function(
   LocalApiClient client,
   String baseUrl,
+  String accessToken,
+);
+
+typedef ManagementOperation<T> = Future<T> Function(
+  ManagementClient client,
+  Uri baseUri,
   String accessToken,
 );
 
@@ -59,11 +73,14 @@ class HostProductSession {
     ControllerKeyBridge? controllerKeys,
     LocalApiDiscovery? discovery,
     LocalApiClientFactory? clientFactory,
+    ManagementClientFactory? managementClientFactory,
     HostLocator? locator,
   })  : _host = host,
         _transport = transport ?? PlatformBleCommissioningTransport(),
         _controllerKeys = controllerKeys ?? PlatformControllerKeyBridge(),
-        _clientFactory = clientFactory ?? _platformClientFactory {
+        _clientFactory = clientFactory ?? _platformClientFactory,
+        _managementClientFactory =
+            managementClientFactory ?? _platformManagementClientFactory {
     // Built here rather than in the initializer list because the last resort
     // is this session's own BLE read: when nothing on the network answered,
     // the Host is asked directly where it is.
@@ -80,6 +97,7 @@ class HostProductSession {
   final ControllerKeyBridge _controllerKeys;
   late final HostLocator _locator;
   final LocalApiClientFactory _clientFactory;
+  final ManagementClientFactory _managementClientFactory;
 
   LocalApiEndpoint? _endpoint;
   HostOverview? _overview;
@@ -191,6 +209,50 @@ class HostProductSession {
       if (!_hostDidNotAnswer(error)) rethrow;
       await _relocate();
       return _executeOnce(operation, _endpoint!, _controllerSession!);
+    }
+  }
+
+  /// The same conversation, over the management contract.
+  ///
+  /// Deliberately the same recovery as [execute]: an expired session is
+  /// re-authenticated in place and a Host that moved is looked for again,
+  /// because which contract a call happens to use is not something the person
+  /// holding the phone should have to know about.
+  Future<T> executeManagement<T>(ManagementOperation<T> operation) async {
+    _ensureOpen();
+    if (_locationStale) await _relocate();
+    final endpoint = _endpoint;
+    final session = _controllerSession;
+    if (endpoint == null || session == null) {
+      throw const HostControllerAuthorizationException('请先安全连接主机');
+    }
+    try {
+      return await _managementOnce(operation, endpoint, session);
+    } on ManagementRequestException catch (error) {
+      if (error.statusCode != 401) rethrow;
+      await _reauthenticate();
+      return _managementOnce(operation, _endpoint!, _controllerSession!);
+    } on PinnedHttpException catch (error) {
+      if (!_hostDidNotAnswer(error)) rethrow;
+      await _relocate();
+      return _managementOnce(operation, _endpoint!, _controllerSession!);
+    }
+  }
+
+  Future<T> _managementOnce<T>(
+    ManagementOperation<T> operation,
+    LocalApiEndpoint endpoint,
+    LocalControllerSession session,
+  ) async {
+    final client = _managementClientFactory(_host.tlsSpkiFingerprint!);
+    try {
+      return await operation(
+        client,
+        LocalApiClient.parseBaseUri(endpoint.baseUrl),
+        session.accessToken,
+      );
+    } finally {
+      client.close();
     }
   }
 
@@ -408,6 +470,13 @@ class HostProductSession {
 
   static LocalApiClient _platformClientFactory(String fingerprint) =>
       LocalApiClient(
+        httpClient: PlatformPinnedHttpClient(
+          tlsSpkiFingerprint: fingerprint,
+        ),
+      );
+
+  static ManagementClient _platformManagementClientFactory(String fingerprint) =>
+      ManagementClient(
         httpClient: PlatformPinnedHttpClient(
           tlsSpkiFingerprint: fingerprint,
         ),

@@ -13,6 +13,7 @@ import '../setup/controller_key_bridge.dart';
 import '../setup/host_registry.dart';
 import 'face_picker.dart';
 import 'host_product_controller.dart';
+import '../../management/companion_roster_screen.dart';
 import 'companion_page.dart';
 import 'managed_controllers_page.dart';
 import 'mission_control_page.dart';
@@ -42,6 +43,7 @@ class HostLocalConnectionPage extends StatefulWidget {
     this.controllerKeys,
     this.discovery,
     this.localApiClientFactory,
+    this.managementClientFactory,
     this.networkChanges,
     this.deviceProvisioning,
     this.conversationBuilder,
@@ -56,6 +58,11 @@ class HostLocalConnectionPage extends StatefulWidget {
   final ControllerKeyBridge? controllerKeys;
   final LocalApiDiscovery? discovery;
   final LocalApiClientFactory? localApiClientFactory;
+
+  /// Injected alongside the other one in tests. Both produce clients over the
+  /// same pinned transport in production; a management call that reached the
+  /// Host by another route would be a weaker second door.
+  final ManagementClientFactory? managementClientFactory;
 
   /// Injected in tests, where there is no phone to change networks.
   final NetworkChanges? networkChanges;
@@ -88,6 +95,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       controllerKeys: widget.controllerKeys,
       discovery: widget.discovery,
       localApiClientFactory: widget.localApiClientFactory,
+      managementClientFactory: widget.managementClientFactory,
       networkChanges: widget.networkChanges,
     )..addListener(_refresh);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -212,6 +220,18 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       ),
     );
   }
+
+  /// Every Eidolon this Owner has, not just the one this Host runs by default.
+  ///
+  /// The workspace card above can only ever show one, because the runtime it
+  /// reads answers with one. This is the read that can show the rest.
+  Future<void> _openRoster() => Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => CompanionRosterScreen(
+            load: ({String? cursor}) => _controller.roster(cursor: cursor),
+          ),
+        ),
+      );
 
   /// Ask this Eidolon what it remembers.
   Future<void> _openRecollections(WorkspaceRuntime runtime) {
@@ -409,6 +429,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               onRenameCompanion: _renameCompanion,
               onOpenPersona: _openPersonaHistory,
               onOpenCompanion: _openCompanion,
+              onOpenRoster: _openRoster,
               onRenameOwner: _renameOwner,
               onChangeNetwork: _openNetworkChange,
             ),
@@ -593,6 +614,7 @@ class _WorkspaceCard extends StatelessWidget {
     required this.onRenameCompanion,
     required this.onOpenPersona,
     required this.onOpenCompanion,
+    required this.onOpenRoster,
     required this.onRenameOwner,
   });
 
@@ -606,6 +628,11 @@ class _WorkspaceCard extends StatelessWidget {
   final VoidCallback onRenameCompanion;
   final VoidCallback onOpenPersona;
   final VoidCallback onOpenCompanion;
+
+  /// Reachable whether or not the runtime answered: "what do I have" is a
+  /// question the management contract answers on its own, and a Host that
+  /// cannot report a running Companion may still have a roster to show.
+  final VoidCallback onOpenRoster;
 
   /// Null until the Host has a Workspace to name anyone in.
   final VoidCallback? onRenameOwner;
@@ -778,6 +805,8 @@ class _WorkspaceCard extends StatelessWidget {
             _WorkspaceResourceStatus(
               key: const Key('workspace-companion'),
               onOpen: runtime == null ? null : onOpenCompanion,
+              openKey: const Key('open-companion'),
+              openTooltip: '打开它',
               icon: Icons.face_retouching_natural,
               // The name its Owner gave it, which is what they typed at setup
               // and had never been shown back to them. The identifier is what
@@ -788,6 +817,16 @@ class _WorkspaceCard extends StatelessWidget {
               statusLabel: runtime == null ? '已创建' : '运行中',
               detail:
                   runtime == null ? 'Workspace 已创建' : '打开它的页面：改名、它的变化、连到它的设备',
+            ),
+            _WorkspaceResourceStatus(
+              key: const Key('companion-roster-row'),
+              onOpen: onOpenRoster,
+              openKey: const Key('open-companion-roster'),
+              openTooltip: '看全部',
+              icon: Icons.groups_2_outlined,
+              label: '你所有的 Eidolon',
+              statusLabel: '可查看',
+              detail: '这台主机上属于你的每一个,以及哪一个是默认',
             ),
             _WorkspaceResourceStatus(
               icon: Icons.auto_stories_outlined,
@@ -930,6 +969,8 @@ class _WorkspaceResourceStatus extends StatelessWidget {
     required this.detail,
     required this.statusLabel,
     this.onOpen,
+    this.openKey,
+    this.openTooltip,
   });
 
   final IconData icon;
@@ -940,6 +981,16 @@ class _WorkspaceResourceStatus extends StatelessWidget {
   /// Offered where the row stands for something with more behind it than a
   /// status. Tapping goes there; the row is not itself the whole story.
   final VoidCallback? onOpen;
+
+  /// The button's own key and tooltip, per row.
+  ///
+  /// These used to be hard-coded to 'open-persona-history' and '它的变化' for
+  /// every row that had a button — a leftover from when only one row did. The
+  /// moment a second one appeared, two different destinations answered to the
+  /// same key and offered the same tooltip, and a test tapping that key would
+  /// have opened whichever one was built first.
+  final Key? openKey;
+  final String? openTooltip;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -959,9 +1010,9 @@ class _WorkspaceResourceStatus extends StatelessWidget {
             ),
             if (onOpen != null)
               IconButton(
-                key: const Key('open-persona-history'),
+                key: openKey,
                 onPressed: onOpen,
-                tooltip: '它的变化',
+                tooltip: openTooltip,
                 icon: const Icon(Icons.chevron_right),
               ),
             Icon(
