@@ -1192,11 +1192,13 @@ class ClaimActivatedDataV1 extends _AdmissionMapV1 {
   ClaimActivatedDataV1.fromJson(Map<String, dynamic> value)
     : super(value, const {
         'device_ref',
+        'business_owner_id',
         'manifest_ref',
         'approval_decision_id',
         'activated_at',
       }) {
     DeviceRefV1.fromJson(_map(json['device_ref']));
+    BusinessOwnerIdV1.parse(json['business_owner_id']);
     ManifestRefV1.fromJson(_map(json['manifest_ref']));
   }
 }

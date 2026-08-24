@@ -118,6 +118,7 @@
           "correlationid": "intent_01", "causationid": "command_01",
           "data": {
             "device_ref": {"device_instance_id": "device_01", "owner_domain_id": "owner-domain_01", "owner_domain_generation": 3, "claim_generation": 2, "trust_epoch": 1},
+            "business_owner_id": "owner_01",
             "manifest_ref": {"manifest_id": "manifest_01", "revision": 2, "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"},
             "approval_decision_id": "decision_01", "activated_at": "2026-08-18T00:05:00Z"
           }
