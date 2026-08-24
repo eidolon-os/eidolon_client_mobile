@@ -131,9 +131,23 @@ forward-only retry，而不改写 Host Setup 或 mounted inventory 的完成语�
 Mobile Mission Control 只读。恢复它需要新的、权威边界正确的产品投影：
 
 ```text
-GET /api/local/v1/mission-control/snapshot
-GET /api/local/v1/mission-control/events?cursor=...
+GET /api/management/v1/mission-control/snapshot
+GET /api/management/v1/events?cursor=...
 ```
+
+**平面已纠正（2026-08-24）。** 本节原来把这两条写在 `/api/local/v1` 上，那是错的：
+[多 Companion 方案](../../docs/跨系统/EidolonOS多Companion统一管理架构方案.md) §2.3
+规定 `/api/local/v1` 上的 Owner 产品端点迁入 `/api/management/v1` 后**删除**
+（「收敛是删除，不是并存」），而它的 Management API 表里本来就写着
+`GET /mission-control/snapshot`。这份文档的旧写法**已经真的把人引错过一次**：
+星图那条线照它在待删平面上新长了一条路由，并把读取手写成 `LocalApiClient` 的
+第 28 个方法。两者都已拆除，`test/mission_control_plane_guard_test.dart` 钉住不复发。
+
+这两条端点属于多 Companion 方案的 **Phase 6（事件、Mission Control 与 Operator
+分离）**，不是本仓可以自行实现的。Phase 6 的第一条纪律是「**先接通 producer，
+再谈 projection**」：治理事件的唯一 producer 是 Data 的 `audit_outbox` +
+`AuditOutboxDispatcher`（当前**没有被任何 entrypoint 接线**），Admin 直读 authority
+库是 PROHIBITED。所以在 dispatcher 接线之前，`/events` 与 activity 没有事实来源。
 
 Local API 从 Controller session 推导 Owner scope。snapshot 必须逐 source 标注
 `ok / degraded / unavailable` 和 freshness；事件必须有稳定 cursor/event ID。

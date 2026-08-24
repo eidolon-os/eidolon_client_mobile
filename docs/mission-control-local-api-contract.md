@@ -242,6 +242,16 @@ Accept: text/event-stream
 
 ### 4.2 游标是 `ingest_seq`，不是时间窗
 
+> **越界声明（2026-08-24）**：本节是**提案，不是结论**。多 Companion 方案
+> **Phase 6** 第 1 条的职责就是「定义 Owner event envelope、cursor、at-least-once、
+> 去重规则」，第 2 条还立了顺序:「**先接通 producer，再谈 projection**」——
+> 治理事件的唯一 producer 是 Data 的 `audit_outbox` + `AuditOutboxDispatcher`
+> （当前没有被任何 entrypoint 接线），且 Admin 直读 authority 库是 PROHIBITED。
+> 我下面把游标定在 `eidolon_admin` audit index 的 `ingest_seq` 上，那是 Admin
+> 自己的 ingest 投影，**不是 canonical producer 的序**。Phase 6 若把游标定在
+> outbox 侧，本节按它改。保留在这里是因为它记录了一个有用的事实（表上已有全序
+> 整数与 unique event_id），不是因为它有权决定。
+
 `eidolon_admin` 的 audit index 表主键就是 `ingest_seq: Integer autoincrement` ——
 **一台主机上一个全序的整数**。于是：
 
