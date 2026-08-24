@@ -222,6 +222,119 @@ class ManagementClient {
     return MemoryDayView.fromJson(body);
   }
 
+  /// When this Eidolon and I talked.
+  ///
+  /// Not what was said: the Host keeps words per turn and these rows carry
+  /// none, so this is a list of occasions rather than a transcript.
+  Future<ConversationPageView> fetchConversations(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+    int? limit,
+    String? cursor,
+  }) async {
+    final body = await _get(
+      _withQuery(
+        baseUri.resolve(
+          ManagementV1.companionsByCompanionIdConversationsPath(companionId),
+        ),
+        {
+          if (limit != null) 'limit': '$limit',
+          // Opaque both ways: whatever the Host handed back, sent back
+          // unread.
+          if (cursor != null) 'cursor': cursor,
+        },
+      ),
+      accessToken: accessToken,
+      what: '读取对话记录',
+    );
+    return ConversationPageView.fromJson(body);
+  }
+
+  /// What I asked it to do, and how far it has got.
+  Future<TaskPageView> fetchTasks(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+    int? limit,
+    String? status,
+    String? cursor,
+  }) async {
+    final body = await _get(
+      _withQuery(
+        baseUri.resolve(
+          ManagementV1.companionsByCompanionIdTasksPath(companionId),
+        ),
+        {
+          if (limit != null) 'limit': '$limit',
+          if (status != null) 'status': status,
+          if (cursor != null) 'cursor': cursor,
+        },
+      ),
+      accessToken: accessToken,
+      what: '读取任务',
+    );
+    return TaskPageView.fromJson(body);
+  }
+
+  /// 别做了 — stop a task.
+  ///
+  /// What comes back is what the Host says the task became. The states belong
+  /// to the runtime that runs it, so this may answer that the thing had already
+  /// finished while the page was open — which is a refusal, not a failure of
+  /// this app.
+  Future<TaskView> cancelTask(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+    required String taskId,
+  }) =>
+      _taskAction(
+        baseUri.resolve(
+          ManagementV1.companionsByCompanionIdTasksByTaskIdCancelPath(
+            companionId,
+            taskId,
+          ),
+        ),
+        accessToken: accessToken,
+        what: '取消任务',
+      );
+
+  /// 再试一次 — ask for it again. The Host decides whether it can.
+  Future<TaskView> retryTask(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+    required String taskId,
+  }) =>
+      _taskAction(
+        baseUri.resolve(
+          ManagementV1.companionsByCompanionIdTasksByTaskIdRetryPath(
+            companionId,
+            taskId,
+          ),
+        ),
+        accessToken: accessToken,
+        what: '重试任务',
+      );
+
+  Future<TaskView> _taskAction(
+    Uri endpoint, {
+    required String accessToken,
+    required String what,
+  }) async {
+    final body = await _send('POST', endpoint, accessToken: accessToken, what: what);
+    return TaskView.fromJson(body);
+  }
+
+  /// A URL with only the parameters that were actually named.
+  ///
+  /// Not `replace(queryParameters: …)` with nulls in it: an empty `limit=` is
+  /// not a number and an empty `cursor=` is not a position, and a Host is right
+  /// to refuse both.
+  Uri _withQuery(Uri endpoint, Map<String, String> query) =>
+      query.isEmpty ? endpoint : endpoint.replace(queryParameters: query);
+
   /// What this Eidolon has been.
   ///
   /// A record rather than a settings screen, and no proposal queue: a Companion

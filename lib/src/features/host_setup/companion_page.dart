@@ -20,6 +20,7 @@ class CompanionPage extends StatelessWidget {
     required this.onRename,
     required this.onOpenHistory,
     this.onOpenRecollections,
+    this.onOpenTasks,
     this.face,
     this.onChangeFace,
     this.onClearFace,
@@ -35,6 +36,10 @@ class CompanionPage extends StatelessWidget {
 
   /// Null on a Host too old to be asked what it remembers.
   final VoidCallback? onOpenRecollections;
+
+  /// Null while nothing is behind it. The long tasks this Eidolon was given —
+  /// the one place a person can stop something it is doing.
+  final VoidCallback? onOpenTasks;
 
   /// What it looks like, when it looks like anything yet.
   final Uint8List? face;
@@ -142,6 +147,18 @@ class CompanionPage extends StatelessWidget {
               ),
             ),
           const SizedBox(height: 16),
+          if (onOpenTasks != null)
+            Card(
+              child: ListTile(
+                key: const Key('companion-open-tasks'),
+                leading: const Icon(Icons.checklist_outlined),
+                title: const Text('交给它的事'),
+                subtitle: const Text('看它做到哪了，也可以让它别做了'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: onOpenTasks,
+              ),
+            ),
+          if (onOpenTasks != null) const SizedBox(height: 16),
           Card(
             child: ListTile(
               key: const Key('companion-open-history'),

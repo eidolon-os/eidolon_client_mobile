@@ -215,6 +215,68 @@ class HostManagementRepository {
         ),
       );
 
+  /// When this Eidolon and I talked.
+  Future<ConversationPageView> conversations({
+    required String companionId,
+    int? limit,
+    String? cursor,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchConversations(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          limit: limit,
+          cursor: cursor,
+        ),
+      );
+
+  /// What it was asked to do, and how far it has got.
+  Future<TaskPageView> tasks({
+    required String companionId,
+    int? limit,
+    String? status,
+    String? cursor,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchTasks(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          limit: limit,
+          status: status,
+          cursor: cursor,
+        ),
+      );
+
+  /// Stop a task. The Host answers with what it became.
+  Future<TaskView> cancelTask({
+    required String companionId,
+    required String taskId,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.cancelTask(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          taskId: taskId,
+        ),
+      );
+
+  /// Ask for a task again. The Host decides whether it can.
+  Future<TaskView> retryTask({
+    required String companionId,
+    required String taskId,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.retryTask(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          taskId: taskId,
+        ),
+      );
+
   /// What this Eidolon has been.
   Future<PersonaHistoryView> personaHistory({required String companionId}) =>
       _session.executeManagement(

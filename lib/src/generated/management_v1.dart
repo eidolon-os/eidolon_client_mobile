@@ -11,8 +11,13 @@ class ManagementV1 {
 
   static const String companionsPath = '/api/management/v1/companions';
   static String companionsByCompanionIdPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}';
+  static String companionsByCompanionIdConversationsPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/conversations';
   static String companionsByCompanionIdPersonaHistoryPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona-history';
   static String companionsByCompanionIdPersonaRestorationsPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona-restorations';
+  static String companionsByCompanionIdTasksPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks';
+  static String companionsByCompanionIdTasksByTaskIdPath(String companionId, String taskId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks/${Uri.encodeComponent(taskId)}';
+  static String companionsByCompanionIdTasksByTaskIdCancelPath(String companionId, String taskId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks/${Uri.encodeComponent(taskId)}/cancel';
+  static String companionsByCompanionIdTasksByTaskIdRetryPath(String companionId, String taskId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks/${Uri.encodeComponent(taskId)}/retry';
   static const String contextPath = '/api/management/v1/context';
   static const String memoryEntriesPath = '/api/management/v1/memory/entries';
   static String memoryEntriesByEntryIdAudiencePath(String entryId) => '/api/management/v1/memory/entries/${Uri.encodeComponent(entryId)}/audience';
@@ -186,6 +191,62 @@ class CompanionSummaryView {
       lifecycleState: value['lifecycle_state'] as String,
       revision: value['revision'] as int,
       updatedAt: value['updated_at'] as String,
+    );
+  }
+}
+
+class ConversationPageView {
+  const ConversationPageView({
+    required this.companionId,
+    this.contractVersion,
+    required this.conversations,
+    this.nextCursor,
+  });
+
+  final String companionId;
+
+  final String? contractVersion;
+
+  final List<ConversationView> conversations;
+
+  final String? nextCursor;
+
+  factory ConversationPageView.fromJson(Map<String, dynamic> value) {
+    return ConversationPageView(
+      companionId: value['companion_id'] as String,
+      contractVersion: value['contract_version'] as String?,
+      conversations: ((value['conversations'] as List<dynamic>).map((entry) => ConversationView.fromJson(entry as Map<String, dynamic>)).toList()),
+      nextCursor: value['next_cursor'] as String?,
+    );
+  }
+}
+
+class ConversationView {
+  const ConversationView({
+    required this.conversationId,
+    this.endedAt,
+    this.startedAt,
+    this.title,
+    this.updatedAt,
+  });
+
+  final String conversationId;
+
+  final String? endedAt;
+
+  final String? startedAt;
+
+  final String? title;
+
+  final String? updatedAt;
+
+  factory ConversationView.fromJson(Map<String, dynamic> value) {
+    return ConversationView(
+      conversationId: value['conversation_id'] as String,
+      endedAt: value['ended_at'] as String?,
+      startedAt: value['started_at'] as String?,
+      title: value['title'] as String?,
+      updatedAt: value['updated_at'] as String?,
     );
   }
 }
@@ -794,6 +855,94 @@ class RecollectionsView {
       contractVersion: value['contract_version'] as String?,
       query: value['query'] as String,
       recollections: ((value['recollections'] as List<dynamic>).map((entry) => RecollectionView.fromJson(entry as Map<String, dynamic>)).toList()),
+    );
+  }
+}
+
+class TaskPageView {
+  const TaskPageView({
+    required this.companionId,
+    this.contractVersion,
+    this.nextCursor,
+    required this.tasks,
+  });
+
+  final String companionId;
+
+  final String? contractVersion;
+
+  final String? nextCursor;
+
+  final List<TaskView> tasks;
+
+  factory TaskPageView.fromJson(Map<String, dynamic> value) {
+    return TaskPageView(
+      companionId: value['companion_id'] as String,
+      contractVersion: value['contract_version'] as String?,
+      nextCursor: value['next_cursor'] as String?,
+      tasks: ((value['tasks'] as List<dynamic>).map((entry) => TaskView.fromJson(entry as Map<String, dynamic>)).toList()),
+    );
+  }
+}
+
+class TaskView {
+  const TaskView({
+    this.asked,
+    this.completedAt,
+    this.createdAt,
+    this.errorCode,
+    this.errorMessage,
+    this.expectedOutput,
+    this.kind,
+    this.progress,
+    this.result,
+    required this.status,
+    required this.taskId,
+    this.updatedAt,
+    this.urgency,
+  });
+
+  final String? asked;
+
+  final String? completedAt;
+
+  final String? createdAt;
+
+  final String? errorCode;
+
+  final String? errorMessage;
+
+  final String? expectedOutput;
+
+  final String? kind;
+
+  final String? progress;
+
+  final String? result;
+
+  final String status;
+
+  final String taskId;
+
+  final String? updatedAt;
+
+  final String? urgency;
+
+  factory TaskView.fromJson(Map<String, dynamic> value) {
+    return TaskView(
+      asked: value['asked'] as String?,
+      completedAt: value['completed_at'] as String?,
+      createdAt: value['created_at'] as String?,
+      errorCode: value['error_code'] as String?,
+      errorMessage: value['error_message'] as String?,
+      expectedOutput: value['expected_output'] as String?,
+      kind: value['kind'] as String?,
+      progress: value['progress'] as String?,
+      result: value['result'] as String?,
+      status: value['status'] as String,
+      taskId: value['task_id'] as String,
+      updatedAt: value['updated_at'] as String?,
+      urgency: value['urgency'] as String?,
     );
   }
 }

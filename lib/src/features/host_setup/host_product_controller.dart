@@ -451,6 +451,33 @@ class HostProductController extends ChangeNotifier {
   Future<ManagementContextView> managementContext() =>
       _managementRepository.context();
 
+  /// When this Eidolon and I talked.
+  Future<ConversationPageView> conversations({
+    required String companionId,
+    String? cursor,
+  }) =>
+      _managementRepository.conversations(
+        companionId: companionId,
+        cursor: cursor,
+      );
+
+  /// What it was asked to do, and how far it has got.
+  Future<TaskPageView> tasks({required String companionId, String? cursor}) =>
+      _managementRepository.tasks(companionId: companionId, cursor: cursor);
+
+  /// Stop a task, or ask for it again. Either way the Host says what it became.
+  Future<TaskView> cancelTask({
+    required String companionId,
+    required String taskId,
+  }) =>
+      _managementRepository.cancelTask(companionId: companionId, taskId: taskId);
+
+  Future<TaskView> retryTask({
+    required String companionId,
+    required String taskId,
+  }) =>
+      _managementRepository.retryTask(companionId: companionId, taskId: taskId);
+
   /// What this Eidolon has been.
   Future<PersonaHistoryView> personaHistory({required String companionId}) =>
       _managementRepository.personaHistory(companionId: companionId);

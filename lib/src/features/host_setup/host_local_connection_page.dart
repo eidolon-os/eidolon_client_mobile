@@ -20,6 +20,7 @@ import 'managed_controllers_page.dart';
 import 'mission_control_page.dart';
 import 'runtime_cockpit_page.dart';
 import 'persona_history_page.dart';
+import '../../management/tasks_screen.dart';
 import 'recollections_page.dart';
 import 'host_product_session.dart';
 import 'workspace_runtime_models.dart';
@@ -210,6 +211,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               onRename: _renameCompanion,
               onOpenHistory: _openPersonaHistory,
               onOpenRecollections: () => _openRecollections(current),
+              onOpenTasks: () => _openTasks(current),
               face: _controller.companionFace,
               onChangeFace: () => _changeCompanionFace(current),
               onClearFace: _controller.companionFace == null
@@ -271,6 +273,31 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
           ),
         ),
       );
+
+  /// What this Eidolon was given to do, and how far it has got.
+  ///
+  /// Its own screen: the two actions on it change what a Companion is doing, and
+  /// a control like that inside a summary card is a control someone presses by
+  /// accident.
+  Future<void> _openTasks(WorkspaceRuntime runtime) {
+    final companionId = runtime.primaryCompanion.companionId;
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => TasksScreen(
+          load: (cursor) =>
+              _controller.tasks(companionId: companionId, cursor: cursor),
+          cancel: (taskId) => _controller.cancelTask(
+            companionId: companionId,
+            taskId: taskId,
+          ),
+          retry: (taskId) => _controller.retryTask(
+            companionId: companionId,
+            taskId: taskId,
+          ),
+        ),
+      ),
+    );
+  }
 
   /// Ask this Eidolon what it remembers.
   Future<void> _openRecollections(WorkspaceRuntime runtime) {
