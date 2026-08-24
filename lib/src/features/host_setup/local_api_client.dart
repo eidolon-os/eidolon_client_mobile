@@ -396,6 +396,38 @@ class LocalApiClient {
     return page;
   }
 
+  /// Says which Companion answers through this device, or that none does.
+  ///
+  /// [expectedRevision] is the mount revision this screen was showing. The
+  /// Host refuses a stale one rather than letting two phones take turns.
+  Future<MountedDevice> setDeviceCompanion(
+    String baseUrl, {
+    required String accessToken,
+    required String deviceId,
+    required String requestId,
+    required String? companionId,
+    required int expectedRevision,
+  }) async {
+    final response = await _httpClient
+        .put(
+          _localUri(
+            baseUrl,
+            ['devices', _boundedId(deviceId, 'device ID'), 'companion'],
+          ),
+          headers: _authorizedHeaders(accessToken, json: true),
+          body: jsonEncode({
+            'contract_version': '1',
+            'request_id': _boundedId(requestId, 'request ID'),
+            'companion_id': companionId,
+            'expected_revision': expectedRevision,
+          }),
+        )
+        .timeout(timeout);
+    return MountedDevice.fromJson(
+      _decodeResponse(response, operation: 'Device Companion'),
+    );
+  }
+
   Future<DeviceRemovalProgress> removeDevice(
     String baseUrl, {
     required String accessToken,

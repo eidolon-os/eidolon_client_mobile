@@ -494,6 +494,29 @@ class HostServicesRepository {
       );
 }
 
+class HostDeviceCompanionRepository {
+  const HostDeviceCompanionRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<MountedDevice> set({
+    required String deviceId,
+    required String requestId,
+    required String? companionId,
+    required int expectedRevision,
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.setDeviceCompanion(
+          baseUrl,
+          accessToken: accessToken,
+          deviceId: deviceId,
+          requestId: requestId,
+          companionId: companionId,
+          expectedRevision: expectedRevision,
+        ),
+      );
+}
+
 class HostDeviceAdmissionRepository {
   const HostDeviceAdmissionRepository(this._session);
 

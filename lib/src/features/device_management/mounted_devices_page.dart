@@ -9,6 +9,7 @@ import '../device_setup/device_admission_page.dart';
 import '../device_setup/device_setup_page.dart';
 import '../device_setup/host_controller_device_admission.dart';
 import '../device_setup/platform_device_provisioning.dart';
+import '../../generated/management_v1.dart';
 import '../host_setup/host_product_controller.dart';
 import 'mounted_device_models.dart';
 
@@ -152,6 +153,8 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
                   deviceId: deviceId,
                   requestId: requestId,
                 ),
+                loadCompanions: controller.roster,
+                onBindCompanion: controller.setDeviceCompanion,
               ),
             ),
           ],
@@ -207,6 +210,8 @@ class _MountedDeviceCard extends StatelessWidget {
   const _MountedDeviceCard({
     required this.device,
     required this.onRemove,
+    this.loadCompanions,
+    this.onBindCompanion,
   });
 
   final MountedDevice device;
@@ -214,6 +219,14 @@ class _MountedDeviceCard extends StatelessWidget {
     String deviceId,
     String requestId,
   ) onRemove;
+  final Future<CompanionRosterView> Function()? loadCompanions;
+  final Future<void> Function({
+    required String deviceId,
+    required String requestId,
+    required String? companionId,
+    required int expectedRevision,
+  })? onBindCompanion;
+
   @override
   Widget build(BuildContext context) {
     final (label, color) = switch (device.state) {
@@ -247,6 +260,8 @@ class _MountedDeviceCard extends StatelessWidget {
             builder: (_) => MountedDeviceDetailPage(
               device: device,
               onRemove: onRemove,
+              loadCompanions: loadCompanions,
+              onBindCompanion: onBindCompanion,
             ),
           ),
         ),
@@ -260,6 +275,8 @@ class MountedDeviceDetailPage extends StatefulWidget {
     super.key,
     required this.device,
     required this.onRemove,
+    this.loadCompanions,
+    this.onBindCompanion,
   });
 
   final MountedDevice device;
@@ -267,6 +284,20 @@ class MountedDeviceDetailPage extends StatefulWidget {
     String deviceId,
     String requestId,
   ) onRemove;
+
+  /// This Owner's Companions, read when the Owner asks to choose one. Not held
+  /// on this screen: which Companions exist is the Host's to say, and it
+  /// changes without this device changing.
+  final Future<CompanionRosterView> Function()? loadCompanions;
+
+  /// Which Companion answers through this device, or none. One call for both,
+  /// carrying the mount revision this screen was showing.
+  final Future<void> Function({
+    required String deviceId,
+    required String requestId,
+    required String? companionId,
+    required int expectedRevision,
+  })? onBindCompanion;
 
   @override
   State<MountedDeviceDetailPage> createState() =>
@@ -276,9 +307,43 @@ class MountedDeviceDetailPage extends StatefulWidget {
 class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
   final Random _random = Random.secure();
   bool _removing = false;
+  bool _binding = false;
   bool _platformRemoved = false;
   String? _notice;
   String? _removalRequestId;
+
+  Future<void> _bindCompanion() async {
+    final bind = widget.onBindCompanion;
+    final load = widget.loadCompanions;
+    if (bind == null || load == null || _binding || _removing) return;
+    setState(() {
+      _binding = true;
+      _notice = null;
+    });
+    try {
+      final roster = await load();
+      if (!mounted) return;
+      final chosen = await showModalBottomSheet<_CompanionChoice>(
+        context: context,
+        builder: (sheetContext) => _CompanionPicker(
+          roster: roster,
+          attachedCompanionId: widget.device.mount.attachedCompanionId,
+        ),
+      );
+      if (chosen == null || !mounted) return;
+      await bind(
+        deviceId: widget.device.deviceId,
+        requestId: _requestId('device-companion'),
+        companionId: chosen.companionId,
+        expectedRevision: widget.device.mount.revision,
+      );
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      if (mounted) setState(() => _notice = '关联没有完成：$error');
+    } finally {
+      if (mounted) setState(() => _binding = false);
+    }
+  }
 
   Future<void> _confirmRemoval() async {
     final device = widget.device;
@@ -346,7 +411,9 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
     }
   }
 
-  String _newRemovalRequestId() {
+  String _newRemovalRequestId() => _requestId('device-removal');
+
+  String _requestId(String purpose) {
     final bytes = List<int>.generate(16, (_) => _random.nextInt(256));
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
@@ -354,7 +421,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
         bytes.map((value) => value.toRadixString(16).padLeft(2, '0')).join();
     final uuid = '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
         '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
-    return 'device-removal-$uuid';
+    return '$purpose-$uuid';
   }
 
   @override
@@ -393,10 +460,24 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
                   trailing: Text('${device.mount.revision}'),
                 ),
                 ListTile(
+                  key: const Key('device-companion-binding'),
                   title: const Text('关联 Companion'),
                   subtitle: Text(
-                    device.mount.attachedCompanionId == null ? '尚未关联' : '已关联',
+                    device.mount.attachedCompanionId ?? '尚未关联',
                   ),
+                  trailing: widget.onBindCompanion == null
+                      ? null
+                      : TextButton(
+                          key: const Key('bind-device-companion'),
+                          onPressed: _binding || _removing || _platformRemoved
+                              ? null
+                              : _bindCompanion,
+                          child: Text(
+                            device.mount.attachedCompanionId == null
+                                ? '关联'
+                                : '更换或解除',
+                          ),
+                        ),
                 ),
                 ListTile(
                   title: const Text('最后更新'),
@@ -441,6 +522,75 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
             '移除后这台设备立即失去访问。它也是设备重新添加的前提：主机不会为已经持有的设备重复登记。',
             style: Theme.of(context).textTheme.bodySmall,
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What the Owner chose in the picker: a Companion, or none.
+class _CompanionChoice {
+  const _CompanionChoice(this.companionId);
+
+  final String? companionId;
+}
+
+class _CompanionPicker extends StatelessWidget {
+  const _CompanionPicker({
+    required this.roster,
+    required this.attachedCompanionId,
+  });
+
+  final CompanionRosterView roster;
+  final String? attachedCompanionId;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = roster.companions
+        .where((item) => item.lifecycleState == 'active')
+        .toList(growable: false);
+    return SafeArea(
+      child: ListView(
+        key: const Key('device-companion-picker'),
+        shrinkWrap: true,
+        children: [
+          const ListTile(
+            title: Text('谁通过这台设备说话？'),
+            subtitle: Text('换一个 Companion 不会重新配网，也不会动它的记忆。'),
+          ),
+          const Divider(height: 1),
+          if (active.isEmpty)
+            const ListTile(
+              key: Key('device-companion-picker-empty'),
+              title: Text('这台主机上还没有可用的 Eidolon。'),
+            ),
+          ...active.map(
+            (companion) => ListTile(
+              key: Key('companion-choice-${companion.companionId}'),
+              title: Text(
+                (companion.displayName ?? '').trim().isEmpty
+                    ? companion.companionId
+                    : companion.displayName!.trim(),
+              ),
+              subtitle: Text(companion.kind),
+              trailing: companion.companionId == attachedCompanionId
+                  ? const Icon(Icons.check)
+                  : null,
+              onTap: () => Navigator.of(context).pop(
+                _CompanionChoice(companion.companionId),
+              ),
+            ),
+          ),
+          if (attachedCompanionId != null) ...[
+            const Divider(height: 1),
+            ListTile(
+              key: const Key('companion-choice-none'),
+              title: const Text('解除关联'),
+              subtitle: const Text('设备留在这台主机上，只是暂时没有谁通过它说话。'),
+              onTap: () =>
+                  Navigator.of(context).pop(const _CompanionChoice(null)),
+            ),
+          ],
         ],
       ),
     );

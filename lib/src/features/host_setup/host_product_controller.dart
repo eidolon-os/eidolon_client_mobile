@@ -53,6 +53,7 @@ class HostProductController extends ChangeNotifier {
     _workspaceRepository = HostWorkspaceRepository(_session);
     _devicesRepository = HostDevicesRepository(_session);
     _deviceAdmissionRepository = HostDeviceAdmissionRepository(_session);
+    _deviceCompanionRepository = HostDeviceCompanionRepository(_session);
     _hostServicesRepository = HostServicesRepository(_session);
     _controllerGrantRepository = HostControllerGrantRepository(_session);
     _companionRepository = HostCompanionRepository(_session);
@@ -74,6 +75,7 @@ class HostProductController extends ChangeNotifier {
   late final HostWorkspaceRepository _workspaceRepository;
   late final HostDevicesRepository _devicesRepository;
   late final HostDeviceAdmissionRepository _deviceAdmissionRepository;
+  late final HostDeviceCompanionRepository _deviceCompanionRepository;
   late final HostServicesRepository _hostServicesRepository;
   late final HostControllerGrantRepository _controllerGrantRepository;
   late final HostCompanionRepository _companionRepository;
@@ -637,6 +639,31 @@ class HostProductController extends ChangeNotifier {
       throw const FormatException('Host recorded another Decision');
     }
     return recovered;
+  }
+
+  /// Bind a device to one Companion, or release it from the one it has.
+  ///
+  /// The device list is re-read afterwards rather than patched here: the mount
+  /// is the Host's, and a screen that edited its own copy would show a binding
+  /// the Host might have refused.
+  Future<void> setDeviceCompanion({
+    required String deviceId,
+    required String requestId,
+    required String? companionId,
+    required int expectedRevision,
+  }) async {
+    if (_connection == null) {
+      throw const HostControllerAuthorizationException(
+        '请先安全连接主机，再关联 Companion',
+      );
+    }
+    await _deviceCompanionRepository.set(
+      deviceId: deviceId,
+      requestId: requestId,
+      companionId: companionId,
+      expectedRevision: expectedRevision,
+    );
+    await refreshDevices();
   }
 
   /// Take a device off this Host at the Owner's request.
