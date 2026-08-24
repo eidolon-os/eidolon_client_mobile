@@ -20,6 +20,7 @@ class CockpitHeader extends StatelessWidget {
     required this.onOwnerTap,
     this.refreshing = false,
     this.compact = false,
+    this.readFailed = false,
   });
 
   final CockpitSnapshot snapshot;
@@ -32,6 +33,10 @@ class CockpitHeader extends StatelessWidget {
   /// Sideways the meters move to the rail, so the header keeps one row and gives
   /// the map back the height.
   final bool compact;
+
+  /// The last read failed. The chip must not keep saying ONLINE while the strip
+  /// below it says the projection could not be read.
+  final bool readFailed;
 
   @override
   Widget build(BuildContext context) {
@@ -130,7 +135,11 @@ class CockpitHeader extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      _StreamChip(state: snapshot.streamState),
+                      _StreamChip(
+                        state: readFailed
+                            ? StreamState.degraded
+                            : snapshot.streamState,
+                      ),
                       const SizedBox(height: 3),
                       Text(
                         clockText,

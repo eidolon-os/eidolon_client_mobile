@@ -104,13 +104,52 @@ EIDOLON_GOLDENS=1 flutter test --update-goldens test/constellation_golden_test.d
 
 ## 6. 接真实数据要做的
 
-`CockpitFeed` 是唯一的接缝。等 Local API 落地
-`GET /api/local/v1/mission-control/snapshot` 与事件流（见
-[product-surface-plan.md](product-surface-plan.md) §5）之后：
+### 6.1 已经是干净的部分
 
-1. 写一个 pinned adapter 填同一批结构，`MockCockpitFeed` 只留给演示；
-2. `streamState` 与 `degradedSources` 来自逐 source 的 `ok / degraded / unavailable`
-   与 freshness，不由客户端猜；
-3. 事件流用稳定 cursor / event ID 去重，前后台切换时暂停恢复；流断只表示观测降级，
-   不能推导主机、伙伴、设备或语音轮次停了；
-4. 然后才把入口放进产品导航。
+UI 只通过 `CockpitFeed` 的五个成员碰数据：`snapshot` / `updates` / `pulses` /
+`refresh` / `dispose`。几何、绘制、色调、事件→脉冲全都不知道数据从哪来，
+`cockpit_mock_feed.dart` 在产品代码里**零 import**（只有 demo 入口构造它）。
+`ConstellationCockpitPage` 的 `feed` 是必填的，没有回落到 mock 的路径 ——
+少传一个参数就显示演示数据，这种事不该可能发生。
+
+### 6.2 接缝本身还是照 mock 的形状定的
+
+真流要补进接口的三样，恰好都是
+[product-surface-plan.md](product-surface-plan.md) §5 已经要求的：
+
+| 缺口 | 为什么不能靠 adapter 内部糊 |
+|---|---|
+| **游标与去重** | 有界重连之后，要么重放（飞镖打两次）要么跳过（静默丢事件）。`pulses` 现在是 fire-and-forget，没有「我从这里续上」的概念 |
+| **前后台生命周期** | 接口没有 `pause` / `resume`，App 切后台时订阅只是挂着 |
+| **`refresh()` 的结果** | 返回 `Future<void>`，成功失败都一样 —— 现在页面靠 catch 兜住，但这是页面在替接口补语义 |
+
+失败通道已经补上了（见 §6.3），剩下这三样等真实传输一起定，现在补是凭空设计。
+
+### 6.3 读失败已经有位置了
+
+流出错或 `refresh()` 抛出时，星图上方出现一条失败带：说「读不到这台主机的运行
+投影」、说清**屏幕上是哪一次读取的样子**、给重试；同时顶栏的链路徽标从 ONLINE
+翻成 UNSTABLE。星图本身留着 —— 它是最后一次事实，但它不再被允许假装是现在。
+两条测试盯着这件事（含「重试再失败不会悄悄变正常」）。
+
+### 6.4 契约缺口（这是 API 的，不是接缝的）
+
+| 星图要的 | 今天 Local API |
+|---|---|
+| 主人、主 Companion | `/workspace/runtime` 有；**没有伙伴列表** |
+| 身体列表 | `/devices` 有（`coverage=mounted-devices`） |
+| **身体在场** | **没有** —— `MountedDevice` 无 online / last_seen，只能落到「已绑定 / 未探测」 |
+| 底座健康 | `/host/services` 有 |
+| 记忆细节（召回、整理、写入策略） | 只有 realm_id |
+| 活动 / 轮次 / 任务 / 事件 / 路由 | **完全没有** —— 星图最有说服力的那部分全靠它 |
+
+### 6.5 顺序
+
+1. projection 与事件流落地；
+2. 把游标 / 生命周期 / refresh 结果补进 `CockpitFeed`；
+3. 写 pinned adapter（走现成的 `local_api_client` + `pinned_http_client` +
+   Controller session），由 `HostProductController` 构造并决定换主机 / reset epoch
+   时的生命周期归属；
+4. `streamState` 与 `degradedSources` 来自逐 source 的
+   `ok / degraded / unavailable` 与 freshness，不由客户端猜；
+5. 然后才把入口放进产品导航。

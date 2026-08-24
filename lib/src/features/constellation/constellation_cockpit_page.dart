@@ -6,7 +6,6 @@ import 'cockpit_deck.dart';
 import 'cockpit_details.dart';
 import 'cockpit_feed.dart';
 import 'cockpit_header.dart';
-import 'cockpit_mock_feed.dart';
 import 'cockpit_models.dart';
 import 'cockpit_theme.dart';
 import 'cockpit_ambience.dart';
@@ -26,10 +25,12 @@ import 'constellation_stage.dart';
 /// so in two places rather than letting a demo pass for a Host's word. When the
 /// Owner-scoped projection lands, the adapter changes and this file does not.
 class ConstellationCockpitPage extends StatefulWidget {
-  const ConstellationCockpitPage({super.key, this.feed});
+  const ConstellationCockpitPage({super.key, required this.feed});
 
-  /// Left null in the app; injected in tests so a scene can be pinned.
-  final CockpitFeed? feed;
+  /// Where the facts come from. Required, and deliberately not defaulted to the
+  /// mock: a screen that falls back to a staged world when nobody passed it one
+  /// is a screen that can show fiction because of a missing argument.
+  final CockpitFeed feed;
 
   @override
   State<ConstellationCockpitPage> createState() =>
@@ -38,7 +39,7 @@ class ConstellationCockpitPage extends StatefulWidget {
 
 class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
     with SingleTickerProviderStateMixin {
-  late final CockpitFeed _feed = widget.feed ?? MockCockpitFeed();
+  CockpitFeed get _feed => widget.feed;
   late final AnimationController _clock = AnimationController.unbounded(
     vsync: this,
   );
@@ -52,6 +53,12 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
   Timer? _secondHand;
   Timer? _igniteTimer;
 
+  /// What went wrong reading the projection, if anything. Kept apart from the
+  /// snapshot on purpose: an unread domain is not a quiet one, and the map on
+  /// screen after a failure is a memory, not an observation.
+  String? _readFailure;
+  DateTime? _lastRead;
+
   String _focusedId = '';
   InspectorTab _tab = InspectorTab.overview;
   CockpitPulse? _highlight;
@@ -63,8 +70,9 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
   void initState() {
     super.initState();
     _clockText = formatClock(DateTime.now());
-    _snapshotSub = _feed.updates.listen(_onSnapshot);
-    _pulseSub = _feed.pulses.listen(_onPulse);
+    _lastRead = _feed.snapshot.generatedAt;
+    _snapshotSub = _feed.updates.listen(_onSnapshot, onError: _onFeedError);
+    _pulseSub = _feed.pulses.listen(_onPulse, onError: _onFeedError);
     _secondHand = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _clockText = formatClock(DateTime.now()));
     });
@@ -98,7 +106,23 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
     }
     _wasActive = active;
     _snapshot.value = snapshot;
-    setState(() {});
+    setState(() {
+      _readFailure = null;
+      _lastRead = snapshot.generatedAt;
+    });
+  }
+
+  void _onFeedError(Object error) {
+    if (!mounted) return;
+    setState(() => _readFailure = '$error');
+  }
+
+  Future<void> _refresh() async {
+    try {
+      await _feed.refresh();
+    } catch (error) {
+      _onFeedError(error);
+    }
   }
 
   void _onPulse(CockpitPulse pulse) {
@@ -124,7 +148,6 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
     _pulseSub?.cancel();
     _clock.dispose();
     _snapshot.dispose();
-    if (widget.feed == null) _feed.dispose();
     super.dispose();
   }
 
@@ -391,11 +414,26 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
                                   snapshot: snapshot,
                                   clockText: _clockText,
                                   compact: true,
+                                  readFailed: _readFailure != null,
                                   onBack: () =>
                                       Navigator.of(context).maybePop(),
-                                  onRefresh: _feed.refresh,
+                                  onRefresh: _refresh,
                                   onOwnerTap: () => _openOwner(snapshot),
                                 ),
+                                if (_readFailure case final failure?)
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      10,
+                                      8,
+                                      10,
+                                      0,
+                                    ),
+                                    child: _ReadFailureStrip(
+                                      failure: failure,
+                                      lastRead: _lastRead,
+                                      onRetry: _refresh,
+                                    ),
+                                  ),
                                 Expanded(
                                   child: _stageFor(
                                     snapshot,
@@ -423,10 +461,20 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
                           CockpitHeader(
                             snapshot: snapshot,
                             clockText: _clockText,
+                            readFailed: _readFailure != null,
                             onBack: () => Navigator.of(context).maybePop(),
-                            onRefresh: _feed.refresh,
+                            onRefresh: _refresh,
                             onOwnerTap: () => _openOwner(snapshot),
                           ),
+                          if (_readFailure case final failure?)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+                              child: _ReadFailureStrip(
+                                failure: failure,
+                                lastRead: _lastRead,
+                                onRetry: _refresh,
+                              ),
+                            ),
                           Expanded(
                               child:
                                   _stageFor(snapshot, units, chrome.metrics)),
@@ -482,4 +530,75 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
 
 extension _FirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
+}
+
+/// What a failed read looks like. It sits over the map rather than replacing it,
+/// because the map is still the last thing that was true — but it says so, with
+/// the time of that reading, and it never lets the screen imply that a domain
+/// nobody could read is a domain where nothing is happening.
+class _ReadFailureStrip extends StatelessWidget {
+  const _ReadFailureStrip({
+    required this.failure,
+    required this.lastRead,
+    required this.onRetry,
+  });
+
+  final String failure;
+  final DateTime? lastRead;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => CockpitSlab(
+        key: const Key('cockpit-read-failure'),
+        accent: Cockpit.magenta,
+        borderOpacity: 0.7,
+        fill: const Color(0xFF1A0413).withValues(alpha: 0.95),
+        padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+        child: Row(
+          children: [
+            const CockpitLed(color: Cockpit.bad, size: 7),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '读不到这台主机的运行投影',
+                    style: Cockpit.sans(size: 12.5, color: Cockpit.bad),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    lastRead == null
+                        ? '屏幕上没有任何一次成功的读取。$failure'
+                        : '屏幕上是 ${formatClock(lastRead!)} 那一次读取的样子，'
+                            '不是现在。$failure',
+                    style: Cockpit.mono(
+                      size: 9.5,
+                      weight: FontWeight.w600,
+                      color: Cockpit.ink,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            GestureDetector(
+              key: const Key('retry-cockpit-read'),
+              onTap: onRetry,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Cockpit.magenta),
+                ),
+                child: Text(
+                  '重试',
+                  style: Cockpit.mono(size: 10, color: Cockpit.bad),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 }

@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:eidolon_client_mobile/src/features/constellation/cockpit_feed.dart';
 import 'package:eidolon_client_mobile/src/features/constellation/cockpit_mock_feed.dart';
 import 'package:eidolon_client_mobile/src/features/constellation/cockpit_models.dart';
 import 'package:eidolon_client_mobile/src/features/constellation/companion_inspector.dart';
@@ -14,7 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 Future<void> _openCockpit(
   WidgetTester tester,
-  MockCockpitFeed feed, {
+  CockpitFeed feed, {
   Size physicalSize = const Size(1170, 2532),
   double devicePixelRatio = 3,
 }) async {
@@ -65,6 +68,8 @@ Finder _moon(String companionId, MoonKind kind) => find.byWidgetPredicate(
     );
 
 void main() {
+  _failureTests();
+
   testWidgets('主人核心、伙伴行星和三颗卫星都画了出来', (tester) async {
     final feed = MockCockpitFeed(autoplay: false);
     addTearDown(feed.dispose);
@@ -313,6 +318,88 @@ void main() {
     await tester.tap(find.textContaining('事件 ').last);
     await _settle(tester);
     expect(find.textContaining('客厅音箱 加入语音房间'), findsWidgets);
+
+    await _close(tester);
+  });
+}
+
+/// A feed whose stream fails after handing over one good snapshot — the shape a
+/// pinned HTTPS adapter will actually fail in (a read succeeds, then the Host
+/// moves, the session expires, or the socket drops).
+class _FailingFeed implements CockpitFeed {
+  _FailingFeed() : _backing = MockCockpitFeed(autoplay: false);
+
+  final MockCockpitFeed _backing;
+  final _updates = StreamController<CockpitSnapshot>.broadcast();
+  final _pulses = StreamController<CockpitPulse>.broadcast();
+  var refreshes = 0;
+
+  @override
+  CockpitSnapshot get snapshot => _backing.snapshot;
+
+  @override
+  Stream<CockpitSnapshot> get updates => _updates.stream;
+
+  @override
+  Stream<CockpitPulse> get pulses => _pulses.stream;
+
+  void fail(Object error) => _updates.addError(error);
+
+  @override
+  Future<void> refresh() async {
+    refreshes += 1;
+    throw StateError('主机仍然没有回应');
+  }
+
+  @override
+  void dispose() {
+    _updates.close();
+    _pulses.close();
+    _backing.dispose();
+  }
+}
+
+void _failureTests() {
+  testWidgets('读不到投影时说出来，并且不让屏幕假装一切正常', (tester) async {
+    final feed = _FailingFeed();
+    addTearDown(feed.dispose);
+    await _openCockpit(tester, feed);
+
+    // 先确认正常态：没有失败条，链路是 ONLINE。
+    expect(find.byKey(const Key('cockpit-read-failure')), findsNothing);
+    expect(find.text('ONLINE'), findsOneWidget);
+
+    feed.fail(StateError('pinned host 无法验证'));
+    await _settle(tester);
+
+    // 失败必须有自己的位置，而不是把星图渲染成「什么都没发生」。
+    expect(find.byKey(const Key('cockpit-read-failure')), findsOneWidget);
+    expect(find.text('读不到这台主机的运行投影'), findsOneWidget);
+    // 屏幕上是哪一次读取的样子，必须说清楚。
+    expect(find.textContaining('那一次读取的样子'), findsOneWidget);
+    // 顶栏不能继续宣称在线。
+    expect(find.text('ONLINE'), findsNothing);
+    expect(find.text('UNSTABLE'), findsOneWidget);
+    // 星图还在（最后一次事实），不是一片空白。
+    expect(find.byType(OwnerCore), findsOneWidget);
+
+    await _close(tester);
+  });
+
+  testWidgets('重试失败了还是失败，不会悄悄变成正常', (tester) async {
+    final feed = _FailingFeed();
+    addTearDown(feed.dispose);
+    await _openCockpit(tester, feed);
+
+    feed.fail(StateError('socket 断了'));
+    await _settle(tester);
+
+    await tester.tap(find.byKey(const Key('retry-cockpit-read')));
+    await _settle(tester);
+
+    expect(feed.refreshes, 1);
+    expect(find.byKey(const Key('cockpit-read-failure')), findsOneWidget);
+    expect(find.textContaining('主机仍然没有回应'), findsOneWidget);
 
     await _close(tester);
   });

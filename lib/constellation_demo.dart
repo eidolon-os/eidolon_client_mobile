@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'src/features/constellation/cockpit_mock_feed.dart';
 import 'src/features/constellation/constellation_cockpit_page.dart';
 
 /// A run target for the constellation cockpit on its own:
@@ -30,6 +31,8 @@ class ConstellationDemoApp extends StatelessWidget {
           scaffoldBackgroundColor: const Color(0xFF060210),
           useMaterial3: true,
         ),
-        home: const ConstellationCockpitPage(),
+        // The one place the staged world is constructed. Nothing in the product
+        // navigation reaches this page, and the page itself has no fallback.
+        home: ConstellationCockpitPage(feed: MockCockpitFeed()),
       );
 }
