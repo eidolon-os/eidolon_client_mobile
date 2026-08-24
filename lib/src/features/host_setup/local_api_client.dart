@@ -14,6 +14,8 @@ import 'companion_face_models.dart';
 import 'recollection_models.dart';
 import 'controller_grant_models.dart';
 import 'controller_session.dart';
+import '../constellation/cockpit_models.dart';
+import '../constellation/cockpit_wire.dart';
 import 'host_models.dart';
 import 'host_service_models.dart';
 import 'host_vitals_models.dart';
@@ -600,6 +602,29 @@ class LocalApiClient {
         .timeout(timeout);
     return HostActivity.fromJson(
       _decodeResponse(response, operation: 'Host activity'),
+    );
+  }
+
+  /// This Owner's runtime, lane by lane.
+  ///
+  /// The one read the star map is built from. Owner scope is not a parameter:
+  /// the session already said whose domain this is, and a client that could
+  /// name another would be asking a question this boundary must not answer.
+  Future<CockpitSnapshot> fetchMissionControlSnapshot(
+    String baseUrl, {
+    required String accessToken,
+  }) async {
+    final response = await _httpClient
+        .get(
+          parseBaseUri(baseUrl)
+              .resolve('/api/local/v1/mission-control/snapshot'),
+          headers: _authorizedHeaders(accessToken),
+        )
+        .timeout(timeout);
+    return attachRecall(
+      parseCockpitSnapshot(
+        _decodeResponse(response, operation: 'Mission Control snapshot'),
+      ),
     );
   }
 

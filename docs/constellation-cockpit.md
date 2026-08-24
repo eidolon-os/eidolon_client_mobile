@@ -229,13 +229,38 @@ mock 世界里有一拍会让记忆服务不回应，所以这条路径是**看�
 | 记忆细节（召回、整理、写入策略） | 只有 realm_id |
 | 活动 / 轮次 / 任务 / 事件 / 路由 | **完全没有** —— 星图最有说服力的那部分全靠它 |
 
-### 7.5 顺序
+### 7.5 进度
 
-1. 契约进 `eidolon_sdk/contracts/local_api/v1/`（schema + 黄金载荷 + 镜像测试，
-   见契约 §8）；
-2. 载荷 lane 化（消费侧，约 6 处解析 + 3 处渲染）；
-3. projection 与事件流在 Local API 落地；
-4. 写 pinned adapter（走现成的 `local_api_client` + `pinned_http_client` +
-   Controller session），由 `HostProductController` 构造并决定换主机 / reset epoch
-   时的生命周期归属；
-5. 产品面变更：星图接掉运行驾驶舱、主机动态并进背板（见 §3.2），**单独一个提交**。
+1. ✅ 契约进 `eidolon_sdk/contracts/local_api/v1/`（schema + 黄金载荷 + 镜像测试，
+   见契约 §8）
+2. ✅ 载荷 lane 化（消费侧）
+3. 🟡 **Local API projection 落地了「这个边界今天能读到的部分」**
+   （`eidolon_admin/server/eidolon_admin_server/local_api/mission_control.py`，
+   `GET /api/local/v1/mission-control/snapshot`）：
+   - **能读**：主人、主 Companion（degraded：控制面只给主伙伴）、已挂载身体
+     （degraded：**在场没有权威回答**）、底座服务（`unknown` → `checked=false`）
+   - **读不到**：活动 / 对话轮次 / 后台任务 / 记忆 / 事件 —— 每条 lane 说出缺哪个
+     控制面能力，不空着到达
+   - 原因见 §7.6：Local API 是独立 app，只经显式 Port 触达权威，**没有
+     `nats_kv`、没有 data store**
+4. ✅ pinned adapter（`local_api_cockpit_feed.dart` +
+   `LocalApiClient.fetchMissionControlSnapshot`）：轮询、有界退避、
+   前后台暂停恢复、失败走观测通道、**永不伪造脉冲**
+5. ⬜ 产品面变更：星图接掉运行驾驶舱、主机动态并进背板（见 §3.2），单独一个提交 ——
+   等活动/事件那几条 lane 有 producer 之后再做，否则星图最有说服力的部分是暗的
+
+### 7.6 剩下的活在控制面，不在这两侧
+
+星图现在两侧都按契约就位了，缺口全在 **Admin 控制面边界**：Local API 触达权威只
+经显式 Port，所以要新增控制面能力才能填满剩下五条 lane。
+
+| 缺的控制面能力 | 填哪条 lane |
+|---|---|
+| Owner 逐设备在场（运行黑板 lease-aware + Hub 兜底） | `devices[].presence`（现在全是 `unknown/none`） |
+| Owner 伙伴列表 | `companions`（现在只有主伙伴） |
+| Owner 活动 / 轮次 / 任务投影 | `activities` `turns` `jobs` |
+| Owner 记忆投影（realms、runners、写入策略） | `memory` |
+| Owner 事件游标接口（audit index `ingest_seq` 之后重放） | `events` + SSE 流 + 脉冲 |
+
+**事件流是唯一能让飞镖动起来的东西。** adapter 现在不发脉冲，也不从两次 snapshot
+的差异里编造 —— 差异出来的箭会宣称一个方向和一个瞬间，而那是没人观测到的。
