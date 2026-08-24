@@ -213,8 +213,8 @@ class CompanionPlanet extends StatelessWidget {
   Widget build(BuildContext context) {
     final unit = planet.unit;
     final badge = runtimeBadge(unit);
-    final primary = unit.isPrimary;
-    final accent = primary ? Cockpit.sun : Cockpit.cyan;
+    final isDefault = unit.isDefault;
+    final accent = isDefault ? Cockpit.sun : Cockpit.cyan;
     final showBadge = detail >= kDetailValue;
 
     return Semantics(
@@ -274,7 +274,7 @@ class CompanionPlanet extends StatelessWidget {
                       ConstrainedBox(
                         constraints: BoxConstraints(maxWidth: diameter - 16),
                         child: Text(
-                          primary ? '★ ${unit.name}' : unit.name,
+                          isDefault ? '★ ${unit.name}' : unit.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center,

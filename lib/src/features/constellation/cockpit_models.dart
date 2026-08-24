@@ -5,7 +5,7 @@ import '../../protocol/companion_contract.dart';
 // It is deliberately the console cockpit's information model — Owner ▸
 // companions ▸ (bodies, memory, activity) — and not this Host's Local API
 // shapes. The screen is being built before the Owner-scoped projection exists
-// (`GET /api/local/v1/mission-control/snapshot`), so a mock feed fills these
+// (`GET /api/management/v1/mission-control/snapshot`), so a mock feed fills these
 // same structures today and the wire adapter fills them tomorrow without the
 // drawing changing.
 //
@@ -275,7 +275,6 @@ class CockpitCompanion {
     required this.displayName,
     required this.status,
     this.kind = 'companion',
-    this.isPrimary = false,
     this.genomeId = '',
     this.realmId = '',
     this.recallHits,
@@ -287,7 +286,6 @@ class CockpitCompanion {
   final String displayName;
   final String status;
   final String kind;
-  final bool isPrimary;
   final String genomeId;
   final String realmId;
   final int? recallHits;
@@ -409,6 +407,7 @@ class CockpitSnapshot {
     this.streamState = StreamState.live,
     this.traceId = '',
     this.cursor,
+    this.defaultCompanionId,
   });
 
   final DateTime generatedAt;
@@ -426,6 +425,11 @@ class CockpitSnapshot {
 
   /// Where the event stream should resume: the audit index's own total order.
   final int? cursor;
+
+  /// Which Companion answers by default, said once. A flag on every row would be
+  /// a second place the same question gets decided — and a per-row flag is only
+  /// ever right while there is one Companion, which is the worst kind of wrong.
+  final String? defaultCompanionId;
 
   CockpitOwner get owner =>
       ownerLane.value ?? const CockpitOwner(ownerId: '', displayName: '');
@@ -469,6 +473,7 @@ class CompanionUnit {
     required this.activities,
     required this.turns,
     required this.jobs,
+    this.isDefault = false,
     this.bodiesReadable = true,
     this.activitiesReadable = true,
     this.recallReadable = true,
@@ -480,6 +485,10 @@ class CompanionUnit {
   final List<CockpitTurn> turns;
   final List<CockpitJob> jobs;
 
+  /// Whether this is the Companion that answers by default. Compared by the
+  /// caller against the snapshot rather than read from a per-row flag.
+  final bool isDefault;
+
   /// Whether the lane each of this companion's assets is drawn from actually
   /// read. An empty list from a failed lane must not be drawn as "none".
   final bool bodiesReadable;
@@ -490,7 +499,6 @@ class CompanionUnit {
   String get name => companion.displayName.isEmpty
       ? companion.companionId
       : companion.displayName;
-  bool get isPrimary => companion.isPrimary;
   String get realm => companion.realmId;
   String get genome => companion.genomeId;
 

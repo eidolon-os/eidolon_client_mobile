@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// Parses the contract's own golden payloads.
 ///
-/// The goldens live in the SDK — `eidolon_sdk/contracts/local_api/v1/golden/` —
+/// The goldens live in the SDK — `eidolon_sdk/contracts/mission_control/v1/golden/` —
 /// because that is where the contract lives, and both sides read the same files:
 /// Python validates them against the schemas, this parses them. A copy in this
 /// repository would be a second source of truth, which is the thing the shared
@@ -23,7 +23,7 @@ Map<String, Object?>? _golden(String name) {
   var directory = Directory.current;
   for (var depth = 0; depth < 4; depth += 1) {
     final file = File(
-      '${directory.path}/eidolon_sdk/contracts/local_api/v1/golden/$name',
+      '${directory.path}/eidolon_sdk/contracts/mission_control/v1/golden/$name',
     );
     if (file.existsSync()) {
       return jsonDecode(file.readAsStringSync()) as Map<String, Object?>;
@@ -51,11 +51,16 @@ void main() {
       expect(snapshot.cursor, 10493);
 
       // 召回不是伙伴字段，是从它自己那次 turn 上补的。
-      final master = snapshot.companions.firstWhere((item) => item.isPrimary);
+      // 谁是默认由快照说一次，消费者自己比 —— 不看每行的标志位。
+      expect(snapshot.defaultCompanionId, isNotNull);
+      final master = snapshot.companions.firstWhere(
+        (item) => item.companionId == snapshot.defaultCompanionId,
+      );
       expect(master.recallHits, 4);
       // 没有 turn 的伙伴就是没有，不是 0。
-      final pending =
-          snapshot.companions.firstWhere((item) => !item.isPrimary);
+      final pending = snapshot.companions.firstWhere(
+        (item) => item.companionId != snapshot.defaultCompanionId,
+      );
       expect(pending.recallHits, isNull);
       expect(pending.realmId, isEmpty);
     });

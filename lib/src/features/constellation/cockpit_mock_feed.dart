@@ -413,8 +413,7 @@ class _MockWorld {
         companionId: _master,
         displayName: '砚舟',
         status: 'active',
-        kind: 'master',
-        isPrimary: true,
+        kind: 'companion',
         genomeId: 'genome-yanzhou-7',
         realmId: 'realm-yanzhou',
         recallHits: 0,
@@ -750,7 +749,6 @@ class _MockWorld {
                   displayName: companion.displayName,
                   status: companion.status,
                   kind: companion.kind,
-                  isPrimary: companion.isPrimary,
                   genomeId: companion.genomeId,
                   realmId: companion.realmId,
                   recallHits: hits,
@@ -1036,6 +1034,7 @@ class _MockWorld {
         streamState: state,
         traceId: _voiceTurnId.isEmpty ? '—' : compactId(_voiceTurnId),
         cursor: _seq,
+        defaultCompanionId: _master,
       );
 }
 

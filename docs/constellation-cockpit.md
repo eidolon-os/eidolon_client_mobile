@@ -71,6 +71,17 @@ Admin Web 的 Mission Control 有一张「主权域星图」：主人核心在�
 可能读不到的屏放在一块必须可用的屏前面，等于让恢复路径依赖观测路径 ——
 plan 明确要求 Host Setup 保持独立恢复入口。
 
+### 3.5 完整 roster 进星图:一屏两源的边界（未决）
+
+`ManagementClient` 已经能读完整 roster，星图的 companions lane 却只能拿到默认那一个。
+直接拿 roster 喂星图**不违反**多 Companion 计划 L2906（那条禁的是反方向:从 MC
+activity 反推 roster），但会让一屏出现两个源:roster 来自 management ABI、其余来自
+MC 快照，两者各自失败、各自新鲜度不同。
+
+真要做，星图必须显式区分「这一行伙伴来自 roster 权威」与「它的运行事实来自 MC」，
+不能糊成一份 —— 否则 roster 读到了而 MC 没读到时，屏幕会画出一个看起来在运行的伙伴。
+倾向等 MC 的 companions producer，保持一屏一源。
+
 ### 3.4 分两步落
 
 1. **现在**：产品导航里没有任何入口，只有 `lib/constellation_demo.dart`
@@ -211,6 +222,20 @@ coverage、缺字段）**拒绝**，不半懂着渲染；不认识的枚举值**
 
 mock 世界里有一拍会让记忆服务不回应，所以这条路径是**看得见**的，不只是断言。
 
+### 7.2.2 「谁是默认」只说一次
+
+快照带 `default_companion_id`，行上**没有** `is_primary`。理由有两层:
+
+- **措辞**:Companion 权威那次修复把「主伙伴 / 主 / PRIMARY」改成「默认 / DEFAULT」，
+  因为"两个客户端对同一个事实用不同的词，就是它们开始互相不一致的方式"。
+  mobile 的 roster 早就说「默认」，星图曾是第三种说法。
+- **形状**:每行挂一个布尔，等于让这里成为第二个裁决"谁是 default"的地方 ——
+  而它**只在只有一个 Companion 时是对的**，这是最糟的一种错，因为它能通过任何人
+  随手写的测试。
+
+`test/mission_control_plane_guard_test.dart` 钉住这两条:星图里不出现
+`主伙伴 / PRIMARY / isPrimary`，全 lib 不从 wire 读 `is_primary`。
+
 ### 7.3 读失败已经有位置了
 
 流出错或 `refresh()` 抛出时，星图上方出现一条失败带：说「读不到这台主机的运行
@@ -229,12 +254,28 @@ mock 世界里有一拍会让记忆服务不回应，所以这条路径是**看�
 | 记忆细节（召回、整理、写入策略） | 只有 realm_id |
 | 活动 / 轮次 / 任务 / 事件 / 路由 | **完全没有** —— 星图最有说服力的那部分全靠它 |
 
-### 7.5 进度
+### 7.5 阻塞项（BLOCKED）
+
+**星图现在没有真实数据源,而且短期内拿不到。** 这不是"待做",是被别人的排期挡住:
+
+| 阻塞项 | 被谁挡住 | 解除条件 |
+|---|---|---|
+| `GET /api/management/v1/mission-control/snapshot` **不存在** | 需要穿四层(见 §7.7),其中内部平面要读各权威 —— 那是凭据隔离所在 | 四层实现落地 + OpenAPI 从路由导出 + 两个客户端生成 |
+| `GET /api/management/v1/events`（SSE + 游标） | **多 Companion 计划 Phase 6**（"事件流以 `audit_outbox` 为唯一 producer；dispatcher 未接线前 `/events` 不发布"） | Phase 6 |
+| 活动 / 轮次 / 任务 lane | 同上 Phase 6 | Phase 6 |
+| 逐设备在场 | 设备生命周期计划 PH2-B 邻域，需避让 | PH2-B consumer cutover |
+| 完整 roster 进星图 | producer 有了（`ManagementClient`），但**一屏两源**的边界要先定 | 见 §3.5 |
+
+**旧接口已拆除,没有回退到它的路**:`test/mission_control_plane_guard_test.dart`
+断言 lib 里不出现 `/api/local/v1/mission-control`。所以在解除之前,星图只有
+`MockCockpitFeed`(demo 入口)和 `PolledCockpitFeed`(骨架,等一个 read 函数)。
+
+### 7.6 进度
 
 1. ✅ 契约进 `eidolon_sdk/contracts/local_api/v1/`（schema + 黄金载荷 + 镜像测试，
    见契约 §8）
 2. ✅ 载荷 lane 化（消费侧）
-3. 🔴 **走错平面,已拆除**（见 §7.6）。原来落在
+3. 🔴 **走错平面,已拆除**（见 §7.7）。原来落在
    `GET /api/local/v1/mission-control/snapshot`，那条平面正在被删除；
    正确位置是 `/api/management/v1/mission-control/snapshot`。
    拆掉前它能读到的部分是：
@@ -247,11 +288,11 @@ mock 世界里有一拍会让记忆服务不回应，所以这条路径是**看�
 4. 🟡 feed 骨架保留（`polled_cockpit_feed.dart`）：轮询、有界退避、
    前后台暂停恢复、失败走观测通道、**永不伪造脉冲**。它只收一个 read 函数、
    不拥有传输,所以换平面不动它。手写进 `LocalApiClient` 的那个读取方法已删除
-   （见 §7.6）
+   （见 §7.7）
 5. ⬜ 产品面变更：星图接掉运行驾驶舱、主机动态并进背板（见 §3.2），单独一个提交 ——
    等活动/事件那几条 lane 有 producer 之后再做，否则星图最有说服力的部分是暗的
 
-### 7.6 走错了平面:为什么删掉而不是改个路径
+### 7.7 走错了平面:为什么删掉而不是改个路径
 
 `/api/local/v1/mission-control/snapshot` 是错的,而且错在架构层面。
 [EidolonOS多Companion统一管理架构方案.md](../../docs/跨系统/EidolonOS多Companion统一管理架构方案.md) §2.3
@@ -279,7 +320,7 @@ mock 世界里有一拍会让记忆服务不回应，所以这条路径是**看�
 `LocalApiCockpitFeed` 改名为 `PolledCockpitFeed`（类名不该编码一个正在消失的平面）。
 没有留兼容窗口,因为它从未发布,也没有任何东西指向它。
 
-### 7.7 正确位置要穿四层
+### 7.8 正确位置要穿四层
 
 management 面的实现不是换个 path 前缀,它有四层,凭据隔离就住在这些层之间:
 
@@ -299,7 +340,7 @@ OpenAPI 文档是**从路由导出**的(`generate.py`，`--check` 是漂移门�
 词汇（`biz/contracts/mission_control.py`）留在 SDK 是对的；wire schema 与 golden
 应随文档搬到 management 那边。
 
-### 7.8 剩下的活在控制面，不在这两侧
+### 7.9 剩下的活在控制面，不在这两侧
 
 星图现在两侧都按契约就位了，缺口全在 **Admin 控制面边界**：Local API 触达权威只
 经显式 Port，所以要新增控制面能力才能填满剩下五条 lane。

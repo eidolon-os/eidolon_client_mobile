@@ -96,6 +96,9 @@ CockpitSnapshot parseCockpitSnapshot(Map<String, Object?> json) {
   return CockpitSnapshot(
     generatedAt: _time(json['generated_at'], 'generated_at 无法解析'),
     cursor: cursor is Map ? _intOrNull(cursor[wire.cursorField]) : null,
+    defaultCompanionId: _stringOr(json['default_companion_id']).isEmpty
+        ? null
+        : _stringOr(json['default_companion_id']),
     ownerLane: _lane<CockpitOwner?>(
       json['owner'],
       '主人',
@@ -174,7 +177,6 @@ CockpitCompanion _companion(Map<String, Object?> json) => CockpitCompanion(
       companionId: _string(json['companion_id'], 'companion_id 缺失'),
       displayName: _stringOr(json['display_name']),
       status: _stringOr(json['lifecycle_state'], 'active'),
-      isPrimary: _boolOr(json['is_primary'], false),
       genomeId: _stringOr(json['genome_id']),
       realmId: _stringOr(json['memory_realm_id']),
       // Recall is not a companion field on the wire — it is read off this
@@ -330,6 +332,7 @@ CockpitSnapshot attachRecall(CockpitSnapshot snapshot) {
   return CockpitSnapshot(
     generatedAt: snapshot.generatedAt,
     cursor: snapshot.cursor,
+    defaultCompanionId: snapshot.defaultCompanionId,
     ownerLane: snapshot.ownerLane,
     companionsLane: CockpitLane<List<CockpitCompanion>>(
       state: snapshot.companionsLane.state,
@@ -344,7 +347,6 @@ CockpitSnapshot attachRecall(CockpitSnapshot snapshot) {
               displayName: companion.displayName,
               status: companion.status,
               kind: companion.kind,
-              isPrimary: companion.isPrimary,
               genomeId: companion.genomeId,
               realmId: companion.realmId,
               recallHits: latest[companion.companionId]?.memoryHits,

@@ -203,6 +203,7 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
           turns: snapshot.turns
               .where((turn) => turn.companionId == companion.companionId)
               .toList(growable: false),
+          isDefault: snapshot.defaultCompanionId == companion.companionId,
           jobs: snapshot.jobs
               .where(
                 (job) =>
@@ -363,8 +364,8 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
   void _openCompanion(CompanionUnit unit) => showCockpitSheet(
         context,
         title: unit.name,
-        kicker: unit.isPrimary ? 'PRIMARY' : 'COMPANION',
-        accent: unit.isPrimary ? Cockpit.sun : Cockpit.cyan,
+        kicker: unit.isDefault ? 'DEFAULT' : 'COMPANION',
+        accent: unit.isDefault ? Cockpit.sun : Cockpit.cyan,
         child: companionSheetBody(unit),
       );
 

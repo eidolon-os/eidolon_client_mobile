@@ -42,7 +42,7 @@ class CompanionInspectorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => CockpitSlab(
-        accent: unit.isPrimary ? Cockpit.sun : Cockpit.cyan,
+        accent: unit.isDefault ? Cockpit.sun : Cockpit.cyan,
         borderOpacity: 0.5,
         notch: 14,
         fill: const Color(0xFF07030F).withValues(alpha: 0.94),
@@ -96,9 +96,9 @@ class CompanionInspectorCard extends StatelessWidget {
               children: [
                 Text(unit.name, style: Cockpit.sans(size: 19)),
                 const SizedBox(width: 7),
-                if (unit.isPrimary)
+                if (unit.isDefault)
                   Text(
-                    '★ 主伙伴',
+                    '★ 默认',
                     style: Cockpit.mono(size: 9, color: Cockpit.sun),
                   )
                 else
