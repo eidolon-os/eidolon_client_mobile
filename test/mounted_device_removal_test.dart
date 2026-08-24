@@ -39,13 +39,6 @@ DeviceRemovalProgress _progress(String outcome) =>
           'observed_at': '2026-08-23T10:00:00Z',
         },
         {
-          'name': 'channel_access_revoked',
-          'state': outcome == 'done' ? 'true' : 'unknown',
-          'authority': 'device-control',
-          'authority_ref': null,
-          'observed_at': '2026-08-23T10:00:00Z',
-        },
-        {
           'name': 'device_erase_acknowledged',
           'state': 'unknown',
           'authority': 'device-control',

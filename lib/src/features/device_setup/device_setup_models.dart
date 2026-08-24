@@ -200,8 +200,6 @@ class DeviceRemovalProgress {
   bool get platformAccessRevoked =>
       conditions['platform_access_revoked'] == 'true';
   bool get mountRemoved => conditions['mount_removed'] == 'true';
-  bool get channelAccessRevoked =>
-      conditions['channel_access_revoked'] == 'true';
   bool get deviceEraseAcknowledged =>
       conditions['device_erase_acknowledged'] == 'true';
 
@@ -230,7 +228,6 @@ class DeviceRemovalProgress {
     const required = {
       'platform_access_revoked',
       'mount_removed',
-      'channel_access_revoked',
       'device_erase_acknowledged',
     };
     final names = conditions.keys.toSet();

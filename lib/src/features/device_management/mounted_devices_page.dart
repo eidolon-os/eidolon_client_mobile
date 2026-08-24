@@ -365,11 +365,6 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
         _notice = switch (progress) {
           _ when progress.platformAccessRevoked && !progress.mountRemoved =>
             '平台访问授权已撤销；主机挂载正在独立收敛。',
-          _
-              when progress.platformAccessRevoked &&
-                  progress.mountRemoved &&
-                  !progress.channelAccessRevoked =>
-            '平台授权和主机挂载已移除；通道凭据正在独立收敛。',
           _ when progress.outcome == ActOutcome.unfinished =>
             '主机已受理移除，正在等待各权威状态收敛。设备本地擦除尚未确认。',
           // The Host decided. Offering "try again" here would be offering
