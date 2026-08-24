@@ -1,6 +1,6 @@
 import 'package:eidolon_client_mobile/src/features/constellation/cockpit_feed.dart';
 import 'package:eidolon_client_mobile/src/features/constellation/cockpit_models.dart';
-import 'package:eidolon_client_mobile/src/features/constellation/local_api_cockpit_feed.dart';
+import 'package:eidolon_client_mobile/src/features/constellation/polled_cockpit_feed.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 CockpitSnapshot _snapshot({
@@ -26,7 +26,7 @@ CockpitSnapshot _snapshot({
 
 void main() {
   test('第一次读到之前没有 snapshot，状态是 connecting', () {
-    final feed = LocalApiCockpitFeed(read: () async => _snapshot());
+    final feed = PolledCockpitFeed(read: () async => _snapshot());
     addTearDown(feed.dispose);
     expect(feed.snapshot, isNull);
     expect(feed.observation.state, ObservationState.connecting);
@@ -34,7 +34,7 @@ void main() {
   });
 
   test('读到了就 live，并记下这次读取的时间', () async {
-    final feed = LocalApiCockpitFeed(read: () async => _snapshot());
+    final feed = PolledCockpitFeed(read: () async => _snapshot());
     addTearDown(feed.dispose);
     await feed.refresh();
     expect(feed.snapshot, isNotNull);
@@ -43,7 +43,7 @@ void main() {
   });
 
   test('请求成功但有 lane 读不到，观测是 degraded 而不是 live', () async {
-    final feed = LocalApiCockpitFeed(
+    final feed = PolledCockpitFeed(
       read: () async => _snapshot(memoryReadable: false),
     );
     addTearDown(feed.dispose);
@@ -54,7 +54,7 @@ void main() {
 
   test('读失败：抛出去，观测变 lost，上一次的事实留在手里', () async {
     var attempt = 0;
-    final feed = LocalApiCockpitFeed(
+    final feed = PolledCockpitFeed(
       read: () async {
         attempt += 1;
         if (attempt == 1) return _snapshot();
@@ -92,7 +92,7 @@ void main() {
 
   test('读失败之后还会再试，而不是就此停住', () async {
     var reads = 0;
-    final feed = LocalApiCockpitFeed(
+    final feed = PolledCockpitFeed(
       read: () async {
         reads += 1;
         throw StateError('主机不在');
@@ -111,7 +111,7 @@ void main() {
 
   test('暂停不再读，恢复立刻读 —— 不等一个间隔', () async {
     var reads = 0;
-    final feed = LocalApiCockpitFeed(
+    final feed = PolledCockpitFeed(
       read: () async {
         reads += 1;
         return _snapshot();
@@ -134,7 +134,7 @@ void main() {
   });
 
   test('永远不发脉冲：没有观测到的瞬间，就不画箭', () async {
-    final feed = LocalApiCockpitFeed(read: () async => _snapshot());
+    final feed = PolledCockpitFeed(read: () async => _snapshot());
     addTearDown(feed.dispose);
     final fired = <CockpitPulse>[];
     final sub = feed.pulses.listen(fired.add);

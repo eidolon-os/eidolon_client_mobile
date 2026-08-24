@@ -234,22 +234,72 @@ mock 世界里有一拍会让记忆服务不回应，所以这条路径是**看�
 1. ✅ 契约进 `eidolon_sdk/contracts/local_api/v1/`（schema + 黄金载荷 + 镜像测试，
    见契约 §8）
 2. ✅ 载荷 lane 化（消费侧）
-3. 🟡 **Local API projection 落地了「这个边界今天能读到的部分」**
-   （`eidolon_admin/server/eidolon_admin_server/local_api/mission_control.py`，
-   `GET /api/local/v1/mission-control/snapshot`）：
+3. 🔴 **走错平面,已拆除**（见 §7.6）。原来落在
+   `GET /api/local/v1/mission-control/snapshot`，那条平面正在被删除；
+   正确位置是 `/api/management/v1/mission-control/snapshot`。
+   拆掉前它能读到的部分是：
    - **能读**：主人、主 Companion（degraded：控制面只给主伙伴）、已挂载身体
      （degraded：**在场没有权威回答**）、底座服务（`unknown` → `checked=false`）
    - **读不到**：活动 / 对话轮次 / 后台任务 / 记忆 / 事件 —— 每条 lane 说出缺哪个
      控制面能力，不空着到达
    - 原因见 §7.6：Local API 是独立 app，只经显式 Port 触达权威，**没有
      `nats_kv`、没有 data store**
-4. ✅ pinned adapter（`local_api_cockpit_feed.dart` +
-   `LocalApiClient.fetchMissionControlSnapshot`）：轮询、有界退避、
-   前后台暂停恢复、失败走观测通道、**永不伪造脉冲**
+4. 🟡 feed 骨架保留（`polled_cockpit_feed.dart`）：轮询、有界退避、
+   前后台暂停恢复、失败走观测通道、**永不伪造脉冲**。它只收一个 read 函数、
+   不拥有传输,所以换平面不动它。手写进 `LocalApiClient` 的那个读取方法已删除
+   （见 §7.6）
 5. ⬜ 产品面变更：星图接掉运行驾驶舱、主机动态并进背板（见 §3.2），单独一个提交 ——
    等活动/事件那几条 lane 有 producer 之后再做，否则星图最有说服力的部分是暗的
 
-### 7.6 剩下的活在控制面，不在这两侧
+### 7.6 走错了平面:为什么删掉而不是改个路径
+
+`/api/local/v1/mission-control/snapshot` 是错的,而且错在架构层面。
+[EidolonOS多Companion统一管理架构方案.md](../../docs/跨系统/EidolonOS多Companion统一管理架构方案.md) §2.3
+写明:`/api/local/v1` 上那 22 个 Owner 产品端点要**逐个迁入
+`/api/management/v1` 后删除**,并且——
+
+> **「收敛」是删除，不是并存。** 若它们与 `/api/management/v1` 长期共存，
+> 本节要消除的问题只是换了主角——从 Admin Web 换成 Mobile。
+
+我在一条正在被删除的平面上**新长了一条 Owner 产品路由**,正是那句警告说的
+"换主角"。同一份计划的 Management API 表里本来就写着
+`GET /mission-control/snapshot`——目标平面从来不是我选的那个。
+
+消费侧同样错:我把读取手写进 `LocalApiClient`,而 mobile 自己的
+`test/management_boundary_test.dart` 的文档注释就写着
+
+> `LocalApiClient` is 27 hand-written methods over `/api/local/v1` … the
+> cheapest way to add a management feature is to add method 28. That works,
+> once.
+
+**我加的就是第 28 个方法。**
+
+所以这一轮的处理是 §2.3 规定的那一半:**删除**。已拆掉 admin 的路由与
+`local_api/mission_control.py`、mobile 的第 28 个方法,并把 feed 从
+`LocalApiCockpitFeed` 改名为 `PolledCockpitFeed`（类名不该编码一个正在消失的平面）。
+没有留兼容窗口,因为它从未发布,也没有任何东西指向它。
+
+### 7.7 正确位置要穿四层
+
+management 面的实现不是换个 path 前缀,它有四层,凭据隔离就住在这些层之间:
+
+| 层 | 位置 | 职责 |
+|---|---|---|
+| 内部平面 | `app/management/`（`/internal/v1/management/*`，带 service credential 依赖） | 读各权威并投影 |
+| loopback 适配 | `local_api/management/backend.py` | 只带一个 service token 到内部平面 |
+| 公共 router | `local_api/management/router.py`（`ManagementBackendPort`） | 认证 Owner、组装公开视图 |
+| 生成的客户端 | `contracts/management/v1/generate_dart.py` → mobile；`generate_typescript.py` → admin web | **两个客户端从一份文档生成**,所以 ABI 不会长成先写的那个客户端的形状 |
+
+OpenAPI 文档是**从路由导出**的(`generate.py`，`--check` 是漂移门禁),不手写。
+所以下一步的顺序是:内部平面投影 → backend 方法 → 公共路由与视图 → 导出文档 →
+生成两个客户端 → mobile 用生成的 DTO 替掉 `cockpit_wire.dart` 的手写解析。
+
+**同时要处理的重复**:SDK 的 `contracts/local_api/v1/`（我建的）目录名就是那条
+将死的平面,而 management OpenAPI 一旦描述了同一份载荷,它就成了第二份 wire 定义。
+词汇（`biz/contracts/mission_control.py`）留在 SDK 是对的；wire schema 与 golden
+应随文档搬到 management 那边。
+
+### 7.8 剩下的活在控制面，不在这两侧
 
 星图现在两侧都按契约就位了，缺口全在 **Admin 控制面边界**：Local API 触达权威只
 经显式 Port，所以要新增控制面能力才能填满剩下五条 lane。

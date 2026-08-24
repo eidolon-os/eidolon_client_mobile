@@ -1,7 +1,14 @@
-# Mission Control · Local API 契约（提案 v1）
+# Mission Control 契约（提案 v1）
 
-状态：**提案**。消费侧（Mobile）已按此形状定型；生产侧（`eidolon_admin` Local API）
-尚未实现。
+状态：**提案**。消费侧（Mobile）已按此形状定型；生产侧尚未实现。
+
+> **平面已纠正（2026-08-24）**：本文最初把端点写在 `/api/local/v1/mission-control/*`。
+> 那是错的——[多 Companion 方案](../../docs/跨系统/EidolonOS多Companion统一管理架构方案.md)
+> §2.3 规定 `/api/local/v1` 上的 Owner 产品端点要迁入 `/api/management/v1` 后**删除**，
+> 「收敛是删除，不是并存」。正确端点是
+> `GET /api/management/v1/mission-control/snapshot` 与 `GET /api/management/v1/events?cursor=…`，
+> 由 management OpenAPI 文档（从路由导出）描述，两个客户端从它生成。
+> 本文其余部分描述的载荷形状、lane 规则、在场权威与游标语义都不受平面影响，仍然有效。
 基线：2026-08-24，对照 `eidolon_admin/server/eidolon_admin_server/local_api/`
 与 `app/mission_control/`（Console 侧现有投影）。
 
@@ -13,8 +20,8 @@
 ## 1. 端点
 
 ```
-GET /api/local/v1/mission-control/snapshot
-GET /api/local/v1/mission-control/events?after_event_id=<id>&after_ts=<iso8601>
+GET /api/management/v1/mission-control/snapshot
+GET /api/management/v1/events?after_ingest_seq=<int>
 ```
 
 认证：`Authorization: Bearer <controller session token>`，与现有 Local API 一致。
@@ -207,7 +214,7 @@ tools · tts · playback · memory_write`。生产侧新增阶段是兼容的（
 ## 4. 事件流
 
 ```
-GET /api/local/v1/mission-control/events?after_ingest_seq=<int>
+GET /api/management/v1/events?after_ingest_seq=<int>
 Accept: text/event-stream
 ```
 

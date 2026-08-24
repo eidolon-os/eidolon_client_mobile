@@ -10,11 +10,9 @@ class ManagementV1 {
   const ManagementV1._();
 
   static const String companionsPath = '/api/management/v1/companions';
-  static String companionsByCompanionIdPath(String companionId) =>
-      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}';
+  static String companionsByCompanionIdPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}';
   static const String contextPath = '/api/management/v1/context';
-  static const String ownerDefaultCompanionPath =
-      '/api/management/v1/owner/default-companion';
+  static const String ownerDefaultCompanionPath = '/api/management/v1/owner/default-companion';
 }
 
 class CompanionCreateRequest {
@@ -137,10 +135,7 @@ class CompanionRosterView {
 
   factory CompanionRosterView.fromJson(Map<String, dynamic> value) {
     return CompanionRosterView(
-      companions: ((value['companions'] as List<dynamic>)
-          .map((entry) =>
-              CompanionSummaryView.fromJson(entry as Map<String, dynamic>))
-          .toList()),
+      companions: ((value['companions'] as List<dynamic>).map((entry) => CompanionSummaryView.fromJson(entry as Map<String, dynamic>)).toList()),
       contractVersion: value['contract_version'] as String?,
       defaultCompanionId: value['default_companion_id'] as String?,
       nextCursor: value['next_cursor'] as String?,
@@ -231,12 +226,7 @@ class HTTPValidationError {
 
   factory HTTPValidationError.fromJson(Map<String, dynamic> value) {
     return HTTPValidationError(
-      detail: value['detail'] == null
-          ? null
-          : ((value['detail'] as List<dynamic>)
-              .map((entry) =>
-                  ValidationError.fromJson(entry as Map<String, dynamic>))
-              .toList()),
+      detail: value['detail'] == null ? null : ((value['detail'] as List<dynamic>).map((entry) => ValidationError.fromJson(entry as Map<String, dynamic>)).toList()),
     );
   }
 }
@@ -262,12 +252,10 @@ class ManagementContextView {
 
   factory ManagementContextView.fromJson(Map<String, dynamic> value) {
     return ManagementContextView(
-      capabilities: ((value['capabilities'] as Map<String, dynamic>)
-          .map((key, entry) => MapEntry(key, entry as bool))),
+      capabilities: ((value['capabilities'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as bool))),
       contractVersion: value['contract_version'] as String?,
       defaultCompanionId: value['default_companion_id'] as String?,
-      limits: ((value['limits'] as Map<String, dynamic>)
-          .map((key, entry) => MapEntry(key, entry as int?))),
+      limits: ((value['limits'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as int?))),
       owner: OwnerContextView.fromJson(value['owner'] as Map<String, dynamic>),
     );
   }
@@ -316,14 +304,9 @@ class ValidationError {
 
   factory ValidationError.fromJson(Map<String, dynamic> value) {
     return ValidationError(
-      ctx: value['ctx'] == null
-          ? null
-          : ((value['ctx'] as Map<String, dynamic>)
-              .map((key, entry) => MapEntry(key, entry as Object?))),
+      ctx: value['ctx'] == null ? null : ((value['ctx'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as Object?))),
       input: value['input'],
-      loc: ((value['loc'] as List<dynamic>)
-          .map((entry) => entry as Object)
-          .toList()),
+      loc: ((value['loc'] as List<dynamic>).map((entry) => entry as Object).toList()),
       msg: value['msg'] as String,
       type: value['type'] as String,
     );

@@ -3,7 +3,13 @@ import 'dart:async';
 import 'cockpit_feed.dart';
 import 'cockpit_models.dart';
 
-/// The star map, reading a real Host.
+/// The star map, reading a real Host by polling one snapshot read.
+///
+/// Named for what it does, not for the surface it reads. It was
+/// `LocalApiCockpitFeed`, which encoded the plane `/api/local/v1` — the Owner
+/// product surface the convergence plan deletes — into a class name. It takes a
+/// read function and owns no transport, so the name had no business claiming
+/// one.
 ///
 /// One read, repeated. There is no event stream yet — the Local API's events
 /// lane has no producer, so subscribing to one would be pretending — and this
@@ -32,8 +38,8 @@ Duration nextReadBackoff(
   );
 }
 
-class LocalApiCockpitFeed implements CockpitFeed {
-  LocalApiCockpitFeed({
+class PolledCockpitFeed implements CockpitFeed {
+  PolledCockpitFeed({
     required this.read,
     this.interval = const Duration(seconds: 6),
     this.retryFloor = const Duration(seconds: 2),
