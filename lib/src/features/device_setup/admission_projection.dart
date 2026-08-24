@@ -37,10 +37,28 @@ extension EnrollmentRecoveryProjectionAccess on EnrollmentRecoveryProjectionV1 {
         : ClaimRecordV1.fromJson(_object(json, 'claim'));
   }
 
+  /// The revision of the projection: it advances as facts are added to this
+  /// Enrollment — a Decision, a delivered Grant — and is what a reader uses to
+  /// tell a fresher read from a staler one.
   int get sourceRevision {
     final value = json['source_revision'];
     if (value is! int || value < 1) {
       throw const FormatException('Invalid Enrollment recovery revision');
+    }
+    return value;
+  }
+
+  /// The revision of the Proposal's own content: what a Decision reviews, and
+  /// what it stays pinned to once decided.
+  ///
+  /// Deliberately not the same number as [sourceRevision], and the difference
+  /// is the whole reason both exist. They are equal only until something
+  /// happens to the Enrollment; reading one as the other approved a device and
+  /// then rejected the Authority's own account of having approved it.
+  int get proposalRevision {
+    final value = proposal.json['proposal_revision'];
+    if (value is! int || value < 1) {
+      throw const FormatException('Invalid Enrollment proposal revision');
     }
     return value;
   }
@@ -52,7 +70,7 @@ extension EnrollmentRecoveryProjectionAccess on EnrollmentRecoveryProjectionV1 {
     final expectedOwner = OwnerDomainIdV1.parse(ownerDomainId).value;
     final proposalValue = proposal;
     if (proposalValue.json['requested_owner_domain_id'] != expectedOwner ||
-        proposalValue.json['proposal_revision'] != sourceRevision) {
+        sourceRevision < proposalRevision) {
       throw const FormatException(
           'Enrollment recovery Owner/revision mismatch');
     }
@@ -63,6 +81,15 @@ extension EnrollmentRecoveryProjectionAccess on EnrollmentRecoveryProjectionV1 {
               proposalValue.json['enrollment_id'] ||
           decision.json['target_owner_domain_id'] != expectedOwner) {
         throw const FormatException('ApprovalDecision identity mismatch');
+      }
+      // What was approved must be what is recorded as approved. The Proposal's
+      // content revision is pinned to the reviewed one once a Decision exists,
+      // so a disagreement here means the Decision on file reviewed something
+      // other than what this screen is showing.
+      if (decision.json['expected_proposal_revision'] !=
+          proposalValue.json['proposal_revision']) {
+        throw const FormatException(
+            'ApprovalDecision reviewed another revision');
       }
     }
 

@@ -616,7 +616,7 @@ class HostProductController extends ChangeNotifier {
     final outcome = await _deviceAdmissionRepository.decide(
       requestId: requestId,
       enrollmentId: proposal.json['enrollment_id']! as String,
-      expectedProposalRevision: projection.sourceRevision,
+      expectedProposalRevision: projection.proposalRevision,
       reviewedManifestRef: Map<String, dynamic>.from(manifestRef),
       expectedOwnerDomainId: target.ownerDomainId,
       expectedBusinessOwnerId: businessOwnerId,

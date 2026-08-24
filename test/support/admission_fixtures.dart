@@ -61,6 +61,11 @@ EnrollmentRecoveryProjectionV1 canonicalProjection({
   String ownerDomainId = 'owner-domain_01',
   String deviceId = 'device_01',
   int revision = 2,
+
+  /// The projection's own revision, which advances past the Proposal's content
+  /// revision as facts are added. Defaults to equal, which is only true before
+  /// anything has happened to the Enrollment.
+  int? sourceRevision,
   bool withDecision = false,
   bool withDelivery = false,
   String? claimState,
@@ -75,7 +80,7 @@ EnrollmentRecoveryProjectionV1 canonicalProjection({
     deviceId: deviceId,
     revision: revision,
   );
-  projection['source_revision'] = revision;
+  projection['source_revision'] = sourceRevision ?? revision;
   projection['approval_decision'] = withDecision
       ? canonicalDecision(ownerDomainId: ownerDomainId, revision: revision)
       : null;
@@ -123,4 +128,22 @@ AdmissionListCursorV1 canonicalAdmissionCursor({
     ...value,
     'owner_domain_id': ownerDomainId,
   });
+}
+
+/// Rewrites one field of an otherwise canonical projection, so a test can pin
+/// what happens when the Authority's two revisions disagree.
+extension EnrollmentRecoveryProjectionV1Mutation
+    on EnrollmentRecoveryProjectionV1 {
+  static EnrollmentRecoveryProjectionV1 withDecisionRevision(
+    EnrollmentRecoveryProjectionV1 projection,
+    int expectedProposalRevision,
+  ) {
+    final document = Map<String, dynamic>.from(projection.toJson());
+    final decision = Map<String, dynamic>.from(
+      document['approval_decision']! as Map,
+    );
+    decision['expected_proposal_revision'] = expectedProposalRevision;
+    document['approval_decision'] = decision;
+    return EnrollmentRecoveryProjectionV1.fromJson(document);
+  }
 }

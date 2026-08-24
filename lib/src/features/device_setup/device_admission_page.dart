@@ -141,6 +141,10 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage>
   /// Host's one intent when the person taps again, and so that a Proposal that
   /// changed underneath the screen produces a different key instead of
   /// approving content nobody read.
+  ///
+  /// From the Proposal's content revision, not the projection's: the projection
+  /// advances the moment the Decision lands, so keying on it would make the
+  /// retry after a lost reply a second, different intent.
   Future<String> _decisionRequestId(
     EnrollmentRecoveryProjectionV1 projection,
   ) async {
@@ -148,7 +152,7 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage>
     final digest = await Sha256().hash(
       utf8.encode(
         '${widget.ownerDomainId}\n${widget.controllerId}\n'
-        '${proposal['enrollment_id']}\n${projection.sourceRevision}',
+        '${proposal['enrollment_id']}\n${projection.proposalRevision}',
       ),
     );
     return 'mobile-decision-${base64UrlEncode(digest.bytes).replaceAll('=', '')}';
@@ -273,7 +277,7 @@ class _DecisionContextCard extends StatelessWidget {
           'Owner Domain：$ownerDomainId\n'
           'Business Owner：$businessOwnerId\n'
           'Enrollment：${proposal['enrollment_id']} @ revision '
-          '${projection.sourceRevision}\n'
+          '${projection.proposalRevision}\n'
           'Manifest：${manifest['manifest_id']} @ ${manifest['revision']}\n'
           '批准不会宣称 Grant 已交付或 Claim 已生效。',
         ),

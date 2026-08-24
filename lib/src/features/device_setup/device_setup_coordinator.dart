@@ -235,7 +235,7 @@ class DeviceSetupCoordinator {
             checkpoint.deviceId) {
           final updated = checkpoint.copyWith(
             enrollmentId: projection.proposal.json['enrollment_id']! as String,
-            expectedProposalRevision: projection.sourceRevision,
+            expectedProposalRevision: projection.proposalRevision,
             recoveryCursor: page.nextCursor,
             updatedAt: _now(),
           );
@@ -263,7 +263,7 @@ class DeviceSetupCoordinator {
   ) async {
     final updated = checkpoint.copyWith(
       enrollmentId: projection.proposal.json['enrollment_id']! as String,
-      expectedProposalRevision: projection.sourceRevision,
+      expectedProposalRevision: projection.proposalRevision,
       admissionState: switch (stage) {
         AdmissionProjectionStage.pendingReview =>
           DeviceAdmissionState.pendingReview,
