@@ -193,6 +193,35 @@ class ManagementClient {
     return MemoryLibraryView.fromJson(body);
   }
 
+  /// What it wrote down since [since].
+  ///
+  /// [since] is this app's to compute, not the Host's: a day depends on where
+  /// the person is standing and the Host does not know that. Sent with its
+  /// offset so the Host compares instants rather than guessing a timezone.
+  Future<MemoryDayView> fetchMemoryEntries(
+    Uri baseUri, {
+    required String accessToken,
+    required DateTime since,
+    int? limit,
+    String? companionId,
+  }) async {
+    final body = await _get(
+      baseUri.resolve(ManagementV1.memoryEntriesPath).replace(
+        queryParameters: {
+          // Local time with its offset, not UTC: "today" is the person's day,
+          // and the offset is what lets the Host place the instant without
+          // knowing where they are.
+          'since': since.toIso8601String(),
+          if (limit != null) 'limit': '$limit',
+          if (companionId != null) 'companion_id': companionId,
+        },
+      ),
+      accessToken: accessToken,
+      what: '读取今天记下的',
+    );
+    return MemoryDayView.fromJson(body);
+  }
+
   /// What forgetting this would remove. Nothing changes.
   ///
   /// Two steps because a topic is not a set. The Host resolves the words once,

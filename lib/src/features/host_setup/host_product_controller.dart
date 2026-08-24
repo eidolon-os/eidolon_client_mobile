@@ -414,6 +414,18 @@ class HostProductController extends ChangeNotifier {
   Future<MemoryLibraryView> memoryLibrary({String? companionId}) =>
       _managementRepository.memoryLibrary(companionId: companionId);
 
+  /// What it wrote down since [since].
+  Future<MemoryDayView> memoryEntries({
+    required DateTime since,
+    int? limit,
+    String? companionId,
+  }) =>
+      _managementRepository.memoryEntries(
+        since: since,
+        limit: limit,
+        companionId: companionId,
+      );
+
   /// What forgetting [target] would remove. Nothing changes.
   Future<ForgetProposalView> previewForget({
     required String target,

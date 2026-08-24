@@ -239,6 +239,22 @@ class HostManagementRepository {
         ),
       );
 
+  /// What it wrote down since [since]. The window is the caller's.
+  Future<MemoryDayView> memoryEntries({
+    required DateTime since,
+    int? limit,
+    String? companionId,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchMemoryEntries(
+          baseUri,
+          accessToken: accessToken,
+          since: since,
+          limit: limit,
+          companionId: companionId,
+        ),
+      );
+
   /// What forgetting [target] would remove. Nothing changes.
   Future<ForgetProposalView> previewForget({
     required String target,

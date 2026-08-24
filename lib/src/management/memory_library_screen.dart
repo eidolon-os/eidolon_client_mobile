@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
 import 'forget_sheet.dart';
+import 'memory_day_screen.dart';
 import 'management_client.dart';
 import 'memory_library_page.dart';
 
@@ -21,6 +22,7 @@ class MemoryLibraryScreen extends StatefulWidget {
     this.loadContext,
     this.previewForget,
     this.confirmForget,
+    this.loadDay,
   });
 
   final Future<MemoryLibraryView> Function() load;
@@ -31,6 +33,10 @@ class MemoryLibraryScreen extends StatefulWidget {
 
   final Future<ForgetProposalView> Function(String target)? previewForget;
   final Future<ForgetResultView> Function(String confirmationToken)? confirmForget;
+
+  /// Reads a window of recent entries. Null hides the way in rather than
+  /// opening a screen that cannot fill itself.
+  final Future<MemoryDayView> Function(DateTime since)? loadDay;
 
   @override
   State<MemoryLibraryScreen> createState() => _MemoryLibraryScreenState();
@@ -98,6 +104,14 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     await _read();
   }
 
+  /// Its own screen: "what happened today" and "what is held overall" are two
+  /// questions, and answering both on one page makes each harder to read.
+  Future<void> _openToday() => Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => MemoryDayScreen(load: widget.loadDay!),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final library = _library;
@@ -105,6 +119,7 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
       return MemoryLibraryPage(
         library: library,
         onForget: _canForget ? _openForget : null,
+        onOpenToday: widget.loadDay == null ? null : _openToday,
       );
     }
     return Scaffold(

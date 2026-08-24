@@ -241,6 +241,40 @@ void main() {
       }
     });
 
+    testWidgets('offers today only when something can load it', (tester) async {
+      // Null hides the way in rather than opening a screen that cannot fill
+      // itself.
+      for (final wired in [true, false]) {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MemoryLibraryScreen(
+              key: ValueKey(wired),
+              load: () async => library(),
+              loadContext: () async => context(),
+              loadDay: wired
+                  ? (_) async => MemoryDayView.fromJson({
+                        'contract_version': '1',
+                        'since': '2026-08-24T00:00:00.000',
+                        'entries': [],
+                        'entry_count': 0,
+                        'more_in_window': false,
+                        'undated_count': 0,
+                        'truncated': false,
+                      })
+                  : null,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('memory-library-today')),
+          wired ? findsOneWidget : findsNothing,
+          reason: 'loadDay wired: $wired',
+        );
+      }
+    });
+
     testWidgets('re-reads the library after something is forgotten',
         (tester) async {
       // A stale library after a deletion is the moment a person stops trusting

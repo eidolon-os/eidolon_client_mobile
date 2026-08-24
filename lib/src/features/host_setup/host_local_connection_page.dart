@@ -260,6 +260,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             previewForget: (target) => _controller.previewForget(target: target),
             confirmForget: (token) =>
                 _controller.confirmForget(confirmationToken: token),
+            loadDay: (since) => _controller.memoryEntries(since: since),
           ),
         ),
       );

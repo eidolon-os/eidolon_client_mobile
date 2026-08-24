@@ -12,6 +12,7 @@ class ManagementV1 {
   static const String companionsPath = '/api/management/v1/companions';
   static String companionsByCompanionIdPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}';
   static const String contextPath = '/api/management/v1/context';
+  static const String memoryEntriesPath = '/api/management/v1/memory/entries';
   static const String memoryForgetConfirmPath = '/api/management/v1/memory/forget/confirm';
   static const String memoryForgetPreviewPath = '/api/management/v1/memory/forget/preview';
   static const String memoryLibraryPath = '/api/management/v1/memory/library';
@@ -390,6 +391,78 @@ class ManagementContextView {
       defaultCompanionId: value['default_companion_id'] as String?,
       limits: ((value['limits'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as int?))),
       owner: OwnerContextView.fromJson(value['owner'] as Map<String, dynamic>),
+    );
+  }
+}
+
+class MemoryDayView {
+  const MemoryDayView({
+    this.contractVersion,
+    required this.entries,
+    required this.entryCount,
+    required this.moreInWindow,
+    required this.since,
+    required this.truncated,
+    required this.undatedCount,
+  });
+
+  final String? contractVersion;
+
+  final List<MemoryEntryView> entries;
+
+  final int entryCount;
+
+  final bool moreInWindow;
+
+  final String since;
+
+  final bool truncated;
+
+  final int undatedCount;
+
+  factory MemoryDayView.fromJson(Map<String, dynamic> value) {
+    return MemoryDayView(
+      contractVersion: value['contract_version'] as String?,
+      entries: ((value['entries'] as List<dynamic>).map((entry) => MemoryEntryView.fromJson(entry as Map<String, dynamic>)).toList()),
+      entryCount: value['entry_count'] as int,
+      moreInWindow: value['more_in_window'] as bool,
+      since: value['since'] as String,
+      truncated: value['truncated'] as bool,
+      undatedCount: value['undated_count'] as int,
+    );
+  }
+}
+
+class MemoryEntryView {
+  const MemoryEntryView({
+    required this.entryId,
+    this.preview,
+    required this.recordedAt,
+    this.recordedAtSource,
+    this.roomId,
+    this.wingId,
+  });
+
+  final String entryId;
+
+  final String? preview;
+
+  final String recordedAt;
+
+  final String? recordedAtSource;
+
+  final String? roomId;
+
+  final String? wingId;
+
+  factory MemoryEntryView.fromJson(Map<String, dynamic> value) {
+    return MemoryEntryView(
+      entryId: value['entry_id'] as String,
+      preview: value['preview'] as String?,
+      recordedAt: value['recorded_at'] as String,
+      recordedAtSource: value['recorded_at_source'] as String?,
+      roomId: value['room_id'] as String?,
+      wingId: value['wing_id'] as String?,
     );
   }
 }

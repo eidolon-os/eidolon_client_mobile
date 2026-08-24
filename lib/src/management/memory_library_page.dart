@@ -25,6 +25,7 @@ class MemoryLibraryPage extends StatelessWidget {
     required this.library,
     this.onOpenRoom,
     this.onForget,
+    this.onOpenToday,
   });
 
   final MemoryLibraryView library;
@@ -38,6 +39,10 @@ class MemoryLibraryPage extends StatelessWidget {
   /// promise the Host has not made.
   final VoidCallback? onForget;
 
+  /// The other way into the same memory: what happened today rather than what
+  /// is held overall. Null while nothing is behind it.
+  final VoidCallback? onOpenToday;
+
   @override
   Widget build(BuildContext context) {
     final wings = library.wings;
@@ -46,6 +51,13 @@ class MemoryLibraryPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text('它记住的'),
         actions: [
+          if (onOpenToday != null)
+            IconButton(
+              key: const Key('memory-library-today'),
+              onPressed: onOpenToday,
+              tooltip: '今天记下的',
+              icon: const Icon(Icons.today_outlined),
+            ),
           if (onForget != null)
             IconButton(
               key: const Key('memory-library-forget'),
