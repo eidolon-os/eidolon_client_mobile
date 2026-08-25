@@ -79,7 +79,15 @@ class DeviceProvisioningDescriptor {
   final String displayName;
   final String identityFingerprint;
   final String sessionId;
-  final DateTime expiresAt;
+
+  /// When this setup offer stops being valid, or null when it does not end.
+  ///
+  /// Null is not "already expired" and not "expires now": a device that has
+  /// never been commissioned keeps its offer open until it is claimed,
+  /// cancelled or powered off, and has no deadline to report. Nothing may
+  /// substitute an instant for the absence — that is how a factory device ends
+  /// up looking like one whose window closed before anybody reached it.
+  final DateTime? expiresAt;
   final DeviceProvisioningTrust trust;
 }
 

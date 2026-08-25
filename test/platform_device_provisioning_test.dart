@@ -28,7 +28,8 @@ void main() {
   String descriptorJson({
     String contractVersion = '1',
     String trust = 'development-tofu',
-    int expiresInSeconds = 600,
+    Object? expiresInSeconds = 600,
+    bool declaresExpiry = true,
   }) =>
       jsonEncode({
         'contract_version': contractVersion,
@@ -37,7 +38,7 @@ void main() {
         'display_name': 'atk-dnesp32s3',
         'identity_fingerprint': 'sha256:abc',
         'session_id': 'setup_session_01',
-        'expires_in_seconds': expiresInSeconds,
+        if (declaresExpiry) 'expires_in_seconds': expiresInSeconds,
         'trust': trust,
       });
 
@@ -86,6 +87,35 @@ void main() {
     expect(session.descriptor.trust, DeviceProvisioningTrust.developmentTofu);
   });
 
+  test('accepts an offer that names no duration as one with no deadline',
+      () async {
+    // A device nobody has claimed keeps its setup offer open until it is
+    // claimed, cancelled or powered off, so its descriptor names no duration at
+    // all. Insisting on one refused every device out of the box: the Owner's
+    // tablet found the body, then reported its descriptor as breaking the
+    // contract the moment they tapped connect.
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'openProvisioningSession') {
+        return descriptorJson(declaresExpiry: false);
+      }
+      return null;
+    });
+
+    final session = await build().open(
+      const DeviceProvisioningCandidate(
+        transportId: 'eidolon-7e2444',
+        displayName: 'eidolon-7e2444',
+        transportKind: 'softap',
+        trust: DeviceProvisioningTrust.developmentTofu,
+      ),
+    );
+
+    // No deadline is its own answer, not a deadline of zero: nothing downstream
+    // may compute an instant out of an offer that does not end.
+    expect(session.descriptor.expiresAt, isNull);
+    expect(session.descriptor.sessionId, 'setup_session_01');
+  });
+
   test('carries the declared trust level through rather than assuming one',
       () async {
     messenger.setMockMethodCallHandler(channel, (call) async {
@@ -110,7 +140,13 @@ void main() {
     for (final raw in [
       descriptorJson(contractVersion: '2'),
       descriptorJson(trust: 'something-new'),
+      // A duration that is present but not a usable one stays a refusal. Only
+      // its absence means "no deadline"; a device that names a number must name
+      // one it can honour, and 0 or a negative one is a device reporting a
+      // window that shut before it spoke.
       descriptorJson(expiresInSeconds: 0),
+      descriptorJson(expiresInSeconds: -60),
+      descriptorJson(expiresInSeconds: '600'),
       'not json',
       '[]',
     ]) {

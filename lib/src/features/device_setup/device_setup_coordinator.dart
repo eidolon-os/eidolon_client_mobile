@@ -303,7 +303,11 @@ class DeviceSetupCoordinator {
         message: 'Device provisioning is not bound to a product identity',
       );
     }
-    if (descriptor.expiresAt.isBefore(_now())) {
+    // Only an offer that has a deadline can be past it. An offer with none is
+    // the ordinary state of a device nobody has claimed yet, which is exactly
+    // the device this whole flow exists to set up.
+    final expiresAt = descriptor.expiresAt;
+    if (expiresAt != null && expiresAt.isBefore(_now())) {
       throw const DeviceSetupException(
         code: 'provisioning_session_expired',
         message: 'Device provisioning session has expired',

@@ -360,6 +360,11 @@ DeviceWifiNetwork _networkFromPlatform(Map<Object?, Object?> value) {
 /// not joined a network and has no clock to name an instant with. The absolute
 /// expiry the contract carries is therefore computed here, against the clock of
 /// the phone that is doing the asking.
+///
+/// A device whose offer does not end reports no duration at all, and then there
+/// is no instant to compute: an offer with no deadline stays an offer with no
+/// deadline all the way through, rather than becoming one that has already
+/// lapsed.
 DeviceProvisioningDescriptor _parseDescriptor(String raw,
     {required DateTime now}) {
   final Object? decoded;
@@ -396,12 +401,30 @@ DeviceProvisioningDescriptor _parseDescriptor(String raw,
       identityFingerprint is! String ||
       identityFingerprint.isEmpty ||
       sessionId is! String ||
-      sessionId.isEmpty ||
-      expiresInSeconds is! int ||
-      expiresInSeconds <= 0) {
+      sessionId.isEmpty) {
     throw const DeviceProvisioningTransportException(
       'descriptor_invalid',
       '设备返回的说明与 v1 契约不一致。',
+    );
+  }
+  // Whether the offer ends at all is a separate fact from how long it lasts, so
+  // it arrives separately: a device nobody has claimed keeps advertising until
+  // it is claimed, cancelled or powered off, and says so by naming no duration.
+  //
+  // The absence is the whole of that answer. Devices used to encode it as 0,
+  // and because a positive duration was required here, every device out of the
+  // box was refused as breaking the contract. A duration that IS named must
+  // still be one the device can honour: 0 or a negative one cannot be told
+  // apart from a field nobody filled in, so it stays a refusal.
+  final DateTime? expiresAt;
+  if (expiresInSeconds == null) {
+    expiresAt = null;
+  } else if (expiresInSeconds is int && expiresInSeconds > 0) {
+    expiresAt = now.add(Duration(seconds: expiresInSeconds));
+  } else {
+    throw const DeviceProvisioningTransportException(
+      'descriptor_invalid',
+      '设备声明的配网时限不是一个能用的时长。',
     );
   }
   final DeviceProvisioningTrust parsedTrust;
@@ -425,7 +448,7 @@ DeviceProvisioningDescriptor _parseDescriptor(String raw,
     displayName: displayName,
     identityFingerprint: identityFingerprint,
     sessionId: sessionId,
-    expiresAt: now.add(Duration(seconds: expiresInSeconds)),
+    expiresAt: expiresAt,
     trust: parsedTrust,
   );
 }

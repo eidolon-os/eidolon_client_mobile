@@ -27,6 +27,31 @@ final _descriptor = DeviceProvisioningDescriptor(
   trust: DeviceProvisioningTrust.manufacturerBound,
 );
 
+// A device that has never been commissioned keeps its offer open, so there is
+// no instant to carry here at all.
+final _descriptorWithoutExpiry = DeviceProvisioningDescriptor(
+  contractVersion: '1',
+  deviceId: 'device_01',
+  deviceKind: 'esp32-display',
+  displayName: 'Eidolon Body 1',
+  identityFingerprint: 'sha256:device-1',
+  sessionId: 'session-1',
+  expiresAt: null,
+  trust: DeviceProvisioningTrust.manufacturerBound,
+);
+
+DeviceProvisioningDescriptor _descriptorExpiringAt(DateTime expiresAt) =>
+    DeviceProvisioningDescriptor(
+      contractVersion: '1',
+      deviceId: 'device_01',
+      deviceKind: 'esp32-display',
+      displayName: 'Eidolon Body 1',
+      identityFingerprint: 'sha256:device-1',
+      sessionId: 'session-1',
+      expiresAt: expiresAt,
+      trust: DeviceProvisioningTrust.manufacturerBound,
+    );
+
 void main() {
   test('network commit persists stable command IDs before explicit Decision',
       () async {
@@ -156,6 +181,59 @@ void main() {
       expect(result.admissionState, DeviceAdmissionState.failed);
       expect(result.failure?.code, 'admission_unavailable');
     }
+  });
+
+  test('an offer with no deadline is never treated as an expired one',
+      () async {
+    // A device that has never been commissioned advertises no duration, so its
+    // descriptor carries no expiry. Reading that absence as a deadline already
+    // past would refuse exactly the devices setup exists for.
+    final session = _Session(_descriptorWithoutExpiry);
+    final store = InMemoryDeviceSetupCheckpointStore();
+    final coordinator = _coordinator(
+      session,
+      _Admission(_projection(state: 'pending_review')),
+      store,
+    );
+
+    final result = await coordinator.provisionAndAdmit(
+      setupId: 'setup-open-ended',
+      requestId: 'intent-open-ended',
+      candidate: _candidate,
+      credentials: const DeviceWifiCredentials(
+        ssid: 'Home WiFi',
+        password: 'not-persisted',
+      ),
+      onboardingTarget: deviceOnboardingTargetFixture(),
+      companionId: 'companion-1',
+    );
+
+    expect(result.provisioningState, DeviceProvisioningState.networkConfigured);
+    expect(result.failure, isNull);
+  });
+
+  test('a deadline that has already passed still stops the setup', () async {
+    final coordinator = _coordinator(
+      _Session(
+          _descriptorExpiringAt(_now.subtract(const Duration(minutes: 1)))),
+      _Admission(_projection(state: 'pending_review')),
+      InMemoryDeviceSetupCheckpointStore(),
+    );
+
+    final result = await coordinator.provisionAndAdmit(
+      setupId: 'setup-expired',
+      requestId: 'intent-expired',
+      candidate: _candidate,
+      credentials: const DeviceWifiCredentials(
+        ssid: 'Home WiFi',
+        password: 'not-persisted',
+      ),
+      onboardingTarget: deviceOnboardingTargetFixture(),
+      companionId: 'companion-1',
+    );
+
+    expect(result.provisioningState, DeviceProvisioningState.failed);
+    expect(result.failure?.code, 'provisioning_session_expired');
   });
 
   test('ClaimActive alone makes the recovered workflow ready', () async {
