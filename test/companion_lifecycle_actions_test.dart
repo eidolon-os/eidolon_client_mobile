@@ -156,8 +156,11 @@ void main() {
         ),
       );
 
-      expect(find.text('它不会再开始新的对话。它记得的一切都留着，随时可以让它回来。'),
-          findsOneWidget);
+      expect(
+        find.text('它不会再开始新的对话，正在由它应答的设备会先空下来。'
+            '它记得的一切都留着，随时可以让它回来。'),
+        findsOneWidget,
+      );
       // Nothing is asked until the person presses.
       expect(asked, isEmpty);
 
@@ -279,8 +282,10 @@ void main() {
       );
 
       expect(find.text('让 小忆 回来'), findsOneWidget);
-      expect(find.text('它可以再开始新的对话了。谁来默认回答，还是照你之前定的。'),
-          findsOneWidget);
+      expect(
+        find.text('它可以再开始新的对话了。设备和默认回答都还是你之前定的。'),
+        findsOneWidget,
+      );
 
       await tester.tap(find.byKey(const Key('lifecycle-confirm')));
       await tester.pumpAndSettle();
@@ -396,6 +401,39 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(named, ['阿力']);
+    });
+
+    testWidgets('released devices are said out loud', (tester) async {
+      // A speaker that goes quiet without a sentence is indistinguishable from
+      // a broken one. The Host releases them so the runtime does not refuse
+      // them silently; this is the half a person sees.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionDetailScreen(
+            companionId: 'companion-a',
+            load: (_) async => _detail(isDefault: false),
+            others: [_row('companion-b', '阿力')],
+            canPutAway: true,
+            canBringBack: true,
+            setLifecycle: (companionId, state, replacement) async =>
+                CompanionLifecycleView.fromJson({
+              'companion_id': companionId,
+              'lifecycle_state': state,
+              'revision': 3,
+              'default_companion_id': 'companion-b',
+              'released_devices': ['speaker-living-room', 'speaker-study'],
+            }),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('detail-lifecycle')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('lifecycle-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('有 2 台设备不再由它应答了'), findsOneWidget);
     });
 
     testWidgets('after a move the screen re-reads rather than repaints itself',

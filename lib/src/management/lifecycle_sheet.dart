@@ -126,8 +126,12 @@ class _CompanionLifecycleSheetState extends State<CompanionLifecycleSheet> {
                   : (_archiving
                       // Said in full, because this is the moment someone is
                       // deciding whether it is safe to press.
-                      ? '它不会再开始新的对话。它记得的一切都留着，随时可以让它回来。'
-                      : '它可以再开始新的对话了。谁来默认回答，还是照你之前定的。'),
+                      // The device sentence belongs here rather than only in
+                      // the answer afterwards: it is the part that changes
+                      // whether someone presses at all.
+                      ? '它不会再开始新的对话，正在由它应答的设备会先空下来。'
+                        '它记得的一切都留着，随时可以让它回来。'
+                      : '它可以再开始新的对话了。设备和默认回答都还是你之前定的。'),
             ),
             if (_blocked != null) ...[
               const SizedBox(height: 14),

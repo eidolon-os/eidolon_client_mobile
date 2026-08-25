@@ -266,6 +266,7 @@ class CompanionLifecycleView {
     this.contractVersion,
     this.defaultCompanionId,
     required this.lifecycleState,
+    this.releasedDevices,
     required this.revision,
   });
 
@@ -277,6 +278,8 @@ class CompanionLifecycleView {
 
   final String lifecycleState;
 
+  final List<String>? releasedDevices;
+
   final int revision;
 
   factory CompanionLifecycleView.fromJson(Map<String, dynamic> value) {
@@ -285,6 +288,7 @@ class CompanionLifecycleView {
       contractVersion: value['contract_version'] as String?,
       defaultCompanionId: value['default_companion_id'] as String?,
       lifecycleState: value['lifecycle_state'] as String,
+      releasedDevices: value['released_devices'] == null ? null : ((value['released_devices'] as List<dynamic>).map((entry) => entry as String).toList()),
       revision: value['revision'] as int,
     );
   }

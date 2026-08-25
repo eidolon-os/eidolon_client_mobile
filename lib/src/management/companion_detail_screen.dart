@@ -269,6 +269,21 @@ class _CompanionDetailScreenState extends State<CompanionDetailScreen> {
       ),
     );
     if (moved == null || !mounted) return;
+    final released = moved.releasedDevices ?? const <String>[];
+    if (released.isNotEmpty) {
+      // Said out loud, because a speaker that goes quiet without a sentence is
+      // indistinguishable from a broken one. The Host releases them so the
+      // runtime does not refuse them silently; this is the half a person sees.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            released.length == 1
+                ? '有 1 台设备不再由它应答了'
+                : '有 ${released.length} 台设备不再由它应答了',
+          ),
+        ),
+      );
+    }
     // Read back rather than patching what is on screen: this screen shows a
     // Companion, and the answer to a lifecycle change describes a move, not a
     // Companion. Painting one from the other is how the two drift.
