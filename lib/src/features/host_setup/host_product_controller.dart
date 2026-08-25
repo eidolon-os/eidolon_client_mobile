@@ -403,6 +403,26 @@ class HostProductController extends ChangeNotifier {
         replacementCompanionId: replacementCompanionId,
       );
 
+  /// What one of this Owner's Eidolons looks like.
+  ///
+  /// Not the cached face above: that one belongs to the Companion this Host
+  /// runs by default, and holding a second Eidolon's picture in the same field
+  /// would make the connection page show whichever was opened last.
+  Future<CompanionFacePicture> companionFacePicture({
+    required String companionId,
+  }) =>
+      _companionRepository.face(companionId: companionId);
+
+  /// Call one of them something else, and answer with what the Host accepted.
+  Future<String> renameOneCompanion({
+    required String companionId,
+    required String displayName,
+  }) =>
+      _companionRepository.rename(
+        companionId: companionId,
+        displayName: displayName,
+      );
+
   /// What is remembered, by category.
   Future<MemoryLibraryView> memoryLibrary({String? companionId}) =>
       _managementRepository.memoryLibrary(companionId: companionId);

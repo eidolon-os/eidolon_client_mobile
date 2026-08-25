@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import '../features/naming/ask_for_a_name.dart';
 
 import '../generated/management_v1.dart';
 import 'lifecycle_sheet.dart';
@@ -25,6 +29,9 @@ class CompanionDetailScreen extends StatefulWidget {
     this.others = const [],
     this.canPutAway = false,
     this.canBringBack = false,
+    this.loadFace,
+    this.rename,
+    this.canRename = false,
   });
 
   final String companionId;
@@ -49,12 +56,23 @@ class CompanionDetailScreen extends StatefulWidget {
   final bool canPutAway;
   final bool canBringBack;
 
+  /// What this Eidolon looks like. Null leaves the placeholder, which is also
+  /// what an Eidolon nobody has given a picture to looks like — a screen that
+  /// showed an error where a face goes would be reporting a fault for an
+  /// ordinary state.
+  final Future<CompanionFacePicture> Function(String companionId)? loadFace;
+
+  /// Calls it something else. Answers with what the Host accepted.
+  final Future<String> Function(String companionId, String displayName)? rename;
+  final bool canRename;
+
   @override
   State<CompanionDetailScreen> createState() => _CompanionDetailScreenState();
 }
 
 class _CompanionDetailScreenState extends State<CompanionDetailScreen> {
   CompanionDetailView? _companion;
+  CompanionFacePicture? _face;
   Object? _error;
   bool _busy = true;
 
@@ -76,6 +94,10 @@ class _CompanionDetailScreenState extends State<CompanionDetailScreen> {
         _companion = companion;
         _busy = false;
       });
+      // After the Companion, not with it: a name and a state are what this
+      // screen is about, and waiting on a photograph to show them would make
+      // the whole screen as slow as its slowest part.
+      unawaited(_readFace());
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -83,6 +105,50 @@ class _CompanionDetailScreenState extends State<CompanionDetailScreen> {
         _busy = false;
       });
     }
+  }
+
+  /// Best-effort, and silent when it fails.
+  ///
+  /// A face that could not be fetched leaves the placeholder. There is nothing
+  /// for a person to do about it, and putting an error where a portrait goes
+  /// would make an Eidolon look broken because a photograph did not arrive.
+  Future<void> _readFace() async {
+    final load = widget.loadFace;
+    if (load == null) return;
+    try {
+      final picture = await load(widget.companionId);
+      if (!mounted) return;
+      setState(() => _face = picture);
+    } catch (_) {
+      // Deliberately swallowed; see above.
+    }
+  }
+
+  Future<void> _rename(CompanionDetailView companion) async {
+    final rename = widget.rename;
+    if (rename == null) return;
+    final name = await askForAName(
+      context,
+      question: '这个 Eidolon 叫什么？',
+      hint: '给它起个名字',
+      current: companion.displayName ?? '',
+      dialogKey: const Key('detail-rename-dialog'),
+      fieldKey: const Key('detail-name-field'),
+      confirmKey: const Key('detail-confirm-name'),
+    );
+    if (name == null || !mounted) return;
+    try {
+      await rename(companion.companionId, name);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('改名没有完成：$error')),
+      );
+      return;
+    }
+    // Read back rather than painting the name that was typed: the Host is what
+    // this Eidolon is called.
+    await _read();
   }
 
   @override
@@ -143,15 +209,29 @@ class _CompanionDetailScreenState extends State<CompanionDetailScreen> {
               children: [
                 Row(
                   children: [
-                    const CircleAvatar(
+                    CircleAvatar(
+                      key: const Key('detail-face'),
                       radius: 26,
-                      child: Icon(Icons.face_retouching_natural),
+                      backgroundImage: _face?.bytes == null
+                          ? null
+                          : MemoryImage(_face!.bytes!),
+                      child: _face?.bytes == null
+                          ? const Icon(Icons.face_retouching_natural)
+                          : null,
                     ),
                     const SizedBox(width: 14),
                     if (companion.isDefault)
                       const Chip(
                         key: Key('detail-default-badge'),
                         label: Text('默认'),
+                      ),
+                    const Spacer(),
+                    if (widget.rename != null && widget.canRename)
+                      IconButton(
+                        key: const Key('detail-rename'),
+                        tooltip: '改名',
+                        onPressed: () => _rename(companion),
+                        icon: const Icon(Icons.edit_outlined),
                       ),
                   ],
                 ),

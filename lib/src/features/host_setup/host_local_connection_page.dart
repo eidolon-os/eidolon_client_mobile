@@ -246,6 +246,13 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               companionId: companionId,
               expectedRevision: expectedRevision,
             ),
+            loadCompanionFace: (companionId) =>
+                _controller.companionFacePicture(companionId: companionId),
+            renameCompanion: (companionId, displayName) =>
+                _controller.renameOneCompanion(
+              companionId: companionId,
+              displayName: displayName,
+            ),
             setCompanionLifecycle:
                 (companionId, lifecycleState, replacementCompanionId) =>
                     _controller.setCompanionLifecycle(

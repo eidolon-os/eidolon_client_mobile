@@ -30,6 +30,8 @@ class CompanionRosterScreen extends StatefulWidget {
     this.loadContext,
     this.setDefaultCompanion,
     this.setCompanionLifecycle,
+    this.loadCompanionFace,
+    this.renameCompanion,
     this.createCompanion,
     this.newOperationId,
   });
@@ -63,6 +65,14 @@ class CompanionRosterScreen extends StatefulWidget {
     String lifecycleState,
     String? replacementCompanionId,
   )? setCompanionLifecycle;
+
+  /// What one of them looks like, read when its own screen opens.
+  final Future<CompanionFacePicture> Function(String companionId)?
+      loadCompanionFace;
+
+  /// Calls one of them something else.
+  final Future<String> Function(String companionId, String displayName)?
+      renameCompanion;
 
   /// Adds one. Given an operation id this screen holds, not one per attempt.
   final Future<CreatedCompanion> Function(
@@ -264,6 +274,10 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
                           canBringBack: _context != null &&
                               hostCan(_context!, 'companion.restore'),
                           setLifecycle: widget.setCompanionLifecycle,
+                          loadFace: widget.loadCompanionFace,
+                          rename: widget.renameCompanion,
+                          canRename: _context != null &&
+                              hostCan(_context!, 'companion.rename'),
                           // The rows this screen already has. The successor
                           // question is asked from what the person is looking
                           // at, not from a second read that could disagree

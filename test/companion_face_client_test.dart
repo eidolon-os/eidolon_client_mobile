@@ -92,7 +92,7 @@ void main() {
     var refuse = false;
     final client = ManagementClient(
       httpClient: MockClient((request) async {
-        sent = request as http.Request;
+        sent = request;
         if (refuse) {
           return http.Response(
             jsonEncode({'detail': '这不是一张 JPEG'}),

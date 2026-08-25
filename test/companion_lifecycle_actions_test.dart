@@ -334,6 +334,57 @@ void main() {
       expect(find.byKey(const Key('detail-lifecycle')), findsNothing);
     });
 
+    testWidgets('a face that will not load leaves the placeholder', (tester) async {
+      // There is nothing for a person to do about it, and an error where a
+      // portrait goes makes an Eidolon look broken because a photograph did
+      // not arrive.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionDetailScreen(
+            companionId: 'companion-a',
+            load: (_) async => _detail(),
+            loadFace: (_) async => throw Exception('主机没给'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('detail-face')), findsOneWidget);
+      expect(find.text('主机没给'), findsNothing);
+      expect(find.byIcon(Icons.face_retouching_natural), findsOneWidget);
+    });
+
+    testWidgets('renaming waits on the Host saying it can', (tester) async {
+      final named = <String>[];
+      Future<void> open({required bool canRename}) => tester.pumpWidget(
+            MaterialApp(
+              home: CompanionDetailScreen(
+                companionId: 'companion-a',
+                load: (_) async => _detail(),
+                canRename: canRename,
+                rename: (companionId, displayName) async {
+                  named.add(displayName);
+                  return displayName;
+                },
+              ),
+            ),
+          );
+
+      await open(canRename: false);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('detail-rename')), findsNothing);
+
+      await open(canRename: true);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('detail-rename')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('detail-name-field')), '  阿力  ');
+      await tester.tap(find.byKey(const Key('detail-confirm-name')));
+      await tester.pumpAndSettle();
+
+      expect(named, ['阿力']);
+    });
+
     testWidgets('after a move the screen re-reads rather than repaints itself',
         (tester) async {
       // The answer to a lifecycle change describes a move, not a Companion.
