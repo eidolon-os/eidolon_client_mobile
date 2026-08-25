@@ -77,7 +77,7 @@ class CompanionPage extends StatelessWidget {
       (devices?.devices ?? const <MountedDevice>[])
           .where(
             (device) =>
-                device.mount.attachedCompanionId ==
+                device.attachedCompanionId ==
                 runtime.primaryCompanion.companionId,
           )
           .toList(growable: false);

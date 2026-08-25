@@ -50,20 +50,23 @@ class HostDevicesRepository {
 
   final HostProductSession _session;
 
-  Future<MountedDeviceInventory> fetchMountedDevices() => _session.execute(
-        (client, baseUrl, accessToken) => client.fetchMountedDevices(
-          baseUrl,
-          accessToken: accessToken,
+  Future<MountedDeviceInventory> fetchMountedDevices() async =>
+      MountedDeviceInventory.fromView(
+        await _session.executeManagement(
+          (client, baseUri, accessToken) => client.fetchDevices(
+            baseUri,
+            accessToken: accessToken,
+          ),
         ),
       );
 
-  Future<DeviceRemovalProgress> remove({
+  Future<DeviceRemovalView> remove({
     required String requestId,
     required String deviceId,
   }) =>
-      _session.execute(
-        (client, baseUrl, accessToken) => client.removeDevice(
-          baseUrl,
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.removeDevice(
+          baseUri,
           accessToken: accessToken,
           requestId: requestId,
           deviceId: deviceId,
@@ -555,15 +558,17 @@ class HostDeviceCompanionRepository {
     required String requestId,
     required String? companionId,
     required int expectedRevision,
-  }) =>
-      _session.execute(
-        (client, baseUrl, accessToken) => client.setDeviceCompanion(
-          baseUrl,
-          accessToken: accessToken,
-          deviceId: deviceId,
-          requestId: requestId,
-          companionId: companionId,
-          expectedRevision: expectedRevision,
+  }) async =>
+      MountedDevice.fromView(
+        await _session.executeManagement(
+          (client, baseUri, accessToken) => client.setDeviceCompanion(
+            baseUri,
+            accessToken: accessToken,
+            deviceId: deviceId,
+            requestId: requestId,
+            companionId: companionId,
+            expectedRevision: expectedRevision,
+          ),
         ),
       );
 }

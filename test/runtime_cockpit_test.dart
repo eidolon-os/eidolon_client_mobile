@@ -1,5 +1,4 @@
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_device_models.dart';
-import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/activity_models.dart';
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_service_models.dart';
@@ -72,34 +71,33 @@ HostServiceInventory _services({int ready = 2, int failed = 0}) =>
       ],
     );
 
+/// One device as the Host now describes it: composed and phrased on that side,
+/// so this fixture states an answer rather than three authorities' halves.
+MountedDevice _mountedDevice(String name) => MountedDevice.fromView(
+      DeviceView.fromJson({
+        'device_id': 'device-$name',
+        'label': name,
+        'kind': name,
+        'state': 'ready',
+        'answers_as_companion_id': 'cmp-1',
+        'answers_as_companion_name': '小忆',
+        'revision': 1,
+        'updated_at': '2026-08-19T00:00:00Z',
+        'online': 'unknown',
+        'online_reason': '这台主机没有任何东西在观测设备是否开着',
+        'claim_state': 'active',
+        'claim_generation': 1,
+        'trust_epoch': 1,
+        'owner_domain_generation': 3,
+        'manifest_id': name,
+        'manifest_revision': 1,
+      }),
+    );
+
 MountedDeviceInventory _devices(List<String> names) => MountedDeviceInventory(
       devices: [
         for (final name in names)
-          MountedDevice(
-            claim: ClaimRecordV1.fromJson({
-              'device_ref': {
-                'device_instance_id': 'device-$name',
-                'owner_domain_id': 'owner-b0a862b0aab941d64554',
-                'owner_domain_generation': 3,
-                'claim_generation': 1,
-                'trust_epoch': 1,
-              },
-              'business_owner_id': 'owner_683f0000000000000000',
-              'manifest_ref': {
-                'manifest_id': name,
-                'revision': 1,
-                'digest': 'sha256:${'a' * 64}',
-              },
-              'state': 'active',
-              'revision': 1,
-              'updated_at': '2026-08-19T00:00:00Z',
-            }),
-            mount: MountedDeviceMount(
-              revision: 1,
-              attachedCompanionId: 'cmp-1',
-              updatedAt: DateTime.utc(2026, 8, 19),
-            ),
-          ),
+          _mountedDevice(name),
       ],
     );
 

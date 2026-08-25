@@ -720,9 +720,11 @@ class HostProductController extends ChangeNotifier {
     if (_connection == null) {
       throw const HostControllerAuthorizationException('请先安全连接主机，再移除设备');
     }
-    final progress = await _devicesRepository.remove(
-      requestId: requestId,
-      deviceId: deviceId,
+    final progress = DeviceRemovalProgress.fromView(
+      await _devicesRepository.remove(
+        requestId: requestId,
+        deviceId: deviceId,
+      ),
     );
     await refreshDevices();
     return progress;

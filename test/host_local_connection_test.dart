@@ -163,33 +163,26 @@ Map<String, dynamic> _workspaceRuntime() => {
 
 Map<String, dynamic> _deviceInventory({bool withReadyDevice = false}) => {
       'contract_version': '1',
-      'coverage': 'active-kernel-mounts-with-owner-scoped-hub-claims',
+      'coverage': '只包含已经属于你的设备。',
       'devices': withReadyDevice
           ? [
               {
-                'claim': {
-                  'device_ref': {
-                    'device_instance_id': 'device-waveshare-1',
-                    'owner_domain_id': 'owner-b0a862b0aab941d64554',
-                    'owner_domain_generation': 3,
-                    'claim_generation': 1,
-                    'trust_epoch': 1,
-                  },
-                  'business_owner_id': 'owner_683f0000000000000000',
-                  'manifest_ref': {
-                    'manifest_id': 'esp-box-3',
-                    'revision': 1,
-                    'digest': 'sha256:${'a' * 64}',
-                  },
-                  'state': 'active',
-                  'revision': 1,
-                  'updated_at': '2026-08-09T08:10:00Z',
-                },
-                'mount': {
-                  'revision': 2,
-                  'attached_companion_id': 'companion_primary',
-                  'updated_at': '2026-08-09T08:10:00Z',
-                },
+                'device_id': 'device-waveshare-1',
+                'label': 'esp-box-3',
+                'kind': 'esp-box-3',
+                'state': 'ready',
+                'answers_as_companion_id': 'companion_primary',
+                'answers_as_companion_name': '小忆',
+                'revision': 2,
+                'updated_at': '2026-08-09T08:10:00Z',
+                'online': 'unknown',
+                'online_reason': '这台主机没有任何东西在观测设备是否开着',
+                'claim_state': 'active',
+                'claim_generation': 1,
+                'trust_epoch': 1,
+                'owner_domain_generation': 3,
+                'manifest_id': 'esp-box-3',
+                'manifest_revision': 1,
               },
             ]
           : [],
@@ -215,10 +208,23 @@ class _OwnerName {
 /// fails — so a test that stubs only `/api/local/v1` describes a Host that
 /// cannot exist. Without this the session falls back to the production factory
 /// and a widget test reaches for a real socket, which does not fail: it hangs.
-ManagementClient _quietManagementClient() => _managementClientFor(_OwnerName());
+ManagementClient _quietManagementClient({bool withReadyDevice = false}) =>
+    _managementClientFor(
+      _OwnerName(),
+      devices: _deviceInventory(withReadyDevice: withReadyDevice),
+    );
 
-ManagementClient _managementClientFor(_OwnerName ownerName) => ManagementClient(
+ManagementClient _managementClientFor(
+  _OwnerName ownerName, {
+  Map<String, dynamic>? devices,
+}) =>
+    ManagementClient(
       httpClient: MockClient((request) async {
+        if (request.url.path == '/api/management/v1/devices') {
+          // Devices moved to the management contract with the rest of what a
+          // person manages; an empty list is a real answer.
+          return _jsonResponse(devices ?? _deviceInventory());
+        }
         if (request.url.path == '/api/management/v1/context') {
           // Every capability off and every reason given, which is the honest
           // answer for a Host these tests never configured — and it keeps this
@@ -276,7 +282,6 @@ LocalApiClient _clientFor(
   int workspaceStatusCode = 200,
   bool workspaceReady = false,
   int runtimeStatusCode = 200,
-  int devicesStatusCode = 200,
   bool withReadyDevice = false,
   PinnedHttpFailureKind? workspaceTransportFailure,
   // The Host is the authority on what anyone is called, and renaming now
@@ -366,15 +371,6 @@ LocalApiClient _clientFor(
           return http.Response('', runtimeStatusCode);
         }
         return http.Response(jsonEncode(_workspaceRuntime()), 200);
-      }
-      if (request.url.path == '/api/local/v1/devices') {
-        if (devicesStatusCode != 200) {
-          return http.Response('', devicesStatusCode);
-        }
-        return http.Response(
-          jsonEncode(_deviceInventory(withReadyDevice: withReadyDevice)),
-          200,
-        );
       }
       return http.Response('', 404);
     }),
@@ -618,7 +614,10 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
-          managementClientFactory: (_) => _quietManagementClient(),
+          // The devices come over the management contract now, so the fake
+          // that answers it is the one that has to hold them.
+          managementClientFactory: (_) =>
+              _quietManagementClient(withReadyDevice: true),
           host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),

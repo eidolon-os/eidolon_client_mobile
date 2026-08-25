@@ -27,6 +27,9 @@ class ManagementV1 {
   static const String controllersPath = '/api/management/v1/controllers';
   static const String controllersInvitationsPath = '/api/management/v1/controllers/invitations';
   static String controllersByControllerIdPath(String controllerId) => '/api/management/v1/controllers/${Uri.encodeComponent(controllerId)}';
+  static const String devicesPath = '/api/management/v1/devices';
+  static String devicesByDeviceIdCompanionPath(String deviceId) => '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/companion';
+  static String devicesByDeviceIdRemovalPath(String deviceId) => '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/removal';
   static const String hostServicesPath = '/api/management/v1/host/services';
   static String hostServicesByServiceIdByOperationPath(String serviceId, String operation) => '/api/management/v1/host/services/${Uri.encodeComponent(serviceId)}/${Uri.encodeComponent(operation)}';
   static const String hostVitalsPath = '/api/management/v1/host/vitals';
@@ -564,6 +567,194 @@ class DefaultCompanionView {
     return DefaultCompanionView(
       contractVersion: value['contract_version'] as String?,
       defaultCompanionId: value['default_companion_id'] as String?,
+    );
+  }
+}
+
+class DeviceCompanionRequest {
+  const DeviceCompanionRequest({
+    this.companionId,
+    required this.expectedRevision,
+    required this.requestId,
+  });
+
+  final String? companionId;
+
+  final int expectedRevision;
+
+  final String requestId;
+
+  factory DeviceCompanionRequest.fromJson(Map<String, dynamic> value) {
+    return DeviceCompanionRequest(
+      companionId: value['companion_id'] as String?,
+      expectedRevision: value['expected_revision'] as int,
+      requestId: value['request_id'] as String,
+    );
+  }
+}
+
+class DeviceRemovalConditionView {
+  const DeviceRemovalConditionView({
+    required this.authority,
+    required this.name,
+    this.observedAt,
+    required this.state,
+  });
+
+  final String authority;
+
+  final String name;
+
+  final String? observedAt;
+
+  final String state;
+
+  factory DeviceRemovalConditionView.fromJson(Map<String, dynamic> value) {
+    return DeviceRemovalConditionView(
+      authority: value['authority'] as String,
+      name: value['name'] as String,
+      observedAt: value['observed_at'] as String?,
+      state: value['state'] as String,
+    );
+  }
+}
+
+class DeviceRemovalRequest {
+  const DeviceRemovalRequest({
+    required this.requestId,
+  });
+
+  final String requestId;
+
+  factory DeviceRemovalRequest.fromJson(Map<String, dynamic> value) {
+    return DeviceRemovalRequest(
+      requestId: value['request_id'] as String,
+    );
+  }
+}
+
+class DeviceRemovalView {
+  const DeviceRemovalView({
+    required this.conditions,
+    this.contractVersion,
+    required this.deviceId,
+    required this.outcome,
+    required this.requestId,
+  });
+
+  final List<DeviceRemovalConditionView> conditions;
+
+  final String? contractVersion;
+
+  final String deviceId;
+
+  final String outcome;
+
+  final String requestId;
+
+  factory DeviceRemovalView.fromJson(Map<String, dynamic> value) {
+    return DeviceRemovalView(
+      conditions: ((value['conditions'] as List<dynamic>).map((entry) => DeviceRemovalConditionView.fromJson(entry as Map<String, dynamic>)).toList()),
+      contractVersion: value['contract_version'] as String?,
+      deviceId: value['device_id'] as String,
+      outcome: value['outcome'] as String,
+      requestId: value['request_id'] as String,
+    );
+  }
+}
+
+class DeviceView {
+  const DeviceView({
+    this.answersAsCompanionId,
+    this.answersAsCompanionName,
+    required this.claimGeneration,
+    required this.claimState,
+    required this.deviceId,
+    this.kind,
+    required this.label,
+    this.manifestId,
+    this.manifestRevision,
+    this.online,
+    this.onlineReason,
+    required this.ownerDomainGeneration,
+    required this.revision,
+    required this.state,
+    required this.trustEpoch,
+    required this.updatedAt,
+  });
+
+  final String? answersAsCompanionId;
+
+  final String? answersAsCompanionName;
+
+  final int claimGeneration;
+
+  final String claimState;
+
+  final String deviceId;
+
+  final String? kind;
+
+  final String label;
+
+  final String? manifestId;
+
+  final int? manifestRevision;
+
+  final String? online;
+
+  final String? onlineReason;
+
+  final int ownerDomainGeneration;
+
+  final int revision;
+
+  final String state;
+
+  final int trustEpoch;
+
+  final String updatedAt;
+
+  factory DeviceView.fromJson(Map<String, dynamic> value) {
+    return DeviceView(
+      answersAsCompanionId: value['answers_as_companion_id'] as String?,
+      answersAsCompanionName: value['answers_as_companion_name'] as String?,
+      claimGeneration: value['claim_generation'] as int,
+      claimState: value['claim_state'] as String,
+      deviceId: value['device_id'] as String,
+      kind: value['kind'] as String?,
+      label: value['label'] as String,
+      manifestId: value['manifest_id'] as String?,
+      manifestRevision: value['manifest_revision'] as int?,
+      online: value['online'] as String?,
+      onlineReason: value['online_reason'] as String?,
+      ownerDomainGeneration: value['owner_domain_generation'] as int,
+      revision: value['revision'] as int,
+      state: value['state'] as String,
+      trustEpoch: value['trust_epoch'] as int,
+      updatedAt: value['updated_at'] as String,
+    );
+  }
+}
+
+class DevicesView {
+  const DevicesView({
+    this.contractVersion,
+    this.coverage,
+    required this.devices,
+  });
+
+  final String? contractVersion;
+
+  final String? coverage;
+
+  final List<DeviceView> devices;
+
+  factory DevicesView.fromJson(Map<String, dynamic> value) {
+    return DevicesView(
+      contractVersion: value['contract_version'] as String?,
+      coverage: value['coverage'] as String?,
+      devices: ((value['devices'] as List<dynamic>).map((entry) => DeviceView.fromJson(entry as Map<String, dynamic>)).toList()),
     );
   }
 }

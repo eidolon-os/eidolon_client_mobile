@@ -1,4 +1,4 @@
-import '../../generated/device_foundation_v1.dart';
+import '../../generated/management_v1.dart';
 
 /// What this Owner's Host says about one device it holds.
 ///
@@ -20,126 +20,105 @@ enum MountedDeviceState {
   accessRevoked,
 }
 
-class MountedDeviceMount {
-  const MountedDeviceMount({
-    required this.revision,
+class MountedDevice {
+  const MountedDevice({
+    required this.deviceId,
+    required this.label,
+    required this.detail,
+    required this.state,
     required this.attachedCompanionId,
+    required this.attachedCompanionName,
+    required this.revision,
     required this.updatedAt,
+    required this.online,
+    required this.onlineReason,
+    required this.claimState,
+    required this.claimGeneration,
+    required this.trustEpoch,
+    required this.ownerDomainGeneration,
+    required this.manifestId,
   });
 
-  factory MountedDeviceMount.fromJson(Map<String, dynamic> value) {
-    final revision = value['revision'];
-    final companionId = value['attached_companion_id'];
-    final rawUpdatedAt = value['updated_at'];
-    if (value.length != 3 ||
-        revision is! int ||
-        revision < 1 ||
-        (companionId != null &&
-            (companionId is! String ||
-                companionId.isEmpty ||
-                companionId.length > 64)) ||
-        rawUpdatedAt is! String) {
-      throw const FormatException('Local API 返回了无效的设备挂载状态');
-    }
-    final updatedAt = DateTime.tryParse(rawUpdatedAt);
-    if (updatedAt == null || !updatedAt.isUtc) {
-      throw const FormatException('设备挂载时间缺少时区');
-    }
-    return MountedDeviceMount(
-      revision: revision,
-      attachedCompanionId: companionId as String?,
-      updatedAt: updatedAt,
-    );
-  }
-
-  final int revision;
-  final String? attachedCompanionId;
-  final DateTime updatedAt;
-}
-
-class MountedDevice {
-  const MountedDevice({required this.claim, required this.mount});
-
-  factory MountedDevice.fromJson(Map<String, dynamic> value) {
-    final rawClaim = value['claim'];
-    final rawMount = value['mount'];
-    if (value.length != 2 || rawClaim is! Map || rawMount is! Map) {
-      throw const FormatException('Local API 返回了无效的设备');
-    }
-    return MountedDevice(
-      claim: ClaimRecordV1.fromJson(Map<String, dynamic>.from(rawClaim)),
-      mount: MountedDeviceMount.fromJson(Map<String, dynamic>.from(rawMount)),
-    );
-  }
-
-  /// Hub's own Claim record, kept whole rather than copied field by field: the
-  /// generation and trust epoch inside it are what a later removal has to name,
-  /// and re-deriving them is how a stale one gets sent.
-  final ClaimRecordV1 claim;
-  final MountedDeviceMount mount;
-
-  DeviceRefV1 get deviceRef => DeviceRefV1.fromJson(
-        Map<String, dynamic>.from(claim.json['device_ref']! as Map),
+  /// Built from the Host's own answer.
+  ///
+  /// The label, the detail line and the state used to be derived here, three
+  /// facts at a time, from a Claim and a mount this app had to reason about
+  /// together. The Host composes and phrases them now — it is the side that can
+  /// see both halves — and what is left here is the enum a screen switches on.
+  factory MountedDevice.fromView(DeviceView view) => MountedDevice(
+        deviceId: view.deviceId,
+        label: view.label,
+        detail: (view.kind ?? '').isNotEmpty && view.kind != view.label
+            ? view.kind!
+            : view.deviceId,
+        state: switch (view.state) {
+          'ready' => MountedDeviceState.ready,
+          'awaiting_companion' => MountedDeviceState.awaitingCompanion,
+          'access_revoked' => MountedDeviceState.accessRevoked,
+          // A state this version has never heard of is shown as needing
+          // attention rather than as fine: the Host knows something this app
+          // does not, and "fine" is the one guess that costs someone a device.
+          _ => MountedDeviceState.accessRevoked,
+        },
+        attachedCompanionId: view.answersAsCompanionId,
+        attachedCompanionName: view.answersAsCompanionName ?? '',
+        revision: view.revision,
+        updatedAt: DateTime.tryParse(view.updatedAt)?.toUtc(),
+        online: view.online ?? 'unknown',
+        onlineReason: view.onlineReason ?? '',
+        claimState: view.claimState,
+        claimGeneration: view.claimGeneration,
+        trustEpoch: view.trustEpoch,
+        ownerDomainGeneration: view.ownerDomainGeneration,
+        manifestId: view.manifestId ?? '',
       );
 
-  String get deviceId => deviceRef.deviceInstanceId;
+  final String deviceId;
 
-  /// What kind of thing this is, as the accepted Manifest names it. Nobody has
-  /// named devices yet, and an identifier is not a name.
-  String get deviceKind {
-    final manifest = claim.json['manifest_ref'];
-    final value = manifest is Map ? manifest['manifest_id'] : null;
-    return value is String ? value.trim() : '';
-  }
+  /// How to name it on screen. The Host never invents one: it is what the
+  /// Manifest calls this kind of thing, or the tail of the identifier.
+  final String label;
 
-  MountedDeviceState get state {
-    if (claim.json['state'] != ClaimStateV1.active.wireValue) {
-      return MountedDeviceState.accessRevoked;
-    }
-    return mount.attachedCompanionId == null
-        ? MountedDeviceState.awaitingCompanion
-        : MountedDeviceState.ready;
-  }
+  /// The line under the name — the kind when it adds something, otherwise the
+  /// identifier, which is what someone reads out when asking for help.
+  final String detail;
+  final MountedDeviceState state;
+  final String? attachedCompanionId;
 
-  String get _shortId => deviceId.length <= 16
-      ? deviceId
-      : '…${deviceId.substring(deviceId.length - 12)}';
+  /// What that Eidolon is called. Empty when the Host could not say, which is
+  /// not the same as nothing answering through this device.
+  final String attachedCompanionName;
 
-  /// The line under the name: what kind of thing it is, or the tail of its
-  /// identifier when the kind would only repeat the line above.
-  String get detail =>
-      deviceKind.isNotEmpty && deviceKind != label ? deviceKind : _shortId;
+  /// Echoed back on every change so a stale screen cannot win a race.
+  final int revision;
+  final DateTime? updatedAt;
 
-  /// How this device should be named on screen: what it is, and failing that
-  /// the tail of its identifier, so there is something to read out when asking
-  /// for help — and never invented into a name.
-  String get label => deviceKind.isNotEmpty ? deviceKind : _shortId;
+  /// Always `unknown` today. Nothing on the Host observes presence, and this
+  /// app must not read an active Claim or a live mount as "switched on".
+  final String online;
+  final String onlineReason;
+
+  /// The canonical facts, kept for the technical corner of a screen: they are
+  /// what a person will be asked for when something is wrong.
+  final String claimState;
+  final int claimGeneration;
+  final int trustEpoch;
+  final int ownerDomainGeneration;
+  final String manifestId;
 }
 
 class MountedDeviceInventory {
-  const MountedDeviceInventory({required this.devices});
+  const MountedDeviceInventory({required this.devices, this.coverage = ''});
 
-  factory MountedDeviceInventory.fromJson(Map<String, dynamic> value) {
-    final rawDevices = value['devices'];
-    if (value.length != 3 ||
-        value['contract_version'] != '1' ||
-        value['coverage'] !=
-            'active-kernel-mounts-with-owner-scoped-hub-claims' ||
-        rawDevices is! List ||
-        rawDevices.length > 100) {
-      throw const FormatException('Local API 返回了无效的设备列表');
-    }
-    final devices = rawDevices.map((item) {
-      if (item is! Map) {
-        throw const FormatException('Local API 设备列表包含无效条目');
-      }
-      return MountedDevice.fromJson(Map<String, dynamic>.from(item));
-    }).toList(growable: false);
-    if (devices.map((item) => item.deviceId).toSet().length != devices.length) {
-      throw const FormatException('Local API 设备列表包含重复设备');
-    }
-    return MountedDeviceInventory(devices: devices);
-  }
+  factory MountedDeviceInventory.fromView(DevicesView view) =>
+      MountedDeviceInventory(
+        devices: view.devices.map(MountedDevice.fromView).toList(growable: false),
+        coverage: view.coverage ?? '',
+      );
 
   final List<MountedDevice> devices;
+
+  /// What this list does not cover, in the Host's own words. Shown rather than
+  /// paraphrased: a short list must not be allowed to imply a quiet house.
+  final String coverage;
 }

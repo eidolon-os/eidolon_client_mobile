@@ -8,32 +8,27 @@ import 'package:flutter_test/flutter_test.dart';
 /// say which, every device this product added arrived correct and unusable:
 /// mounted, claimed, and bound to no Companion, with no way forward.
 
-MountedDevice _device({String? companionId, int revision = 1}) =>
-    MountedDevice.fromJson(<String, dynamic>{
-      'claim': <String, dynamic>{
-        'device_ref': <String, dynamic>{
-          'device_instance_id': 'device-instance-${'c' * 64}',
-          'owner_domain_id': 'owner-b0a862b0aab941d64554',
-          'owner_domain_generation': 3,
-          'claim_generation': 2,
-          'trust_epoch': 1,
-        },
-        'business_owner_id': 'owner_683f0000000000000000',
-        'manifest_ref': <String, dynamic>{
-          'manifest_id': 'box3-device-manifest',
-          'revision': 1,
-          'digest': 'sha256:${'a' * 64}',
-        },
-        'state': 'active',
-        'revision': 1,
-        'updated_at': '2026-08-25T00:00:00Z',
-      },
-      'mount': <String, dynamic>{
+MountedDevice _device({String? companionId, int revision = 1, String state = 'ready'}) =>
+    MountedDevice.fromView(
+      DeviceView.fromJson({
+        'device_id': 'device-instance-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+        'label': 'box3-device-manifest',
+        'kind': 'box3-device-manifest',
+        'state': state,
+        'answers_as_companion_id': companionId,
+        'answers_as_companion_name': companionId == null ? '' : '小忆',
         'revision': revision,
-        'attached_companion_id': companionId,
         'updated_at': '2026-08-25T08:10:00Z',
-      },
-    });
+        'online': 'unknown',
+        'online_reason': '这台主机没有任何东西在观测设备是否开着',
+        'claim_state': state == 'access_revoked' ? 'revoked' : 'active',
+        'claim_generation': 2,
+        'trust_epoch': 1,
+        'owner_domain_generation': 3,
+        'manifest_id': 'box3-device-manifest',
+        'manifest_revision': 1,
+      }),
+    );
 
 CompanionRosterView _roster() => CompanionRosterView.fromJson({
       'contract_version': '1',

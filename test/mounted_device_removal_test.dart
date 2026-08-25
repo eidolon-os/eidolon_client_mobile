@@ -2,68 +2,61 @@ import 'package:eidolon_client_mobile/src/features/device_management/mounted_dev
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_devices_page.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
 import 'package:flutter/material.dart';
+import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-MountedDevice _device({String claimState = 'active'}) =>
-    MountedDevice.fromJson({
-      'claim': {
-        'device_ref': {
-          'device_instance_id': 'mobile-android-0123456789abcdef',
-          'owner_domain_id': 'owner-b0a862b0aab941d64554',
-          'owner_domain_generation': 3,
-          'claim_generation': 1,
-          'trust_epoch': 1,
-        },
-        'business_owner_id': 'owner_683f0000000000000000',
-        'manifest_ref': {
-          'manifest_id': 'mobile-android',
-          'revision': 1,
-          'digest': 'sha256:${'a' * 64}',
-        },
-        'state': claimState,
-        'revision': 1,
-        'updated_at': '2026-08-12T08:10:00Z',
-      },
-      'mount': {
+MountedDevice _device({String state = 'ready'}) => MountedDevice.fromView(
+      DeviceView.fromJson({
+        'device_id': 'mobile-android-0123456789abcdef',
+        'label': 'mobile-android',
+        'kind': 'mobile-android',
+        'state': state,
+        'answers_as_companion_id': 'companion-1',
+        'answers_as_companion_name': '小忆',
         'revision': 2,
-        'attached_companion_id': 'companion-1',
         'updated_at': '2026-08-12T08:10:00Z',
-      },
-    });
+        'online': 'unknown',
+        'online_reason': '这台主机没有任何东西在观测设备是否开着',
+        'claim_state': state == 'access_revoked' ? 'revoked' : 'active',
+        'claim_generation': 1,
+        'trust_epoch': 1,
+        'owner_domain_generation': 3,
+        'manifest_id': 'mobile-android',
+        'manifest_revision': 1,
+      }),
+    );
 
 DeviceRemovalProgress _progress(String outcome) =>
-    DeviceRemovalProgress.fromJson({
-      'operation': 'local.device-removal-progress',
-      'contract_version': '1',
-      'request_id': 'device-removal-1',
-      'device_id': 'mobile-android-0123456789abcdef',
-      'owner_id': 'owner-1',
-      'intent_id': 'removal-intent-1',
-      'outcome': outcome,
-      'conditions': [
-        {
-          'name': 'platform_access_revoked',
-          'state': outcome == 'refused' ? 'false' : 'true',
-          'authority': 'hub',
-          'authority_ref': 'claim-event-1',
-          'observed_at': '2026-08-23T10:00:00Z',
-        },
-        {
-          'name': 'mount_removed',
-          'state': outcome == 'done' ? 'true' : 'false',
-          'authority': 'kernel',
-          'authority_ref': null,
-          'observed_at': '2026-08-23T10:00:00Z',
-        },
-        {
-          'name': 'device_erase_acknowledged',
-          'state': 'unknown',
-          'authority': 'device-control',
-          'authority_ref': null,
-          'observed_at': '2026-08-23T10:00:00Z',
-        },
-      ],
-    });
+    DeviceRemovalProgress.fromView(
+      DeviceRemovalView.fromJson({
+        'contract_version': '1',
+        'device_id': 'mobile-android-0123456789abcdef',
+        'request_id': 'device-removal-1',
+        'outcome': outcome,
+        'conditions': [
+          {
+            'name': 'platform_access_revoked',
+            'state': outcome == 'refused' ? 'false' : 'true',
+            'authority': 'hub',
+            'observed_at': '2026-08-23T10:00:00Z',
+          },
+          {
+            'name': 'mount_removed',
+            'state': outcome == 'done' ? 'true' : 'false',
+            'authority': 'kernel',
+            'observed_at': '2026-08-23T10:00:00Z',
+          },
+          {
+            // Nobody has looked. Not the same as "no", which is the whole
+            // reason these are conditions and not a percentage.
+            'name': 'device_erase_acknowledged',
+            'state': 'unknown',
+            'authority': 'device-control',
+            'observed_at': '',
+          },
+        ],
+      }),
+    );
 
 Future<void> _open(
   WidgetTester tester,

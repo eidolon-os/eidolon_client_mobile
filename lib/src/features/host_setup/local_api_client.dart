@@ -5,7 +5,6 @@ import 'dart:math';
 import 'package:http/http.dart' as http;
 
 import '../../generated/device_foundation_v1.dart';
-import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/setup_trust.dart';
@@ -196,21 +195,6 @@ class LocalApiClient {
     );
   }
 
-  Future<MountedDeviceInventory> fetchMountedDevices(
-    String baseUrl, {
-    required String accessToken,
-  }) async {
-    final response = await _httpClient
-        .get(
-          parseBaseUri(baseUrl).resolve('/api/local/v1/devices'),
-          headers: _authorizedHeaders(accessToken),
-        )
-        .timeout(timeout);
-    return MountedDeviceInventory.fromJson(
-      _decodeResponse(response, operation: 'Device inventory'),
-    );
-  }
-
   Future<DeviceOnboardingTarget> fetchDeviceOnboardingTarget(
     String baseUrl, {
     required String accessToken,
@@ -394,67 +378,6 @@ class LocalApiClient {
   ///
   /// [expectedRevision] is the mount revision this screen was showing. The
   /// Host refuses a stale one rather than letting two phones take turns.
-  Future<MountedDevice> setDeviceCompanion(
-    String baseUrl, {
-    required String accessToken,
-    required String deviceId,
-    required String requestId,
-    required String? companionId,
-    required int expectedRevision,
-  }) async {
-    final response = await _httpClient
-        .put(
-          _localUri(
-            baseUrl,
-            ['devices', _boundedId(deviceId, 'device ID'), 'companion'],
-          ),
-          headers: _authorizedHeaders(accessToken, json: true),
-          body: jsonEncode({
-            'contract_version': '1',
-            'request_id': _boundedId(requestId, 'request ID'),
-            'companion_id': companionId,
-            'expected_revision': expectedRevision,
-          }),
-        )
-        .timeout(timeout);
-    return MountedDevice.fromJson(
-      _decodeResponse(response, operation: 'Device Companion'),
-    );
-  }
-
-  Future<DeviceRemovalProgress> removeDevice(
-    String baseUrl, {
-    required String accessToken,
-    required String requestId,
-    required String deviceId,
-  }) async {
-    final response = await _httpClient
-        .post(
-          _deviceRemovalUri(baseUrl, deviceId),
-          headers: _authorizedHeaders(accessToken, json: true),
-          body: jsonEncode({
-            'contract_version': '1',
-            'request_id': _boundedId(requestId, 'request ID'),
-          }),
-        )
-        .timeout(timeout);
-    return DeviceRemovalProgress.fromJson(
-      _decodeResponse(response, operation: 'Device removal'),
-    );
-  }
-
-  /// Tell the Host what this person is called.
-  ///
-  /// No Owner is named: the session already says whose it is, and the Host
-  /// refuses to be told otherwise.
-  static Uri _deviceRemovalUri(String baseUrl, String deviceId) {
-    final normalized = _boundedId(deviceId, 'device ID');
-    final base = parseBaseUri(baseUrl);
-    return base.replace(
-      pathSegments: ['api', 'local', 'v1', 'devices', normalized, 'removal'],
-    );
-  }
-
   static Uri _localUri(String baseUrl, List<String> suffix) =>
       parseBaseUri(baseUrl).replace(
         pathSegments: ['api', 'local', 'v1', ...suffix],

@@ -369,6 +369,72 @@ class ManagementClient {
     return HostServiceMutationView.fromJson(body);
   }
 
+  /// Every device that is mine.
+  ///
+  /// Composed and phrased by the Host — it is the side that can see both the
+  /// Claim and the mount — so this app switches on a state rather than deriving
+  /// one from two authorities it would have to reason about together.
+  Future<DevicesView> fetchDevices(
+    Uri baseUri, {
+    required String accessToken,
+  }) async {
+    final body = await _send(
+      'GET',
+      baseUri.resolve(ManagementV1.devicesPath),
+      accessToken: accessToken,
+      what: '读取我的设备',
+    );
+    return DevicesView.fromJson(body);
+  }
+
+  /// Say which Eidolon answers through one device, or that none does.
+  ///
+  /// [expectedRevision] is what the screen was showing, and [requestId] must be
+  /// the same value on a retry — two phones pointing one device at different
+  /// Eidolons must not take turns without noticing.
+  Future<DeviceView> setDeviceCompanion(
+    Uri baseUri, {
+    required String accessToken,
+    required String deviceId,
+    required String? companionId,
+    required int expectedRevision,
+    required String requestId,
+  }) async {
+    final body = await _send(
+      'PUT',
+      baseUri.resolve(ManagementV1.devicesByDeviceIdCompanionPath(deviceId)),
+      accessToken: accessToken,
+      what: '设置由谁应答',
+      body: {
+        'companion_id': companionId,
+        'expected_revision': expectedRevision,
+        'request_id': requestId,
+      },
+    );
+    return DeviceView.fromJson(body);
+  }
+
+  /// Take a device off this Host.
+  ///
+  /// The answer says which facts are settled rather than a percentage: three
+  /// authorities converge on their own schedule, and "unfinished" is the
+  /// ordinary middle state.
+  Future<DeviceRemovalView> removeDevice(
+    Uri baseUri, {
+    required String accessToken,
+    required String deviceId,
+    required String requestId,
+  }) async {
+    final body = await _send(
+      'POST',
+      baseUri.resolve(ManagementV1.devicesByDeviceIdRemovalPath(deviceId)),
+      accessToken: accessToken,
+      what: '移除设备',
+      body: {'request_id': requestId},
+    );
+    return DeviceRemovalView.fromJson(body);
+  }
+
   /// Which phones may manage this Host.
   ///
   /// Answered to a phone that already may. Each row says whether it is the

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../generated/management_v1.dart';
+
 import '../../generated/device_foundation_v1.dart';
 
 enum DeviceProvisioningTrust {
@@ -42,13 +44,6 @@ enum DeviceAdmissionState {
 ///  * [unfinished] — it stopped partway and asking again can finish it.
 ///  * [refused] — the Host decided; asking again gets the same answer.
 enum ActOutcome { done, unfinished, refused }
-
-ActOutcome _actOutcome(Object? value) => switch (value) {
-      'done' => ActOutcome.done,
-      'unfinished' => ActOutcome.unfinished,
-      'refused' => ActOutcome.refused,
-      _ => throw const FormatException('Local API 返回了未知的执行结果'),
-    };
 
 class DeviceProvisioningCandidate {
   const DeviceProvisioningCandidate({
@@ -253,68 +248,49 @@ class DeviceRemovalProgress {
   const DeviceRemovalProgress({
     required this.requestId,
     required this.deviceId,
-    required this.ownerId,
-    required this.intentId,
     required this.outcome,
     required this.conditions,
   });
 
+  /// Built from the Host's own answer.
+  ///
+  /// The parsing that used to live here — three required condition names, each
+  /// with a tri-state — is the management contract's now. What stays is the
+  /// reading: which of those conditions a screen turns into a sentence, and the
+  /// fact that a condition nobody has observed is neither true nor false.
+  factory DeviceRemovalProgress.fromView(DeviceRemovalView view) =>
+      DeviceRemovalProgress(
+        requestId: view.requestId,
+        deviceId: view.deviceId,
+        outcome: switch (view.outcome) {
+          'done' => ActOutcome.done,
+          'unfinished' => ActOutcome.unfinished,
+          'refused' => ActOutcome.refused,
+          // An outcome this version has never heard of is treated as still
+          // converging: it is the one reading that neither claims success nor
+          // throws away a request id that may still be needed.
+          _ => ActOutcome.unfinished,
+        },
+        conditions: {
+          for (final condition in view.conditions) condition.name: condition.state,
+        },
+      );
+
   final String requestId;
   final String deviceId;
-  final String ownerId;
-  final String intentId;
   final ActOutcome outcome;
   final Map<String, String> conditions;
 
   /// The grant is gone but the mount is not, which is worth saying out loud:
   /// the device is already off, and what is left to retry is the unmount.
-  bool get platformAccessRevoked =>
-      conditions['platform_access_revoked'] == 'true';
-  bool get mountRemoved => conditions['mount_removed'] == 'true';
-  bool get deviceEraseAcknowledged =>
-      conditions['device_erase_acknowledged'] == 'true';
+  bool get platformAccessRevoked => _met('platform_access_revoked');
+  bool get mountRemoved => _met('mount_removed');
+  bool get deviceEraseAcknowledged => _met('device_erase_acknowledged');
 
-  factory DeviceRemovalProgress.fromJson(Map<String, dynamic> value) {
-    if (value['operation'] != 'local.device-removal-progress' ||
-        value['contract_version'] != '1') {
-      throw const FormatException('Local API 返回了无效的设备移除状态');
-    }
-    final rawConditions = value['conditions'];
-    if (rawConditions is! List) {
-      throw const FormatException('Local API 返回了无效的设备移除条件');
-    }
-    final conditions = <String, String>{};
-    for (final raw in rawConditions) {
-      if (raw is! Map<String, dynamic>) {
-        throw const FormatException('Local API 返回了无效的设备移除条件');
-      }
-      final name = _boundedWireString(raw, 'name', 64);
-      final state = _boundedWireString(raw, 'state', 16);
-      if (!const {'true', 'false', 'unknown'}.contains(state) ||
-          conditions.containsKey(name)) {
-        throw const FormatException('Local API 返回了冲突的设备移除条件');
-      }
-      conditions[name] = state;
-    }
-    const required = {
-      'platform_access_revoked',
-      'mount_removed',
-      'device_erase_acknowledged',
-    };
-    final names = conditions.keys.toSet();
-    if (names.difference(required).isNotEmpty ||
-        required.difference(names).isNotEmpty) {
-      throw const FormatException('Local API 返回了不完整的设备移除条件');
-    }
-    return DeviceRemovalProgress(
-      requestId: _boundedWireString(value, 'request_id', 128),
-      deviceId: _boundedWireString(value, 'device_id', 128),
-      ownerId: _boundedWireString(value, 'owner_id', 64),
-      intentId: _boundedWireString(value, 'intent_id', 128),
-      outcome: _actOutcome(value['outcome']),
-      conditions: Map.unmodifiable(conditions),
-    );
-  }
+  /// Only an explicit yes counts. "Nobody has looked" and "no" are different
+  /// answers, and the difference is the whole reason these are conditions
+  /// rather than a percentage.
+  bool _met(String name) => const {'true', 'met'}.contains(conditions[name]);
 }
 
 class DeviceSetupFailure {

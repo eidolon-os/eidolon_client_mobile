@@ -327,7 +327,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
         context: context,
         builder: (sheetContext) => _CompanionPicker(
           roster: roster,
-          attachedCompanionId: widget.device.mount.attachedCompanionId,
+          attachedCompanionId: widget.device.attachedCompanionId,
         ),
       );
       if (chosen == null || !mounted) return;
@@ -335,7 +335,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
         deviceId: widget.device.deviceId,
         requestId: _requestId('device-companion'),
         companionId: chosen.companionId,
-        expectedRevision: widget.device.mount.revision,
+        expectedRevision: widget.device.revision,
       );
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
@@ -457,13 +457,13 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
                 ListTile(title: const Text('状态'), trailing: Text(stateLabel)),
                 ListTile(
                   title: const Text('挂载 revision'),
-                  trailing: Text('${device.mount.revision}'),
+                  trailing: Text('${device.revision}'),
                 ),
                 ListTile(
                   key: const Key('device-companion-binding'),
                   title: const Text('关联 Companion'),
                   subtitle: Text(
-                    device.mount.attachedCompanionId ?? '尚未关联',
+                    device.attachedCompanionId ?? '尚未关联',
                   ),
                   trailing: widget.onBindCompanion == null
                       ? null
@@ -473,7 +473,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
                               ? null
                               : _bindCompanion,
                           child: Text(
-                            device.mount.attachedCompanionId == null
+                            device.attachedCompanionId == null
                                 ? '关联'
                                 : '更换或解除',
                           ),
@@ -481,7 +481,11 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
                 ),
                 ListTile(
                   title: const Text('最后更新'),
-                  subtitle: Text(device.mount.updatedAt.toLocal().toString()),
+                  subtitle: Text(
+                    // The Host may not say when: an absent moment is left unsaid
+                    // rather than shown as an epoch nobody means.
+                    device.updatedAt?.toLocal().toString() ?? '主机没有说',
+                  ),
                 ),
               ],
             ),
