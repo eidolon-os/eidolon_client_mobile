@@ -3,8 +3,9 @@ import 'dart:typed_data';
 
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_device_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/companion_page.dart';
-import 'package:eidolon_client_mobile/src/features/host_setup/workspace_runtime_models.dart';
 import 'package:flutter/material.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/home_models.dart';
+import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// A real one-pixel JPEG.
@@ -21,33 +22,6 @@ final _face = base64Decode(
   'AAAAAwT/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCQA1r/2Q==',
 );
 
-WorkspaceRuntime _runtime() => WorkspaceRuntime.fromJson({
-      'contract_version': '1',
-      'operation_id': '2f0c6f5c-0c4f-4b0e-9a6b-0d9a3a5f7e11',
-      'state': 'ready',
-      'owner': {
-        'owner_id': 'owner_primary',
-        'display_name': 'Manson',
-        'lifecycle_state': 'active',
-      },
-      'primary_companion': {
-        'companion_id': 'companion_primary',
-        'display_name': '小忆',
-        'lifecycle_state': 'active',
-      },
-      'persona': {
-        'genome_id': 'genome_origin',
-        'version': 1,
-        'lifecycle_state': 'committed',
-        'schema_version': 'eidolon.persona_genome',
-        'genome_hash': 'sha256:${'a' * 64}',
-        'realizer_version': '1',
-      },
-      'memory_workspace': {
-        'realm_id': 'realm_primary',
-        'lifecycle_state': 'active',
-      },
-    });
 
 Future<void> _open(
   WidgetTester tester, {
@@ -58,7 +32,7 @@ Future<void> _open(
     tester.pumpWidget(
       MaterialApp(
         home: CompanionPage(
-          runtime: _runtime(),
+          home: _home(),
           devices: const MountedDeviceInventory(devices: []),
           onRename: () {},
           onOpenHistory: () {},
@@ -67,6 +41,33 @@ Future<void> _open(
           onClearFace: onClearFace,
         ),
       ),
+    );
+
+/// What the Host now answers when a screen opens: words a person can act on,
+/// with the identifiers underneath.
+HostHome _home({String name = '小忆', String? companionId = 'companion_primary'}) =>
+    HostHome.fromView(
+      HomeView.fromJson({
+        'contract_version': '1',
+        'owner_display_name': 'Manson',
+        'owner_revision': 3,
+        'answering': companionId == null
+            ? null
+            : {
+                'companion_id': companionId,
+                'display_name': name,
+                'lifecycle_state': 'active',
+                'revision': 4,
+                'has_face': false,
+                'persona_chapter': '第 1 章 · 它刚来的样子',
+                'memory': '还没记下什么',
+                'persona_genome_id': 'genome_origin',
+              },
+        'companions': {'total': 1, 'ready': 1, 'waiting': 0, 'put_away': 0},
+        'devices': {'total': 0, 'ready': 0, 'waiting': 0, 'put_away': 0},
+        'machine_attention': <String>[],
+        'unavailable': <String, String>{},
+      }),
     );
 
 void main() {

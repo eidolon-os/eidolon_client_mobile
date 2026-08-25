@@ -12,6 +12,7 @@ import '../setup/host_registry.dart';
 import '../setup/setup_models.dart';
 import '../setup/setup_trust.dart';
 import 'activity_models.dart';
+import 'home_models.dart';
 import 'host_product_repositories.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
@@ -24,7 +25,6 @@ import 'local_api_discovery.dart';
 import 'pinned_http_client.dart';
 import 'workspace_models.dart';
 import 'network_changes.dart';
-import 'workspace_runtime_models.dart';
 
 typedef ManagedHostUpdater = Future<void> Function(ManagedHost host);
 
@@ -91,7 +91,7 @@ class HostProductController extends ChangeNotifier {
   HostProductConnection? _connection;
   WorkspaceStatus? _workspace;
   String? _workspaceError;
-  WorkspaceRuntime? _workspaceRuntime;
+  HostHome? _home;
 
   /// What this Host says it can do at all, read once per connected session.
   ///
@@ -105,7 +105,7 @@ class HostProductController extends ChangeNotifier {
   /// Null means "not read yet", which is treated as no objection: a Host that
   /// has not answered must not make every feature look withdrawn.
   ManagementContextView? _managementContext;
-  String? _workspaceRuntimeError;
+  String? _homeError;
   MountedDeviceInventory? _devices;
   String? _devicesError;
 
@@ -118,10 +118,12 @@ class HostProductController extends ChangeNotifier {
   HostProductConnection? get connection => _connection;
   WorkspaceStatus? get workspace => _workspace;
   String? get workspaceError => _workspaceError;
-  WorkspaceRuntime? get workspaceRuntime => _workspaceRuntime;
+  /// What is mine, right now. Null while it has not been read, or when the
+  /// Host refused — and [homeError] says which.
+  HostHome? get home => _home;
 
   ManagementContextView? get managementCapabilities => _managementContext;
-  String? get workspaceRuntimeError => _workspaceRuntimeError;
+  String? get homeError => _homeError;
   MountedDeviceInventory? get devices => _devices;
   String? get devicesError => _devicesError;
 
@@ -178,8 +180,8 @@ class HostProductController extends ChangeNotifier {
     _workspaceBusy = true;
     _workspace = null;
     _workspaceError = null;
-    _workspaceRuntime = null;
-    _workspaceRuntimeError = null;
+    _home = null;
+    _homeError = null;
     _devices = null;
     _devicesError = null;
     _notify();
@@ -214,7 +216,7 @@ class HostProductController extends ChangeNotifier {
 
     _workspaceBusy = true;
     _workspaceError = null;
-    _workspaceRuntimeError = null;
+    _homeError = null;
     _notify();
     try {
       final workspace = await _workspaceRepository.initialize(
@@ -754,8 +756,8 @@ class HostProductController extends ChangeNotifier {
     }
     _workspace = workspace;
     if (!workspace.isReady) {
-      _workspaceRuntime = null;
-      _workspaceRuntimeError = null;
+      _home = null;
+      _homeError = null;
       _devices = null;
       _devicesError = null;
       return;
@@ -764,7 +766,7 @@ class HostProductController extends ChangeNotifier {
   }
 
   Future<void> _loadReadyWorkspaceResources(WorkspaceStatus workspace) async {
-    await _loadRuntime(workspace);
+    await _loadHome(workspace);
     await _loadCapabilities();
     await _loadDevices();
   }
@@ -785,32 +787,39 @@ class HostProductController extends ChangeNotifier {
     }
   }
 
-  Future<void> _loadRuntime(WorkspaceStatus workspace) async {
+  String _homeFailure(ManagementRequestException error) =>
+      switch (error.statusCode) {
+        // The Host has no Owner yet: there is nothing for a home screen to be
+        // about, which is a state of setup rather than a failure.
+        409 => '这台主机还没有主人。',
+        401 => '需要重新连接这台主机。',
+        _ => '这台主机的概览暂时读不到。',
+      };
+
+  Future<void> _loadHome(WorkspaceStatus workspace) async {
     try {
-      final runtime = await _workspaceRepository.fetchRuntime();
-      if (!runtime.matchesWorkspace(workspace)) {
-        _workspaceRuntime = null;
-        _workspaceRuntimeError =
-            'Workspace 与日常运行状态不一致，已拒绝展示跨 Owner 或 Companion 数据。';
+      final home = await _managementRepository.home();
+      if (!home.answersFor(workspace.workspace?.primaryCompanionId)) {
+        // The Eidolon this device just helped create is not the one the Host
+        // says answers. Showing it anyway would put somebody else's Companion
+        // behind this person's name.
+        _home = null;
+        _homeError = '主机说的伙伴与刚刚建好的不是同一个，已拒绝展示。';
         return;
       }
-      _workspaceRuntime = runtime;
-      _workspaceRuntimeError = null;
+      _home = home;
+      _homeError = null;
     } on HostControllerAuthorizationException {
       rethrow;
-    } on LocalApiRequestException catch (error) {
-      _workspaceRuntime = null;
-      _workspaceRuntimeError = _workspaceRuntimeFailure(error);
+    } on ManagementRequestException catch (error) {
+      _home = null;
+      _homeError = _homeFailure(error);
     } on PinnedHttpException catch (error) {
-      _workspaceRuntime = null;
-      _workspaceRuntimeError =
-          '${_pinnedHttpFailure(error)} Workspace 已就绪，可稍后刷新日常状态。';
-    } on FormatException {
-      _workspaceRuntime = null;
-      _workspaceRuntimeError = '主机返回了不兼容的日常运行状态。';
+      _home = null;
+      _homeError = '${_pinnedHttpFailure(error)} Workspace 已就绪，可稍后刷新。';
     } catch (_) {
-      _workspaceRuntime = null;
-      _workspaceRuntimeError = 'Eidolon 日常运行状态暂时不可用。';
+      _home = null;
+      _homeError = '这台主机的概览暂时读不到。';
     }
   }
 
@@ -838,8 +847,8 @@ class HostProductController extends ChangeNotifier {
   void _clearProductState() {
     _workspace = null;
     _workspaceError = null;
-    _workspaceRuntime = null;
-    _workspaceRuntimeError = null;
+    _home = null;
+    _homeError = null;
     _devices = null;
     _devicesError = null;
   }
@@ -885,13 +894,6 @@ class HostProductController extends ChangeNotifier {
         _ => '主机已安全接入，但 Workspace 服务暂时不可用。认领和 Wi-Fi 不会回滚。',
       };
 
-  String _workspaceRuntimeFailure(LocalApiRequestException error) =>
-      switch (error.statusCode) {
-        401 => '本次管理会话已失效，请重新连接主机。',
-        404 => '主机尚未提供日常运行状态接口；Workspace 本身已就绪。',
-        409 => 'Workspace 已创建，但主 Companion 的运行资源尚未一致。',
-        _ => 'Workspace 已就绪，但日常运行状态暂时不可用。',
-      };
 
   String _deviceFailure(LocalApiRequestException error) =>
       switch (error.statusCode) {

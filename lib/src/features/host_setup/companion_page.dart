@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../generated/management_v1.dart';
 import '../../management/management_client.dart';
 import '../device_management/mounted_device_models.dart';
-import 'workspace_runtime_models.dart';
+import 'home_models.dart';
 
 /// One place that is the Eidolon.
 ///
@@ -17,7 +17,7 @@ import 'workspace_runtime_models.dart';
 class CompanionPage extends StatelessWidget {
   const CompanionPage({
     super.key,
-    required this.runtime,
+    required this.home,
     required this.devices,
     required this.onRename,
     required this.onOpenHistory,
@@ -30,7 +30,9 @@ class CompanionPage extends StatelessWidget {
     this.hostContext,
   });
 
-  final WorkspaceRuntime runtime;
+  /// What is mine, right now. The Eidolon that answers is the subject of this
+  /// page; the counts and the machine line belong to the screen that opened it.
+  final HostHome home;
 
   /// Everything this Host has mounted. Which of them belong to this Eidolon is
   /// decided here rather than asked for separately: the Host already answered.
@@ -77,14 +79,13 @@ class CompanionPage extends StatelessWidget {
       (devices?.devices ?? const <MountedDevice>[])
           .where(
             (device) =>
-                device.attachedCompanionId ==
-                runtime.primaryCompanion.companionId,
+                device.attachedCompanionId == home.answering?.companionId,
           )
           .toList(growable: false);
 
   @override
   Widget build(BuildContext context) {
-    final companion = runtime.primaryCompanion;
+    final companion = home.answering!;
     final name =
         companion.displayName.isNotEmpty ? companion.displayName : '这个 Eidolon';
     final bound = _itsDevices;
@@ -121,7 +122,7 @@ class CompanionPage extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '你好，${runtime.owner.displayName}',
+                          '你好，${home.ownerDisplayName}',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                       ],

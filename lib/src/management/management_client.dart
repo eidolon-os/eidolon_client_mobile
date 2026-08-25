@@ -369,6 +369,25 @@ class ManagementClient {
     return HostServiceMutationView.fromJson(body);
   }
 
+  /// What is mine, right now.
+  ///
+  /// One read when a screen opens: who I am, who answers when I named nobody,
+  /// what is waiting, and which parts the Host could not read. Composed on that
+  /// side because the answer needs five sources, and a phone composing it badly
+  /// is four round trips and a screen drawn in pieces.
+  Future<HomeView> fetchHome(
+    Uri baseUri, {
+    required String accessToken,
+  }) async {
+    final body = await _send(
+      'GET',
+      baseUri.resolve(ManagementV1.homePath),
+      accessToken: accessToken,
+      what: '读取这台主机的概览',
+    );
+    return HomeView.fromJson(body);
+  }
+
   /// Every device that is mine.
   ///
   /// Composed and phrased by the Host — it is the side that can see both the

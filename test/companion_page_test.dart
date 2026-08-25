@@ -1,39 +1,12 @@
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_device_models.dart';
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/companion_page.dart';
-import 'package:eidolon_client_mobile/src/features/host_setup/workspace_runtime_models.dart';
 import 'package:flutter/material.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/home_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _companionId = 'c_683f963f54885e86892416894c9d92d1';
 
-WorkspaceRuntime _runtime({String name = '小忆'}) => WorkspaceRuntime.fromJson({
-      'contract_version': '1',
-      'operation_id': '32c421a3-e0df-40f9-8f75-68745ae39d81',
-      'state': 'ready',
-      'owner': {
-        'owner_id': 'owner_primary',
-        'display_name': 'Manson',
-        'lifecycle_state': 'active',
-      },
-      'primary_companion': {
-        'companion_id': _companionId,
-        'display_name': name,
-        'lifecycle_state': 'active',
-      },
-      'persona': {
-        'genome_id': 'genome_current',
-        'version': 2,
-        'lifecycle_state': 'committed',
-        'schema_version': 'eidolon.persona_genome',
-        'genome_hash': 'sha256:abc',
-        'realizer_version': 'realizer-1',
-      },
-      'memory_workspace': {
-        'realm_id': 'realm_current',
-        'lifecycle_state': 'active',
-      },
-    });
 
 MountedDeviceInventory _devices(List<String?> attachedTo) =>
     MountedDeviceInventory.fromView(
@@ -68,12 +41,12 @@ MountedDeviceInventory _devices(List<String?> attachedTo) =>
 Future<void> _open(
   WidgetTester tester, {
   MountedDeviceInventory? devices,
-  WorkspaceRuntime? runtime,
+  HostHome? home,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       home: CompanionPage(
-        runtime: runtime ?? _runtime(),
+        home: home ?? _home(),
         devices: devices,
         onRename: () {},
         onOpenHistory: () {},
@@ -82,6 +55,33 @@ Future<void> _open(
   );
   await tester.pumpAndSettle();
 }
+
+/// What the Host now answers when a screen opens: words a person can act on,
+/// with the identifiers underneath.
+HostHome _home({String name = '小忆', String? companionId = _companionId}) =>
+    HostHome.fromView(
+      HomeView.fromJson({
+        'contract_version': '1',
+        'owner_display_name': 'Manson',
+        'owner_revision': 3,
+        'answering': companionId == null
+            ? null
+            : {
+                'companion_id': companionId,
+                'display_name': name,
+                'lifecycle_state': 'active',
+                'revision': 4,
+                'has_face': false,
+                'persona_chapter': '第 1 章 · 它刚来的样子',
+                'memory': '还没记下什么',
+                'persona_genome_id': 'genome_origin',
+              },
+        'companions': {'total': 1, 'ready': 1, 'waiting': 0, 'put_away': 0},
+        'devices': {'total': 0, 'ready': 0, 'waiting': 0, 'put_away': 0},
+        'machine_attention': <String>[],
+        'unavailable': <String, String>{},
+      }),
+    );
 
 void main() {
   _withheldRowTests();
@@ -139,7 +139,7 @@ void main() {
 
   testWidgets('an unnamed Eidolon is not called by its identifier',
       (tester) async {
-    await _open(tester, runtime: _runtime(name: ''));
+    await _open(tester, home: _home(name: ''));
 
     expect(find.textContaining(_companionId), findsNothing);
     expect(find.text('这个 Eidolon'), findsWidgets);
@@ -169,7 +169,7 @@ Future<void> _pumpWithContext(
   await tester.pumpWidget(
     MaterialApp(
       home: CompanionPage(
-        runtime: _runtime(),
+        home: _home(),
         devices: null,
         onRename: () {},
         onOpenHistory: () {},

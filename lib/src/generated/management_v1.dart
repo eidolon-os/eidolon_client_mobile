@@ -30,6 +30,7 @@ class ManagementV1 {
   static const String devicesPath = '/api/management/v1/devices';
   static String devicesByDeviceIdCompanionPath(String deviceId) => '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/companion';
   static String devicesByDeviceIdRemovalPath(String deviceId) => '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/removal';
+  static const String homePath = '/api/management/v1/home';
   static const String hostServicesPath = '/api/management/v1/host/services';
   static String hostServicesByServiceIdByOperationPath(String serviceId, String operation) => '/api/management/v1/host/services/${Uri.encodeComponent(serviceId)}/${Uri.encodeComponent(operation)}';
   static const String hostVitalsPath = '/api/management/v1/host/vitals';
@@ -885,6 +886,116 @@ class ForgetTargetRequest {
     return ForgetTargetRequest(
       action: value['action'] as String?,
       target: value['target'] as String,
+    );
+  }
+}
+
+class HomeCompanionView {
+  const HomeCompanionView({
+    required this.companionId,
+    this.displayName,
+    this.hasFace,
+    required this.lifecycleState,
+    this.memory,
+    this.personaChapter,
+    this.personaGenomeId,
+    required this.revision,
+  });
+
+  final String companionId;
+
+  final String? displayName;
+
+  final bool? hasFace;
+
+  final String lifecycleState;
+
+  final String? memory;
+
+  final String? personaChapter;
+
+  final String? personaGenomeId;
+
+  final int revision;
+
+  factory HomeCompanionView.fromJson(Map<String, dynamic> value) {
+    return HomeCompanionView(
+      companionId: value['companion_id'] as String,
+      displayName: value['display_name'] as String?,
+      hasFace: value['has_face'] as bool?,
+      lifecycleState: value['lifecycle_state'] as String,
+      memory: value['memory'] as String?,
+      personaChapter: value['persona_chapter'] as String?,
+      personaGenomeId: value['persona_genome_id'] as String?,
+      revision: value['revision'] as int,
+    );
+  }
+}
+
+class HomeCountsView {
+  const HomeCountsView({
+    required this.putAway,
+    required this.ready,
+    required this.total,
+    required this.waiting,
+  });
+
+  final int putAway;
+
+  final int ready;
+
+  final int total;
+
+  final int waiting;
+
+  factory HomeCountsView.fromJson(Map<String, dynamic> value) {
+    return HomeCountsView(
+      putAway: value['put_away'] as int,
+      ready: value['ready'] as int,
+      total: value['total'] as int,
+      waiting: value['waiting'] as int,
+    );
+  }
+}
+
+class HomeView {
+  const HomeView({
+    this.answering,
+    required this.companions,
+    this.contractVersion,
+    required this.devices,
+    this.machineAttention,
+    this.ownerDisplayName,
+    required this.ownerRevision,
+    this.unavailable,
+  });
+
+  final HomeCompanionView? answering;
+
+  final HomeCountsView companions;
+
+  final String? contractVersion;
+
+  final HomeCountsView devices;
+
+  final List<String>? machineAttention;
+
+  final String? ownerDisplayName;
+
+  final int ownerRevision;
+
+  final Map<String, String>? unavailable;
+
+  factory HomeView.fromJson(Map<String, dynamic> value) {
+    return HomeView(
+      answering: value['answering'] == null ? null : HomeCompanionView.fromJson(value['answering'] as Map<String, dynamic>),
+      companions: HomeCountsView.fromJson(value['companions'] as Map<String, dynamic>),
+      contractVersion: value['contract_version'] as String?,
+      devices: HomeCountsView.fromJson(value['devices'] as Map<String, dynamic>),
+      machineAttention: value['machine_attention'] == null ? null : ((value['machine_attention'] as List<dynamic>).map((entry) => entry as String).toList()),
+      ownerDisplayName: value['owner_display_name'] as String?,
+      ownerRevision: value['owner_revision'] as int,
+      unavailable: value['unavailable'] == null ? null : ((value['unavailable'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as String))),
     );
   }
 }

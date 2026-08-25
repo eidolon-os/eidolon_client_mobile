@@ -208,18 +208,52 @@ class _OwnerName {
 /// fails — so a test that stubs only `/api/local/v1` describes a Host that
 /// cannot exist. Without this the session falls back to the production factory
 /// and a widget test reaches for a real socket, which does not fail: it hangs.
-ManagementClient _quietManagementClient({bool withReadyDevice = false}) =>
+ManagementClient _quietManagementClient({
+  bool withReadyDevice = false,
+  int homeStatus = 200,
+}) =>
     _managementClientFor(
       _OwnerName(),
       devices: _deviceInventory(withReadyDevice: withReadyDevice),
+      homeStatus: homeStatus,
     );
+
+Map<String, dynamic> _homeAnswer(_OwnerName ownerName) => {
+      'contract_version': '1',
+      'owner_display_name': ownerName.value,
+      'owner_revision': 3,
+      'answering': {
+        'companion_id': 'companion_primary',
+        'display_name': '小忆',
+        'lifecycle_state': 'active',
+        'revision': 4,
+        'has_face': false,
+        'persona_chapter': '第 1 章 · 它刚来的样子',
+        'memory': '还没记下什么',
+        'persona_genome_id': 'genome_origin',
+      },
+      'companions': {'total': 1, 'ready': 1, 'waiting': 0, 'put_away': 0},
+      'devices': {'total': 0, 'ready': 0, 'waiting': 0, 'put_away': 0},
+      'machine_attention': <String>[],
+      'unavailable': <String, String>{},
+    };
 
 ManagementClient _managementClientFor(
   _OwnerName ownerName, {
   Map<String, dynamic>? devices,
+  int homeStatus = 200,
 }) =>
     ManagementClient(
       httpClient: MockClient((request) async {
+        if (request.url.path == '/api/management/v1/home') {
+          // The one read a screen makes when it opens. A Host that cannot
+          // answer it still has a claimed, ready Workspace — which is the case
+          // the degraded card below exists for.
+          if (homeStatus != 200) {
+            return _jsonResponse({'detail': '概览暂时读不到'}, homeStatus);
+          }
+          return _jsonResponse(_homeAnswer(ownerName));
+        }
         if (request.url.path == '/api/management/v1/devices') {
           // Devices moved to the management contract with the rest of what a
           // person manages; an empty list is a real answer.
@@ -501,7 +535,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
-          managementClientFactory: (_) => _quietManagementClient(),
+          // The Host answers everything except the one read a screen opens
+          // with. A ready, claimed Workspace and no overview is a real state.
+          managementClientFactory: (_) => _quietManagementClient(homeStatus: 503),
           host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),
@@ -509,7 +545,6 @@ void main() {
           localApiClientFactory: (_) => _clientFor(
             _hostOverview(workspaceState: 'ready'),
             workspaceReady: true,
-            runtimeStatusCode: 503,
           ),
           onHostUpdated: (_) async {},
         ),
@@ -520,8 +555,8 @@ void main() {
     expect(find.byKey(const Key('local-connection-complete')), findsOneWidget);
     expect(find.byKey(const Key('workspace-ready')), findsOneWidget);
     expect(find.byKey(const Key('local-connection-error')), findsNothing);
-    expect(find.byKey(const Key('workspace-runtime-error')), findsOneWidget);
-    expect(find.textContaining('日常运行状态暂时不可用'), findsOneWidget);
+    expect(find.byKey(const Key('home-error')), findsOneWidget);
+    expect(find.textContaining('概览暂时读不到'), findsOneWidget);
     // The Host card carries the Eidolon as one row now; what it has been and
     // what is connected to it live on its own page.
     expect(find.text('已创建'), findsNWidgets(2));
@@ -676,7 +711,7 @@ void main() {
   testWidgets('setup continuation initializes Workspace without redoing claim',
       (tester) async {
     var initialized = false;
-    var runtimeAvailable = false;
+    var overviewAvailable = false;
     var finished = false;
     final requests = <String>[];
 
@@ -779,14 +814,6 @@ void main() {
                 200,
               );
             }
-            if (request.url.path == '/api/local/v1/workspace/runtime') {
-              expect(request.headers['authorization'],
-                  'Bearer $validHostChallenge');
-              if (!runtimeAvailable) {
-                return http.Response('', 503);
-              }
-              return http.Response(jsonEncode(_workspaceRuntime()), 200);
-            }
             return http.Response('', 404);
           }),
         );
@@ -794,7 +821,23 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
-          managementClientFactory: (_) => _quietManagementClient(),
+          // The overview is the read this screen opens with, and this test is
+          // about it coming back: gated on a flag the test flips rather than on
+          // a fake built once.
+          managementClientFactory: (_) => ManagementClient(
+            httpClient: MockClient((request) async {
+              if (request.url.path == '/api/management/v1/home') {
+                if (!overviewAvailable) {
+                  return _jsonResponse({'detail': '概览暂时读不到'}, 503);
+                }
+                return _jsonResponse(_homeAnswer(_OwnerName()));
+              }
+              if (request.url.path == '/api/management/v1/devices') {
+                return _jsonResponse(_deviceInventory());
+              }
+              return _jsonResponse({'detail': 'not part of this test'}, 404);
+            }),
+          ),
           host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),
@@ -822,22 +865,22 @@ void main() {
     expect(initialized, isTrue);
     expect(find.byKey(const Key('workspace-ready')), findsOneWidget);
     expect(find.text('你好，Manson。'), findsOneWidget);
-    expect(find.byKey(const Key('workspace-runtime-error')), findsOneWidget);
-    expect(find.textContaining('日常运行状态暂时不可用'), findsOneWidget);
-    runtimeAvailable = true;
+    expect(find.byKey(const Key('home-error')), findsOneWidget);
+    expect(find.textContaining('概览暂时读不到'), findsOneWidget);
+    overviewAvailable = true;
     // Scrolled to rather than tapped where it used to be: the card grew a row
     // (the roster entry), and a fixed drag distance stops landing on this
     // button — which then reads as "the runtime never came back".
-    await tester
-        .ensureVisible(find.byKey(const Key('retry-workspace-runtime')));
+    await tester.ensureVisible(find.byKey(const Key('retry-home')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('retry-workspace-runtime')));
+    await tester.tap(find.byKey(const Key('retry-home')));
     await tester.pumpAndSettle();
 
     // The rows are named for what they are to a person, not for the parts
     // they are built from: the Companion by its own name, and its persona by
     // the thing someone actually wonders about — how it has changed.
-    expect(find.text('Eidolon'), findsOneWidget);
+    expect(find.text('小忆'), findsOneWidget);
+    expect(find.textContaining('第 1 章 · 它刚来的样子'), findsOneWidget);
     expect(find.byKey(const Key('workspace-companion')), findsOneWidget);
     expect(find.textContaining('genome'), findsNothing);
     // Named for what it is to the person, not for the subsystem that holds
@@ -849,7 +892,7 @@ void main() {
     // person it was printed at, and what it stood for now has a page.
     expect(find.textContaining('v2'), findsNothing);
     expect(find.text('运行中'), findsNWidgets(2));
-    expect(find.byKey(const Key('workspace-runtime-error')), findsNothing);
+    expect(find.byKey(const Key('home-error')), findsNothing);
     expect(find.text('我的 Eidolon'), findsOneWidget);
     await tester.tap(find.byKey(const Key('finish-workspace-setup')));
     expect(finished, isTrue);

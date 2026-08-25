@@ -19,13 +19,13 @@ import '../../management/memory_library_screen.dart';
 import 'companion_page.dart';
 import 'managed_controllers_page.dart';
 import 'mission_control_page.dart';
+import 'home_models.dart';
 import 'runtime_cockpit_page.dart';
 import 'persona_history_page.dart';
 import '../../management/conversations_screen.dart';
 import '../../management/tasks_screen.dart';
 import 'recollections_page.dart';
 import 'host_product_session.dart';
-import 'workspace_runtime_models.dart';
 import 'host_system_page.dart';
 import 'local_api_discovery.dart';
 import 'network_changes.dart';
@@ -164,9 +164,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
 
   /// Ask what this Eidolon should be called, and tell the Host.
   Future<void> _renameCompanion() async {
-    final runtime = _controller.workspaceRuntime;
-    if (runtime == null) return;
-    final companion = runtime.primaryCompanion;
+    final companion = _controller.home?.answering;
+    if (companion == null) return;
     final name = await askForAName(
       context,
       question: '这个 Eidolon 叫什么？',
@@ -193,15 +192,13 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   /// Open the Eidolon itself. A Host is a machine someone owns; this is who
   /// they talk to, and it had been living as rows on the machine's card.
   Future<void> _openCompanion() {
-    final runtime = _controller.workspaceRuntime;
-    if (runtime == null) return Future<void>.value();
-    // Asked for as the page opens rather than with the rest of the workspace:
+    final answering = _controller.home?.answering;
+    if (answering == null) return Future<void>.value();
+    // Asked for as the page opens rather than with the rest of the home read:
     // a photograph is worth fetching when someone is about to look at it.
     unawaited(
       _controller
-          .loadCompanionFace(
-            companionId: runtime.primaryCompanion.companionId,
-          )
+          .loadCompanionFace(companionId: answering.companionId)
           .catchError((Object _) {}),
     );
     return Navigator.of(context).push<void>(
@@ -209,24 +206,24 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         builder: (_) => AnimatedBuilder(
           animation: _controller,
           builder: (_, __) {
-            final current = _controller.workspaceRuntime;
-            if (current == null) return const SizedBox.shrink();
+            final current = _controller.home;
+            if (current?.answering == null) return const SizedBox.shrink();
             return CompanionPage(
-              runtime: current,
+              home: current!,
               devices: _controller.devices,
               // Read once when the Host was connected, so a row this Host
               // cannot serve says so instead of opening onto a page that fails.
               hostContext: _controller.managementCapabilities,
               onRename: _renameCompanion,
               onOpenHistory: _openPersonaHistory,
-              onOpenRecollections: () => _openRecollections(current),
-              onOpenTasks: () => _openTasks(current),
-              onOpenConversations: () => _openConversations(current),
+              onOpenRecollections: () => _openRecollections(current.answering!),
+              onOpenTasks: () => _openTasks(current.answering!),
+              onOpenConversations: () => _openConversations(current.answering!),
               face: _controller.companionFace,
-              onChangeFace: () => _changeCompanionFace(current),
+              onChangeFace: () => _changeCompanionFace(current.answering!),
               onClearFace: _controller.companionFace == null
                   ? null
-                  : () => _clearCompanionFace(current),
+                  : () => _clearCompanionFace(current.answering!),
             );
           },
         ),
@@ -313,8 +310,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   /// Its own screen: the two actions on it change what a Companion is doing, and
   /// a control like that inside a summary card is a control someone presses by
   /// accident.
-  Future<void> _openTasks(WorkspaceRuntime runtime) {
-    final companionId = runtime.primaryCompanion.companionId;
+  Future<void> _openTasks(HostHomeCompanion companion) {
+    final companionId = companion.companionId;
     return Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => TasksScreen(
@@ -334,8 +331,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   }
 
   /// When this Eidolon and I talked, and what was said.
-  Future<void> _openConversations(WorkspaceRuntime runtime) {
-    final companionId = runtime.primaryCompanion.companionId;
+  Future<void> _openConversations(HostHomeCompanion companion) {
+    final companionId = companion.companionId;
     return Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => ConversationsScreen(
@@ -354,8 +351,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   }
 
   /// Ask this Eidolon what it remembers.
-  Future<void> _openRecollections(WorkspaceRuntime runtime) {
-    final name = runtime.primaryCompanion.displayName;
+  Future<void> _openRecollections(HostHomeCompanion companion) {
+    final name = companion.displayName;
     return Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => RecollectionsPage(
@@ -372,7 +369,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   /// face is a conditioning image for a digital human — a camera's full
   /// resolution is of no use to it, and would not fit through the pinned
   /// transport that carries everything else this app says to its Host.
-  Future<void> _changeCompanionFace(WorkspaceRuntime runtime) async {
+  Future<void> _changeCompanionFace(HostHomeCompanion companion) async {
     final Uint8List? bytes;
     try {
       bytes = await (widget.facePicker ?? const GalleryFacePicker()).pickFace();
@@ -386,7 +383,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     if (bytes == null || !mounted) return;
     try {
       await _controller.setCompanionFace(
-        companionId: runtime.primaryCompanion.companionId,
+        companionId: companion.companionId,
         face: bytes,
       );
     } catch (error) {
@@ -397,10 +394,10 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     }
   }
 
-  Future<void> _clearCompanionFace(WorkspaceRuntime runtime) async {
+  Future<void> _clearCompanionFace(HostHomeCompanion companion) async {
     try {
       await _controller.clearCompanionFace(
-        companionId: runtime.primaryCompanion.companionId,
+        companionId: companion.companionId,
       );
     } catch (error) {
       if (!mounted) return;
@@ -411,9 +408,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   }
 
   Future<void> _openPersonaHistory() {
-    final runtime = _controller.workspaceRuntime;
-    if (runtime == null) return Future<void>.value();
-    final companion = runtime.primaryCompanion;
+    final companion = _controller.home?.answering;
+    if (companion == null) return Future<void>.value();
     final name = companion.displayName.isNotEmpty ? companion.displayName : '它';
     return Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -491,7 +487,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   Future<void> _openRuntimeCockpit() => Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => RuntimeCockpitPage(
-            runtime: _controller.workspaceRuntime,
+            home: _controller.home,
             loadVitals: _controller.hostVitals,
             listServices: _controller.listHostServices,
             loadActivity: _controller.activity,
@@ -949,7 +945,7 @@ class _WorkspaceCard extends StatelessWidget {
       );
 
   Widget _buildReady(BuildContext context, WorkspaceStatus workspace) {
-    final runtime = controller.workspaceRuntime;
+    final home = controller.home;
     return Card(
       key: const Key('workspace-ready'),
       child: Padding(
@@ -990,19 +986,24 @@ class _WorkspaceCard extends StatelessWidget {
             const SizedBox(height: 12),
             _WorkspaceResourceStatus(
               key: const Key('workspace-companion'),
-              onOpen: runtime == null ? null : onOpenCompanion,
+              onOpen: home?.answering == null ? null : onOpenCompanion,
               openKey: const Key('open-companion'),
               openTooltip: '打开它',
               icon: Icons.face_retouching_natural,
               // The name its Owner gave it, which is what they typed at setup
               // and had never been shown back to them. The identifier is what
               // remains when the Host cannot say.
-              label: runtime?.primaryCompanion.displayName.isNotEmpty ?? false
-                  ? runtime!.primaryCompanion.displayName
+              label: home?.answering?.displayName.isNotEmpty ?? false
+                  ? home!.answering!.displayName
                   : '主 Companion',
-              statusLabel: runtime == null ? '已创建' : '运行中',
-              detail:
-                  runtime == null ? 'Workspace 已创建' : '打开它的页面：改名、它的变化、连到它的设备',
+              statusLabel: home?.answering == null ? '已创建' : '运行中',
+              detail: home?.answering == null
+                  ? 'Workspace 已创建'
+                  // What it has been through, when the Host could say — which is
+                  // the one line on this card a person can act on.
+                  : (home!.answering!.personaChapter.isNotEmpty
+                      ? '${home.answering!.personaChapter} · 打开它的页面'
+                      : '打开它的页面：改名、它的变化、连到它的设备'),
             ),
             _WorkspaceResourceStatus(
               key: const Key('companion-roster-row'),
@@ -1022,14 +1023,19 @@ class _WorkspaceCard extends StatelessWidget {
               openTooltip: '看它记住的',
               icon: Icons.auto_stories_outlined,
               label: '它的记忆',
-              statusLabel: runtime == null ? '已创建' : '运行中',
+              statusLabel: home?.answering == null ? '已创建' : '运行中',
               // Not the realm identifier. That line was the only thing this
               // row ever said, and it named a thing an Owner cannot open,
               // search or act on — an identifier standing in for the fact
               // that there is nothing here to show yet.
-              detail: runtime == null ? '已经为它准备好' : '它记住的东西留在这台主机上,没有离开过',
+              // What it actually remembers when the Host could say, and an
+              // honest placeholder when it could not: an Eidolon that has not
+              // written anything down yet is a real and ordinary state.
+              detail: home?.answering?.memory.isNotEmpty == true
+                  ? '${home!.answering!.memory}，留在这台主机上，没有离开过'
+                  : '已经为它准备好',
             ),
-            if (controller.workspaceRuntimeError case final error?) ...[
+            if (controller.homeError case final error?) ...[
               const SizedBox(height: 12),
               DecoratedBox(
                 decoration: BoxDecoration(
@@ -1040,18 +1046,18 @@ class _WorkspaceCard extends StatelessWidget {
                   padding: const EdgeInsets.all(12),
                   child: Text(
                     error,
-                    key: const Key('workspace-runtime-error'),
+                    key: const Key('home-error'),
                   ),
                 ),
               ),
               const SizedBox(height: 4),
               TextButton.icon(
-                key: const Key('retry-workspace-runtime'),
+                key: const Key('retry-home'),
                 onPressed: controller.workspaceBusy
                     ? null
                     : controller.refreshWorkspace,
                 icon: const Icon(Icons.refresh),
-                label: const Text('重新加载日常状态'),
+                label: const Text('重新读取概览'),
               ),
             ],
             if (setupContinuation) ...[

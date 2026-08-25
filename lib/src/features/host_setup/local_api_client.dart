@@ -11,7 +11,6 @@ import '../setup/setup_trust.dart';
 import 'controller_session.dart';
 import 'host_models.dart';
 import 'workspace_models.dart';
-import 'workspace_runtime_models.dart';
 
 class LocalApiRequestException implements Exception {
   const LocalApiRequestException(this.message, {this.statusCode, this.reason});
@@ -177,21 +176,6 @@ class LocalApiClient {
         .timeout(timeout);
     return WorkspaceStatus.fromJson(
       _decodeResponse(response, operation: 'Workspace setup'),
-    );
-  }
-
-  Future<WorkspaceRuntime> fetchWorkspaceRuntime(
-    String baseUrl, {
-    required String accessToken,
-  }) async {
-    final response = await _httpClient
-        .get(
-          parseBaseUri(baseUrl).resolve('/api/local/v1/workspace/runtime'),
-          headers: _authorizedHeaders(accessToken),
-        )
-        .timeout(timeout);
-    return WorkspaceRuntime.fromJson(
-      _decodeResponse(response, operation: 'Workspace runtime'),
     );
   }
 

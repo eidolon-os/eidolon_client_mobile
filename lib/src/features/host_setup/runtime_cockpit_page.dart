@@ -5,7 +5,7 @@ import 'activity_models.dart';
 import '../../generated/management_v1.dart';
 import 'host_service_models.dart';
 import 'host_vitals_models.dart';
-import 'workspace_runtime_models.dart';
+import 'home_models.dart';
 
 /// The sovereign domain of one Host, on one screen.
 ///
@@ -32,7 +32,7 @@ import 'workspace_runtime_models.dart';
 class RuntimeCockpitPage extends StatefulWidget {
   const RuntimeCockpitPage({
     super.key,
-    required this.runtime,
+    required this.home,
     required this.loadVitals,
     required this.listServices,
     required this.loadActivity,
@@ -44,7 +44,9 @@ class RuntimeCockpitPage extends StatefulWidget {
   /// Owner, Companion, persona and memory realm — already read by the screen
   /// that opened this one. Null means the Workspace is not ready, and there is
   /// no domain to draw.
-  final WorkspaceRuntime? runtime;
+  /// What is mine, right now. Null means the Host could not say, and this page
+  /// draws the lanes it can rather than nothing.
+  final HostHome? home;
 
   final Future<HostVitals> Function() loadVitals;
   final Future<HostServiceInventory> Function() listServices;
@@ -96,7 +98,7 @@ class _RuntimeCockpitPageState extends State<RuntimeCockpitPage> {
 
   @override
   Widget build(BuildContext context) {
-    final runtime = widget.runtime;
+    final home = widget.home;
     return Scaffold(
       appBar: AppBar(title: const Text('运行驾驶舱')),
       body: RefreshIndicator(
@@ -104,14 +106,14 @@ class _RuntimeCockpitPageState extends State<RuntimeCockpitPage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            if (runtime == null)
+            if (home == null)
               const _Unavailable(
                 title: '主权域',
                 reason: '这台主机还没有建立 Workspace，没有可显示的归属关系',
               )
             else
               _SovereignDomain(
-                runtime: runtime,
+                home: home,
                 devices: widget.devices,
                 devicesError: widget.devicesError,
               ),
@@ -173,19 +175,19 @@ class _Lane<T> {
 /// glance where a constellation would need panning.
 class _SovereignDomain extends StatelessWidget {
   const _SovereignDomain({
-    required this.runtime,
+    required this.home,
     required this.devices,
     required this.devicesError,
   });
 
-  final WorkspaceRuntime runtime;
+  final HostHome home;
   final MountedDeviceInventory? devices;
   final String? devicesError;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final companion = runtime.primaryCompanion;
+    final companion = home.answering;
     return Card(
       key: const Key('cockpit-sovereign-domain'),
       child: Padding(
@@ -195,7 +197,7 @@ class _SovereignDomain extends StatelessWidget {
           children: [
             Text('主权域', style: theme.textTheme.titleMedium),
             const SizedBox(height: 12),
-            Text(runtime.owner.displayName, style: theme.textTheme.titleLarge),
+            Text(home.ownerDisplayName, style: theme.textTheme.titleLarge),
             Text('这台主机属于的人', style: theme.textTheme.bodySmall),
             const Divider(height: 24),
             Padding(
@@ -203,19 +205,27 @@ class _SovereignDomain extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(companion.displayName,
-                      style: theme.textTheme.titleMedium),
                   Text(
-                    '人格 v${runtime.persona.version}',
-                    style: theme.textTheme.bodySmall,
+                    companion?.displayName.isNotEmpty == true
+                        ? companion!.displayName
+                        : '还没有指定由谁回答',
+                    style: theme.textTheme.titleMedium,
                   ),
+                  if (companion?.personaChapter.isNotEmpty == true)
+                    Text(
+                      // Which chapter it is on, not a version number: 「第 3 章 ·
+                      // 我发现你不喜欢被打断」 is the same fact in a form somebody
+                      // can act on.
+                      companion!.personaChapter,
+                      style: theme.textTheme.bodySmall,
+                    ),
                   const SizedBox(height: 12),
-                  _MemoryRow(realmId: runtime.memoryWorkspace.realmId),
+                  _MemoryRow(memory: companion?.memory ?? ''),
                   const SizedBox(height: 12),
                   _DevicesRow(
                     devices: devices,
                     devicesError: devicesError,
-                    companionId: companion.companionId,
+                    companionId: companion?.companionId,
                   ),
                 ],
               ),
@@ -228,9 +238,11 @@ class _SovereignDomain extends StatelessWidget {
 }
 
 class _MemoryRow extends StatelessWidget {
-  const _MemoryRow({required this.realmId});
+  const _MemoryRow({required this.memory});
 
-  final String realmId;
+  /// What it remembers, as the Host phrased it. A realm identifier was never an
+  /// answer to "does it still remember me"; a count is.
+  final String memory;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -239,7 +251,7 @@ class _MemoryRow extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '记忆领域 $realmId',
+              memory.isNotEmpty ? memory : '记忆读不到',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
@@ -256,7 +268,10 @@ class _DevicesRow extends StatelessWidget {
 
   final MountedDeviceInventory? devices;
   final String? devicesError;
-  final String companionId;
+
+  /// Null when nobody answers for this Owner yet, which is a real state and
+  /// not a reason to hide the device count.
+  final String? companionId;
 
   @override
   Widget build(BuildContext context) {

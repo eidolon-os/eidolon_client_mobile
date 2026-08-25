@@ -4,38 +4,11 @@ import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_service_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_vitals_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/runtime_cockpit_page.dart';
-import 'package:eidolon_client_mobile/src/features/host_setup/workspace_runtime_models.dart';
 import 'package:flutter/material.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/home_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 
-WorkspaceRuntime _runtime() => WorkspaceRuntime.fromJson({
-      'contract_version': '1',
-      'state': 'ready',
-      'operation_id': '32c421a3-e0df-40f9-8f75-68745ae39d81',
-      'owner': {
-        'owner_id': 'owner-1',
-        'display_name': '曼森',
-        'lifecycle_state': 'active',
-      },
-      'primary_companion': {
-        'companion_id': 'cmp-1',
-        'display_name': 'Eidolon',
-        'lifecycle_state': 'active',
-      },
-      'persona': {
-        'genome_id': 'gen-1',
-        'version': 3,
-        'schema_version': '1',
-        'genome_hash': 'abc',
-        'realizer_version': '1',
-        'lifecycle_state': 'committed',
-      },
-      'memory_workspace': {
-        'realm_id': 'realm-1',
-        'lifecycle_state': 'active',
-      },
-    });
 
 HostVitals _vitals(List<Map<String, dynamic>> rows) =>
     HostVitals.fromView(HostVitalsView.fromJson({
@@ -106,9 +79,36 @@ MountedDeviceInventory _devices(List<String> names) => MountedDeviceInventory(
 /// test that was about not having one.
 const _unset = Object();
 
+/// What the Host now answers when a screen opens: words a person can act on,
+/// with the identifiers underneath.
+HostHome _home({String name = '小忆', String? companionId = 'cmp-1'}) =>
+    HostHome.fromView(
+      HomeView.fromJson({
+        'contract_version': '1',
+        'owner_display_name': 'Manson',
+        'owner_revision': 3,
+        'answering': companionId == null
+            ? null
+            : {
+                'companion_id': companionId,
+                'display_name': name,
+                'lifecycle_state': 'active',
+                'revision': 4,
+                'has_face': false,
+                'persona_chapter': '第 2 章 · 我发现你不喜欢被打断',
+                'memory': '记着 12 条',
+                'persona_genome_id': 'genome_2',
+              },
+        'companions': {'total': 1, 'ready': 1, 'waiting': 0, 'put_away': 0},
+        'devices': {'total': 1, 'ready': 1, 'waiting': 0, 'put_away': 0},
+        'machine_attention': <String>[],
+        'unavailable': <String, String>{},
+      }),
+    );
+
 Future<void> _open(
   WidgetTester tester, {
-  Object? runtime = _unset,
+  Object? home = _unset,
   Future<HostVitals> Function()? loadVitals,
   Future<HostServiceInventory> Function()? listServices,
   Future<HostActivity> Function()? loadActivity,
@@ -119,9 +119,7 @@ Future<void> _open(
   await tester.pumpWidget(
     MaterialApp(
       home: RuntimeCockpitPage(
-        runtime: identical(runtime, _unset)
-            ? _runtime()
-            : runtime as WorkspaceRuntime?,
+        home: identical(home, _unset) ? _home() : home as HostHome?,
         loadVitals: loadVitals ?? () async => _vitals(const []),
         listServices: listServices ?? () async => _services(),
         loadActivity: loadActivity ??
@@ -146,9 +144,12 @@ void main() {
     // The information model the console cockpit uses, on a phone: Owner ▸
     // Companion ▸ devices and memory, drawn as containment.
     expect(find.byKey(const Key('cockpit-sovereign-domain')), findsOneWidget);
-    expect(find.text('曼森'), findsOneWidget);
-    expect(find.text('Eidolon'), findsOneWidget);
-    expect(find.text('记忆领域 realm-1'), findsOneWidget);
+    expect(find.text('Manson'), findsOneWidget);
+    expect(find.text('小忆'), findsOneWidget);
+    // Words, not identifiers: which chapter it is on and how much it remembers,
+    // where a genome version and a realm id used to be.
+    expect(find.text('第 2 章 · 我发现你不喜欢被打断'), findsOneWidget);
+    expect(find.text('记着 12 条'), findsOneWidget);
     expect(find.text('esp-box-3'), findsOneWidget);
     expect(find.text('已附体'), findsNWidgets(2));
   });
@@ -222,7 +223,7 @@ void main() {
   });
 
   testWidgets('a Host with no Workspace has no domain to draw', (tester) async {
-    await _open(tester, runtime: null);
+    await _open(tester, home: null);
 
     expect(find.byKey(const Key('cockpit-sovereign-domain')), findsNothing);
     expect(find.textContaining('还没有建立 Workspace'), findsOneWidget);

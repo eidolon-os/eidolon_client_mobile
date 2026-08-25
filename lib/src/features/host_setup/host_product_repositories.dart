@@ -4,13 +4,13 @@ import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
 import '../../generated/device_foundation_v1.dart';
 import 'activity_models.dart';
+import 'home_models.dart';
 import '../../generated/management_v1.dart';
 import '../../management/management_client.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
 import 'host_vitals_models.dart';
 import 'workspace_models.dart';
-import 'workspace_runtime_models.dart';
 
 class HostWorkspaceRepository {
   const HostWorkspaceRepository(this._session);
@@ -37,12 +37,6 @@ class HostWorkspaceRepository {
         ),
       );
 
-  Future<WorkspaceRuntime> fetchRuntime() => _session.execute(
-        (client, baseUrl, accessToken) => client.fetchWorkspaceRuntime(
-          baseUrl,
-          accessToken: accessToken,
-        ),
-      );
 }
 
 class HostDevicesRepository {
@@ -416,6 +410,16 @@ class HostManagementRepository {
           lifecycleState: lifecycleState,
           replacementCompanionId: replacementCompanionId,
           expectedRevision: expectedRevision,
+        ),
+      );
+
+  /// What is mine, right now — the one read a screen makes when it opens.
+  Future<HostHome> home() async => HostHome.fromView(
+        await _session.executeManagement(
+          (client, baseUri, accessToken) => client.fetchHome(
+            baseUri,
+            accessToken: accessToken,
+          ),
         ),
       );
 
