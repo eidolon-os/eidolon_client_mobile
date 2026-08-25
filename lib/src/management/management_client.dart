@@ -166,6 +166,65 @@ class ManagementClient {
     );
   }
 
+  /// How the machine holding this Eidolon is doing.
+  ///
+  /// Already phrased and already judged by the Host — this app does no
+  /// arithmetic on bytes and applies no thresholds of its own, because the same
+  /// decision made in two places drifts.
+  Future<HostVitalsView> fetchHostVitals(
+    Uri baseUri, {
+    required String accessToken,
+  }) async {
+    final body = await _send(
+      'GET',
+      baseUri.resolve(ManagementV1.hostVitalsPath),
+      accessToken: accessToken,
+      what: '读取主机状态',
+    );
+    return HostVitalsView.fromJson(body);
+  }
+
+  /// What is running on the machine, and what is meant to be.
+  Future<HostServiceInventoryView> fetchHostServices(
+    Uri baseUri, {
+    required String accessToken,
+  }) async {
+    final body = await _send(
+      'GET',
+      baseUri.resolve(ManagementV1.hostServicesPath),
+      accessToken: accessToken,
+      what: '读取主机服务',
+    );
+    return HostServiceInventoryView.fromJson(body);
+  }
+
+  /// Restart it, turn it on, turn it off.
+  ///
+  /// [expectedRevision] is the one this screen was showing. Two phones looking
+  /// at the same failing service must not both act on a picture one of them has
+  /// already changed.
+  Future<HostServiceMutationView> changeHostService(
+    Uri baseUri, {
+    required String accessToken,
+    required String serviceId,
+    required String operation,
+    required int expectedRevision,
+  }) async {
+    final body = await _send(
+      'POST',
+      baseUri.resolve(
+        ManagementV1.hostServicesByServiceIdByOperationPath(
+          serviceId,
+          operation,
+        ),
+      ),
+      accessToken: accessToken,
+      what: '操作主机服务',
+      body: {'expected_revision': expectedRevision},
+    );
+    return HostServiceMutationView.fromJson(body);
+  }
+
   /// Which phones may manage this Host.
   ///
   /// Answered to a phone that already may. Each row says whether it is the

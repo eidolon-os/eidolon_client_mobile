@@ -1,16 +1,18 @@
 import 'package:eidolon_client_mobile/src/features/host_setup/host_vitals_models.dart';
+import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Map<String, dynamic> _document(List<Map<String, dynamic>> vitals) => {
-      'operation': 'local.host-vitals',
+HostVitalsView _document(List<Map<String, dynamic>> vitals) =>
+    HostVitalsView.fromJson({
+      'operation': 'host.vitals',
       'contract_version': '1',
       'observed_at': '2026-08-18T02:00:00Z',
       'vitals': vitals,
-    };
+    });
 
 void main() {
   test('a reading the Host could not take is its own state', () {
-    final vitals = HostVitals.fromJson(
+    final vitals = HostVitals.fromView(
       _document([
         {
           'name': '内存',
@@ -31,7 +33,7 @@ void main() {
   });
 
   test('what needs attention is what the Host said needs attention', () {
-    final vitals = HostVitals.fromJson(
+    final vitals = HostVitals.fromView(
       _document([
         {'name': '存储空间', 'reading': '1.9 GB 可用，共 55.9 GB', 'concern': 'act'},
         {'name': '温度', 'reading': '72.5°C', 'concern': 'watch'},
@@ -50,7 +52,7 @@ void main() {
   test('an unknown concern is read as none rather than refused', () {
     // A Host that grows a fourth level should not make an older App fail to
     // show the readings it does understand.
-    final vitals = HostVitals.fromJson(
+    final vitals = HostVitals.fromView(
       _document([
         {'name': '温度', 'reading': '48.6°C', 'concern': 'something-new'},
       ]),
@@ -59,16 +61,20 @@ void main() {
     expect(vitals.vitals.single.concern, VitalConcern.none);
   });
 
-  test('an answer that is not a v1 vitals document is refused', () {
+  test('an answer that is not this contract is refused, not half-drawn', () {
+    // The strictness moved rather than went away: the generated view parses the
+    // shape, and a row without the field the contract requires throws there
+    // instead of arriving as a vital with no name. What must not happen is a
+    // screen drawing half a document it could not read.
     expect(
-      () => HostVitals.fromJson({'operation': 'local.host-vitals'}),
-      throwsFormatException,
+      () => HostVitalsView.fromJson({'operation': 'host.vitals'}),
+      throwsA(anything),
     );
     expect(
-      () => HostVitals.fromJson(_document([
+      () => _document([
         {'reading': '48.6°C'},
-      ])),
-      throwsFormatException,
+      ]),
+      throwsA(anything),
     );
   });
 }

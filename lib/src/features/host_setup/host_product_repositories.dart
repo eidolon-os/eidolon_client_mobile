@@ -499,17 +499,26 @@ class HostServicesRepository {
 
   final HostProductSession _session;
 
-  Future<HostVitals> vitals() => _session.execute(
-        (client, baseUrl, accessToken) => client.fetchHostVitals(
-          baseUrl,
-          accessToken: accessToken,
+  /// The Host's own answers, turned into this app's domain on the way in.
+  ///
+  /// The shape comes from the generated views; the enums and labels are this
+  /// app's, because "degraded" is a word the wire uses and 降级 is the word a
+  /// person reads.
+  Future<HostVitals> vitals() async => HostVitals.fromView(
+        await _session.executeManagement(
+          (client, baseUri, accessToken) => client.fetchHostVitals(
+            baseUri,
+            accessToken: accessToken,
+          ),
         ),
       );
 
-  Future<HostServiceInventory> list() => _session.execute(
-        (client, baseUrl, accessToken) => client.fetchHostServices(
-          baseUrl,
-          accessToken: accessToken,
+  Future<HostServiceInventory> list() async => HostServiceInventory.fromView(
+        await _session.executeManagement(
+          (client, baseUri, accessToken) => client.fetchHostServices(
+            baseUri,
+            accessToken: accessToken,
+          ),
         ),
       );
 
@@ -518,14 +527,16 @@ class HostServicesRepository {
     required String serviceId,
     required String operation,
     required int expectedRevision,
-  }) =>
-      _session.execute(
-        (client, baseUrl, accessToken) => client.changeHostService(
-          baseUrl,
-          accessToken: accessToken,
-          serviceId: serviceId,
-          operation: operation,
-          expectedRevision: expectedRevision,
+  }) async =>
+      HostServiceChange.fromView(
+        await _session.executeManagement(
+          (client, baseUri, accessToken) => client.changeHostService(
+            baseUri,
+            accessToken: accessToken,
+            serviceId: serviceId,
+            operation: operation,
+            expectedRevision: expectedRevision,
+          ),
         ),
       );
 }

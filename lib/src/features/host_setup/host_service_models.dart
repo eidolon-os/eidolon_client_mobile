@@ -1,8 +1,14 @@
+import '../../generated/management_v1.dart';
+
 /// Host services as the Owner sees them.
 ///
-/// The same services Admin Web manages, reached through Local API. Endpoint
+/// The same services Admin Web manages, over the management contract. Endpoint
 /// addresses and contract ids stay on the operator side; what reaches the phone
 /// is whether a service is running and the revision needed to act on it.
+///
+/// Built from the generated views. The enum and its label are what this file is
+/// for: the wire says "degraded" and a person reads 降级, and switching on a
+/// string in five widgets is how one of them ends up spelling it differently.
 enum HostServiceRuntimeState {
   unknown,
   inactive,
@@ -13,7 +19,7 @@ enum HostServiceRuntimeState {
   failed,
 }
 
-HostServiceRuntimeState _runtimeState(Object? value) => switch (value) {
+HostServiceRuntimeState _runtimeState(String value) => switch (value) {
       'unknown' => HostServiceRuntimeState.unknown,
       'inactive' => HostServiceRuntimeState.inactive,
       'starting' => HostServiceRuntimeState.starting,
@@ -21,7 +27,11 @@ HostServiceRuntimeState _runtimeState(Object? value) => switch (value) {
       'degraded' => HostServiceRuntimeState.degraded,
       'blocked' => HostServiceRuntimeState.blocked,
       'failed' => HostServiceRuntimeState.failed,
-      _ => throw const FormatException('Local API 返回了未知的服务运行状态'),
+      // A state this version has never heard of is "unknown" rather than a
+      // thrown answer: the Host may grow one, and a screen that refused to draw
+      // the other nine services because of it would be worse than one that says
+      // it does not know about this one.
+      _ => HostServiceRuntimeState.unknown,
     };
 
 class HostService {
@@ -35,31 +45,15 @@ class HostService {
     required this.observedAt,
   });
 
-  factory HostService.fromJson(Map<String, dynamic> value) {
-    final serviceId = value['service_id'];
-    final revision = value['revision'];
-    final observedAt = value['observed_at'];
-    final detail = value['detail'];
-    if (serviceId is! String ||
-        serviceId.isEmpty ||
-        value['required'] is! bool ||
-        value['enabled'] is! bool ||
-        revision is! int ||
-        revision < 1 ||
-        observedAt is! String ||
-        (detail != null && detail is! String)) {
-      throw const FormatException('Local API 返回了无效的服务条目');
-    }
-    return HostService(
-      serviceId: serviceId,
-      required: value['required'] as bool,
-      enabled: value['enabled'] as bool,
-      revision: revision,
-      runtimeState: _runtimeState(value['runtime_state']),
-      detail: detail as String?,
-      observedAt: DateTime.parse(observedAt),
-    );
-  }
+  factory HostService.fromView(HostServiceView view) => HostService(
+        serviceId: view.serviceId,
+        required: view.required,
+        enabled: view.enabled,
+        revision: view.revision,
+        runtimeState: _runtimeState(view.runtimeState),
+        detail: view.detail,
+        observedAt: DateTime.parse(view.observedAt),
+      );
 
   final String serviceId;
   final bool required;
@@ -75,20 +69,16 @@ class HostService {
 class HostServiceInventory {
   const HostServiceInventory({required this.services});
 
-  factory HostServiceInventory.fromJson(Map<String, dynamic> value) {
-    final rawServices = value['services'];
-    if (value.length != 1 || rawServices is! List || rawServices.length > 100) {
-      throw const FormatException('Local API 返回了无效的服务列表');
-    }
-    final services = rawServices.map((item) {
-      if (item is! Map) {
-        throw const FormatException('Local API 服务列表包含无效条目');
-      }
-      return HostService.fromJson(Map<String, dynamic>.from(item));
-    }).toList(growable: false);
+  factory HostServiceInventory.fromView(HostServiceInventoryView view) {
+    final services =
+        (view.services ?? const <HostServiceView>[])
+            .map(HostService.fromView)
+            .toList(growable: false);
     if (services.map((item) => item.serviceId).toSet().length !=
         services.length) {
-      throw const FormatException('Local API 服务列表包含重复服务');
+      // Two rows for one service means one of them is stale, and a screen that
+      // drew both would offer two revisions of the same thing to act on.
+      throw const FormatException('主机返回了重复的服务');
     }
     return HostServiceInventory(services: services);
   }
@@ -104,27 +94,13 @@ class HostServiceChange {
     required this.revision,
   });
 
-  factory HostServiceChange.fromJson(Map<String, dynamic> value) {
-    final serviceId = value['service_id'];
-    final operation = value['operation'];
-    final revision = value['revision'];
-    if (value.length != 4 ||
-        serviceId is! String ||
-        serviceId.isEmpty ||
-        operation is! String ||
-        !const {'restart', 'enable', 'disable'}.contains(operation) ||
-        value['enabled'] is! bool ||
-        revision is! int ||
-        revision < 1) {
-      throw const FormatException('Local API 返回了无效的服务操作结果');
-    }
-    return HostServiceChange(
-      serviceId: serviceId,
-      operation: operation,
-      enabled: value['enabled'] as bool,
-      revision: revision,
-    );
-  }
+  factory HostServiceChange.fromView(HostServiceMutationView view) =>
+      HostServiceChange(
+        serviceId: view.serviceId,
+        operation: view.operation,
+        enabled: view.enabled,
+        revision: view.revision,
+      );
 
   final String serviceId;
   final String operation;

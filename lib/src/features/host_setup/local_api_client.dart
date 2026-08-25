@@ -12,8 +12,6 @@ import '../setup/setup_trust.dart';
 import 'activity_models.dart';
 import 'controller_session.dart';
 import 'host_models.dart';
-import 'host_service_models.dart';
-import 'host_vitals_models.dart';
 import 'workspace_models.dart';
 import 'workspace_runtime_models.dart';
 
@@ -468,79 +466,6 @@ class LocalApiClient {
         .timeout(timeout);
     return HostActivity.fromJson(
       _decodeResponse(response, operation: 'Host activity'),
-    );
-  }
-
-  /// How the machine is doing: disk, memory, load, temperature, uptime.
-  Future<HostVitals> fetchHostVitals(
-    String baseUrl, {
-    required String accessToken,
-  }) async {
-    final response = await _httpClient
-        .get(
-          parseBaseUri(baseUrl).resolve('/api/local/v1/host/vitals'),
-          headers: _authorizedHeaders(accessToken),
-        )
-        .timeout(timeout);
-    return HostVitals.fromJson(
-      _decodeResponse(response, operation: 'Host vitals'),
-    );
-  }
-
-  Future<HostServiceInventory> fetchHostServices(
-    String baseUrl, {
-    required String accessToken,
-  }) async {
-    final response = await _httpClient
-        .get(
-          parseBaseUri(baseUrl).resolve('/api/local/v1/host/services'),
-          headers: _authorizedHeaders(accessToken),
-        )
-        .timeout(timeout);
-    return HostServiceInventory.fromJson(
-      _decodeResponse(response, operation: 'Host services'),
-    );
-  }
-
-  /// Change one service, carrying the revision this phone actually saw.
-  Future<HostServiceChange> changeHostService(
-    String baseUrl, {
-    required String accessToken,
-    required String serviceId,
-    required String operation,
-    required int expectedRevision,
-  }) async {
-    if (!const {'restart', 'enable', 'disable'}.contains(operation)) {
-      throw FormatException('不支持的服务操作：$operation');
-    }
-    final response = await _httpClient
-        .post(
-          _hostServiceUri(baseUrl, serviceId, operation),
-          headers: _authorizedHeaders(accessToken, json: true),
-          body: jsonEncode({'expected_revision': expectedRevision}),
-        )
-        .timeout(timeout);
-    return HostServiceChange.fromJson(
-      _decodeResponse(response, operation: 'Host service change'),
-    );
-  }
-
-  static Uri _hostServiceUri(
-    String baseUrl,
-    String serviceId,
-    String operation,
-  ) {
-    final normalized = _boundedId(serviceId, 'service ID');
-    return parseBaseUri(baseUrl).replace(
-      pathSegments: [
-        'api',
-        'local',
-        'v1',
-        'host',
-        'services',
-        normalized,
-        operation,
-      ],
     );
   }
 

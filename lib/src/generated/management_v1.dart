@@ -26,6 +26,9 @@ class ManagementV1 {
   static const String controllersPath = '/api/management/v1/controllers';
   static const String controllersInvitationsPath = '/api/management/v1/controllers/invitations';
   static String controllersByControllerIdPath(String controllerId) => '/api/management/v1/controllers/${Uri.encodeComponent(controllerId)}';
+  static const String hostServicesPath = '/api/management/v1/host/services';
+  static String hostServicesByServiceIdByOperationPath(String serviceId, String operation) => '/api/management/v1/host/services/${Uri.encodeComponent(serviceId)}/${Uri.encodeComponent(operation)}';
+  static const String hostVitalsPath = '/api/management/v1/host/vitals';
   static const String memoryEntriesPath = '/api/management/v1/memory/entries';
   static String memoryEntriesByEntryIdAudiencePath(String entryId) => '/api/management/v1/memory/entries/${Uri.encodeComponent(entryId)}/audience';
   static const String memoryExportPath = '/api/management/v1/memory/export';
@@ -636,6 +639,124 @@ class HTTPValidationError {
   factory HTTPValidationError.fromJson(Map<String, dynamic> value) {
     return HTTPValidationError(
       detail: value['detail'] == null ? null : ((value['detail'] as List<dynamic>).map((entry) => ValidationError.fromJson(entry as Map<String, dynamic>)).toList()),
+    );
+  }
+}
+
+class HostServiceInventoryView {
+  const HostServiceInventoryView({
+    this.services,
+  });
+
+  final List<HostServiceView>? services;
+
+  factory HostServiceInventoryView.fromJson(Map<String, dynamic> value) {
+    return HostServiceInventoryView(
+      services: value['services'] == null ? null : ((value['services'] as List<dynamic>).map((entry) => HostServiceView.fromJson(entry as Map<String, dynamic>)).toList()),
+    );
+  }
+}
+
+class HostServiceMutationRequest {
+  const HostServiceMutationRequest({
+    required this.expectedRevision,
+  });
+
+  final int expectedRevision;
+
+  factory HostServiceMutationRequest.fromJson(Map<String, dynamic> value) {
+    return HostServiceMutationRequest(
+      expectedRevision: value['expected_revision'] as int,
+    );
+  }
+}
+
+class HostServiceMutationView {
+  const HostServiceMutationView({
+    required this.enabled,
+    required this.operation,
+    required this.revision,
+    required this.serviceId,
+  });
+
+  final bool enabled;
+
+  final String operation;
+
+  final int revision;
+
+  final String serviceId;
+
+  factory HostServiceMutationView.fromJson(Map<String, dynamic> value) {
+    return HostServiceMutationView(
+      enabled: value['enabled'] as bool,
+      operation: value['operation'] as String,
+      revision: value['revision'] as int,
+      serviceId: value['service_id'] as String,
+    );
+  }
+}
+
+class HostServiceView {
+  const HostServiceView({
+    this.detail,
+    required this.enabled,
+    required this.observedAt,
+    required this.required,
+    required this.revision,
+    required this.runtimeState,
+    required this.serviceId,
+  });
+
+  final String? detail;
+
+  final bool enabled;
+
+  final String observedAt;
+
+  final bool required;
+
+  final int revision;
+
+  final String runtimeState;
+
+  final String serviceId;
+
+  factory HostServiceView.fromJson(Map<String, dynamic> value) {
+    return HostServiceView(
+      detail: value['detail'] as String?,
+      enabled: value['enabled'] as bool,
+      observedAt: value['observed_at'] as String,
+      required: value['required'] as bool,
+      revision: value['revision'] as int,
+      runtimeState: value['runtime_state'] as String,
+      serviceId: value['service_id'] as String,
+    );
+  }
+}
+
+class HostVitalsView {
+  const HostVitalsView({
+    this.contractVersion,
+    required this.observedAt,
+    this.operation,
+    this.vitals,
+  });
+
+  final String? contractVersion;
+
+  final String observedAt;
+
+  final String? operation;
+
+  final List<VitalView>? vitals;
+
+  factory HostVitalsView.fromJson(Map<String, dynamic> value) {
+    return HostVitalsView(
+      contractVersion: value['contract_version'] as String?,
+      observedAt: value['observed_at'] as String,
+      operation: value['operation'] as String?,
+      vitals: value['vitals'] == null ? null : ((value['vitals'] as List<dynamic>).map((entry) => VitalView.fromJson(entry as Map<String, dynamic>)).toList()),
     );
   }
 }
@@ -1314,6 +1435,32 @@ class ValidationError {
       loc: ((value['loc'] as List<dynamic>).map((entry) => entry as Object).toList()),
       msg: value['msg'] as String,
       type: value['type'] as String,
+    );
+  }
+}
+
+class VitalView {
+  const VitalView({
+    this.concern,
+    required this.name,
+    required this.reading,
+    this.unavailableReason,
+  });
+
+  final String? concern;
+
+  final String name;
+
+  final String reading;
+
+  final String? unavailableReason;
+
+  factory VitalView.fromJson(Map<String, dynamic> value) {
+    return VitalView(
+      concern: value['concern'] as String?,
+      name: value['name'] as String,
+      reading: value['reading'] as String,
+      unavailableReason: value['unavailable_reason'] as String?,
     );
   }
 }

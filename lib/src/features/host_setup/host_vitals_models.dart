@@ -1,8 +1,15 @@
+import '../../generated/management_v1.dart';
+
 /// How the machine holding this Eidolon is doing.
 ///
 /// Already phrased and already judged by the Host: this side does no
 /// arithmetic on bytes and applies no thresholds of its own. Doing either
 /// here would put the same decision in two places, and the two would drift.
+///
+/// Built from the generated view rather than from a map. What is hand-written
+/// here is the part the wire has no words for — a concern is an enum this app
+/// switches on, and "which of these needs attention" is a question a screen
+/// asks — while the shape of the answer stays generated from the one contract.
 enum VitalConcern { none, watch, act }
 
 class HostVital {
@@ -13,24 +20,21 @@ class HostVital {
     this.unavailableReason,
   });
 
-  factory HostVital.fromJson(Map<String, dynamic> value) {
-    final name = value['name'];
-    final reading = value['reading'];
-    if (name is! String || name.isEmpty || reading is! String) {
-      throw const FormatException('主机返回的状态项不符合契约');
-    }
-    final reason = value['unavailable_reason'];
-    return HostVital(
-      name: name,
-      reading: reading,
-      concern: switch (value['concern']) {
-        'watch' => VitalConcern.watch,
-        'act' => VitalConcern.act,
-        _ => VitalConcern.none,
-      },
-      unavailableReason: reason is String && reason.isNotEmpty ? reason : null,
-    );
-  }
+  factory HostVital.fromView(VitalView view) => HostVital(
+        name: view.name,
+        reading: view.reading,
+        // A concern this version has never heard of reads as "none" rather
+        // than throwing: a Host that grows a fourth level should not blank the
+        // screen that was showing the other three.
+        concern: switch (view.concern) {
+          'watch' => VitalConcern.watch,
+          'act' => VitalConcern.act,
+          _ => VitalConcern.none,
+        },
+        unavailableReason: (view.unavailableReason ?? '').isEmpty
+            ? null
+            : view.unavailableReason,
+      );
 
   final String name;
   final String reading;
@@ -46,23 +50,12 @@ class HostVital {
 class HostVitals {
   const HostVitals({required this.observedAt, required this.vitals});
 
-  factory HostVitals.fromJson(Map<String, dynamic> value) {
-    if (value['operation'] != 'local.host-vitals' ||
-        value['contract_version'] != '1') {
-      throw const FormatException('主机返回了无效的状态');
-    }
-    final raw = value['vitals'];
-    if (raw is! List) {
-      throw const FormatException('主机返回了无效的状态');
-    }
-    return HostVitals(
-      observedAt: DateTime.tryParse('${value['observed_at']}')?.toUtc(),
-      vitals: raw
-          .map((item) =>
-              HostVital.fromJson(Map<String, dynamic>.from(item as Map)))
-          .toList(growable: false),
-    );
-  }
+  factory HostVitals.fromView(HostVitalsView view) => HostVitals(
+        observedAt: DateTime.tryParse(view.observedAt)?.toUtc(),
+        vitals: (view.vitals ?? const <VitalView>[])
+            .map(HostVital.fromView)
+            .toList(growable: false),
+      );
 
   final DateTime? observedAt;
   final List<HostVital> vitals;

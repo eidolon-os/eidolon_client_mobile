@@ -38,12 +38,13 @@ WorkspaceRuntime _runtime() => WorkspaceRuntime.fromJson({
       },
     });
 
-HostVitals _vitals(List<Map<String, dynamic>> rows) => HostVitals.fromJson({
-      'operation': 'local.host-vitals',
+HostVitals _vitals(List<Map<String, dynamic>> rows) =>
+    HostVitals.fromView(HostVitalsView.fromJson({
+      'operation': 'host.vitals',
       'contract_version': '1',
       'observed_at': '2026-08-19T02:00:00Z',
       'vitals': rows,
-    });
+    }));
 
 HostServiceInventory _services({int ready = 2, int failed = 0}) =>
     HostServiceInventory(
