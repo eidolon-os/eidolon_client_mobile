@@ -255,11 +255,15 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
                         builder: (_) => CompanionDetailScreen(
                           companionId: companion.companionId,
                           load: widget.openCompanion!,
-                          setLifecycle: widget.setCompanionLifecycle == null ||
-                                  _context == null ||
-                                  !hostCan(_context!, 'companion.archive')
-                              ? null
-                              : widget.setCompanionLifecycle,
+                          // Both names are read, because both are answers to
+                          // real questions: a Host may be able to put one away
+                          // and not bring one back. A flag nothing checks is a
+                          // claim nobody verifies.
+                          canPutAway: _context != null &&
+                              hostCan(_context!, 'companion.archive'),
+                          canBringBack: _context != null &&
+                              hostCan(_context!, 'companion.restore'),
+                          setLifecycle: widget.setCompanionLifecycle,
                           // The rows this screen already has. The successor
                           // question is asked from what the person is looking
                           // at, not from a second read that could disagree

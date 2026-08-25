@@ -23,6 +23,8 @@ class CompanionDetailScreen extends StatefulWidget {
     required this.load,
     this.setLifecycle,
     this.others = const [],
+    this.canPutAway = false,
+    this.canBringBack = false,
   });
 
   final String companionId;
@@ -40,6 +42,12 @@ class CompanionDetailScreen extends StatefulWidget {
   /// This Owner's other Eidolons, for the successor question — asked only if
   /// the Host says it needs asking.
   final List<CompanionSummaryView> others;
+
+  /// What this Host says it can do. Two flags rather than one: putting away and
+  /// bringing back are separate capabilities, and a screen that inferred the
+  /// second from the first would be answering for the Host.
+  final bool canPutAway;
+  final bool canBringBack;
 
   @override
   State<CompanionDetailScreen> createState() => _CompanionDetailScreenState();
@@ -159,8 +167,9 @@ class _CompanionDetailScreenState extends State<CompanionDetailScreen> {
           ),
         ),
         if (widget.setLifecycle != null &&
-            (companion.lifecycleState == 'active' ||
-                companion.lifecycleState == 'archived')) ...[
+            ((companion.lifecycleState == 'active' && widget.canPutAway) ||
+                (companion.lifecycleState == 'archived' &&
+                    widget.canBringBack))) ...[
           const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerLeft,

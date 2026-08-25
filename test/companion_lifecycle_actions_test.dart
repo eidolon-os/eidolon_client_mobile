@@ -294,6 +294,26 @@ void main() {
       expect(find.byKey(const Key('detail-lifecycle')), findsNothing);
     });
 
+    testWidgets('each action waits on its own capability', (tester) async {
+      // A Host that can put one away and not bring one back is a Host this
+      // screen has to be able to draw. Inferring the second flag from the first
+      // would be this app answering a question only the Host can.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionDetailScreen(
+            companionId: 'companion-a',
+            load: (_) async => _detail(lifecycleState: 'archived'),
+            canPutAway: true,
+            setLifecycle: (_, __, ___) async =>
+                throw AssertionError('never asked'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('detail-lifecycle')), findsNothing);
+    });
+
     testWidgets('mid-move states offer no button', (tester) async {
       // ``retiring`` is a step the Host is walking through. A button on it
       // would be one that gets refused.
@@ -302,6 +322,8 @@ void main() {
           home: CompanionDetailScreen(
             companionId: 'companion-a',
             load: (_) async => _detail(lifecycleState: 'retiring'),
+            canPutAway: true,
+            canBringBack: true,
             setLifecycle: (_, __, ___) async =>
                 throw AssertionError('never asked'),
           ),
@@ -329,6 +351,8 @@ void main() {
               );
             },
             others: [_row('companion-b', '阿力')],
+            canPutAway: true,
+            canBringBack: true,
             setLifecycle: (companionId, state, replacement) async =>
                 CompanionLifecycleView.fromJson({
               'companion_id': companionId,
