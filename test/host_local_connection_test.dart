@@ -209,6 +209,21 @@ class _OwnerName {
 
 ManagementClient _managementClientFor(_OwnerName ownerName) => ManagementClient(
       httpClient: MockClient((request) async {
+        if (request.url.path == '/api/management/v1/host/vitals') {
+          // The system page reads the machine over the management contract
+          // now. A Host that answers with no readings is a real state — the
+          // page says so rather than hanging — and it keeps this test about
+          // what it is about.
+          return _jsonResponse({
+            'operation': 'host.vitals',
+            'contract_version': '1',
+            'observed_at': '2026-08-25T09:00:00Z',
+            'vitals': <Map<String, dynamic>>[],
+          });
+        }
+        if (request.url.path == '/api/management/v1/host/services') {
+          return _jsonResponse({'services': <Map<String, dynamic>>[]});
+        }
         if (request.url.path == '/api/management/v1/controllers') {
           // The cockpit asks who may manage this Host over the same contract as
           // everything else now. An empty list is a real answer and keeps this
@@ -820,6 +835,7 @@ void main() {
           controllerKeys: _FakeControllerKeys(),
           discovery: _FakeDiscovery(),
           localApiClientFactory: (_) => _clientFor(_hostOverview()),
+          managementClientFactory: (_) => _managementClientFor(_OwnerName()),
           onHostUpdated: (_) async {},
         ),
       ),
