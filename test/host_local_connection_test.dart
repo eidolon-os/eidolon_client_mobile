@@ -197,6 +197,33 @@ Map<String, dynamic> _deviceInventory({bool withReadyDevice = false}) => {
 /// A Host answers in bytes, and a name is not necessarily latin1 — which is
 /// what `http.Response(String, …)` assumes. The product reads bodyBytes as
 /// UTF-8; a fake that cannot even encode 曼森 fails where the Host would not.
+/// What the Host says this person is called, shared by the two fakes.
+///
+/// Renaming goes over the management contract and reading the workspace goes
+/// over `/api/local/v1`, so the name has to live somewhere both can see —
+/// exactly as it lives in one authority on a real Host.
+class _OwnerName {
+  String value = 'Manson';
+  final List<String> written = <String>[];
+}
+
+ManagementClient _managementClientFor(_OwnerName ownerName) => ManagementClient(
+      httpClient: MockClient((request) async {
+        if (request.url.path == '/api/management/v1/owner') {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          ownerName.value = body['display_name']! as String;
+          ownerName.written.add(ownerName.value);
+          return _jsonResponse({
+            'contract_version': '1',
+            'owner_id': 'owner-1',
+            'display_name': ownerName.value,
+            'revision': 4,
+          });
+        }
+        return _jsonResponse({'detail': 'not part of this test'}, 404);
+      }),
+    );
+
 http.Response _jsonResponse(Object body, [int status = 200]) =>
     http.Response.bytes(utf8.encode(jsonEncode(body)), status);
 
@@ -208,25 +235,15 @@ LocalApiClient _clientFor(
   int devicesStatusCode = 200,
   bool withReadyDevice = false,
   PinnedHttpFailureKind? workspaceTransportFailure,
-  List<String>? ownerRenames,
+  // The Host is the authority on what anyone is called, and renaming now
+  // happens over the management contract — so the name lives in a box both
+  // fakes share, and a later read here answers with what that write was told.
+  // A client that painted its own copy would pass a test the product fails.
+  _OwnerName? ownerName,
 }) {
-  // The Host is the authority on what anyone is called, so this fake keeps the
-  // name it was last told and answers later reads with it — a client that
-  // painted its own copy would pass a test the product would fail.
-  var ownerName = 'Manson';
+  ownerName ??= _OwnerName();
   return LocalApiClient(
     httpClient: MockClient((request) async {
-      if (request.url.path == '/api/local/v1/owner') {
-        final body = jsonDecode(request.body) as Map<String, dynamic>;
-        ownerName = body['display_name']! as String;
-        ownerRenames?.add(ownerName);
-        return _jsonResponse({
-          'operation': 'local.owner-name',
-          'contract_version': '1',
-          'owner_id': 'owner_primary',
-          'display_name': ownerName,
-        });
-      }
       if (request.url.path == '/api/local/v1/host') {
         return http.Response(jsonEncode(overview), 200);
       }
@@ -281,7 +298,7 @@ LocalApiClient _clientFor(
                   'state': 'ready',
                   'owner': {
                     'owner_id': 'owner_primary',
-                    'display_name': ownerName,
+                    'display_name': ownerName!.value,
                     'lifecycle_state': 'active',
                   },
                   'workspace': {
@@ -925,13 +942,13 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(900, 1800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final renames = <String>[];
+    final ownerName = _OwnerName();
     // One Host, so one fake: a factory that built a fresh one per call would
     // forget the name it was just told.
     final host = _clientFor(
       _hostOverview(workspaceState: 'ready'),
       workspaceReady: true,
-      ownerRenames: renames,
+      ownerName: ownerName,
     );
     await tester.pumpWidget(
       MaterialApp(
@@ -941,6 +958,7 @@ void main() {
           controllerKeys: _FakeControllerKeys(),
           discovery: _FakeDiscovery(),
           localApiClientFactory: (_) => host,
+          managementClientFactory: (_) => _managementClientFor(ownerName),
           onHostUpdated: (_) async {},
         ),
       ),
@@ -957,7 +975,7 @@ void main() {
     await tester.tap(find.byKey(const Key('confirm-owner-name')));
     await tester.pumpAndSettle();
 
-    expect(renames, ['曼森']);
+    expect(ownerName.written, ['曼森']);
     // Shown because the Host said so afterwards, not because the screen
     // assumed the write took.
     expect(find.text('你好，曼森。'), findsOneWidget);
@@ -968,13 +986,13 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(900, 1800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final renames = <String>[];
+    final ownerName = _OwnerName();
     // One Host, so one fake: a factory that built a fresh one per call would
     // forget the name it was just told.
     final host = _clientFor(
       _hostOverview(workspaceState: 'ready'),
       workspaceReady: true,
-      ownerRenames: renames,
+      ownerName: ownerName,
     );
     await tester.pumpWidget(
       MaterialApp(
@@ -984,6 +1002,7 @@ void main() {
           controllerKeys: _FakeControllerKeys(),
           discovery: _FakeDiscovery(),
           localApiClientFactory: (_) => host,
+          managementClientFactory: (_) => _managementClientFor(ownerName),
           onHostUpdated: (_) async {},
         ),
       ),
@@ -1001,7 +1020,7 @@ void main() {
     await tester.tap(find.byKey(const Key('confirm-owner-name')));
     await tester.pumpAndSettle();
 
-    expect(renames, isEmpty);
+    expect(ownerName.written, isEmpty);
     expect(find.text('你好，Manson。'), findsOneWidget);
   });
 

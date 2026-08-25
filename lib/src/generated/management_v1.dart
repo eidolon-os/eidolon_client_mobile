@@ -28,6 +28,7 @@ class ManagementV1 {
   static const String memoryForgetPreviewPath = '/api/management/v1/memory/forget/preview';
   static const String memoryLibraryPath = '/api/management/v1/memory/library';
   static const String memoryRecollectionsPath = '/api/management/v1/memory/recollections';
+  static const String ownerPath = '/api/management/v1/owner';
   static const String ownerActionsRevokeRuntimeSessionsPath = '/api/management/v1/owner/actions/revoke-runtime-sessions';
   static const String ownerDefaultCompanionPath = '/api/management/v1/owner/default-companion';
 }
@@ -181,6 +182,32 @@ class CompanionLifecycleView {
       contractVersion: value['contract_version'] as String?,
       defaultCompanionId: value['default_companion_id'] as String?,
       lifecycleState: value['lifecycle_state'] as String,
+      revision: value['revision'] as int,
+    );
+  }
+}
+
+class CompanionNameView {
+  const CompanionNameView({
+    required this.companionId,
+    this.contractVersion,
+    this.displayName,
+    required this.revision,
+  });
+
+  final String companionId;
+
+  final String? contractVersion;
+
+  final String? displayName;
+
+  final int revision;
+
+  factory CompanionNameView.fromJson(Map<String, dynamic> value) {
+    return CompanionNameView(
+      companionId: value['companion_id'] as String,
+      contractVersion: value['contract_version'] as String?,
+      displayName: value['display_name'] as String?,
       revision: value['revision'] as int,
     );
   }
@@ -808,6 +835,32 @@ class OwnerContextView {
   }
 }
 
+class OwnerNameView {
+  const OwnerNameView({
+    this.contractVersion,
+    this.displayName,
+    required this.ownerId,
+    required this.revision,
+  });
+
+  final String? contractVersion;
+
+  final String? displayName;
+
+  final String ownerId;
+
+  final int revision;
+
+  factory OwnerNameView.fromJson(Map<String, dynamic> value) {
+    return OwnerNameView(
+      contractVersion: value['contract_version'] as String?,
+      displayName: value['display_name'] as String?,
+      ownerId: value['owner_id'] as String,
+      revision: value['revision'] as int,
+    );
+  }
+}
+
 class PersonaChapterView {
   const PersonaChapterView({
     required this.changedAt,
@@ -910,6 +963,20 @@ class RecollectionsView {
       contractVersion: value['contract_version'] as String?,
       query: value['query'] as String,
       recollections: ((value['recollections'] as List<dynamic>).map((entry) => RecollectionView.fromJson(entry as Map<String, dynamic>)).toList()),
+    );
+  }
+}
+
+class RenameRequest {
+  const RenameRequest({
+    required this.displayName,
+  });
+
+  final String displayName;
+
+  factory RenameRequest.fromJson(Map<String, dynamic> value) {
+    return RenameRequest(
+      displayName: value['display_name'] as String,
     );
   }
 }

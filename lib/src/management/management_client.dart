@@ -149,6 +149,49 @@ class ManagementClient {
     );
   }
 
+  /// Call this Eidolon something else.
+  ///
+  /// The name is the person's word for it: nothing here suggests one, tidies
+  /// one, or refuses one for being unusual — only a blank name is refused, and
+  /// the Host refuses that too.
+  ///
+  /// The answer carries the Companion's new revision, because renaming writes
+  /// it. A screen holding the old one would fail its next compare-and-set for a
+  /// reason it could not see.
+  Future<CompanionNameView> renameCompanion(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+    required String displayName,
+  }) async {
+    final body = await _send(
+      'PATCH',
+      baseUri.resolve(ManagementV1.companionsByCompanionIdPath(companionId)),
+      accessToken: accessToken,
+      what: '改名',
+      body: {'display_name': displayName},
+    );
+    return CompanionNameView.fromJson(body);
+  }
+
+  /// Change what I am called.
+  ///
+  /// Nothing in the request says who: the session already did.
+  Future<OwnerNameView> renameOwner(
+    Uri baseUri, {
+    required String accessToken,
+    required String displayName,
+  }) async {
+    final body = await _send(
+      'PATCH',
+      baseUri.resolve(ManagementV1.ownerPath),
+      accessToken: accessToken,
+      what: '改名',
+      body: {'display_name': displayName},
+    );
+    return OwnerNameView.fromJson(body);
+  }
+
   /// Put one of this Owner's Eidolons away, or bring it back.
   ///
   /// A `PUT` naming the state it should end in, so asking twice is safe and

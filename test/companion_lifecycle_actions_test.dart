@@ -54,7 +54,7 @@ void main() {
       http.Request? sent;
       final client = ManagementClient(
         httpClient: MockClient((request) async {
-          sent = request as http.Request;
+          sent = request;
           return _answer({
             'contract_version': '1',
             'companion_id': 'companion-a',

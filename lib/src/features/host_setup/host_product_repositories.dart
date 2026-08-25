@@ -117,18 +117,26 @@ class HostCompanionRepository {
         ),
       );
 
+  /// Call it something else.
+  ///
+  /// Over the management contract, like everything else a person does to a
+  /// Companion. The `/api/local/v1` route this used to call is deleted: two
+  /// surfaces for one write is how the two come to disagree about what a name
+  /// may be.
   Future<String> rename({
     required String companionId,
     required String displayName,
-  }) =>
-      _session.execute(
-        (client, baseUrl, accessToken) => client.renameCompanion(
-          baseUrl,
-          accessToken: accessToken,
-          companionId: companionId,
-          displayName: displayName,
-        ),
-      );
+  }) async {
+    final named = await _session.executeManagement(
+      (client, baseUri, accessToken) => client.renameCompanion(
+        baseUri,
+        accessToken: accessToken,
+        companionId: companionId,
+        displayName: displayName,
+      ),
+    );
+    return named.displayName ?? displayName;
+  }
 }
 
 /// What this Eidolon remembers.
@@ -426,13 +434,16 @@ class HostOwnerRepository {
 
   final HostProductSession _session;
 
-  Future<String> rename({required String displayName}) => _session.execute(
-        (client, baseUrl, accessToken) => client.renameOwner(
-          baseUrl,
-          accessToken: accessToken,
-          displayName: displayName,
-        ),
-      );
+  Future<String> rename({required String displayName}) async {
+    final named = await _session.executeManagement(
+      (client, baseUri, accessToken) => client.renameOwner(
+        baseUri,
+        accessToken: accessToken,
+        displayName: displayName,
+      ),
+    );
+    return named.displayName ?? displayName;
+  }
 }
 
 class HostControllerGrantRepository {
