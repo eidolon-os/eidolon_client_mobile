@@ -291,26 +291,22 @@ class HostProductController extends ChangeNotifier {
   /// screen that re-read a photograph on every rebuild would spend a
   /// megabyte to show what it already had. It is re-read when the Host says
   /// the face changed — which is what the hash beside it is for.
-  Uint8List? get companionFace => _companionFace;
-  Uint8List? _companionFace;
-  String? _companionFaceSha256;
+  Uint8List? get companionFace => _face?.bytes;
+  CompanionFacePicture? _face;
 
+  /// Read the face, sending back the one already held.
+  ///
+  /// The Host answers "still that one" without spending a photograph on it, so
+  /// this is cheap enough to call whenever the screen opens — which is the
+  /// point: a picture that is only fetched once goes stale the first time the
+  /// person changes it somewhere else.
   Future<void> loadCompanionFace({required String companionId}) async {
-    final state = await _companionRepository.faceState(
+    final picture = await _companionRepository.face(
       companionId: companionId,
+      held: _face,
     );
     if (_disposed) return;
-    if (!state.hasFace) {
-      _companionFace = null;
-      _companionFaceSha256 = null;
-      _notify();
-      return;
-    }
-    if (state.matches(_companionFaceSha256) && _companionFace != null) return;
-    final face = await _companionRepository.face(companionId: companionId);
-    if (_disposed) return;
-    _companionFace = face;
-    _companionFaceSha256 = state.sha256;
+    _face = picture;
     _notify();
   }
 
@@ -323,18 +319,18 @@ class HostProductController extends ChangeNotifier {
       face: face,
     );
     if (_disposed) return;
-    // Shown from what was sent, and only because the Host accepted it and
-    // said so with the same hash.
-    _companionFace = state.hasFace ? face : null;
-    _companionFaceSha256 = state.sha256;
+    // Shown from what was sent, and only because the Host accepted it and said
+    // so with the same hash.
+    _face = state.hasFace
+        ? CompanionFacePicture(bytes: face, sha256: state.sha256)
+        : const CompanionFacePicture.none();
     _notify();
   }
 
   Future<void> clearCompanionFace({required String companionId}) async {
     await _companionRepository.clearFace(companionId: companionId);
     if (_disposed) return;
-    _companionFace = null;
-    _companionFaceSha256 = null;
+    _face = const CompanionFacePicture.none();
     _notify();
   }
 

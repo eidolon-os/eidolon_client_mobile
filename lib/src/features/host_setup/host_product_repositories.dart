@@ -4,7 +4,6 @@ import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
 import '../../generated/device_foundation_v1.dart';
 import 'activity_models.dart';
-import 'companion_face_models.dart';
 import 'controller_grant_models.dart';
 import '../../generated/management_v1.dart';
 import '../../management/management_client.dart';
@@ -78,40 +77,41 @@ class HostCompanionRepository {
 
   final HostProductSession _session;
 
-  Future<CompanionFaceState> faceState({required String companionId}) =>
-      _session.execute(
-        (client, baseUrl, accessToken) => client.fetchCompanionFaceState(
-          baseUrl,
+  /// What it looks like, and which picture that is.
+  ///
+  /// One call: the answer carries the digest, so nothing has to ask a second
+  /// time which face it just received. Passing [held] lets the Host answer
+  /// "still that one" without sending a photograph again.
+  Future<CompanionFacePicture> face({
+    required String companionId,
+    CompanionFacePicture? held,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchCompanionFace(
+          baseUri,
           accessToken: accessToken,
           companionId: companionId,
+          held: held,
         ),
       );
 
-  Future<Uint8List?> face({required String companionId}) => _session.execute(
-        (client, baseUrl, accessToken) => client.fetchCompanionFace(
-          baseUrl,
-          accessToken: accessToken,
-          companionId: companionId,
-        ),
-      );
-
-  Future<CompanionFaceState> setFace({
+  Future<CompanionFaceView> setFace({
     required String companionId,
     required Uint8List face,
   }) =>
-      _session.execute(
-        (client, baseUrl, accessToken) => client.setCompanionFace(
-          baseUrl,
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.setCompanionFace(
+          baseUri,
           accessToken: accessToken,
           companionId: companionId,
           face: face,
         ),
       );
 
-  Future<CompanionFaceState> clearFace({required String companionId}) =>
-      _session.execute(
-        (client, baseUrl, accessToken) => client.clearCompanionFace(
-          baseUrl,
+  Future<CompanionFaceView> clearFace({required String companionId}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.clearCompanionFace(
+          baseUri,
           accessToken: accessToken,
           companionId: companionId,
         ),

@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_device_models.dart';
-import 'package:eidolon_client_mobile/src/features/host_setup/companion_face_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/companion_page.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/workspace_runtime_models.dart';
 import 'package:flutter/material.dart';
@@ -105,40 +104,8 @@ void main() {
     expect(find.byKey(const Key('companion-clear-face')), findsNothing);
   });
 
-  group('what the Host says about a face', () {
-    test('a held copy is recognised as current by its hash, not by having one',
-        () {
-      const state = CompanionFaceState(
-        companionId: 'companion_primary',
-        hasFace: true,
-        sha256: 'abc',
-      );
-
-      expect(state.matches('abc'), isTrue);
-      // Holding *a* face is not holding *this* face — which is the whole
-      // reason the Host answers with a hash instead of a boolean.
-      expect(state.matches('def'), isFalse);
-      expect(state.matches(null), isFalse);
-    });
-
-    test('no face means no copy is current, whatever is held', () {
-      const state = CompanionFaceState(
-        companionId: 'companion_primary',
-        hasFace: false,
-      );
-
-      expect(state.matches('abc'), isFalse);
-    });
-
-    test('an answer that is not a v1 face state is refused', () {
-      expect(
-        () => CompanionFaceState.fromJson({'companion_id': 'c', 'has_face': 1}),
-        throwsFormatException,
-      );
-      expect(
-        () => CompanionFaceState.fromJson({'has_face': true}),
-        throwsFormatException,
-      );
-    });
-  });
+  // The hash-comparison model that used to live here is gone with the
+  // two-call read: this app no longer decides whether its copy is current, it
+  // sends what it holds and the Host answers 304. That exchange is covered in
+  // ``companion_face_client_test.dart``.
 }

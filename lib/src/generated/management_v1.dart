@@ -13,6 +13,8 @@ class ManagementV1 {
   static String companionsByCompanionIdPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}';
   static String companionsByCompanionIdConversationsPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/conversations';
   static String companionsByCompanionIdConversationsByConversationIdTurnsPath(String companionId, String conversationId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/conversations/${Uri.encodeComponent(conversationId)}/turns';
+  static String companionsByCompanionIdFacePath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/face';
+  static String companionsByCompanionIdFaceStatePath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/face-state';
   static String companionsByCompanionIdLifecyclePath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/lifecycle';
   static String companionsByCompanionIdPersonaHistoryPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona-history';
   static String companionsByCompanionIdPersonaRestorationsPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona-restorations';
@@ -131,6 +133,36 @@ class CompanionDetailView {
       kind: value['kind'] as String,
       lifecycleState: value['lifecycle_state'] as String,
       revision: value['revision'] as int,
+    );
+  }
+}
+
+class CompanionFaceView {
+  const CompanionFaceView({
+    required this.companionId,
+    this.contractVersion,
+    required this.hasFace,
+    this.sha256,
+    this.updatedAt,
+  });
+
+  final String companionId;
+
+  final String? contractVersion;
+
+  final bool hasFace;
+
+  final String? sha256;
+
+  final String? updatedAt;
+
+  factory CompanionFaceView.fromJson(Map<String, dynamic> value) {
+    return CompanionFaceView(
+      companionId: value['companion_id'] as String,
+      contractVersion: value['contract_version'] as String?,
+      hasFace: value['has_face'] as bool,
+      sha256: value['sha256'] as String?,
+      updatedAt: value['updated_at'] as String?,
     );
   }
 }

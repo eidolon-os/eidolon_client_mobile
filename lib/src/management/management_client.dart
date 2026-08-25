@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -42,6 +43,22 @@ class ManagementRequestException implements Exception {
 
   @override
   String toString() => reason == null ? message : '$message：$reason';
+}
+
+/// A face this app holds, and which one it is.
+///
+/// The digest travels with the bytes so the next read can say "still this one"
+/// and send nothing. `bytes == null` means the Eidolon has no picture — an
+/// ordinary state, distinct from not having asked.
+class CompanionFacePicture {
+  const CompanionFacePicture({required this.bytes, this.sha256});
+
+  const CompanionFacePicture.none() : bytes = null, sha256 = null;
+
+  final Uint8List? bytes;
+  final String? sha256;
+
+  bool get hasFace => bytes != null;
 }
 
 /// The Owner management surface, and the only thing in this app that speaks it.
@@ -147,6 +164,143 @@ class ManagementClient {
     return CompanionDetailOutcome(
       defaultCompanionId: view.defaultCompanionId,
     );
+  }
+
+  /// Whether this Eidolon has a face, and which one.
+  ///
+  /// Cheap enough to ask on every refresh: the answer is a hash, so a screen
+  /// learns its picture is stale without carrying a second picture over to
+  /// compare.
+  Future<CompanionFaceView> fetchCompanionFaceState(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+  }) async {
+    final body = await _send(
+      'GET',
+      baseUri.resolve(
+        ManagementV1.companionsByCompanionIdFaceStatePath(companionId),
+      ),
+      accessToken: accessToken,
+      what: '读取这张脸的状态',
+    );
+    return CompanionFaceView.fromJson(body);
+  }
+
+  /// The face itself, and which one it is.
+  ///
+  /// [held] is what this app already has. The Host answers 304 and no bytes
+  /// when it still matches, so reopening a screen costs nothing — which matters
+  /// here and nowhere else on this surface, because this is the one answer
+  /// measured in megabytes and the link is a house's wifi.
+  ///
+  /// One call rather than "ask the hash, then ask for the picture": the answer
+  /// carries which face it is, so there is nothing left to look up.
+  Future<CompanionFacePicture> fetchCompanionFace(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+    CompanionFacePicture? held,
+  }) async {
+    final endpoint = baseUri.resolve(
+      ManagementV1.companionsByCompanionIdFacePath(companionId),
+    );
+    final http.Response response;
+    try {
+      final request = http.Request('GET', endpoint)
+        ..headers['Authorization'] = 'Bearer $accessToken';
+      if (held?.sha256 != null) {
+        request.headers['If-None-Match'] = '"sha256:${held!.sha256}"';
+      }
+      response = await http.Response.fromStream(
+        await _httpClient.send(request),
+      ).timeout(timeout);
+    } on TimeoutException {
+      throw ManagementRequestException('读取这张脸超时');
+    } catch (error) {
+      throw ManagementRequestException('读取这张脸失败：$error');
+    }
+    if (response.statusCode == 304 && held != null) return held;
+    // No face is a state, not a failure: an Eidolon nobody has given a picture
+    // to is an ordinary thing to be.
+    if (response.statusCode == 204) return const CompanionFacePicture.none();
+    if (response.statusCode != 200) {
+      throw ManagementRequestException(
+        '主机没有给出这张脸',
+        statusCode: response.statusCode,
+      );
+    }
+    return CompanionFacePicture(
+      bytes: response.bodyBytes,
+      sha256: _etagDigest(response.headers['etag']),
+    );
+  }
+
+  /// The digest inside an ETag, when the Host wrote one in the shape we know.
+  static String? _etagDigest(String? etag) {
+    if (etag == null) return null;
+    final value = etag.trim().replaceAll('"', '');
+    const prefix = 'sha256:';
+    return value.startsWith(prefix) ? value.substring(prefix.length) : null;
+  }
+
+  /// Give this Eidolon a face. The photograph is the body of the request.
+  ///
+  /// What may be sent — a JPEG, and not an unbounded one — is the Host's answer
+  /// and is not re-checked here; a second copy of that rule would drift from the
+  /// one that actually stores the file.
+  Future<CompanionFaceView> setCompanionFace(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+    required Uint8List face,
+  }) async {
+    final endpoint = baseUri.resolve(
+      ManagementV1.companionsByCompanionIdFacePath(companionId),
+    );
+    final http.Response response;
+    try {
+      final request = http.Request('PUT', endpoint)
+        ..headers['Authorization'] = 'Bearer $accessToken'
+        ..headers['Content-Type'] = 'image/jpeg'
+        ..bodyBytes = face;
+      response = await http.Response.fromStream(
+        await _httpClient.send(request),
+      ).timeout(timeout);
+    } on TimeoutException {
+      throw ManagementRequestException('换脸超时');
+    } catch (error) {
+      throw ManagementRequestException('换脸失败：$error');
+    }
+    if (response.statusCode != 200) {
+      final body = _text(response);
+      throw ManagementRequestException(
+        '换脸被拒绝',
+        statusCode: response.statusCode,
+        reason: _reason(body),
+        code: _code(body),
+      );
+    }
+    return CompanionFaceView.fromJson(
+      jsonDecode(_text(response)) as Map<String, dynamic>,
+    );
+  }
+
+  /// Take the face away and leave the Eidolon.
+  Future<CompanionFaceView> clearCompanionFace(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+  }) async {
+    final body = await _send(
+      'DELETE',
+      baseUri.resolve(
+        ManagementV1.companionsByCompanionIdFacePath(companionId),
+      ),
+      accessToken: accessToken,
+      what: '收起这张脸',
+    );
+    return CompanionFaceView.fromJson(body);
   }
 
   /// Call this Eidolon something else.
