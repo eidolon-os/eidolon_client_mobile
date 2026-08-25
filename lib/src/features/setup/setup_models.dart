@@ -73,20 +73,23 @@ final RegExp setupCodePattern = RegExp('^[0-9]{$setupCodeDigits}\$');
 
 /// The Owner's way back in, spelled out because it is invisible from the phone.
 ///
-/// Reinstalling the App throws away the controller key held in the Android
-/// Keystore, and the Host then correctly refuses a phone it has never
-/// authorized. Nothing on the phone can undo that — deliberately: a phone that
-/// lost its authorization must not be able to grant itself another. The only
-/// way through is an operator command on the Host, which the App must never
-/// trigger remotely for exactly the same reason.
+/// Reinstalling the App throws away the controller credential, and the Host
+/// then correctly refuses a phone it has never authorized. Nothing on the phone
+/// can undo that — deliberately: a phone that lost its authorization must not
+/// be able to grant itself another. The only way through is an operator command
+/// on the Host, which the App must never trigger remotely for the same reason.
 ///
+/// It says "限时窗口" and names the Setup code because the command used to only
+/// revoke: an Owner who ran it landed on a Host that nothing held and nothing
+/// could claim, and getting out needed a second command nobody had mentioned.
 /// It is written into the failure text because of what happened without it: a
 /// phone that could reach its Host, be refused, and say nothing about a
 /// recovery that exists reads as broken hardware.
 const String controllerResetGuidance = '如果这台手机以前连得上（例如重装过 App，管理凭据已随之清空），'
-    '可以让持有 Host 的人在 Host 上执行 `eidolon-ops controller-reset`：'
-    '它会撤销所有已授权的管理手机，之后任何一台手机都能像首次开箱一样重新认领，'
-    'Host 上的数据不会丢失。';
+    '需要有人在主机旁边、能登进这台主机，执行 `eidolon-ops controller-reset --apply`：'
+    '它会撤销所有已授权的管理手机，并当场打开一个限时认领窗口，给出这台手机要用的 Setup 码。'
+    '窗口期内任何一台手机都能像首次开箱一样重新认领，Host 上的数据不会丢失。'
+    '这是物理/本机在场才能做的事，App 不能远程发起。';
 
 class CommissioningEndpoint {
   const CommissioningEndpoint._({

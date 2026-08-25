@@ -9,6 +9,7 @@ import '../host_setup/host_local_connection_page.dart';
 import 'commissioning_transport.dart';
 import 'change_network_page.dart';
 import 'controller_key_bridge.dart';
+import 'controller_recovery_page.dart';
 import 'host_registry.dart';
 import 'setup_wizard_page.dart';
 
@@ -395,12 +396,16 @@ class _HostDetailPageState extends State<_HostDetailPage> {
                   ),
             ),
             const SizedBox(height: 8),
-            _ManagementEntry.unavailable(
-              key: const Key('controller-recovery-unavailable'),
+            _ManagementEntry.available(
+              key: const Key('controller-recovery'),
               icon: Icons.phonelink_erase_outlined,
               title: '手机丢失或重新认领',
-              subtitle: '需要先实现主机侧限时物理恢复通道',
+              // Open, but honest about what it needs: the Host opens the
+              // window, not this phone. An entry that could open it remotely
+              // would hand the same key to whoever stole the phone.
+              subtitle: '需要有人在主机旁边开一次限时窗口；会撤销所有已授权手机',
               destructive: true,
+              onTap: () => _openControllerRecovery(context),
             ),
             _ManagementEntry.available(
               key: const Key('forget-managed-host'),
@@ -435,6 +440,39 @@ class _HostDetailPageState extends State<_HostDetailPage> {
           ],
         ),
       );
+
+  /// Explain the recovery, then hand the Owner back to the claim flow.
+  ///
+  /// Re-claiming produces a new Controller grant for the same Host, so the
+  /// registry entry is updated rather than added — and the name this phone
+  /// gave the Host is this phone's, so it survives the Host forgetting who
+  /// held it.
+  Future<void> _openControllerRecovery(BuildContext context) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (recoveryContext) => ControllerRecoveryPage(
+          host: host,
+          onReclaim: () => Navigator.of(recoveryContext).pushReplacement(
+            MaterialPageRoute(
+              builder: (wizardContext) => SetupWizardPage(
+                transport: setupTransport,
+                controllerKeys: controllerKeys,
+                onComplete: (reclaimed) async {
+                  final renamed =
+                      reclaimed.copyWith(displayName: host.displayName);
+                  await onHostUpdated(renamed);
+                  if (mounted) setState(() => host = renamed);
+                  if (wizardContext.mounted) {
+                    Navigator.of(wizardContext).pop();
+                  }
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Future<void> _confirmForget(BuildContext context) async {
     final confirmed = await showDialog<bool>(
@@ -476,14 +514,16 @@ class _ManagementEntry extends StatelessWidget {
   })  : _onTap = onTap,
         _unavailable = false;
 
+  // Nothing still-unbuilt is destructive: the one entry that was both is now
+  // open, and an unavailable row cannot take anything away by being read.
   const _ManagementEntry.unavailable({
     super.key,
     required this.icon,
     required this.title,
     required this.subtitle,
-    this.destructive = false,
   })  : _onTap = null,
-        _unavailable = true;
+        _unavailable = true,
+        destructive = false;
 
   final IconData icon;
   final String title;

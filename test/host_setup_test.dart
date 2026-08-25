@@ -296,10 +296,13 @@ void main() {
     );
     await tester.drag(find.byType(ListView), const Offset(0, -420));
     await tester.pumpAndSettle();
+    // Recovery is open now, and honest about needing someone at the Host:
+    // see host_controller_recovery_test.dart for what it promises.
     expect(
       find.byKey(const Key('controller-recovery-unavailable')),
-      findsOneWidget,
+      findsNothing,
     );
+    expect(find.byKey(const Key('controller-recovery')), findsOneWidget);
     expect(find.text('尚未开放'), findsWidgets);
     expect(find.byType(AlertDialog), findsNothing);
   });

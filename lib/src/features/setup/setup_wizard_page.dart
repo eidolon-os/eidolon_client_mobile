@@ -409,11 +409,20 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         'commissioning_denied' =>
           'Setup 码错误、过期或已失效。请核对 $setupCodeDigits 位码；连续 5 次失败后请重新选择主机。',
         'setup_code_unavailable' =>
-          '这台主机没有开放首次 Setup。如果已被认领，需要原 Controller 或物理恢复权限。',
+          '这台主机没有开放首次 Setup。它可能已被认领。$controllerResetGuidance',
         'setup_code_expired' => '开发 Setup 会话已过期，请重新选择主机。',
-        'controller_denied' => '开箱凭据已失效，而且这台手机不是该主机已授权的管理手机。',
+        // A refusal an Owner can act on has to carry the action. Without the
+        // recovery named here, this said "你没有权限" to someone holding the
+        // only phone they own, and stopped.
+        'controller_denied' => '这台主机已被认领，而且它不认这台手机的管理凭据；'
+            '开箱凭据只能用来重新认领，不能改这台主机的设置。$controllerResetGuidance',
         'operation_conflict' => '主机正在处理另一项设置，或本次重试已失效。请重新开始这一步。',
-        'internal_error' => '主机暂时无法完成这一步；蓝牙入口仍会保持可用，请稍后重试。',
+        // Reserved for a failure the Host has no name for. A deterministic
+        // conflict arriving here as "retry later" is a Host bug, not a hint;
+        // the Grant identity collision that used to land here is fixed at the
+        // Host and no longer reaches a phone at all.
+        'internal_error' => '主机遇到了它自己也没有归类的故障，这一步没有完成。'
+            '蓝牙入口仍会保持可用；如果重试仍然如此，需要看主机日志。',
         _ => error.message,
       };
 
