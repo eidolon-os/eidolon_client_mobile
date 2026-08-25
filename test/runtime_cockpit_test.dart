@@ -1,7 +1,7 @@
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_device_models.dart';
 import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/activity_models.dart';
-import 'package:eidolon_client_mobile/src/features/host_setup/controller_grant_models.dart';
+import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_service_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_vitals_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/runtime_cockpit_page.dart';
@@ -9,7 +9,6 @@ import 'package:eidolon_client_mobile/src/features/host_setup/workspace_runtime_
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const _controllerId = 'ectrl-0123456789abcdefabcd';
 
 WorkspaceRuntime _runtime() => WorkspaceRuntime.fromJson({
       'contract_version': '1',
@@ -114,7 +113,7 @@ Future<void> _open(
   Future<HostVitals> Function()? loadVitals,
   Future<HostServiceInventory> Function()? listServices,
   Future<HostActivity> Function()? loadActivity,
-  Future<List<ControllerGrant>> Function()? listControllers,
+  Future<List<ControllerView>> Function()? listControllers,
   MountedDeviceInventory? devices,
   String? devicesError,
 }) async {
@@ -129,8 +128,7 @@ Future<void> _open(
         loadActivity: loadActivity ??
             () async => const HostActivity(coverage: 'full', moments: []),
         listControllers:
-            listControllers ?? () async => const <ControllerGrant>[],
-        thisControllerId: _controllerId,
+            listControllers ?? () async => const <ControllerView>[],
         devices: devices,
         devicesError: devicesError,
       ),

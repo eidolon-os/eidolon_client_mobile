@@ -10,7 +10,6 @@ import '../device_setup/device_setup_models.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/setup_trust.dart';
 import 'activity_models.dart';
-import 'controller_grant_models.dart';
 import 'controller_session.dart';
 import 'host_models.dart';
 import 'host_service_models.dart';
@@ -451,64 +450,6 @@ class LocalApiClient {
   ///
   /// No Owner is named: the session already says whose it is, and the Host
   /// refuses to be told otherwise.
-  Future<List<ControllerGrant>> fetchControllers(
-    String baseUrl, {
-    required String accessToken,
-  }) async {
-    final response = await _httpClient
-        .get(
-          parseBaseUri(baseUrl).resolve('/api/local/v1/controllers'),
-          headers: _authorizedHeaders(accessToken),
-        )
-        .timeout(timeout);
-    final document = _decodeResponse(response, operation: 'Controller list');
-    final controllers = document['controllers'];
-    if (controllers is! List) {
-      throw const FormatException('主机没有返回管理手机列表');
-    }
-    return controllers
-        .map(
-          (value) => ControllerGrant.fromJson(
-            Map<String, dynamic>.from(value as Map),
-          ),
-        )
-        .toList(growable: false);
-  }
-
-  Future<ControllerInvitation> inviteController(
-    String baseUrl, {
-    required String accessToken,
-    required Duration ttl,
-  }) async {
-    final response = await _httpClient
-        .post(
-          parseBaseUri(baseUrl)
-              .resolve('/api/local/v1/controllers/invitations'),
-          headers: _authorizedHeaders(accessToken, json: true),
-          body: jsonEncode({'ttl_seconds': ttl.inSeconds}),
-        )
-        .timeout(timeout);
-    return ControllerInvitation.fromJson(
-      _decodeResponse(response, operation: 'Controller invitation'),
-    );
-  }
-
-  Future<void> revokeController(
-    String baseUrl, {
-    required String accessToken,
-    required String controllerId,
-  }) async {
-    final response = await _httpClient
-        .delete(
-          parseBaseUri(baseUrl).resolve(
-            '/api/local/v1/controllers/${Uri.encodeComponent(controllerId)}',
-          ),
-          headers: _authorizedHeaders(accessToken),
-        )
-        .timeout(timeout);
-    _decodeResponse(response, operation: 'Controller revocation');
-  }
-
   /// What has happened to this Owner's devices lately.
   ///
   /// No Owner is named: the session already says whose Host this is.

@@ -4,7 +4,6 @@ import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
 import '../../generated/device_foundation_v1.dart';
 import 'activity_models.dart';
-import 'controller_grant_models.dart';
 import '../../generated/management_v1.dart';
 import '../../management/management_client.dart';
 import 'host_product_session.dart';
@@ -451,25 +450,29 @@ class HostControllerGrantRepository {
 
   final HostProductSession _session;
 
-  Future<List<ControllerGrant>> list() => _session.execute(
-        (client, baseUrl, accessToken) => client.fetchControllers(
-          baseUrl,
-          accessToken: accessToken,
-        ),
-      );
+  Future<List<ControllerView>> list() async {
+    final answer = await _session.executeManagement(
+      (client, baseUri, accessToken) => client.fetchControllers(
+        baseUri,
+        accessToken: accessToken,
+      ),
+    );
+    return answer.controllers;
+  }
 
-  Future<ControllerInvitation> invite({required Duration ttl}) =>
-      _session.execute(
-        (client, baseUrl, accessToken) => client.inviteController(
-          baseUrl,
+  Future<ControllerInvitationView> invite({required Duration ttl}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.inviteController(
+          baseUri,
           accessToken: accessToken,
           ttl: ttl,
         ),
       );
 
-  Future<void> revoke({required String controllerId}) => _session.execute(
-        (client, baseUrl, accessToken) => client.revokeController(
-          baseUrl,
+  Future<void> revoke({required String controllerId}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.revokeController(
+          baseUri,
           accessToken: accessToken,
           controllerId: controllerId,
         ),

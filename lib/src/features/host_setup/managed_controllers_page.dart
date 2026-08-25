@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'controller_grant_models.dart';
+import '../../generated/management_v1.dart';
 
 /// The phones that manage one Host.
 ///
@@ -11,16 +11,17 @@ import 'controller_grant_models.dart';
 class ManagedControllersPage extends StatefulWidget {
   const ManagedControllersPage({
     super.key,
-    required this.thisControllerId,
     required this.loadControllers,
     required this.invite,
     required this.revoke,
   });
 
-  /// The phone this App runs on, so it is never offered as "some other phone".
-  final String thisControllerId;
-  final Future<List<ControllerGrant>> Function() loadControllers;
-  final Future<ControllerInvitation> Function() invite;
+  /// Which phone is which is the Host's answer now: every row says whether it
+  /// is the one asking, computed from the session that asked. This page used to
+  /// compare identifiers itself, which is a second place to be wrong about the
+  /// phone a person is holding while they decide which one to sign out.
+  final Future<List<ControllerView>> Function() loadControllers;
+  final Future<ControllerInvitationView> Function() invite;
   final Future<void> Function(String controllerId) revoke;
 
   @override
@@ -28,8 +29,8 @@ class ManagedControllersPage extends StatefulWidget {
 }
 
 class _ManagedControllersPageState extends State<ManagedControllersPage> {
-  List<ControllerGrant>? _controllers;
-  ControllerInvitation? _invitation;
+  List<ControllerView>? _controllers;
+  ControllerInvitationView? _invitation;
   String? _error;
   bool _busy = false;
 
@@ -73,8 +74,8 @@ class _ManagedControllersPageState extends State<ManagedControllersPage> {
     }
   }
 
-  Future<void> _confirmRevoke(ControllerGrant grant) async {
-    final itself = grant.controllerId == widget.thisControllerId;
+  Future<void> _confirmRevoke(ControllerView grant) async {
+    final itself = grant.isYou;
     final remaining = (_controllers?.length ?? 1) - 1;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -195,8 +196,7 @@ class _ManagedControllersPageState extends State<ManagedControllersPage> {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      '这个码只能用一次，'
-                      '${invitation.expiresAt.toLocal().toString().substring(0, 16)} 之前有效。',
+                      _lapses(invitation),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
@@ -230,7 +230,7 @@ class _ManagedControllersPageState extends State<ManagedControllersPage> {
             ...controllers.map(
               (grant) => _ControllerCard(
                 grant: grant,
-                isThisPhone: grant.controllerId == widget.thisControllerId,
+                isThisPhone: grant.isYou,
                 onRevoke: _busy ? null : () => _confirmRevoke(grant),
               ),
             ),
@@ -247,6 +247,38 @@ class _ManagedControllersPageState extends State<ManagedControllersPage> {
   }
 }
 
+/// When the code stops working, in local time.
+///
+/// A deadline this app cannot parse is left unsaid rather than shown raw or
+/// cropped: "只能用一次" is still true and still useful, and a mangled timestamp
+/// beside a secret is worse than no timestamp at all.
+String _lapses(ControllerInvitationView invitation) {
+  final expires = DateTime.tryParse(invitation.expiresAt);
+  if (expires == null) return '这个码只能用一次，很快就会失效。';
+  return '这个码只能用一次，'
+      '${expires.toLocal().toString().substring(0, 16)} 之前有效。';
+}
+
+/// A phone that never said what it is called still has to be pickable out of a
+/// list, so it is shown by the short end of its identifier rather than by an
+/// empty line.
+String _name(ControllerView grant) =>
+    (grant.displayName ?? '').isNotEmpty
+        ? grant.displayName!
+        : '未命名的手机 ${grant.controllerId.split('-').last}';
+
+/// When it claimed this Host, in local time — and only if the Host sent a
+/// moment this app can actually read. A timestamp it cannot parse is left out
+/// rather than shown raw: a person reading a screen has no use for an
+/// unparseable string, and cropping one produces a lie.
+String _claimed(ControllerView grant) {
+  final platform = (grant.platform ?? '').isNotEmpty ? grant.platform! : '未知设备';
+  final claimed = DateTime.tryParse(grant.claimedAt);
+  if (claimed == null) return platform;
+  return '$platform · 认领于 '
+      '${claimed.toLocal().toString().substring(0, 16)}';
+}
+
 class _ControllerCard extends StatelessWidget {
   const _ControllerCard({
     required this.grant,
@@ -254,7 +286,7 @@ class _ControllerCard extends StatelessWidget {
     required this.onRevoke,
   });
 
-  final ControllerGrant grant;
+  final ControllerView grant;
   final bool isThisPhone;
   final VoidCallback? onRevoke;
 
@@ -269,17 +301,14 @@ class _ControllerCard extends StatelessWidget {
           ),
           title: Row(
             children: [
-              Flexible(child: Text(grant.displayName)),
+              Flexible(child: Text(_name(grant))),
               if (isThisPhone) ...[
                 const SizedBox(width: 8),
                 const Chip(label: Text('这台手机')),
               ],
             ],
           ),
-          subtitle: Text(
-            '${grant.platform} · 认领于 '
-            '${grant.createdAt.toLocal().toString().substring(0, 16)}',
-          ),
+          subtitle: Text(_claimed(grant)),
           trailing: IconButton(
             key: Key('revoke-${grant.controllerId}'),
             onPressed: onRevoke,

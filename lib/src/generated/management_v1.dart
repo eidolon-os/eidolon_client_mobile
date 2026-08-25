@@ -23,6 +23,9 @@ class ManagementV1 {
   static String companionsByCompanionIdTasksByTaskIdCancelPath(String companionId, String taskId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks/${Uri.encodeComponent(taskId)}/cancel';
   static String companionsByCompanionIdTasksByTaskIdRetryPath(String companionId, String taskId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks/${Uri.encodeComponent(taskId)}/retry';
   static const String contextPath = '/api/management/v1/context';
+  static const String controllersPath = '/api/management/v1/controllers';
+  static const String controllersInvitationsPath = '/api/management/v1/controllers/invitations';
+  static String controllersByControllerIdPath(String controllerId) => '/api/management/v1/controllers/${Uri.encodeComponent(controllerId)}';
   static const String memoryEntriesPath = '/api/management/v1/memory/entries';
   static String memoryEntriesByEntryIdAudiencePath(String entryId) => '/api/management/v1/memory/entries/${Uri.encodeComponent(entryId)}/audience';
   static const String memoryExportPath = '/api/management/v1/memory/export';
@@ -305,6 +308,98 @@ class CompanionSummaryView {
       lifecycleState: value['lifecycle_state'] as String,
       revision: value['revision'] as int,
       updatedAt: value['updated_at'] as String,
+    );
+  }
+}
+
+class ControllerInvitationRequest {
+  const ControllerInvitationRequest({
+    this.ttlSeconds,
+  });
+
+  final int? ttlSeconds;
+
+  factory ControllerInvitationRequest.fromJson(Map<String, dynamic> value) {
+    return ControllerInvitationRequest(
+      ttlSeconds: value['ttl_seconds'] as int?,
+    );
+  }
+}
+
+class ControllerInvitationView {
+  const ControllerInvitationView({
+    this.contractVersion,
+    required this.expiresAt,
+    required this.setupCode,
+  });
+
+  final String? contractVersion;
+
+  final String expiresAt;
+
+  final String setupCode;
+
+  factory ControllerInvitationView.fromJson(Map<String, dynamic> value) {
+    return ControllerInvitationView(
+      contractVersion: value['contract_version'] as String?,
+      expiresAt: value['expires_at'] as String,
+      setupCode: value['setup_code'] as String,
+    );
+  }
+}
+
+class ControllerView {
+  const ControllerView({
+    required this.claimedAt,
+    required this.controllerId,
+    this.displayName,
+    this.fingerprint,
+    required this.isYou,
+    this.platform,
+    required this.role,
+  });
+
+  final String claimedAt;
+
+  final String controllerId;
+
+  final String? displayName;
+
+  final String? fingerprint;
+
+  final bool isYou;
+
+  final String? platform;
+
+  final String role;
+
+  factory ControllerView.fromJson(Map<String, dynamic> value) {
+    return ControllerView(
+      claimedAt: value['claimed_at'] as String,
+      controllerId: value['controller_id'] as String,
+      displayName: value['display_name'] as String?,
+      fingerprint: value['fingerprint'] as String?,
+      isYou: value['is_you'] as bool,
+      platform: value['platform'] as String?,
+      role: value['role'] as String,
+    );
+  }
+}
+
+class ControllersView {
+  const ControllersView({
+    this.contractVersion,
+    required this.controllers,
+  });
+
+  final String? contractVersion;
+
+  final List<ControllerView> controllers;
+
+  factory ControllersView.fromJson(Map<String, dynamic> value) {
+    return ControllersView(
+      contractVersion: value['contract_version'] as String?,
+      controllers: ((value['controllers'] as List<dynamic>).map((entry) => ControllerView.fromJson(entry as Map<String, dynamic>)).toList()),
     );
   }
 }

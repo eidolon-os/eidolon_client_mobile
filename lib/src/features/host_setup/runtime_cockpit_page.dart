@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../device_management/mounted_device_models.dart';
 import 'activity_models.dart';
-import 'controller_grant_models.dart';
+import '../../generated/management_v1.dart';
 import 'host_service_models.dart';
 import 'host_vitals_models.dart';
 import 'workspace_runtime_models.dart';
@@ -37,7 +37,6 @@ class RuntimeCockpitPage extends StatefulWidget {
     required this.listServices,
     required this.loadActivity,
     required this.listControllers,
-    required this.thisControllerId,
     this.devices,
     this.devicesError,
   });
@@ -50,8 +49,7 @@ class RuntimeCockpitPage extends StatefulWidget {
   final Future<HostVitals> Function() loadVitals;
   final Future<HostServiceInventory> Function() listServices;
   final Future<HostActivity> Function() loadActivity;
-  final Future<List<ControllerGrant>> Function() listControllers;
-  final String thisControllerId;
+  final Future<List<ControllerView>> Function() listControllers;
 
   /// What the Host already said about this Owner's devices. Null with no error
   /// means nobody has asked yet.
@@ -66,7 +64,7 @@ class _RuntimeCockpitPageState extends State<RuntimeCockpitPage> {
   _Lane<HostVitals> _vitals = const _Lane.loading();
   _Lane<HostServiceInventory> _services = const _Lane.loading();
   _Lane<HostActivity> _activity = const _Lane.loading();
-  _Lane<List<ControllerGrant>> _controllers = const _Lane.loading();
+  _Lane<List<ControllerView>> _controllers = const _Lane.loading();
 
   @override
   void initState() {
@@ -129,7 +127,6 @@ class _RuntimeCockpitPageState extends State<RuntimeCockpitPage> {
             const SizedBox(height: 16),
             _ControllersSection(
               lane: _controllers,
-              thisControllerId: widget.thisControllerId,
               onRetry: () =>
                   _read(widget.listControllers, (l) => _controllers = l),
             ),
@@ -424,16 +421,14 @@ class _ServicesSection extends StatelessWidget {
 class _ControllersSection extends StatelessWidget {
   const _ControllersSection({
     required this.lane,
-    required this.thisControllerId,
     required this.onRetry,
   });
 
-  final _Lane<List<ControllerGrant>> lane;
-  final String thisControllerId;
+  final _Lane<List<ControllerView>> lane;
   final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) => _Section<List<ControllerGrant>>(
+  Widget build(BuildContext context) => _Section<List<ControllerView>>(
         key: const Key('cockpit-controllers'),
         title: '可以管理这台主机的手机',
         lane: lane,
@@ -448,8 +443,8 @@ class _ControllersSection extends StatelessWidget {
                   children: [
                     const Icon(Icons.smartphone, size: 16),
                     const SizedBox(width: 8),
-                    Expanded(child: Text(grant.displayName)),
-                    if (grant.controllerId == thisControllerId)
+                    Expanded(child: Text(grant.displayName ?? grant.controllerId)),
+                    if (grant.isYou)
                       Text('本机', style: Theme.of(context).textTheme.bodySmall),
                   ],
                 ),

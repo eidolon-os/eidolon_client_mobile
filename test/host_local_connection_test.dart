@@ -209,6 +209,12 @@ class _OwnerName {
 
 ManagementClient _managementClientFor(_OwnerName ownerName) => ManagementClient(
       httpClient: MockClient((request) async {
+        if (request.url.path == '/api/management/v1/controllers') {
+          // The cockpit asks who may manage this Host over the same contract as
+          // everything else now. An empty list is a real answer and keeps this
+          // test about what it is about — that the page is reachable.
+          return _jsonResponse({'contract_version': '1', 'controllers': []});
+        }
         if (request.url.path == '/api/management/v1/owner') {
           final body = jsonDecode(request.body) as Map<String, dynamic>;
           ownerName.value = body['display_name']! as String;
@@ -1043,6 +1049,7 @@ void main() {
             workspaceReady: true,
             withReadyDevice: true,
           ),
+          managementClientFactory: (_) => _managementClientFor(_OwnerName()),
           onHostUpdated: (_) async {},
         ),
       ),

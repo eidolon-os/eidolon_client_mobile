@@ -1,4 +1,4 @@
-import 'package:eidolon_client_mobile/src/features/host_setup/controller_grant_models.dart';
+import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/managed_controllers_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,29 +6,29 @@ import 'package:flutter_test/flutter_test.dart';
 const _thisPhone = 'ectrl-0123456789abcdefabcd';
 const _otherPhone = 'ectrl-fedcba9876543210dcba';
 
-ControllerGrant _grant(String controllerId, String name) =>
-    ControllerGrant.fromJson({
+ControllerView _grant(String controllerId, String name) =>
+    ControllerView.fromJson({
       'controller_id': controllerId,
-      'public_key': 'p' * 43,
-      'public_key_fingerprint': 'sha256:${'f' * 43}',
+      'fingerprint': 'sha256:${'f' * 43}',
       'role': 'owner',
       'display_name': name,
       'platform': 'android',
-      'reset_epoch': 1,
-      'created_at': '2026-08-12T08:10:00Z',
-      'revoked_at': null,
+      'claimed_at': '2026-08-12T08:10:00Z',
+      // Which row is the phone in this person's hand is the Host's answer now.
+      // This page used to compare identifiers, which is a second place to be
+      // wrong about it while someone decides which one to sign out.
+      'is_you': controllerId == _thisPhone,
     });
 
 Future<void> _open(
   WidgetTester tester, {
-  required Future<List<ControllerGrant>> Function() load,
-  Future<ControllerInvitation> Function()? invite,
+  required Future<List<ControllerView>> Function() load,
+  Future<ControllerInvitationView> Function()? invite,
   Future<void> Function(String controllerId)? revoke,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       home: ManagedControllersPage(
-        thisControllerId: _thisPhone,
         loadControllers: load,
         invite: invite ?? () async => throw StateError('must not invite'),
         revoke: revoke ?? (_) async => throw StateError('must not revoke'),
@@ -64,12 +64,10 @@ void main() {
       load: () async => [_grant(_thisPhone, 'Pad')],
       invite: () async {
         invited += 1;
-        return ControllerInvitation.fromJson({
+        return ControllerInvitationView.fromJson({
+          'contract_version': '1',
           'setup_code': '482913',
           'expires_at': '2026-08-13T09:30:00Z',
-          'host_id': 'ehost-980046b6704894461dfb',
-          'commissioning_id': 'session-1',
-          'issued_at': '2026-08-13T09:20:00Z',
         });
       },
     );

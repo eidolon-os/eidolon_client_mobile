@@ -12,7 +12,6 @@ import '../setup/host_registry.dart';
 import '../setup/setup_models.dart';
 import '../setup/setup_trust.dart';
 import 'activity_models.dart';
-import 'controller_grant_models.dart';
 import 'host_product_repositories.dart';
 import 'host_product_session.dart';
 import 'host_service_models.dart';
@@ -531,14 +530,14 @@ class HostProductController extends ChangeNotifier {
   }
 
   /// Which phones hold this Host, as the Host says.
-  Future<List<ControllerGrant>> listControllers() =>
+  Future<List<ControllerView>> listControllers() =>
       _controllerGrantRepository.list();
 
   /// Open a window in which one more phone may claim this Host.
   ///
   /// Asked for by a phone that already holds it, so the Host is never left
   /// deciding on its own who may join.
-  Future<ControllerInvitation> inviteController({
+  Future<ControllerInvitationView> inviteController({
     Duration ttl = const Duration(minutes: 10),
   }) =>
       _controllerGrantRepository.invite(ttl: ttl);

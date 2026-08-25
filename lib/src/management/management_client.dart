@@ -166,6 +166,64 @@ class ManagementClient {
     );
   }
 
+  /// Which phones may manage this Host.
+  ///
+  /// Answered to a phone that already may. Each row says whether it is the
+  /// phone asking, computed by the Host from the session — so this app never
+  /// has to work out which row is itself, and cannot get it wrong.
+  Future<ControllersView> fetchControllers(
+    Uri baseUri, {
+    required String accessToken,
+  }) async {
+    final body = await _send(
+      'GET',
+      baseUri.resolve(ManagementV1.controllersPath),
+      accessToken: accessToken,
+      what: '读取管理这台主机的手机',
+    );
+    return ControllersView.fromJson(body);
+  }
+
+  /// Open a window in which one more phone may claim this Host.
+  ///
+  /// The answer is a one-time code and the moment it stops working. Both are
+  /// shown together, because a code without its deadline is how someone reads
+  /// it out five minutes too late and concludes the Host is broken.
+  Future<ControllerInvitationView> inviteController(
+    Uri baseUri, {
+    required String accessToken,
+    required Duration ttl,
+  }) async {
+    final body = await _send(
+      'POST',
+      baseUri.resolve(ManagementV1.controllersInvitationsPath),
+      accessToken: accessToken,
+      what: '邀请另一台手机',
+      body: {'ttl_seconds': ttl.inSeconds},
+    );
+    return ControllerInvitationView.fromJson(body);
+  }
+
+  /// Withdraw a phone's authority over this Host.
+  ///
+  /// A phone may withdraw its own. What it cannot do is leave the Host with
+  /// nobody, and that refusal is the Host's — this app does not pre-judge it.
+  Future<ControllerView> revokeController(
+    Uri baseUri, {
+    required String accessToken,
+    required String controllerId,
+  }) async {
+    final body = await _send(
+      'DELETE',
+      baseUri.resolve(
+        ManagementV1.controllersByControllerIdPath(controllerId),
+      ),
+      accessToken: accessToken,
+      what: '收回这台手机的管理权',
+    );
+    return ControllerView.fromJson(body);
+  }
+
   /// Whether this Eidolon has a face, and which one.
   ///
   /// Cheap enough to ask on every refresh: the answer is a hash, so a screen

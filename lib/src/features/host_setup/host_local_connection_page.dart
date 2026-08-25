@@ -420,7 +420,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   Future<void> _openControllers() => Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => ManagedControllersPage(
-            thisControllerId: _controller.controllerId,
             loadControllers: _controller.listControllers,
             invite: _controller.inviteController,
             revoke: (controllerId) =>
@@ -483,7 +482,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             listServices: _controller.listHostServices,
             loadActivity: _controller.activity,
             listControllers: _controller.listControllers,
-            thisControllerId: _controller.controllerId,
             devices: _controller.devices,
             devicesError: _controller.devicesError,
           ),
