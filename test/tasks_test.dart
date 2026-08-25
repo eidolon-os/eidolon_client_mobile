@@ -267,7 +267,10 @@ void main() {
               const ManagementRequestException(
                 '拒绝',
                 statusCode: 409,
-                reason: 'long task already finished as succeeded',
+                refusal: Refusal(
+                  kind: 'conflict',
+                  reason: 'long task already finished as succeeded',
+                ),
               ),
             ),
             retry: (_) async => TaskView.fromJson(taskWire(status: 'accepted')),

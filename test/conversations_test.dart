@@ -291,7 +291,11 @@ void main() {
               conversations: [_conversation()],
             ),
             loadTranscript: (_, __) => Future.error(
-              const ManagementRequestException('没有', statusCode: 404),
+              const ManagementRequestException(
+                '没有',
+                statusCode: 404,
+                refusal: Refusal(kind: 'not_found'),
+              ),
             ),
           ),
         ),
@@ -300,7 +304,9 @@ void main() {
       await tester.tap(find.byKey(const Key('conversation-conv-1')));
       await tester.pumpAndSettle();
 
-      expect(find.text('找不到这次对话了'), findsOneWidget);
+      // Worded once, in refusalText, rather than per screen: ten screens each
+      // wording a refusal is how 被拒绝 became this app's answer to everything.
+      expect(find.text('这台主机上没有这次对话'), findsOneWidget);
     });
   });
 }

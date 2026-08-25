@@ -8,6 +8,7 @@ import '../generated/management_v1.dart';
 import 'companion_detail_screen.dart';
 import 'companion_roster_page.dart';
 import 'management_client.dart';
+import 'refusal_notice.dart';
 
 /// Loads the roster and shows one of three honest answers.
 ///
@@ -319,31 +320,12 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(key: Key('roster-loading'))
-            : Padding(
+            : RefusalNotice(
                 key: const Key('roster-error'),
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _error is ManagementRequestException &&
-                              (_error as ManagementRequestException)
-                                  .hostHasNoOwner
-                          // A Host nobody owns yet. Not "you have none": there
-                          // is no Owner to have any, and the way forward is
-                          // setup rather than a create button.
-                          ? '这台主机还没有主人，先完成设置'
-                          : '$_error',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      key: const Key('roster-retry'),
-                      onPressed: () => _read(),
-                      child: const Text('再试一次'),
-                    ),
-                  ],
-                ),
+                error: _error!,
+                subject: '你的 Eidolon',
+                onRetry: () => _read(),
+                retryKey: const Key('roster-retry'),
               ),
       ),
     );

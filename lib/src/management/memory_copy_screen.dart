@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
-import 'management_client.dart';
+import 'refusal_notice.dart';
 import 'memory_copy_page.dart';
 
 /// Loads the copy, and says when it has been taken away.
@@ -79,29 +79,12 @@ class _MemoryCopyScreenState extends State<MemoryCopyScreen> {
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(key: Key('memory-copy-loading'))
-            : Padding(
+            : RefusalNotice(
                 key: const Key('memory-copy-error'),
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Never an empty copy: someone who saved one would believe
-                    // their Eidolon remembers nothing.
-                    Text(
-                      _error is ManagementRequestException &&
-                              (_error as ManagementRequestException).hostHasNoOwner
-                          ? '这台主机还没有主人，先完成设置'
-                          : '$_error',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      key: const Key('memory-copy-retry'),
-                      onPressed: _read,
-                      child: const Text('再试一次'),
-                    ),
-                  ],
-                ),
+                error: _error!,
+                subject: '记忆副本',
+                onRetry: _read,
+                retryKey: const Key('memory-copy-retry'),
               ),
       ),
     );

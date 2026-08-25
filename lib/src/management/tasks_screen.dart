@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
 import 'management_client.dart';
+import 'refusal_notice.dart';
 import 'tasks_page.dart';
 
 /// Loads the tasks, sends the two actions, and says what the Host answered.
@@ -116,23 +117,14 @@ class _TasksScreenState extends State<TasksScreen> {
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(key: Key('tasks-loading'))
-            : Padding(
+            // Never an empty list on failure: "it has nothing to do" and
+            // "I could not ask" are different things to be told.
+            : RefusalNotice(
                 key: const Key('tasks-error'),
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Never an empty list on failure: "it has nothing to do" and
-                    // "I could not ask" are different things to be told.
-                    Text('$_error', textAlign: TextAlign.center),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      key: const Key('tasks-retry-read'),
-                      onPressed: () => _read(),
-                      child: const Text('再试一次'),
-                    ),
-                  ],
-                ),
+                error: _error!,
+                subject: '任务',
+                onRetry: () => _read(),
+                retryKey: const Key('tasks-retry-read'),
               ),
       ),
     );

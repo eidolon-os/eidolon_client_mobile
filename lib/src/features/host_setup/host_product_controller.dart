@@ -92,6 +92,19 @@ class HostProductController extends ChangeNotifier {
   WorkspaceStatus? _workspace;
   String? _workspaceError;
   WorkspaceRuntime? _workspaceRuntime;
+
+  /// What this Host says it can do at all, read once per connected session.
+  ///
+  /// Cached beside the other Host facts rather than fetched by each screen,
+  /// because it is the same kind of fact: it changes when the Host changes, not
+  /// while somebody is looking at a page. A screen that read it on open would
+  /// make controls appear and disappear under a thumb; a screen that never read
+  /// it is why a Host missing a credential still offered four features that
+  /// could not work.
+  ///
+  /// Null means "not read yet", which is treated as no objection: a Host that
+  /// has not answered must not make every feature look withdrawn.
+  ManagementContextView? _managementContext;
   String? _workspaceRuntimeError;
   MountedDeviceInventory? _devices;
   String? _devicesError;
@@ -106,6 +119,8 @@ class HostProductController extends ChangeNotifier {
   WorkspaceStatus? get workspace => _workspace;
   String? get workspaceError => _workspaceError;
   WorkspaceRuntime? get workspaceRuntime => _workspaceRuntime;
+
+  ManagementContextView? get managementCapabilities => _managementContext;
   String? get workspaceRuntimeError => _workspaceRuntimeError;
   MountedDeviceInventory? get devices => _devices;
   String? get devicesError => _devicesError;
@@ -748,7 +763,24 @@ class HostProductController extends ChangeNotifier {
 
   Future<void> _loadReadyWorkspaceResources(WorkspaceStatus workspace) async {
     await _loadRuntime(workspace);
+    await _loadCapabilities();
     await _loadDevices();
+  }
+
+  /// Ask once what this Host can do, and never let the answer be a failure.
+  ///
+  /// Swallowed on purpose: capabilities decide whether a *row* is offered, and
+  /// a Host that could not answer must leave the rows alone rather than
+  /// withdraw all of them. The features themselves still refuse per action, and
+  /// those refusals now say which refusal they are.
+  Future<void> _loadCapabilities() async {
+    try {
+      _managementContext = await _managementRepository.context();
+    } on HostControllerAuthorizationException {
+      rethrow;
+    } catch (_) {
+      _managementContext = null;
+    }
   }
 
   Future<void> _loadRuntime(WorkspaceStatus workspace) async {

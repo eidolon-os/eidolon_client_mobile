@@ -404,7 +404,11 @@ void main() {
               const ManagementRequestException(
                 '读取失败',
                 statusCode: 503,
-                reason: 'memory is unavailable',
+                refusal: Refusal(
+                  kind: 'not_running',
+                  reason: 'memory is unavailable',
+                  retryable: true,
+                ),
               ),
             ),
           ),

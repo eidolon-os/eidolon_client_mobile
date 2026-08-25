@@ -213,6 +213,9 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             return CompanionPage(
               runtime: current,
               devices: _controller.devices,
+              // Read once when the Host was connected, so a row this Host
+              // cannot serve says so instead of opening onto a page that fails.
+              hostContext: _controller.managementCapabilities,
               onRename: _renameCompanion,
               onOpenHistory: _openPersonaHistory,
               onOpenRecollections: () => _openRecollections(current),

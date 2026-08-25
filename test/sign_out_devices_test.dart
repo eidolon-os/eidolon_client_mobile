@@ -175,7 +175,11 @@ void main() {
         const ManagementRequestException(
           '做不了',
           statusCode: 503,
-          reason: 'revocation_kv not configured on agent',
+          refusal: Refusal(
+            kind: 'not_configured',
+            reason: 'revocation_kv not configured on agent',
+            retryable: false,
+          ),
         ),
       ),
     );

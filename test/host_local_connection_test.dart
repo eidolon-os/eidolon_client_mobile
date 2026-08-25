@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:eidolon_client_mobile/src/features/host_setup/host_local_connection_page.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_client.dart';
@@ -207,8 +208,30 @@ class _OwnerName {
   final List<String> written = <String>[];
 }
 
+/// A Host that answers the management surface but has nothing interesting to say.
+///
+/// Every connected session reads `/context` now — it is how a row this Host
+/// cannot serve gets shown as held back rather than opening onto a page that
+/// fails — so a test that stubs only `/api/local/v1` describes a Host that
+/// cannot exist. Without this the session falls back to the production factory
+/// and a widget test reaches for a real socket, which does not fail: it hangs.
+ManagementClient _quietManagementClient() => _managementClientFor(_OwnerName());
+
 ManagementClient _managementClientFor(_OwnerName ownerName) => ManagementClient(
       httpClient: MockClient((request) async {
+        if (request.url.path == '/api/management/v1/context') {
+          // Every capability off and every reason given, which is the honest
+          // answer for a Host these tests never configured — and it keeps this
+          // file about what it is about.
+          return _jsonResponse({
+            'contract_version': '1',
+            'owner': {'owner_id': 'owner-1', 'display_name': 'Manson', 'revision': 4},
+            'default_companion_id': 'companion-a',
+            'capabilities': <String, bool>{},
+            'unavailable': <String, String>{},
+            'limits': <String, int?>{'max_active_companions': null},
+          });
+        }
         if (request.url.path == '/api/management/v1/host/vitals') {
           // The system page reads the machine over the management contract
           // now. A Host that answers with no readings is a real state — the
@@ -359,6 +382,7 @@ LocalApiClient _clientFor(
 }
 
 void main() {
+  _theseTestsDescribeAHostThatCanAnswer();
   testWidgets(
       'legacy claimed Host refreshes only TLS trust over BLE then authenticates on LAN',
       (tester) async {
@@ -369,6 +393,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
           host: _host(),
           transport: transport,
           controllerKeys: _FakeControllerKeys(),
@@ -401,6 +426,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
           host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           transport: transport,
           controllerKeys: _FakeControllerKeys(),
@@ -425,6 +451,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
           host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),
@@ -451,6 +478,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
           host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),
@@ -477,6 +505,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
           host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),
@@ -511,6 +540,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
           host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),
@@ -537,6 +567,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
           host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),
@@ -560,6 +591,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
           host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),
@@ -586,6 +618,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
           host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),
@@ -762,6 +795,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
           host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),
@@ -912,6 +946,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
           host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),
@@ -942,6 +977,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
           host: _host(),
           onHostUpdated: (_) async {},
           transport: _LegacyHostTransport(),
@@ -1233,5 +1269,33 @@ void main() {
 
     expect(find.byKey(const Key('memory-wing-Wing_Life')), findsOneWidget);
     expect(find.text('饮食'), findsOneWidget);
+  });
+}
+
+
+/// A test in this file must describe a Host that can answer, on both surfaces.
+///
+/// Twelve constructions here stubbed `/api/local/v1` and left the management
+/// client to its production default, which in a widget test reaches for a real
+/// socket — and that does not fail, it hangs. Nothing caught it until a connected
+/// session started reading `/context`, at which point four tests timed out for a
+/// reason that had nothing to do with what they were testing.
+void _theseTestsDescribeAHostThatCanAnswer() {
+  test('every page in this file is given a management surface to talk to', () {
+    final source = File('test/host_local_connection_test.dart')
+        .readAsStringSync();
+    final blocks = source.split('HostLocalConnectionPage(');
+    // The first chunk is everything before the first construction.
+    for (var index = 1; index < blocks.length; index += 1) {
+      final block = blocks[index];
+      final head = block.substring(0, block.length.clamp(0, 900));
+      expect(
+        head,
+        contains('managementClientFactory'),
+        reason:
+            'construction #$index leaves the management client to the production '
+            'factory, which opens a real socket in a widget test',
+      );
+    }
   });
 }

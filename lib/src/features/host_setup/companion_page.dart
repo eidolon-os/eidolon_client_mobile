@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../generated/management_v1.dart';
+import '../../management/management_client.dart';
 import '../device_management/mounted_device_models.dart';
 import 'workspace_runtime_models.dart';
 
@@ -25,6 +27,7 @@ class CompanionPage extends StatelessWidget {
     this.face,
     this.onChangeFace,
     this.onClearFace,
+    this.hostContext,
   });
 
   final WorkspaceRuntime runtime;
@@ -50,6 +53,25 @@ class CompanionPage extends StatelessWidget {
   final Uint8List? face;
   final VoidCallback? onChangeFace;
   final VoidCallback? onClearFace;
+
+  /// What this Host says it can do at all, so a row it cannot serve is shown as
+  /// held back rather than shown as working or removed without explanation.
+  ///
+  /// Null while it has not been read. Absent is treated as "no objection": a
+  /// Host that has not answered yet must not make every feature look withdrawn.
+  final ManagementContextView? hostContext;
+
+  /// Why this row is not openable, or null if there is nothing to say.
+  ///
+  /// Named per row here rather than passed in as a map, because which row is
+  /// which feature is this page's knowledge — and the alternative is a caller
+  /// that has to keep a parallel list of capability names in step with a list
+  /// of widgets.
+  String? _hold(String capability) {
+    final context = hostContext;
+    if (context == null) return null;
+    return capabilityHold(context, capability);
+  }
 
   List<MountedDevice> get _itsDevices =>
       (devices?.devices ?? const <MountedDevice>[])
@@ -140,51 +162,37 @@ class CompanionPage extends StatelessWidget {
               ),
             ),
           const SizedBox(height: 16),
-          if (onOpenRecollections != null)
-            Card(
-              child: ListTile(
-                key: const Key('companion-open-recollections'),
-                leading: const Icon(Icons.menu_book_outlined),
-                title: const Text('它记得什么'),
-                subtitle: const Text('问问看,它记住的东西留在这台主机上'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: onOpenRecollections,
-              ),
-            ),
-          const SizedBox(height: 16),
-          if (onOpenTasks != null)
-            Card(
-              child: ListTile(
-                key: const Key('companion-open-tasks'),
-                leading: const Icon(Icons.checklist_outlined),
-                title: const Text('交给它的事'),
-                subtitle: const Text('看它做到哪了，也可以让它别做了'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: onOpenTasks,
-              ),
-            ),
-          if (onOpenTasks != null) const SizedBox(height: 16),
-          if (onOpenConversations != null)
-            Card(
-              child: ListTile(
-                key: const Key('companion-open-conversations'),
-                leading: const Icon(Icons.forum_outlined),
-                title: const Text('说过的话'),
-                subtitle: const Text('哪天聊过，以及那次说了什么'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: onOpenConversations,
-              ),
-            ),
-          if (onOpenConversations != null) const SizedBox(height: 16),
-          Card(
-            child: ListTile(
-              key: const Key('companion-open-history'),
-              leading: const Icon(Icons.auto_awesome_outlined),
-              title: const Text('它的变化'),
-              subtitle: const Text('看看它变成过什么样，也可以让它回到之前'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: onOpenHistory,
-            ),
+          _FeatureRow(
+            tileKey: const Key('companion-open-recollections'),
+            icon: Icons.menu_book_outlined,
+            title: '它记得什么',
+            subtitle: '问问看,它记住的东西留在这台主机上',
+            onOpen: onOpenRecollections,
+            hold: _hold('memory.read'),
+          ),
+          _FeatureRow(
+            tileKey: const Key('companion-open-tasks'),
+            icon: Icons.checklist_outlined,
+            title: '交给它的事',
+            subtitle: '看它做到哪了，也可以让它别做了',
+            onOpen: onOpenTasks,
+            hold: _hold('task.read'),
+          ),
+          _FeatureRow(
+            tileKey: const Key('companion-open-conversations'),
+            icon: Icons.forum_outlined,
+            title: '说过的话',
+            subtitle: '哪天聊过，以及那次说了什么',
+            onOpen: onOpenConversations,
+            hold: _hold('conversation.read'),
+          ),
+          _FeatureRow(
+            tileKey: const Key('companion-open-history'),
+            icon: Icons.auto_awesome_outlined,
+            title: '它的变化',
+            subtitle: '看看它变成过什么样，也可以让它回到之前',
+            onOpen: onOpenHistory,
+            hold: _hold('persona.read'),
           ),
           const SizedBox(height: 16),
           Text('它的设备', style: Theme.of(context).textTheme.titleMedium),
@@ -213,6 +221,59 @@ class CompanionPage extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// One thing a person can open about their Eidolon, or the reason they cannot.
+///
+/// Three states, and the third is the one this page could not express before:
+///
+/// - **openable** — a callback and no objection from the Host;
+/// - **held back** — the Host says it cannot serve this, so the row stays and
+///   says which kind of cannot. A row that silently vanished taught people the
+///   feature was gone; a row that opened onto a page that always fails is the
+///   thing the capability contract exists to prevent. Saying so is the third
+///   option, and it is the honest one on a product where the person holding the
+///   phone is usually the person who owns the Host.
+/// - **absent** — nothing wired behind it in this build at all, which is not a
+///   fact about the Host and so is not narrated.
+class _FeatureRow extends StatelessWidget {
+  const _FeatureRow({
+    required this.tileKey,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onOpen,
+    required this.hold,
+  });
+
+  final Key tileKey;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onOpen;
+  final String? hold;
+
+  @override
+  Widget build(BuildContext context) {
+    if (onOpen == null && hold == null) return const SizedBox.shrink();
+    final withheld = hold != null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Card(
+        child: ListTile(
+          key: tileKey,
+          leading: Icon(icon),
+          title: Text(title),
+          subtitle: Text(subtitle),
+          trailing: withheld
+              ? Chip(label: Text(hold!))
+              : const Icon(Icons.chevron_right),
+          enabled: !withheld,
+          onTap: withheld ? null : onOpen,
+        ),
       ),
     );
   }

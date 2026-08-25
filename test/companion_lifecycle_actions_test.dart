@@ -82,13 +82,18 @@ void main() {
 
     test('a refusal that is a question arrives as one', () async {
       // Before the code travelled, this was an anonymous 409 — the same thing a
-      // lost race looks like, and nothing a screen could act on.
+      // lost race looks like, and nothing a screen could act on. The Host now
+      // publishes one envelope for every refusal on this surface, so the kind
+      // and the domain code arrive together and a screen can tell the question
+      // ("who should answer instead?") from the accident.
       final client = ManagementClient(
         httpClient: MockClient((request) async => _answer(
               {
                 'detail': {
+                  'kind': 'conflict',
+                  'reason': 'companion is the owner default',
                   'code': 'default_replacement_required',
-                  'message': 'companion is the owner default',
+                  'retryable': false,
                 }
               },
               status: 409,
@@ -180,7 +185,12 @@ void main() {
                   throw const ManagementRequestException(
                     '收起来被拒绝',
                     statusCode: 409,
-                    code: 'default_replacement_required',
+                    // The Host's envelope, as it now arrives: a conflict that is
+                    // a question rather than a lost race, named by its code.
+                    refusal: Refusal(
+                      kind: 'conflict',
+                      code: 'default_replacement_required',
+                    ),
                   );
                 }
                 return CompanionLifecycleView.fromJson({
@@ -222,7 +232,10 @@ void main() {
                   throw const ManagementRequestException(
                 '收起来被拒绝',
                 statusCode: 409,
-                code: 'last_active_companion',
+                refusal: Refusal(
+                  kind: 'conflict',
+                  code: 'last_active_companion',
+                ),
               ),
             ),
           ),

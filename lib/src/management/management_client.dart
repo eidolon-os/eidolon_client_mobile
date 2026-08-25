@@ -6,43 +6,161 @@ import 'package:http/http.dart' as http;
 
 import '../generated/management_v1.dart';
 
-/// What the Host said when it would not answer.
+/// What the Host said when it would not answer, in the words it said it in.
 ///
-/// Kept apart from the status code because the code alone cannot separate "this
-/// Host has not been given an Owner yet" from "the authority behind it is
-/// down", and a screen keyed on the code has to offer one guess for both.
+/// The Host now answers every refusal on this surface with one envelope — see
+/// `Refusal` in the generated contract — so this type carries it rather than
+/// re-deriving meaning from a status. It used to do the latter, and the result is
+/// worth remembering: "this Host has no Owner yet" and "someone else changed
+/// this first" are both 409, so the two predicates that were supposed to tell
+/// them apart were the same expression, and a lost race on the roster rendered
+/// 「这台主机还没有主人」.
+///
+/// Screens do not read [kind] directly. [refusalText] turns a refusal into a
+/// sentence and [canRetry] decides whether to offer one, both in one place —
+/// because ten screens each wording a refusal is how 被拒绝 with nothing after
+/// it became the app's answer to everything.
 class ManagementRequestException implements Exception {
-  const ManagementRequestException(this.message,
-      {this.statusCode, this.reason, this.code});
+  const ManagementRequestException(
+    this.message, {
+    this.statusCode,
+    this.refusal,
+  });
 
   final String message;
   final int? statusCode;
-  final String? reason;
 
-  /// The Host's own word for *which* refusal this is, when it gave one.
+  /// The refusal the Host gave, in one field.
   ///
-  /// A status says how to treat the failure; this says what happened. Two of
-  /// these are questions rather than errors — "this is the Eidolon that answers
-  /// you, who should answer instead?" — and a screen can only ask them if it is
-  /// told that is what came back.
-  final String? code;
+  /// Null means nothing was refused: a timeout, a dropped socket, a body this
+  /// client could not read at all. A real distinction, and the only one — a Host
+  /// too old to publish the envelope still produces one here, derived from its
+  /// status, so no caller has to ask "which of the two sentences do I have".
+  /// Two places holding the Host's words is the shape of the bug this whole
+  /// change removes; it does not get to move into the client.
+  final Refusal? refusal;
+
+  /// The Host's own sentence, when it gave one.
+  ///
+  /// Shown only as a fallback: for a refusal this app understands, its own
+  /// wording is better than a relayed one, which is usually operator English.
+  String? get reason {
+    final relayed = refusal?.reason;
+    return relayed == null || relayed.isEmpty ? null : relayed;
+  }
+
+  /// Which refusal this is, or null when the answer carried none.
+  String? get kind => refusal?.kind;
+
+  /// The Host's own word for what happened in the domain, when it gave one.
+  ///
+  /// Two of these are questions rather than errors — "this is the Eidolon that
+  /// answers you, who should answer instead?" — and a screen can only ask them
+  /// if it is told that is what came back.
+  String? get code => refusal?.code;
 
   /// True when someone else changed this first and this app's view is stale.
   ///
   /// The one refusal a client must answer by re-reading rather than retrying:
   /// retrying a stale write would mean whichever phone is more persistent wins,
   /// which is not what the person at either phone asked for.
-  bool get someoneElseChangedIt => statusCode == 409;
+  ///
+  /// Keyed on the kind, not on 409. The Host distinguishes a conflict from a
+  /// Host that was never set up; this app must not re-merge them.
+  bool get someoneElseChangedIt => kind == 'conflict';
 
   /// True when this Host has no Owner yet, so there is nothing to list.
   ///
   /// Deliberately not folded into "empty roster": a person with no Eidolons and
   /// a Host that was never provisioned need different screens, and only one of
   /// them should be offered a create button.
-  bool get hostHasNoOwner => statusCode == 409;
+  bool get hostHasNoOwner => code == 'host_not_provisioned';
+
+  /// True when this Host was never configured for what was asked.
+  ///
+  /// The refusal that had no name here until it cost two weeks: a Host missing
+  /// an authority credential answered 503, the app called it 被拒绝, and offered
+  /// 再试一次 — a button that could never work, on a fault no retry can reach.
+  bool get hostIsNotConfigured => kind == 'not_configured';
+
+  /// True when the part of the Host that answers this is not running.
+  bool get hostPartIsDown => kind == 'not_running';
+
+  /// True when this device's management authorisation is no longer accepted.
+  bool get authorisationRejected => kind == 'denied';
 
   @override
-  String toString() => reason == null ? message : '$message：$reason';
+  String toString() {
+    final detail = reason;
+    return detail == null ? message : '$message：$detail';
+  }
+}
+
+/// What to tell a person about a refusal, decided once for every screen.
+///
+/// [subject] is what the screen was asking for — 「它记住的」,「对话记录」—
+/// supplied by the caller because the Host deliberately does not say which of
+/// its internal services refused: a screen already knows what it asked for, and
+/// naming the authority would put the Host's service graph in a public contract.
+///
+/// Falls through to the Host's own sentence for a kind this app has not heard
+/// of. That is the version-skew case and it must degrade, not fail: a newer Host
+/// with a new kind should still be readable on an older phone.
+String refusalText(Object error, {required String subject}) {
+  if (error is! ManagementRequestException) return '$error';
+  if (error.hostHasNoOwner) return '这台主机还没有主人，先完成设置';
+  switch (error.kind) {
+    case 'not_configured':
+      // The refusal that had no sentence at all until it cost two weeks. Says
+      // where to go, because nothing on this phone can fix it.
+      return '这台主机还没配好$subject，要先在主机上补齐配置';
+    case 'not_running':
+      return '$subject现在没有响应，可能还没启动';
+    case 'denied':
+      return '这台手机的管理授权已经失效，请重新连接主机';
+    case 'not_found':
+      // Also the answer for "not yours", deliberately: saying more would turn
+      // any screen keyed on an id into a way to test identifiers.
+      return '这台主机上没有$subject';
+    case 'conflict':
+      return '有人先改过了，这里看到的已经不是最新的';
+    case 'invalid':
+      return '主机没有接受这次请求';
+    case 'upstream':
+      return '主机在处理$subject时出错了';
+  }
+  return '$error';
+}
+
+/// The Host's own words about its own fault, when they add something.
+///
+/// Shown beside [refusalText] rather than instead of it, and only for the three
+/// refusals that point at the Host rather than at what the person just did.
+/// The composed sentence says what this means and what to do; this says which
+/// part broke — "data authority is down", "revocation_kv not configured on
+/// agent" — and whoever owns the Host is usually the person holding the phone.
+///
+/// Withheld for the rest on purpose. A relayed sentence next to 「有人先改过了」
+/// or 「主机没有接受这次请求」 adds no information a person can use, and reads as
+/// the app leaking its own plumbing.
+String? refusalDetail(Object error) {
+  if (error is! ManagementRequestException) return null;
+  const pointsAtTheHost = {'not_configured', 'not_running', 'upstream'};
+  if (!pointsAtTheHost.contains(error.kind)) return null;
+  return error.reason;
+}
+
+/// Whether offering 再试一次 is honest for this refusal.
+///
+/// A retry button on a Host that was never configured is a promise the product
+/// cannot keep, and it was the one this app showed for exactly that case. The
+/// Host says whether waiting could change the answer; this asks it rather than
+/// guessing from a status.
+bool canRetry(Object error) {
+  if (error is! ManagementRequestException) return true;
+  final refusal = error.refusal;
+  if (refusal == null) return true;
+  return refusal.retryable ?? false;
 }
 
 /// A face this app holds, and which one it is.
@@ -420,8 +538,7 @@ class ManagementClient {
       throw ManagementRequestException(
         '换脸被拒绝',
         statusCode: response.statusCode,
-        reason: _reason(body),
-        code: _code(body),
+        refusal: _refusal(body) ?? _refusalFromStatus(response.statusCode, body),
       );
     }
     return CompanionFaceView.fromJson(
@@ -981,8 +1098,7 @@ class ManagementClient {
       throw ManagementRequestException(
         '$what被拒绝',
         statusCode: response.statusCode,
-        reason: _reason(body),
-        code: _code(body),
+        refusal: _refusal(body) ?? _refusalFromStatus(response.statusCode, body),
       );
     }
     final decoded = jsonDecode(_text(response));
@@ -1002,27 +1118,63 @@ class ManagementClient {
   static String _text(http.Response response) =>
       utf8.decode(response.bodyBytes);
 
-  /// The Host's own words, when it gave any.
+  /// The refusal the Host published, when the answer carried one.
   ///
-  /// Two shapes: a plain sentence, or `{code, message}` for the refusals a
-  /// client is expected to act on differently. Both are read here so a screen
-  /// never has to know which route it called.
-  static String? _reason(String body) {
+  /// One shape to read, because the Host now publishes one: `Refusal` under
+  /// `detail`, declared in the contract this file is generated from. There used
+  /// to be two here and a guess between them, and the guess is what dropped the
+  /// only fact that mattered — an authority credential this Host was never
+  /// given — on its way to the screen.
+  ///
+  /// Forgiving about anything else: a body this cannot read yields null rather
+  /// than an exception. A client that threw while reading an error would replace
+  /// a refusal a person could act on with a crash nobody can.
+  static Refusal? _refusal(String body) {
+    final detail = _detail(body);
+    if (detail is! Map) return null;
+    final kind = detail['kind'];
+    if (kind is! String) return null;
+    try {
+      return Refusal.fromJson(Map<String, dynamic>.from(detail));
+    } on Object {
+      return null;
+    }
+  }
+
+  /// A refusal derived from the status, for a Host too old to publish one.
+  ///
+  /// The version-skew path, and forgiving on purpose: a client that failed on a
+  /// body it did not recognise would turn "the Host is a release behind" into a
+  /// screen with nothing on it. The mapping mirrors the one the Host uses for
+  /// the same purpose — a fallback each side must be able to reach alone, which
+  /// is why it is not in the shared contract.
+  static Refusal _refusalFromStatus(int statusCode, String body) {
+    const byStatus = <int, String>{
+      400: 'invalid',
+      401: 'denied',
+      403: 'denied',
+      404: 'not_found',
+      409: 'conflict',
+      412: 'conflict',
+      415: 'invalid',
+      422: 'invalid',
+    };
+    return Refusal(
+      kind: byStatus[statusCode] ??
+          (statusCode >= 500 ? 'upstream' : 'invalid'),
+      reason: _sentence(body),
+      retryable: statusCode >= 500,
+    );
+  }
+
+  /// The older shapes: a bare sentence, or `{code, message}`.
+  static String? _sentence(String body) {
     final detail = _detail(body);
     if (detail is String) {
       return detail;
     }
     if (detail is Map && detail['message'] is String) {
       return detail['message'] as String;
-    }
-    return null;
-  }
-
-  /// The refusal code, when the Host named one.
-  static String? _code(String body) {
-    final detail = _detail(body);
-    if (detail is Map && detail['code'] is String) {
-      return detail['code'] as String;
     }
     return null;
   }
@@ -1090,3 +1242,29 @@ class CompanionDetailOutcome {
 /// everything switched off.
 bool hostCan(ManagementContextView context, String capability) =>
     context.capabilities[capability] == true;
+
+/// Why this Host is not offering something, in words for the person holding it.
+///
+/// Null when the Host can do it, or when it cannot and said nothing useful
+/// about why. Non-null is a label for a held-back row: the feature exists in
+/// this app, this Host is not offering it, and here is which kind of not.
+///
+/// Two reasons rather than one, because they lead completely different places.
+/// `not_built` is a release nobody has cut and there is nothing to be done about
+/// it tonight. `host_not_configured` is a credential this Host was never given —
+/// a command somebody can run — and on this product the person holding the phone
+/// is usually the person who owns the Host. Folding them was what turned a
+/// missing credential into two weeks of guessing.
+///
+/// A reason this build has not heard of degrades to the neutral label rather
+/// than being dropped: the Host may be newer than the phone.
+String? capabilityHold(ManagementContextView context, String capability) {
+  if (hostCan(context, capability)) return null;
+  switch (context.unavailable?[capability]) {
+    case 'host_not_configured':
+      return '主机未配置';
+    case 'not_built':
+      return '尚未开放';
+  }
+  return '暂不可用';
+}

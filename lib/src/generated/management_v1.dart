@@ -819,6 +819,7 @@ class ManagementContextView {
     this.defaultCompanionId,
     required this.limits,
     required this.owner,
+    this.unavailable,
   });
 
   final Map<String, bool> capabilities;
@@ -831,6 +832,8 @@ class ManagementContextView {
 
   final OwnerContextView owner;
 
+  final Map<String, String>? unavailable;
+
   factory ManagementContextView.fromJson(Map<String, dynamic> value) {
     return ManagementContextView(
       capabilities: ((value['capabilities'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as bool))),
@@ -838,6 +841,7 @@ class ManagementContextView {
       defaultCompanionId: value['default_companion_id'] as String?,
       limits: ((value['limits'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as int?))),
       owner: OwnerContextView.fromJson(value['owner'] as Map<String, dynamic>),
+      unavailable: value['unavailable'] == null ? null : ((value['unavailable'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as String))),
     );
   }
 }

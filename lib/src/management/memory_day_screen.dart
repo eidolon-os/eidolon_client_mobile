@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
 import 'audience_sheet.dart';
-import 'management_client.dart';
+import 'refusal_notice.dart';
 import 'memory_day_page.dart';
 
 /// Loads today, and decides what "today" means — because the Host cannot.
@@ -143,27 +143,12 @@ class _MemoryDayScreenState extends State<MemoryDayScreen> {
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(key: Key('memory-day-loading'))
-            : Padding(
+            : RefusalNotice(
                 key: const Key('memory-day-error'),
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _error is ManagementRequestException &&
-                              (_error as ManagementRequestException).hostHasNoOwner
-                          ? '这台主机还没有主人，先完成设置'
-                          : '$_error',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      key: const Key('memory-day-retry'),
-                      onPressed: _read,
-                      child: const Text('再试一次'),
-                    ),
-                  ],
-                ),
+                error: _error!,
+                subject: '今天记下的',
+                onRetry: _read,
+                retryKey: const Key('memory-day-retry'),
               ),
       ),
     );

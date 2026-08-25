@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
 import 'conversations_page.dart';
-import 'management_client.dart';
+import 'refusal_notice.dart';
 import 'transcript_page.dart';
 
 /// Loads the occasions, and opens one.
@@ -89,23 +89,12 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(key: Key('conversations-loading'))
-            : Padding(
+            : RefusalNotice(
                 key: const Key('conversations-error'),
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Never an empty list on failure: "we have not talked" and
-                    // "I could not ask" are different things to be told.
-                    Text('$_error', textAlign: TextAlign.center),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      key: const Key('conversations-retry'),
-                      onPressed: () => _read(),
-                      child: const Text('再试一次'),
-                    ),
-                  ],
-                ),
+                error: _error!,
+                subject: '对话记录',
+                onRetry: () => _read(),
+                retryKey: const Key('conversations-retry'),
               ),
       ),
     );
@@ -180,29 +169,12 @@ class _TranscriptScreenState extends State<_TranscriptScreen> {
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(key: Key('transcript-loading'))
-            : Padding(
+            : RefusalNotice(
                 key: const Key('transcript-error'),
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _error is ManagementRequestException &&
-                              (_error as ManagementRequestException).statusCode == 404
-                          // The conversation is gone, or was never this Owner's.
-                          // Both arrive as the same answer on purpose.
-                          ? '找不到这次对话了'
-                          : '$_error',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      key: const Key('transcript-retry'),
-                      onPressed: () => _read(),
-                      child: const Text('再试一次'),
-                    ),
-                  ],
-                ),
+                error: _error!,
+                subject: '这次对话',
+                onRetry: () => _read(),
+                retryKey: const Key('transcript-retry'),
               ),
       ),
     );

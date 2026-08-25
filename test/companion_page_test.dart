@@ -1,4 +1,5 @@
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_device_models.dart';
+import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/companion_page.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/workspace_runtime_models.dart';
 import 'package:flutter/material.dart';
@@ -87,6 +88,7 @@ Future<void> _open(
 }
 
 void main() {
+  _withheldRowTests();
   testWidgets('the page is the Eidolon, not the machine it runs on',
       (tester) async {
     await _open(tester);
@@ -145,5 +147,158 @@ void main() {
 
     expect(find.textContaining(_companionId), findsNothing);
     expect(find.text('这个 Eidolon'), findsWidgets);
+  });
+}
+
+/// A Host with a stated opinion about what it can do.
+ManagementContextView _context({
+  required Map<String, bool> capabilities,
+  Map<String, String> unavailable = const {},
+}) =>
+    ManagementContextView(
+      owner: const OwnerContextView(
+        ownerId: 'owner-1',
+        displayName: 'Manson',
+        revision: 4,
+      ),
+      capabilities: capabilities,
+      unavailable: unavailable,
+      limits: const {'max_active_companions': null},
+    );
+
+Future<void> _pumpWithContext(
+  WidgetTester tester,
+  ManagementContextView? context,
+) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      home: CompanionPage(
+        runtime: _runtime(),
+        devices: null,
+        onRename: () {},
+        onOpenHistory: () {},
+        onOpenRecollections: () {},
+        onOpenTasks: () {},
+        onOpenConversations: () {},
+        hostContext: context,
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+void _withheldRowTests() {
+  group('a row this Host cannot serve', () {
+    testWidgets('stays, and says which kind of cannot', (tester) async {
+      // The state this page could not express. A Host missing its memory
+      // credential used to answer memory.read: true, so the row opened onto a
+      // page that always failed; hiding the row instead taught people the
+      // feature was gone. Neither is the truth, and the truth is short.
+      await _pumpWithContext(
+        tester,
+        _context(
+          capabilities: {
+            'memory.read': false,
+            'task.read': false,
+            'conversation.read': true,
+            'persona.read': true,
+          },
+          unavailable: {
+            'memory.read': 'host_not_configured',
+            'task.read': 'not_built',
+          },
+        ),
+      );
+
+      expect(find.text('它记得什么'), findsOneWidget);
+      expect(find.text('主机未配置'), findsOneWidget);
+      expect(find.text('尚未开放'), findsOneWidget);
+
+      // Held back means not openable: tapping must do nothing rather than
+      // navigate to a page that cannot load.
+      final row = tester.widget<ListTile>(
+        find.byKey(const Key('companion-open-recollections')),
+      );
+      expect(row.enabled, isFalse);
+      expect(row.onTap, isNull);
+    });
+
+    testWidgets('an available row is openable and unlabelled', (tester) async {
+      await _pumpWithContext(
+        tester,
+        _context(
+          capabilities: {
+            'memory.read': true,
+            'task.read': true,
+            'conversation.read': true,
+            'persona.read': true,
+          },
+        ),
+      );
+
+      final row = tester.widget<ListTile>(
+        find.byKey(const Key('companion-open-recollections')),
+      );
+      expect(row.enabled, isTrue);
+      expect(row.onTap, isNotNull);
+      expect(find.text('主机未配置'), findsNothing);
+      expect(find.text('尚未开放'), findsNothing);
+    });
+
+    testWidgets('a Host that has not answered yet withdraws nothing',
+        (tester) async {
+      // Null is "not read", not "refused". A page that treated silence as a no
+      // would show every feature withdrawn for the moment after connecting.
+      await _pumpWithContext(tester, null);
+
+      for (final key in const [
+        'companion-open-recollections',
+        'companion-open-tasks',
+        'companion-open-conversations',
+        'companion-open-history',
+      ]) {
+        final row = tester.widget<ListTile>(find.byKey(Key(key)));
+        expect(row.enabled, isTrue, reason: key);
+      }
+    });
+
+    testWidgets('a reason this build has not heard of still reads',
+        (tester) async {
+      // The Host may be newer than the phone. An unknown reason degrades to a
+      // neutral label rather than being dropped, which would silently restore
+      // the "row opens onto a failing page" behaviour.
+      await _pumpWithContext(
+        tester,
+        _context(
+          capabilities: {
+            'memory.read': false,
+            'task.read': true,
+            'conversation.read': true,
+            'persona.read': true,
+          },
+          unavailable: {'memory.read': 'something_new'},
+        ),
+      );
+
+      expect(find.text('暂不可用'), findsOneWidget);
+    });
+
+    testWidgets('a capability this Host has never heard of is held back too',
+        (tester) async {
+      // The other direction of skew: this app is newer than the Host, so the
+      // name is simply absent from the map. Absent and false mean the same
+      // thing to a person — the Host is not offering it — and the row says so
+      // rather than pretending the feature works.
+      await _pumpWithContext(
+        tester,
+        _context(capabilities: {'persona.read': true}),
+      );
+
+      expect(find.text('暂不可用'), findsNWidgets(3));
+      final history = tester.widget<ListTile>(
+        find.byKey(const Key('companion-open-history')),
+      );
+      expect(history.enabled, isTrue, reason: 'the one it did name');
+    });
   });
 }

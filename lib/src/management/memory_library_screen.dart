@@ -5,6 +5,7 @@ import 'forget_sheet.dart';
 import 'memory_copy_screen.dart';
 import 'memory_day_screen.dart';
 import 'management_client.dart';
+import 'refusal_notice.dart';
 import 'memory_library_page.dart';
 
 /// Loads the library and shows one of three honest answers.
@@ -164,27 +165,12 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(key: Key('memory-library-loading'))
-            : Padding(
+            : RefusalNotice(
                 key: const Key('memory-library-error'),
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _error is ManagementRequestException &&
-                              (_error as ManagementRequestException).hostHasNoOwner
-                          ? '这台主机还没有主人，先完成设置'
-                          : '$_error',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      key: const Key('memory-library-retry'),
-                      onPressed: _read,
-                      child: const Text('再试一次'),
-                    ),
-                  ],
-                ),
+                error: _error!,
+                subject: '它记住的',
+                onRetry: _read,
+                retryKey: const Key('memory-library-retry'),
               ),
       ),
     );

@@ -7,6 +7,7 @@ import '../features/naming/ask_for_a_name.dart';
 import '../generated/management_v1.dart';
 import 'lifecycle_sheet.dart';
 import 'management_client.dart';
+import 'refusal_notice.dart';
 import '../protocol/companion_contract.dart';
 
 /// One Eidolon, opened from the roster.
@@ -169,32 +170,12 @@ class _CompanionDetailScreenState extends State<CompanionDetailScreen> {
       return Center(
         child: _busy
             ? const CircularProgressIndicator(key: Key('detail-loading'))
-            : Padding(
+            : RefusalNotice(
                 key: const Key('detail-error'),
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      // 404 here is "not one of yours", which is also the
-                      // answer when the id never existed. Saying more would
-                      // turn this screen into a way to test identifiers.
-                      _error is ManagementRequestException &&
-                              (_error as ManagementRequestException)
-                                      .statusCode ==
-                                  404
-                          ? '这台主机上没有这个 Eidolon'
-                          : '$_error',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      key: const Key('detail-retry'),
-                      onPressed: _read,
-                      child: const Text('再试一次'),
-                    ),
-                  ],
-                ),
+                error: _error!,
+                subject: '这个 Eidolon',
+                onRetry: _read,
+                retryKey: const Key('detail-retry'),
               ),
       );
     }

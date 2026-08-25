@@ -133,7 +133,11 @@ void main() {
       // person to a button that cannot work.
       final client = ManagementClient(
         httpClient: MockClient(
-          (_) async => http.Response('{"detail":"no Owner yet"}', 409),
+          (_) async => http.Response(
+            '{"detail":{"kind":"not_configured","reason":"no Owner yet",'
+            '"code":"host_not_provisioned","retryable":false}}',
+            409,
+          ),
         ),
       );
 
@@ -145,7 +149,12 @@ void main() {
         throwsA(
           isA<ManagementRequestException>()
               .having((e) => e.hostHasNoOwner, 'hostHasNoOwner', isTrue)
-              .having((e) => e.reason, 'reason', 'no Owner yet'),
+              // Told apart by the domain code rather than by the status. Both
+              // this and a lost race are 409, and the two predicates that used
+              // to separate them were the same expression.
+              .having((e) => e.someoneElseChangedIt, 'someoneElseChangedIt',
+                  isFalse)
+              .having((e) => e.refusal?.reason, 'reason', 'no Owner yet'),
         ),
       );
     });
@@ -209,7 +218,11 @@ void main() {
               const ManagementRequestException(
                 '读取失败',
                 statusCode: 503,
-                reason: 'data authority is down',
+                refusal: Refusal(
+                  kind: 'upstream',
+                  reason: 'data authority is down',
+                  retryable: true,
+                ),
               ),
             ),
           ),
@@ -228,7 +241,14 @@ void main() {
         MaterialApp(
           home: CompanionRosterScreen(
             load: ({String? cursor}) => Future.error(
-              const ManagementRequestException('读取失败', statusCode: 409),
+              const ManagementRequestException(
+                '读取失败',
+                statusCode: 409,
+                refusal: Refusal(
+                  kind: 'not_configured',
+                  code: 'host_not_provisioned',
+                ),
+              ),
             ),
           ),
         ),
@@ -599,7 +619,11 @@ void switcherTests() {
             },
             loadContext: () async => context(),
             setDefaultCompanion: (_, __) => Future.error(
-              const ManagementRequestException('拒绝', statusCode: 409),
+              const ManagementRequestException(
+                '拒绝',
+                statusCode: 409,
+                refusal: Refusal(kind: 'conflict'),
+              ),
             ),
           ),
         ),
@@ -626,7 +650,10 @@ void switcherTests() {
               const ManagementRequestException(
                 '拒绝',
                 statusCode: 400,
-                reason: 'a guard companion cannot be the default',
+                refusal: Refusal(
+                  kind: 'invalid',
+                  reason: 'a guard companion cannot be the default',
+                ),
               ),
             ),
           ),
@@ -950,7 +977,13 @@ void detailTests() {
           home: CompanionDetailScreen(
             companionId: 'someone-elses',
             load: (_) => Future.error(
-              const ManagementRequestException('读取失败', statusCode: 404),
+              const ManagementRequestException(
+                '读取失败',
+                statusCode: 404,
+                // 404 is also the answer for "not yours": saying more would
+                // turn this screen into a way to test identifiers.
+                refusal: Refusal(kind: 'not_found'),
+              ),
             ),
           ),
         ),
