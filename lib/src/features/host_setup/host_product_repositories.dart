@@ -164,6 +164,7 @@ class HostManagementRepository {
   Future<CreatedCompanion> createCompanion({
     required String operationId,
     required String displayName,
+    PersonaAuthoring? persona,
   }) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.createCompanion(
@@ -171,6 +172,16 @@ class HostManagementRepository {
           accessToken: accessToken,
           operationId: operationId,
           displayName: displayName,
+          persona: persona,
+        ),
+      );
+
+  /// What the Host would write if the authoring form came back untouched.
+  Future<PersonaAuthoring> personaAuthoringTemplate() =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.personaAuthoringTemplate(
+          baseUri,
+          accessToken: accessToken,
         ),
       );
 

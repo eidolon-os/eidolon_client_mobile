@@ -171,7 +171,9 @@ bool canRetry(Object error) {
 class CompanionFacePicture {
   const CompanionFacePicture({required this.bytes, this.sha256});
 
-  const CompanionFacePicture.none() : bytes = null, sha256 = null;
+  const CompanionFacePicture.none()
+      : bytes = null,
+        sha256 = null;
 
   final Uint8List? bytes;
   final String? sha256;
@@ -623,7 +625,8 @@ class ManagementClient {
       throw ManagementRequestException(
         '换脸被拒绝',
         statusCode: response.statusCode,
-        refusal: _refusal(body) ?? _refusalFromStatus(response.statusCode, body),
+        refusal:
+            _refusal(body) ?? _refusalFromStatus(response.statusCode, body),
       );
     }
     return CompanionFaceView.fromJson(
@@ -737,18 +740,45 @@ class ManagementClient {
   /// id yields one Eidolon; asking twice with two ids yields two. That is the
   /// difference between a lost response costing nothing and costing a duplicate
   /// the person then has to find and remove.
+  /// Who an Eidolon would be if the create form came back untouched.
+  ///
+  /// Read from the Host rather than kept here as constants. The value of it is
+  /// that it is what the Host would actually write, so a copy on this side would
+  /// show a personality this Host might not use — and the person would have
+  /// edited a description of something else.
+  Future<PersonaAuthoring> personaAuthoringTemplate(
+    Uri baseUri, {
+    required String accessToken,
+  }) async {
+    final body = await _send(
+      'GET',
+      baseUri.resolve(ManagementV1.personaAuthoringTemplatePath),
+      accessToken: accessToken,
+      what: '读取人格起点',
+    );
+    return PersonaAuthoring.fromJson(body);
+  }
+
   Future<CreatedCompanion> createCompanion(
     Uri baseUri, {
     required String accessToken,
     required String operationId,
     required String displayName,
+    PersonaAuthoring? persona,
   }) async {
     final body = await _send(
       'PUT',
       baseUri.resolve(ManagementV1.companionsPath),
       accessToken: accessToken,
       what: '新建 Eidolon',
-      body: {'operation_id': operationId, 'display_name': displayName},
+      body: {
+        'operation_id': operationId,
+        'display_name': displayName,
+        // Omitted rather than null when nobody wrote anything: the Host
+        // fingerprints the request, so sending a blank persona would turn a
+        // retry after a lost answer into a conflict instead of a replay.
+        if (persona != null) 'persona': persona.toJson(),
+      },
     );
     final view = CompanionCreatedView.fromJson(body);
     return CreatedCompanion(
@@ -772,7 +802,8 @@ class ManagementClient {
   }) async {
     var endpoint = baseUri.resolve(ManagementV1.memoryLibraryPath);
     if (companionId != null) {
-      endpoint = endpoint.replace(queryParameters: {'companion_id': companionId});
+      endpoint =
+          endpoint.replace(queryParameters: {'companion_id': companionId});
     }
     final body = await _get(
       endpoint,
@@ -878,7 +909,8 @@ class ManagementClient {
     final body = await _get(
       _withQuery(
         baseUri.resolve(
-          ManagementV1.companionsByCompanionIdConversationsByConversationIdTurnsPath(
+          ManagementV1
+              .companionsByCompanionIdConversationsByConversationIdTurnsPath(
             companionId,
             conversationId,
           ),
@@ -966,7 +998,8 @@ class ManagementClient {
     required String accessToken,
     required String what,
   }) async {
-    final body = await _send('POST', endpoint, accessToken: accessToken, what: what);
+    final body =
+        await _send('POST', endpoint, accessToken: accessToken, what: what);
     return TaskView.fromJson(body);
   }
 
@@ -1012,7 +1045,8 @@ class ManagementClient {
     final body = await _send(
       'PUT',
       baseUri.resolve(
-        ManagementV1.companionsByCompanionIdPersonaRestorationsPath(companionId),
+        ManagementV1.companionsByCompanionIdPersonaRestorationsPath(
+            companionId),
       ),
       accessToken: accessToken,
       what: '回到那时候',
@@ -1183,7 +1217,8 @@ class ManagementClient {
       throw ManagementRequestException(
         '$what被拒绝',
         statusCode: response.statusCode,
-        refusal: _refusal(body) ?? _refusalFromStatus(response.statusCode, body),
+        refusal:
+            _refusal(body) ?? _refusalFromStatus(response.statusCode, body),
       );
     }
     final decoded = jsonDecode(_text(response));
@@ -1245,8 +1280,8 @@ class ManagementClient {
       422: 'invalid',
     };
     return Refusal(
-      kind: byStatus[statusCode] ??
-          (statusCode >= 500 ? 'upstream' : 'invalid'),
+      kind:
+          byStatus[statusCode] ?? (statusCode >= 500 ? 'upstream' : 'invalid'),
       reason: _sentence(body),
       retryable: statusCode >= 500,
     );

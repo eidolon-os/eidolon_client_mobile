@@ -261,11 +261,13 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               lifecycleState: lifecycleState,
               replacementCompanionId: replacementCompanionId,
             ),
-            createCompanion: (operationId, displayName) =>
+            createCompanion: (operationId, displayName, persona) =>
                 _controller.createCompanion(
               operationId: operationId,
               displayName: displayName,
+              persona: persona,
             ),
+            loadPersonaTemplate: _controller.personaAuthoringTemplate,
           ),
         ),
       );

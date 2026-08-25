@@ -44,6 +44,7 @@ class ManagementV1 {
   static const String ownerPath = '/api/management/v1/owner';
   static const String ownerActionsRevokeRuntimeSessionsPath = '/api/management/v1/owner/actions/revoke-runtime-sessions';
   static const String ownerDefaultCompanionPath = '/api/management/v1/owner/default-companion';
+  static const String personaAuthoringTemplatePath = '/api/management/v1/persona-authoring-template';
 }
 
 class ActivityMomentView {
@@ -86,6 +87,19 @@ class ActivityMomentView {
       subjectType: value['subject_type'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'action': action,
+      if (detail != null) 'detail': detail,
+      'event_id': eventId,
+      'occurred_at': occurredAt,
+      'outcome': outcome,
+      'subject_id': subjectId,
+      if (subjectName != null) 'subject_name': subjectName,
+      'subject_type': subjectType,
+    };
+  }
 }
 
 class ActivityView {
@@ -108,6 +122,14 @@ class ActivityView {
       nextCursor: value['next_cursor'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'moments': moments.map((entry) => entry.toJson()).toList(),
+      if (nextCursor != null) 'next_cursor': nextCursor,
+    };
+  }
 }
 
 class CompanionCreateRequest {
@@ -115,6 +137,7 @@ class CompanionCreateRequest {
     required this.displayName,
     this.kind,
     required this.operationId,
+    this.persona,
   });
 
   final String displayName;
@@ -123,12 +146,24 @@ class CompanionCreateRequest {
 
   final String operationId;
 
+  final PersonaAuthoring? persona;
+
   factory CompanionCreateRequest.fromJson(Map<String, dynamic> value) {
     return CompanionCreateRequest(
       displayName: value['display_name'] as String,
       kind: value['kind'] as String?,
       operationId: value['operation_id'] as String,
+      persona: value['persona'] == null ? null : PersonaAuthoring.fromJson(value['persona'] as Map<String, dynamic>),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'display_name': displayName,
+      if (kind != null) 'kind': kind,
+      'operation_id': operationId,
+      if (persona != null) 'persona': persona?.toJson(),
+    };
   }
 }
 
@@ -172,6 +207,19 @@ class CompanionCreatedView {
       revision: value['revision'] as int,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'companion_id': companionId,
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'created': created,
+      if (displayName != null) 'display_name': displayName,
+      'kind': kind,
+      'lifecycle_state': lifecycleState,
+      'memory_ready': memoryReady,
+      'revision': revision,
+    };
+  }
 }
 
 class CompanionDetailView {
@@ -210,6 +258,18 @@ class CompanionDetailView {
       revision: value['revision'] as int,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'companion_id': companionId,
+      if (contractVersion != null) 'contract_version': contractVersion,
+      if (displayName != null) 'display_name': displayName,
+      'is_default': isDefault,
+      'kind': kind,
+      'lifecycle_state': lifecycleState,
+      'revision': revision,
+    };
+  }
 }
 
 class CompanionFaceView {
@@ -240,6 +300,16 @@ class CompanionFaceView {
       updatedAt: value['updated_at'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'companion_id': companionId,
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'has_face': hasFace,
+      if (sha256 != null) 'sha256': sha256,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    };
+  }
 }
 
 class CompanionLifecycleRequest {
@@ -261,6 +331,14 @@ class CompanionLifecycleRequest {
       lifecycleState: value['lifecycle_state'] as String,
       replacementCompanionId: value['replacement_companion_id'] as String?,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (expectedRevision != null) 'expected_revision': expectedRevision,
+      'lifecycle_state': lifecycleState,
+      if (replacementCompanionId != null) 'replacement_companion_id': replacementCompanionId,
+    };
   }
 }
 
@@ -296,6 +374,17 @@ class CompanionLifecycleView {
       revision: value['revision'] as int,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'companion_id': companionId,
+      if (contractVersion != null) 'contract_version': contractVersion,
+      if (defaultCompanionId != null) 'default_companion_id': defaultCompanionId,
+      'lifecycle_state': lifecycleState,
+      if (releasedDevices != null) 'released_devices': releasedDevices,
+      'revision': revision,
+    };
+  }
 }
 
 class CompanionNameView {
@@ -322,6 +411,15 @@ class CompanionNameView {
       revision: value['revision'] as int,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'companion_id': companionId,
+      if (contractVersion != null) 'contract_version': contractVersion,
+      if (displayName != null) 'display_name': displayName,
+      'revision': revision,
+    };
+  }
 }
 
 class CompanionRosterView {
@@ -347,6 +445,15 @@ class CompanionRosterView {
       defaultCompanionId: value['default_companion_id'] as String?,
       nextCursor: value['next_cursor'] as String?,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'companions': companions.map((entry) => entry.toJson()).toList(),
+      if (contractVersion != null) 'contract_version': contractVersion,
+      if (defaultCompanionId != null) 'default_companion_id': defaultCompanionId,
+      if (nextCursor != null) 'next_cursor': nextCursor,
+    };
   }
 }
 
@@ -386,6 +493,18 @@ class CompanionSummaryView {
       updatedAt: value['updated_at'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'companion_id': companionId,
+      'created_at': createdAt,
+      if (displayName != null) 'display_name': displayName,
+      'kind': kind,
+      'lifecycle_state': lifecycleState,
+      'revision': revision,
+      'updated_at': updatedAt,
+    };
+  }
 }
 
 class ControllerInvitationRequest {
@@ -399,6 +518,12 @@ class ControllerInvitationRequest {
     return ControllerInvitationRequest(
       ttlSeconds: value['ttl_seconds'] as int?,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (ttlSeconds != null) 'ttl_seconds': ttlSeconds,
+    };
   }
 }
 
@@ -421,6 +546,14 @@ class ControllerInvitationView {
       expiresAt: value['expires_at'] as String,
       setupCode: value['setup_code'] as String,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'expires_at': expiresAt,
+      'setup_code': setupCode,
+    };
   }
 }
 
@@ -460,6 +593,18 @@ class ControllerView {
       role: value['role'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'claimed_at': claimedAt,
+      'controller_id': controllerId,
+      if (displayName != null) 'display_name': displayName,
+      if (fingerprint != null) 'fingerprint': fingerprint,
+      'is_you': isYou,
+      if (platform != null) 'platform': platform,
+      'role': role,
+    };
+  }
 }
 
 class ControllersView {
@@ -477,6 +622,13 @@ class ControllersView {
       contractVersion: value['contract_version'] as String?,
       controllers: ((value['controllers'] as List<dynamic>).map((entry) => ControllerView.fromJson(entry as Map<String, dynamic>)).toList()),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'controllers': controllers.map((entry) => entry.toJson()).toList(),
+    };
   }
 }
 
@@ -503,6 +655,15 @@ class ConversationPageView {
       conversations: ((value['conversations'] as List<dynamic>).map((entry) => ConversationView.fromJson(entry as Map<String, dynamic>)).toList()),
       nextCursor: value['next_cursor'] as String?,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'companion_id': companionId,
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'conversations': conversations.map((entry) => entry.toJson()).toList(),
+      if (nextCursor != null) 'next_cursor': nextCursor,
+    };
   }
 }
 
@@ -534,6 +695,16 @@ class ConversationView {
       updatedAt: value['updated_at'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'conversation_id': conversationId,
+      if (endedAt != null) 'ended_at': endedAt,
+      if (startedAt != null) 'started_at': startedAt,
+      if (title != null) 'title': title,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    };
+  }
 }
 
 class DefaultCompanionRequest {
@@ -552,6 +723,13 @@ class DefaultCompanionRequest {
       expectedRevision: value['expected_revision'] as int,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'companion_id': companionId,
+      'expected_revision': expectedRevision,
+    };
+  }
 }
 
 class DefaultCompanionView {
@@ -569,6 +747,13 @@ class DefaultCompanionView {
       contractVersion: value['contract_version'] as String?,
       defaultCompanionId: value['default_companion_id'] as String?,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      if (defaultCompanionId != null) 'default_companion_id': defaultCompanionId,
+    };
   }
 }
 
@@ -591,6 +776,14 @@ class DeviceCompanionRequest {
       expectedRevision: value['expected_revision'] as int,
       requestId: value['request_id'] as String,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (companionId != null) 'companion_id': companionId,
+      'expected_revision': expectedRevision,
+      'request_id': requestId,
+    };
   }
 }
 
@@ -618,6 +811,15 @@ class DeviceRemovalConditionView {
       state: value['state'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'authority': authority,
+      'name': name,
+      if (observedAt != null) 'observed_at': observedAt,
+      'state': state,
+    };
+  }
 }
 
 class DeviceRemovalRequest {
@@ -631,6 +833,12 @@ class DeviceRemovalRequest {
     return DeviceRemovalRequest(
       requestId: value['request_id'] as String,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'request_id': requestId,
+    };
   }
 }
 
@@ -661,6 +869,16 @@ class DeviceRemovalView {
       outcome: value['outcome'] as String,
       requestId: value['request_id'] as String,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'conditions': conditions.map((entry) => entry.toJson()).toList(),
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'device_id': deviceId,
+      'outcome': outcome,
+      'request_id': requestId,
+    };
   }
 }
 
@@ -736,6 +954,27 @@ class DeviceView {
       updatedAt: value['updated_at'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (answersAsCompanionId != null) 'answers_as_companion_id': answersAsCompanionId,
+      if (answersAsCompanionName != null) 'answers_as_companion_name': answersAsCompanionName,
+      'claim_generation': claimGeneration,
+      'claim_state': claimState,
+      'device_id': deviceId,
+      if (kind != null) 'kind': kind,
+      'label': label,
+      if (manifestId != null) 'manifest_id': manifestId,
+      if (manifestRevision != null) 'manifest_revision': manifestRevision,
+      if (online != null) 'online': online,
+      if (onlineReason != null) 'online_reason': onlineReason,
+      'owner_domain_generation': ownerDomainGeneration,
+      'revision': revision,
+      'state': state,
+      'trust_epoch': trustEpoch,
+      'updated_at': updatedAt,
+    };
+  }
 }
 
 class DevicesView {
@@ -758,6 +997,14 @@ class DevicesView {
       devices: ((value['devices'] as List<dynamic>).map((entry) => DeviceView.fromJson(entry as Map<String, dynamic>)).toList()),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      if (coverage != null) 'coverage': coverage,
+      'devices': devices.map((entry) => entry.toJson()).toList(),
+    };
+  }
 }
 
 class ForgetConfirmRequest {
@@ -771,6 +1018,12 @@ class ForgetConfirmRequest {
     return ForgetConfirmRequest(
       confirmationToken: value['confirmation_token'] as String,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'confirmation_token': confirmationToken,
+    };
   }
 }
 
@@ -793,6 +1046,14 @@ class ForgetEntryView {
       preview: value['preview'] as String?,
       score: value['score'] as double,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'entry_id': entryId,
+      if (preview != null) 'preview': preview,
+      'score': score,
+    };
   }
 }
 
@@ -840,6 +1101,20 @@ class ForgetProposalView {
       target: value['target'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (action != null) 'action': action,
+      if (confirmationToken != null) 'confirmation_token': confirmationToken,
+      if (contractVersion != null) 'contract_version': contractVersion,
+      if (detail != null) 'detail': detail,
+      'entries': entries.map((entry) => entry.toJson()).toList(),
+      if (expiresAt != null) 'expires_at': expiresAt,
+      'needs_confirmation': needsConfirmation,
+      'status': status,
+      'target': target,
+    };
+  }
 }
 
 class ForgetResultView {
@@ -870,6 +1145,16 @@ class ForgetResultView {
       target: value['target'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'action': action,
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'entry_count': entryCount,
+      'status': status,
+      'target': target,
+    };
+  }
 }
 
 class ForgetTargetRequest {
@@ -887,6 +1172,13 @@ class ForgetTargetRequest {
       action: value['action'] as String?,
       target: value['target'] as String,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (action != null) 'action': action,
+      'target': target,
+    };
   }
 }
 
@@ -930,6 +1222,19 @@ class HomeCompanionView {
       revision: value['revision'] as int,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'companion_id': companionId,
+      if (displayName != null) 'display_name': displayName,
+      if (hasFace != null) 'has_face': hasFace,
+      'lifecycle_state': lifecycleState,
+      if (memory != null) 'memory': memory,
+      if (personaChapter != null) 'persona_chapter': personaChapter,
+      if (personaGenomeId != null) 'persona_genome_id': personaGenomeId,
+      'revision': revision,
+    };
+  }
 }
 
 class HomeCountsView {
@@ -955,6 +1260,15 @@ class HomeCountsView {
       total: value['total'] as int,
       waiting: value['waiting'] as int,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'put_away': putAway,
+      'ready': ready,
+      'total': total,
+      'waiting': waiting,
+    };
   }
 }
 
@@ -998,6 +1312,19 @@ class HomeView {
       unavailable: value['unavailable'] == null ? null : ((value['unavailable'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as String))),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (answering != null) 'answering': answering?.toJson(),
+      'companions': companions.toJson(),
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'devices': devices.toJson(),
+      if (machineAttention != null) 'machine_attention': machineAttention,
+      if (ownerDisplayName != null) 'owner_display_name': ownerDisplayName,
+      'owner_revision': ownerRevision,
+      if (unavailable != null) 'unavailable': unavailable,
+    };
+  }
 }
 
 class HostServiceInventoryView {
@@ -1012,6 +1339,12 @@ class HostServiceInventoryView {
       services: value['services'] == null ? null : ((value['services'] as List<dynamic>).map((entry) => HostServiceView.fromJson(entry as Map<String, dynamic>)).toList()),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (services != null) 'services': services?.map((entry) => entry.toJson()).toList(),
+    };
+  }
 }
 
 class HostServiceMutationRequest {
@@ -1025,6 +1358,12 @@ class HostServiceMutationRequest {
     return HostServiceMutationRequest(
       expectedRevision: value['expected_revision'] as int,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'expected_revision': expectedRevision,
+    };
   }
 }
 
@@ -1051,6 +1390,15 @@ class HostServiceMutationView {
       revision: value['revision'] as int,
       serviceId: value['service_id'] as String,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'enabled': enabled,
+      'operation': operation,
+      'revision': revision,
+      'service_id': serviceId,
+    };
   }
 }
 
@@ -1090,6 +1438,18 @@ class HostServiceView {
       serviceId: value['service_id'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (detail != null) 'detail': detail,
+      'enabled': enabled,
+      'observed_at': observedAt,
+      'required': required,
+      'revision': revision,
+      'runtime_state': runtimeState,
+      'service_id': serviceId,
+    };
+  }
 }
 
 class HostVitalsView {
@@ -1115,6 +1475,15 @@ class HostVitalsView {
       operation: value['operation'] as String?,
       vitals: value['vitals'] == null ? null : ((value['vitals'] as List<dynamic>).map((entry) => VitalView.fromJson(entry as Map<String, dynamic>)).toList()),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'observed_at': observedAt,
+      if (operation != null) 'operation': operation,
+      if (vitals != null) 'vitals': vitals?.map((entry) => entry.toJson()).toList(),
+    };
   }
 }
 
@@ -1150,6 +1519,17 @@ class ManagementContextView {
       unavailable: value['unavailable'] == null ? null : ((value['unavailable'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as String))),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'capabilities': capabilities,
+      if (contractVersion != null) 'contract_version': contractVersion,
+      if (defaultCompanionId != null) 'default_companion_id': defaultCompanionId,
+      'limits': limits,
+      'owner': owner.toJson(),
+      if (unavailable != null) 'unavailable': unavailable,
+    };
+  }
 }
 
 class MemoryAudienceRequest {
@@ -1163,6 +1543,12 @@ class MemoryAudienceRequest {
     return MemoryAudienceRequest(
       companionId: value['companion_id'] as String?,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (companionId != null) 'companion_id': companionId,
+    };
   }
 }
 
@@ -1189,6 +1575,15 @@ class MemoryAudienceView {
       entryId: value['entry_id'] as String,
       status: value['status'] as String,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (companionId != null) 'companion_id': companionId,
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'entry_id': entryId,
+      'status': status,
+    };
   }
 }
 
@@ -1223,6 +1618,17 @@ class MemoryCopyView {
       truncated: value['truncated'] as bool,
       undatedCount: value['undated_count'] as int,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'record_count': recordCount,
+      'records': records.map((entry) => entry.toJson()).toList(),
+      'taken_at': takenAt,
+      'truncated': truncated,
+      'undated_count': undatedCount,
+    };
   }
 }
 
@@ -1262,6 +1668,18 @@ class MemoryDayView {
       undatedCount: value['undated_count'] as int,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'entries': entries.map((entry) => entry.toJson()).toList(),
+      'entry_count': entryCount,
+      'more_in_window': moreInWindow,
+      'since': since,
+      'truncated': truncated,
+      'undated_count': undatedCount,
+    };
+  }
 }
 
 class MemoryEntryView {
@@ -1295,6 +1713,17 @@ class MemoryEntryView {
       roomId: value['room_id'] as String?,
       wingId: value['wing_id'] as String?,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'entry_id': entryId,
+      if (preview != null) 'preview': preview,
+      'recorded_at': recordedAt,
+      if (recordedAtSource != null) 'recorded_at_source': recordedAtSource,
+      if (roomId != null) 'room_id': roomId,
+      if (wingId != null) 'wing_id': wingId,
+    };
   }
 }
 
@@ -1334,6 +1763,18 @@ class MemoryExportRecordView {
       wingId: value['wing_id'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'entry_id': entryId,
+      if (memoryType != null) 'memory_type': memoryType,
+      if (recordedAt != null) 'recorded_at': recordedAt,
+      if (recordedAtSource != null) 'recorded_at_source': recordedAtSource,
+      if (roomId != null) 'room_id': roomId,
+      'value': value,
+      if (wingId != null) 'wing_id': wingId,
+    };
+  }
 }
 
 class MemoryLibraryView {
@@ -1364,6 +1805,16 @@ class MemoryLibraryView {
       withheldCount: value['withheld_count'] as int,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'entry_count': entryCount,
+      'truncated': truncated,
+      'wings': wings.map((entry) => entry.toJson()).toList(),
+      'withheld_count': withheldCount,
+    };
+  }
 }
 
 class MemoryRoomView {
@@ -1389,6 +1840,15 @@ class MemoryRoomView {
       roomId: value['room_id'] as String,
       titles: ((value['titles'] as List<dynamic>).map((entry) => entry as String).toList()),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'entry_count': entryCount,
+      'more': more,
+      'room_id': roomId,
+      'titles': titles,
+    };
   }
 }
 
@@ -1420,6 +1880,16 @@ class MemoryWingView {
       wingId: value['wing_id'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (description != null) 'description': description,
+      if (displayName != null) 'display_name': displayName,
+      'entry_count': entryCount,
+      'rooms': rooms.map((entry) => entry.toJson()).toList(),
+      'wing_id': wingId,
+    };
+  }
 }
 
 class OwnerContextView {
@@ -1441,6 +1911,14 @@ class OwnerContextView {
       ownerId: value['owner_id'] as String,
       revision: value['revision'] as int,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (displayName != null) 'display_name': displayName,
+      'owner_id': ownerId,
+      'revision': revision,
+    };
   }
 }
 
@@ -1467,6 +1945,100 @@ class OwnerNameView {
       ownerId: value['owner_id'] as String,
       revision: value['revision'] as int,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      if (displayName != null) 'display_name': displayName,
+      'owner_id': ownerId,
+      'revision': revision,
+    };
+  }
+}
+
+class PersonaAuthoring {
+  const PersonaAuthoring({
+    this.archetype,
+    this.behaviorGuidance,
+    this.boundaries,
+    this.characterPortrait,
+    this.commitments,
+    this.dialogueExamples,
+    this.modalityNotes,
+    this.pinnedFacts,
+    this.relationshipNarrative,
+    this.safetyBoundaries,
+    this.selfConcept,
+    this.traits,
+    this.values,
+    this.voicePortrait,
+  });
+
+  final String? archetype;
+
+  final List<String>? behaviorGuidance;
+
+  final List<String>? boundaries;
+
+  final String? characterPortrait;
+
+  final List<String>? commitments;
+
+  final List<String>? dialogueExamples;
+
+  final Map<String, String>? modalityNotes;
+
+  final List<String>? pinnedFacts;
+
+  final String? relationshipNarrative;
+
+  final List<String>? safetyBoundaries;
+
+  final String? selfConcept;
+
+  final Map<String, PersonaTraitState>? traits;
+
+  final List<String>? values;
+
+  final String? voicePortrait;
+
+  factory PersonaAuthoring.fromJson(Map<String, dynamic> value) {
+    return PersonaAuthoring(
+      archetype: value['archetype'] as String?,
+      behaviorGuidance: value['behavior_guidance'] == null ? null : ((value['behavior_guidance'] as List<dynamic>).map((entry) => entry as String).toList()),
+      boundaries: value['boundaries'] == null ? null : ((value['boundaries'] as List<dynamic>).map((entry) => entry as String).toList()),
+      characterPortrait: value['character_portrait'] as String?,
+      commitments: value['commitments'] == null ? null : ((value['commitments'] as List<dynamic>).map((entry) => entry as String).toList()),
+      dialogueExamples: value['dialogue_examples'] == null ? null : ((value['dialogue_examples'] as List<dynamic>).map((entry) => entry as String).toList()),
+      modalityNotes: value['modality_notes'] == null ? null : ((value['modality_notes'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as String))),
+      pinnedFacts: value['pinned_facts'] == null ? null : ((value['pinned_facts'] as List<dynamic>).map((entry) => entry as String).toList()),
+      relationshipNarrative: value['relationship_narrative'] as String?,
+      safetyBoundaries: value['safety_boundaries'] == null ? null : ((value['safety_boundaries'] as List<dynamic>).map((entry) => entry as String).toList()),
+      selfConcept: value['self_concept'] as String?,
+      traits: value['traits'] == null ? null : ((value['traits'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as PersonaTraitState))),
+      values: value['values'] == null ? null : ((value['values'] as List<dynamic>).map((entry) => entry as String).toList()),
+      voicePortrait: value['voice_portrait'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (archetype != null) 'archetype': archetype,
+      if (behaviorGuidance != null) 'behavior_guidance': behaviorGuidance,
+      if (boundaries != null) 'boundaries': boundaries,
+      if (characterPortrait != null) 'character_portrait': characterPortrait,
+      if (commitments != null) 'commitments': commitments,
+      if (dialogueExamples != null) 'dialogue_examples': dialogueExamples,
+      if (modalityNotes != null) 'modality_notes': modalityNotes,
+      if (pinnedFacts != null) 'pinned_facts': pinnedFacts,
+      if (relationshipNarrative != null) 'relationship_narrative': relationshipNarrative,
+      if (safetyBoundaries != null) 'safety_boundaries': safetyBoundaries,
+      if (selfConcept != null) 'self_concept': selfConcept,
+      if (traits != null) 'traits': traits?.map((key, entry) => MapEntry(key, entry.toJson())),
+      if (values != null) 'values': values,
+      if (voicePortrait != null) 'voice_portrait': voicePortrait,
+    };
   }
 }
 
@@ -1498,6 +2070,16 @@ class PersonaChapterView {
       whatChanged: value['what_changed'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'changed_at': changedAt,
+      'chapter_id': chapterId,
+      if (isCurrent != null) 'is_current': isCurrent,
+      if (restoredFrom != null) 'restored_from': restoredFrom,
+      if (whatChanged != null) 'what_changed': whatChanged,
+    };
+  }
 }
 
 class PersonaHistoryView {
@@ -1520,6 +2102,14 @@ class PersonaHistoryView {
       contractVersion: value['contract_version'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'chapters': chapters.map((entry) => entry.toJson()).toList(),
+      'companion_id': companionId,
+      if (contractVersion != null) 'contract_version': contractVersion,
+    };
+  }
 }
 
 class PersonaRestoreRequest {
@@ -1533,6 +2123,47 @@ class PersonaRestoreRequest {
     return PersonaRestoreRequest(
       chapterId: value['chapter_id'] as String,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'chapter_id': chapterId,
+    };
+  }
+}
+
+class PersonaTraitState {
+  const PersonaTraitState({
+    this.confidence,
+    this.lastChangedAt,
+    this.source,
+    this.value,
+  });
+
+  final double? confidence;
+
+  final String? lastChangedAt;
+
+  final String? source;
+
+  final double? value;
+
+  factory PersonaTraitState.fromJson(Map<String, dynamic> value) {
+    return PersonaTraitState(
+      confidence: value['confidence'] as double?,
+      lastChangedAt: value['last_changed_at'] as String?,
+      source: value['source'] as String?,
+      value: value['value'] as double?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (confidence != null) 'confidence': confidence,
+      if (lastChangedAt != null) 'last_changed_at': lastChangedAt,
+      if (source != null) 'source': source,
+      if (value != null) 'value': value,
+    };
   }
 }
 
@@ -1551,6 +2182,13 @@ class RecollectionView {
       rememberedAt: value['remembered_at'] as String?,
       text: value['text'] as String?,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (rememberedAt != null) 'remembered_at': rememberedAt,
+      if (text != null) 'text': text,
+    };
   }
 }
 
@@ -1573,6 +2211,14 @@ class RecollectionsView {
       query: value['query'] as String,
       recollections: ((value['recollections'] as List<dynamic>).map((entry) => RecollectionView.fromJson(entry as Map<String, dynamic>)).toList()),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'query': query,
+      'recollections': recollections.map((entry) => entry.toJson()).toList(),
+    };
   }
 }
 
@@ -1600,6 +2246,15 @@ class Refusal {
       retryable: value['retryable'] as bool?,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (code != null) 'code': code,
+      'kind': kind,
+      if (reason != null) 'reason': reason,
+      if (retryable != null) 'retryable': retryable,
+    };
+  }
 }
 
 class RenameRequest {
@@ -1613,6 +2268,12 @@ class RenameRequest {
     return RenameRequest(
       displayName: value['display_name'] as String,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'display_name': displayName,
+    };
   }
 }
 
@@ -1632,6 +2293,13 @@ class RevokedSessionsView {
       revokedAt: value['revoked_at'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'revoked_at': revokedAt,
+    };
+  }
 }
 
 class SpokenMessageView {
@@ -1649,6 +2317,13 @@ class SpokenMessageView {
       role: value['role'] as String,
       text: value['text'] as String?,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'role': role,
+      if (text != null) 'text': text,
+    };
   }
 }
 
@@ -1675,6 +2350,15 @@ class TaskPageView {
       nextCursor: value['next_cursor'] as String?,
       tasks: ((value['tasks'] as List<dynamic>).map((entry) => TaskView.fromJson(entry as Map<String, dynamic>)).toList()),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'companion_id': companionId,
+      if (contractVersion != null) 'contract_version': contractVersion,
+      if (nextCursor != null) 'next_cursor': nextCursor,
+      'tasks': tasks.map((entry) => entry.toJson()).toList(),
+    };
   }
 }
 
@@ -1738,6 +2422,24 @@ class TaskView {
       urgency: value['urgency'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (asked != null) 'asked': asked,
+      if (completedAt != null) 'completed_at': completedAt,
+      if (createdAt != null) 'created_at': createdAt,
+      if (errorCode != null) 'error_code': errorCode,
+      if (errorMessage != null) 'error_message': errorMessage,
+      if (expectedOutput != null) 'expected_output': expectedOutput,
+      if (kind != null) 'kind': kind,
+      if (progress != null) 'progress': progress,
+      if (result != null) 'result': result,
+      'status': status,
+      'task_id': taskId,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (urgency != null) 'urgency': urgency,
+    };
+  }
 }
 
 class TranscriptTurnView {
@@ -1768,6 +2470,16 @@ class TranscriptTurnView {
       turnId: value['turn_id'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (finishedAt != null) 'finished_at': finishedAt,
+      'messages': messages.map((entry) => entry.toJson()).toList(),
+      if (startedAt != null) 'started_at': startedAt,
+      if (status != null) 'status': status,
+      'turn_id': turnId,
+    };
+  }
 }
 
 class TranscriptView {
@@ -1794,6 +2506,15 @@ class TranscriptView {
       turns: ((value['turns'] as List<dynamic>).map((entry) => TranscriptTurnView.fromJson(entry as Map<String, dynamic>)).toList()),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'conversation_id': conversationId,
+      if (nextCursor != null) 'next_cursor': nextCursor,
+      'turns': turns.map((entry) => entry.toJson()).toList(),
+    };
+  }
 }
 
 class VitalView {
@@ -1819,5 +2540,14 @@ class VitalView {
       reading: value['reading'] as String,
       unavailableReason: value['unavailable_reason'] as String?,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (concern != null) 'concern': concern,
+      'name': name,
+      'reading': reading,
+      if (unavailableReason != null) 'unavailable_reason': unavailableReason,
+    };
   }
 }

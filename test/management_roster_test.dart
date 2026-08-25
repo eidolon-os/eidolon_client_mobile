@@ -162,7 +162,8 @@ void main() {
     test('a refusal is a refusal, not an empty roster', () async {
       final client = ManagementClient(
         httpClient: MockClient(
-          (_) async => http.Response('{"detail":"data authority is down"}', 503),
+          (_) async =>
+              http.Response('{"detail":"data authority is down"}', 503),
         ),
       );
 
@@ -178,7 +179,11 @@ void main() {
     test('a capability this Host never mentioned is not permission', () async {
       final context = ManagementContextView.fromJson({
         'contract_version': '1',
-        'owner': {'owner_id': 'owner-1', 'display_name': 'Manson', 'revision': 3},
+        'owner': {
+          'owner_id': 'owner-1',
+          'display_name': 'Manson',
+          'revision': 3
+        },
         'default_companion_id': 'companion-a',
         'capabilities': {'companion.read': true, 'companion.create': false},
         'limits': {'max_active_companions': null},
@@ -195,7 +200,11 @@ void main() {
     test('a limit the Host left null is not replaced with a number', () async {
       final context = ManagementContextView.fromJson({
         'contract_version': '1',
-        'owner': {'owner_id': 'owner-1', 'display_name': 'Manson', 'revision': 3},
+        'owner': {
+          'owner_id': 'owner-1',
+          'display_name': 'Manson',
+          'revision': 3
+        },
         'default_companion_id': null,
         'capabilities': const <String, bool>{},
         'limits': {'max_active_companions': null},
@@ -258,7 +267,8 @@ void main() {
       expect(find.text('这台主机还没有主人，先完成设置'), findsOneWidget);
     });
 
-    testWidgets('asking for more appends rather than replacing', (tester) async {
+    testWidgets('asking for more appends rather than replacing',
+        (tester) async {
       final pages = <Map<String, dynamic>>[
         rosterWire(
           nextCursor: 'page-2',
@@ -443,7 +453,6 @@ void main() {
   });
 }
 
-
 CompanionDetailView detail({bool isDefault = true, String kind = 'standard'}) =>
     CompanionDetailView.fromJson({
       'contract_version': '1',
@@ -458,7 +467,8 @@ CompanionDetailView detail({bool isDefault = true, String kind = 'standard'}) =>
 /// Opening one from the list.
 /// Two Eidolons, both active. The default fixture has an archived one, which is
 /// deliberately not a candidate for becoming the default.
-Map<String, dynamic> twoActiveWire({String? defaultCompanionId = 'companion-a'}) =>
+Map<String, dynamic> twoActiveWire(
+        {String? defaultCompanionId = 'companion-a'}) =>
     rosterWire(
       defaultCompanionId: defaultCompanionId,
       companions: [
@@ -486,7 +496,11 @@ Map<String, dynamic> twoActiveWire({String? defaultCompanionId = 'companion-a'})
 ManagementContextView context({bool canSetDefault = true, int revision = 3}) =>
     ManagementContextView.fromJson({
       'contract_version': '1',
-      'owner': {'owner_id': 'owner-1', 'display_name': 'Manson', 'revision': revision},
+      'owner': {
+        'owner_id': 'owner-1',
+        'display_name': 'Manson',
+        'revision': revision
+      },
       'default_companion_id': 'companion-a',
       'capabilities': {
         'companion.read': true,
@@ -515,7 +529,8 @@ void switcherTests() {
                   CompanionRosterView.fromJson(twoActiveWire()),
               loadContext: () async => context(canSetDefault: allowed),
               setDefaultCompanion: (_, __) async =>
-                  const CompanionDetailOutcome(defaultCompanionId: 'companion-b'),
+                  const CompanionDetailOutcome(
+                      defaultCompanionId: 'companion-b'),
             ),
           ),
         );
@@ -542,7 +557,8 @@ void switcherTests() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('roster-make-default-companion-a')), findsNothing);
+      expect(find.byKey(const Key('roster-make-default-companion-a')),
+          findsNothing);
     });
 
     testWidgets('sends the revision the person was shown', (tester) async {
@@ -567,7 +583,8 @@ void switcherTests() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('roster-make-default-companion-b')));
+      await tester
+          .tap(find.byKey(const Key('roster-make-default-companion-b')));
       await tester.pumpAndSettle();
 
       expect(asked, 'companion-b');
@@ -596,12 +613,14 @@ void switcherTests() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('roster-make-default-companion-b')));
+      await tester
+          .tap(find.byKey(const Key('roster-make-default-companion-b')));
       await tester.pumpAndSettle();
 
       expect(reads, 2);
       // companion-b is now the default, so it no longer offers the action.
-      expect(find.byKey(const Key('roster-make-default-companion-b')), findsNothing);
+      expect(find.byKey(const Key('roster-make-default-companion-b')),
+          findsNothing);
       expect(find.byKey(const Key('roster-default-badge')), findsOneWidget);
     });
 
@@ -629,7 +648,8 @@ void switcherTests() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('roster-make-default-companion-b')));
+      await tester
+          .tap(find.byKey(const Key('roster-make-default-companion-b')));
       await tester.pumpAndSettle();
 
       expect(find.text('别的地方刚改过默认，已经重新读取'), findsOneWidget);
@@ -660,7 +680,8 @@ void switcherTests() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('roster-make-default-companion-b')));
+      await tester
+          .tap(find.byKey(const Key('roster-make-default-companion-b')));
       await tester.pumpAndSettle();
 
       expect(find.text('这台主机不允许把它设为默认'), findsOneWidget);
@@ -698,7 +719,8 @@ void switcherTests() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('roster-row-companion-z')), findsOneWidget);
-      expect(find.byKey(const Key('roster-make-default-companion-z')), findsNothing);
+      expect(find.byKey(const Key('roster-make-default-companion-z')),
+          findsNothing);
     });
   });
 }
@@ -707,10 +729,26 @@ void switcherTests() {
 void creationTests() {
   const operation = '32c421a3-e0df-40f9-8f75-68745ae39d81';
 
+  /// The Host's starting point, as this screen receives it.
+  ///
+  /// Short on purpose: what these tests are about is whether what is on screen
+  /// reaches the Host, and a full template would make every expectation below a
+  /// restatement of the fixture.
+  PersonaAuthoring template() => PersonaAuthoring(
+        characterPortrait: '一个沉稳的伙伴。',
+        voicePortrait: '温暖、清晰。',
+        values: const ['诚实'],
+        boundaries: const ['不替他做决定'],
+        behaviorGuidance: const ['先问再答'],
+      );
+
   Future<void> pumpRoster(
     WidgetTester tester, {
-    required Future<CreatedCompanion> Function(String, String) create,
+    required Future<CreatedCompanion> Function(
+            String, String, PersonaAuthoring?)
+        create,
     Future<CompanionRosterView> Function({String? cursor})? load,
+    Future<PersonaAuthoring> Function()? loadTemplate,
     bool canCreate = true,
   }) async {
     await tester.pumpWidget(
@@ -734,6 +772,7 @@ void creationTests() {
             'limits': {'max_active_companions': null},
           }),
           createCompanion: create,
+          loadPersonaTemplate: loadTemplate ?? () async => template(),
           newOperationId: () => operation,
         ),
       ),
@@ -741,11 +780,17 @@ void creationTests() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> tapAddAndName(WidgetTester tester, String name) async {
+  /// Walk the form the way somebody who only wants a name walks it.
+  Future<void> addNamed(WidgetTester tester, String name) async {
     await tester.tap(find.byKey(const Key('roster-add')));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('new-companion-name-field')), name);
-    await tester.tap(find.byKey(const Key('confirm-new-companion')));
+    await tester.enterText(find.byKey(const Key('authoring-name')), name);
+    await tester.pumpAndSettle();
+    for (var step = 0; step < 3; step++) {
+      await tester.tap(find.byKey(const Key('authoring-next')));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.byKey(const Key('authoring-create')));
     await tester.pumpAndSettle();
   }
 
@@ -757,7 +802,7 @@ void creationTests() {
         await pumpRoster(
           tester,
           canCreate: allowed,
-          create: (_, __) async => const CreatedCompanion(
+          create: (_, __, ___) async => const CreatedCompanion(
             companionId: 'cp-1',
             displayName: '小南',
             created: true,
@@ -772,14 +817,21 @@ void creationTests() {
       }
     });
 
-    testWidgets('asks for a name and sends one operation id', (tester) async {
+    testWidgets('three taps past the form is the Eidolon the Host would make',
+        (tester) async {
+      // The path somebody takes when they just want another one. Nothing on the
+      // form is required beyond the name, and leaving it alone must say so on
+      // the wire: null, not a copy of the template. The difference is what keeps
+      // a retry a replay rather than a conflict.
       final operations = <String>[];
       String? sentName;
+      var authored = 0;
       await pumpRoster(
         tester,
-        create: (operationId, name) async {
+        create: (operationId, name, persona) async {
           operations.add(operationId);
           sentName = name;
+          if (persona != null) authored++;
           return const CreatedCompanion(
             companionId: 'cp-1',
             displayName: '小南',
@@ -789,11 +841,109 @@ void creationTests() {
         },
       );
 
-      await tapAddAndName(tester, '小南');
+      await addNamed(tester, '小南');
 
       expect(sentName, '小南');
       expect(operations, [operation]);
+      expect(authored, 0, reason: 'nobody wrote anything');
       expect(find.text('小南 已经在这台主机上了'), findsOneWidget);
+    });
+
+    testWidgets('the form opens on what the Host would write', (tester) async {
+      // Not blanks. An empty box labelled 人格画像 asks somebody to invent a
+      // personality from nothing; a filled one asks them to change something
+      // they can read.
+      await pumpRoster(
+        tester,
+        create: (_, __, ___) async => const CreatedCompanion(
+          companionId: 'cp-1',
+          displayName: '小南',
+          created: true,
+          memoryReady: true,
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('roster-add')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('一个沉稳的伙伴。'), findsOneWidget);
+      expect(find.text('诚实'), findsOneWidget);
+      expect(find.text('不替他做决定'), findsOneWidget);
+    });
+
+    testWidgets('what somebody writes is what the Host is told',
+        (tester) async {
+      // The whole reason this screen exists. Every field between the keyboard
+      // and the genome is a place a sentence can be dropped, and the failure is
+      // silent: the Eidolon is created either way.
+      PersonaAuthoring? sent;
+      await pumpRoster(
+        tester,
+        create: (_, __, persona) async {
+          sent = persona;
+          return const CreatedCompanion(
+            companionId: 'cp-1',
+            displayName: '小南',
+            created: true,
+            memoryReady: true,
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const Key('roster-add')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('authoring-name')), '小南');
+      await tester.enterText(
+        find.byKey(const Key('authoring-self-concept')),
+        '我是一个会记得你说过的话的伙伴',
+      );
+      await tester.enterText(find.byKey(const Key('authoring-values')), '守时');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('authoring-next')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('authoring-relationship')),
+        '我们是从一次很长的深夜对话开始的',
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('authoring-next')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('authoring-next')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('authoring-create')));
+      await tester.pumpAndSettle();
+
+      expect(sent, isNotNull, reason: 'somebody wrote something');
+      expect(sent!.selfConcept, '我是一个会记得你说过的话的伙伴');
+      expect(sent!.relationshipNarrative, '我们是从一次很长的深夜对话开始的');
+      expect(sent!.values, containsAll(<String>['诚实', '守时']));
+      // Untouched fields still travel as the Host had them, not as blanks: the
+      // person edited one thing, they did not delete the rest.
+      expect(sent!.characterPortrait, '一个沉稳的伙伴。');
+      expect(sent!.behaviorGuidance, ['先问再答']);
+    });
+
+    testWidgets('a name is the one thing it will not default', (tester) async {
+      await pumpRoster(
+        tester,
+        create: (_, __, ___) async => const CreatedCompanion(
+          companionId: 'cp-1',
+          displayName: '小南',
+          created: true,
+          memoryReady: true,
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('roster-add')));
+      await tester.pumpAndSettle();
+
+      final next = tester.widget<FilledButton>(
+        find.byKey(const Key('authoring-next')),
+      );
+      expect(next.onPressed, isNull, reason: 'no name yet');
     });
 
     testWidgets('a memory still starting is said, not hidden or feared',
@@ -803,7 +953,7 @@ void creationTests() {
       // person wondering why it is quiet.
       await pumpRoster(
         tester,
-        create: (_, __) async => const CreatedCompanion(
+        create: (_, __, ___) async => const CreatedCompanion(
           companionId: 'cp-1',
           displayName: '小南',
           created: true,
@@ -811,20 +961,23 @@ void creationTests() {
         ),
       );
 
-      await tapAddAndName(tester, '小南');
+      await addNamed(tester, '小南');
 
       expect(find.text('小南 已经建好，记忆还在启动'), findsOneWidget);
       expect(find.byKey(const Key('roster-refusal')), findsNothing);
     });
 
-    testWidgets('a failed attempt keeps its operation id', (tester) async {
-      // The case a stable id exists for. Pressing add again must continue the
-      // same operation, not start a second one that could leave two Eidolons.
+    testWidgets('a failed attempt keeps its operation id and the words',
+        (tester) async {
+      // The case a stable id exists for. Pressing 创建 again must continue the
+      // same operation, not start a second one that could leave two Eidolons —
+      // and the refusal belongs on the form, next to what was written, rather
+      // than behind a pop back to the list.
       final operations = <String>[];
       var attempts = 0;
       await pumpRoster(
         tester,
-        create: (operationId, name) async {
+        create: (operationId, name, persona) async {
           operations.add(operationId);
           attempts++;
           if (attempts == 1) {
@@ -839,10 +992,16 @@ void creationTests() {
         },
       );
 
-      await tapAddAndName(tester, '小南');
-      expect(find.byKey(const Key('roster-refusal')), findsOneWidget);
+      await addNamed(tester, '小南');
+      expect(find.byKey(const Key('authoring-refusal')), findsOneWidget);
+      expect(
+        find.byKey(const Key('authoring-review')),
+        findsOneWidget,
+        reason: 'still on the form, with what was typed',
+      );
 
-      await tapAddAndName(tester, '小南');
+      await tester.tap(find.byKey(const Key('authoring-create')));
+      await tester.pumpAndSettle();
 
       expect(operations, [operation, operation], reason: 'the same operation');
     });
@@ -855,7 +1014,7 @@ void creationTests() {
           reads++;
           return CompanionRosterView.fromJson(twoActiveWire());
         },
-        create: (_, __) async => const CreatedCompanion(
+        create: (_, __, ___) async => const CreatedCompanion(
           companionId: 'cp-1',
           displayName: '小南',
           created: true,
@@ -863,16 +1022,17 @@ void creationTests() {
         ),
       );
 
-      await tapAddAndName(tester, '小南');
+      await addNamed(tester, '小南');
 
       expect(reads, 2, reason: 'the Host says what exists, not this screen');
     });
 
-    testWidgets('cancelling the name asks the Host nothing', (tester) async {
+    testWidgets('backing out of the form asks the Host nothing',
+        (tester) async {
       var calls = 0;
       await pumpRoster(
         tester,
-        create: (_, __) async {
+        create: (_, __, ___) async {
           calls++;
           return const CreatedCompanion(
             companionId: 'cp-1',
@@ -885,10 +1045,34 @@ void creationTests() {
 
       await tester.tap(find.byKey(const Key('roster-add')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('取消'));
+      await tester.pageBack();
       await tester.pumpAndSettle();
 
       expect(calls, 0);
+    });
+
+    testWidgets('a starting point it cannot read opens no form',
+        (tester) async {
+      // A form filled from this client's own constants would describe an
+      // Eidolon the Host will not create, so there is no form — and the reason
+      // is said out loud rather than shown as an empty page.
+      await pumpRoster(
+        tester,
+        loadTemplate: () async =>
+            throw const ManagementRequestException('读取失败', statusCode: 503),
+        create: (_, __, ___) async => const CreatedCompanion(
+          companionId: 'cp-1',
+          displayName: '小南',
+          created: true,
+          memoryReady: true,
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('roster-add')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('companion-authoring-page')), findsNothing);
+      expect(find.byKey(const Key('roster-refusal')), findsOneWidget);
     });
   });
 }

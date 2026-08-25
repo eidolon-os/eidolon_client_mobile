@@ -387,11 +387,17 @@ class HostProductController extends ChangeNotifier {
   Future<CreatedCompanion> createCompanion({
     required String operationId,
     required String displayName,
+    PersonaAuthoring? persona,
   }) =>
       _managementRepository.createCompanion(
         operationId: operationId,
         displayName: displayName,
+        persona: persona,
       );
+
+  /// Who a new Eidolon would be if nobody said anything.
+  Future<PersonaAuthoring> personaAuthoringTemplate() =>
+      _managementRepository.personaAuthoringTemplate();
 
   /// Make one of them the one that answers when nothing named an Eidolon.
   ///

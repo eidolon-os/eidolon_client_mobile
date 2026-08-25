@@ -2,10 +2,9 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
-import '../features/naming/ask_for_a_name.dart';
-
 import '../generated/management_v1.dart';
 import 'companion_detail_screen.dart';
+import 'companion_authoring_page.dart';
 import 'companion_roster_page.dart';
 import 'management_client.dart';
 import 'refusal_notice.dart';
@@ -34,6 +33,7 @@ class CompanionRosterScreen extends StatefulWidget {
     this.loadCompanionFace,
     this.renameCompanion,
     this.createCompanion,
+    this.loadPersonaTemplate,
     this.newOperationId,
   });
 
@@ -76,10 +76,22 @@ class CompanionRosterScreen extends StatefulWidget {
       renameCompanion;
 
   /// Adds one. Given an operation id this screen holds, not one per attempt.
+  ///
+  /// The persona is what the person wrote on the authoring page, or null when
+  /// they left it as the Host had it — null is not the same request as a copy of
+  /// the template, and the difference is what keeps a retry a replay.
   final Future<CreatedCompanion> Function(
     String operationId,
     String displayName,
+    PersonaAuthoring? persona,
   )? createCompanion;
+
+  /// What the Host would write if the authoring form came back untouched.
+  ///
+  /// Read when the person asks to add one, not when this screen opens: it is
+  /// only needed on the way into the form, and a roster that failed to load
+  /// because of it would be a list nobody can read for the sake of a button.
+  final Future<PersonaAuthoring> Function()? loadPersonaTemplate;
 
   /// Injected so a test can pin the id; a real screen mints a random one.
   final String Function()? newOperationId;
@@ -96,7 +108,6 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
   String? _changing;
   String? _refusal;
   String? _notice;
-  bool _adding = false;
 
   /// Held across retries, exactly like the device-removal request id: the whole
   /// point of the operation id is that a second attempt is the *same* attempt.
@@ -195,46 +206,65 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
     return '没有改成：$error';
   }
 
-  /// Ask for another Eidolon, and keep the operation id if it does not answer.
+  /// Ask for another Eidolon: who it is, then the ask itself.
+  ///
+  /// This used to be a dialog with one box in it, which is why every Eidolon
+  /// this Host made was the same person under a different name. The form opens
+  /// on what the Host would write by itself, so it can be walked past in three
+  /// taps — the cost of saying more is on whoever wants to say more.
+  ///
+  /// The operation id is minted here and **kept across a failure**, so pressing
+  /// 创建 again after a lost answer addresses the same Eidolon. It is also held
+  /// across the form: someone who backs out and starts again is still asking for
+  /// the one thing they asked for.
   Future<void> _add() async {
     final create = widget.createCompanion;
-    if (create == null || _adding) return;
-    final name = await askForAName(
-      context,
-      question: '新的 Eidolon 叫什么？',
-      hint: '比如「小南」',
-      dialogKey: const Key('new-companion-dialog'),
-      fieldKey: const Key('new-companion-name-field'),
-      confirmKey: const Key('confirm-new-companion'),
-    );
-    if (name == null || !mounted) return;
+    final loadTemplate = widget.loadPersonaTemplate;
+    if (create == null || loadTemplate == null) return;
+
     setState(() {
-      _adding = true;
       _refusal = null;
       _notice = null;
     });
-    final operationId = _pendingOperationId ??= _newOperationId();
+
+    final PersonaAuthoring template;
     try {
-      final created = await create(operationId, name);
-      if (!mounted) return;
-      // Answered, so this operation is finished — a later "add" is a new one.
-      _pendingOperationId = null;
-      setState(() {
-        _adding = false;
-        _notice = created.memoryReady
-            ? '${created.displayName} 已经在这台主机上了'
-            : '${created.displayName} 已经建好，记忆还在启动';
-      });
-      await _read();
+      template = await loadTemplate();
     } catch (error) {
       if (!mounted) return;
-      setState(() {
-        _adding = false;
-        // The id is *kept*: this is exactly the case a stable operation id
-        // exists for, and pressing add again must not make a second Eidolon.
-        _refusal = _refusalSentence(error);
-      });
+      // No form rather than a form full of guesses: a starting point this
+      // client invented would describe an Eidolon the Host will not create.
+      setState(() => _refusal = _refusalSentence(error));
+      return;
     }
+    if (!mounted) return;
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => _AuthoringRoute(
+          template: template,
+          create: (displayName, persona) async {
+            final operationId = _pendingOperationId ??= _newOperationId();
+            final created = await create(operationId, displayName, persona);
+            // Answered, so this operation is finished — a later "add" is a new
+            // one.
+            _pendingOperationId = null;
+            return created;
+          },
+          refusalSentence: _refusalSentence,
+          onCreated: (created) {
+            if (!mounted) return;
+            setState(() {
+              _notice = created.memoryReady
+                  ? '${created.displayName} 已经在这台主机上了'
+                  : '${created.displayName} 已经建好，记忆还在启动';
+            });
+          },
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _read();
   }
 
   String _newOperationId() {
@@ -261,7 +291,8 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
             roster: roster,
             onOpen: widget.openCompanion == null
                 ? null
-                : (companion) => Navigator.of(context).push<void>(
+                : (companion) => Navigator.of(context)
+                    .push<void>(
                       MaterialPageRoute(
                         builder: (_) => CompanionDetailScreen(
                           companionId: companion.companionId,
@@ -286,7 +317,8 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
                           others: roster.companions,
                         ),
                       ),
-                    ).then((_) => _read()),
+                    )
+                    .then((_) => _read()),
             onLoadMore: roster.nextCursor == null
                 ? null
                 : () => _read(cursor: roster.nextCursor),
@@ -328,6 +360,69 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
                 retryKey: const Key('roster-retry'),
               ),
       ),
+    );
+  }
+}
+
+/// The authoring page plus the one piece of state it cannot own: whether the ask
+/// is in flight, and what the Host said if it refused.
+///
+/// Separate from the page so the page stays a form — it renders what it is given
+/// and hands back what was typed. Keeping the request here also means the
+/// refusal is shown *on* the form, next to the words that caused it, instead of
+/// behind a pop back to the list.
+class _AuthoringRoute extends StatefulWidget {
+  const _AuthoringRoute({
+    required this.template,
+    required this.create,
+    required this.refusalSentence,
+    required this.onCreated,
+  });
+
+  final PersonaAuthoring template;
+  final Future<CreatedCompanion> Function(
+    String displayName,
+    PersonaAuthoring? persona,
+  ) create;
+  final String Function(Object error) refusalSentence;
+  final void Function(CreatedCompanion created) onCreated;
+
+  @override
+  State<_AuthoringRoute> createState() => _AuthoringRouteState();
+}
+
+class _AuthoringRouteState extends State<_AuthoringRoute> {
+  bool _busy = false;
+  String? _refusal;
+
+  @override
+  Widget build(BuildContext context) {
+    return CompanionAuthoringPage(
+      template: widget.template,
+      busy: _busy,
+      refusal: _refusal,
+      onCreate: (displayName, persona) async {
+        setState(() {
+          _busy = true;
+          _refusal = null;
+        });
+        try {
+          final navigator = Navigator.of(context);
+          final created = await widget.create(displayName, persona);
+          if (!mounted) return;
+          widget.onCreated(created);
+          // Captured before the await: the analyzer is right that a context
+          // read after one is a different context, and the navigator this
+          // route was pushed onto is the one that has to pop it.
+          navigator.pop();
+        } catch (error) {
+          if (!mounted) return;
+          setState(() {
+            _busy = false;
+            _refusal = widget.refusalSentence(error);
+          });
+        }
+      },
     );
   }
 }
