@@ -395,6 +395,18 @@ class HostProductController extends ChangeNotifier {
         expectedRevision: expectedRevision,
       );
 
+  /// Put one of them away, or bring it back.
+  Future<CompanionLifecycleView> setCompanionLifecycle({
+    required String companionId,
+    required String lifecycleState,
+    String? replacementCompanionId,
+  }) =>
+      _managementRepository.setCompanionLifecycle(
+        companionId: companionId,
+        lifecycleState: lifecycleState,
+        replacementCompanionId: replacementCompanionId,
+      );
+
   /// What is remembered, by category.
   Future<MemoryLibraryView> memoryLibrary({String? companionId}) =>
       _managementRepository.memoryLibrary(companionId: companionId);

@@ -29,6 +29,7 @@ class CompanionRosterScreen extends StatefulWidget {
     this.openCompanion,
     this.loadContext,
     this.setDefaultCompanion,
+    this.setCompanionLifecycle,
     this.createCompanion,
     this.newOperationId,
   });
@@ -52,6 +53,16 @@ class CompanionRosterScreen extends StatefulWidget {
     String companionId,
     int expectedRevision,
   )? setDefaultCompanion;
+
+  /// Puts one away, or brings it back. Passed through to the detail screen,
+  /// which is where a person is looking at the single Eidolon they mean. Null
+  /// on a Host that cannot do it yet, and the button is then absent rather than
+  /// disabled.
+  final Future<CompanionLifecycleView> Function(
+    String companionId,
+    String lifecycleState,
+    String? replacementCompanionId,
+  )? setCompanionLifecycle;
 
   /// Adds one. Given an operation id this screen holds, not one per attempt.
   final Future<CreatedCompanion> Function(
@@ -244,9 +255,19 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
                         builder: (_) => CompanionDetailScreen(
                           companionId: companion.companionId,
                           load: widget.openCompanion!,
+                          setLifecycle: widget.setCompanionLifecycle == null ||
+                                  _context == null ||
+                                  !hostCan(_context!, 'companion.archive')
+                              ? null
+                              : widget.setCompanionLifecycle,
+                          // The rows this screen already has. The successor
+                          // question is asked from what the person is looking
+                          // at, not from a second read that could disagree
+                          // with it.
+                          others: roster.companions,
                         ),
                       ),
-                    ),
+                    ).then((_) => _read()),
             onLoadMore: roster.nextCursor == null
                 ? null
                 : () => _read(cursor: roster.nextCursor),

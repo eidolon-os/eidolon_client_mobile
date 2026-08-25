@@ -12,11 +12,19 @@ import '../generated/management_v1.dart';
 /// down", and a screen keyed on the code has to offer one guess for both.
 class ManagementRequestException implements Exception {
   const ManagementRequestException(this.message,
-      {this.statusCode, this.reason});
+      {this.statusCode, this.reason, this.code});
 
   final String message;
   final int? statusCode;
   final String? reason;
+
+  /// The Host's own word for *which* refusal this is, when it gave one.
+  ///
+  /// A status says how to treat the failure; this says what happened. Two of
+  /// these are questions rather than errors — "this is the Eidolon that answers
+  /// you, who should answer instead?" — and a screen can only ask them if it is
+  /// told that is what came back.
+  final String? code;
 
   /// True when someone else changed this first and this app's view is stale.
   ///
@@ -139,6 +147,45 @@ class ManagementClient {
     return CompanionDetailOutcome(
       defaultCompanionId: view.defaultCompanionId,
     );
+  }
+
+  /// Put one of this Owner's Eidolons away, or bring it back.
+  ///
+  /// A `PUT` naming the state it should end in, so asking twice is safe and
+  /// asking for the state it is already in succeeds — which is what a phone
+  /// does after a lost response, and what a second tap on a stale screen is.
+  ///
+  /// Putting away stops new conversations from reaching it and keeps everything
+  /// it remembers; nothing is deleted. If this is the Eidolon that answers when
+  /// nobody was named, the Host refuses with `default_replacement_required`
+  /// rather than choosing a successor — [replacementCompanionId] is how the
+  /// person answers that question.
+  ///
+  /// Bringing one back does not make it the default again. That is a separate
+  /// thing they decided.
+  Future<CompanionLifecycleView> setCompanionLifecycle(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+    required String lifecycleState,
+    String? replacementCompanionId,
+    int? expectedRevision,
+  }) async {
+    final body = await _send(
+      'PUT',
+      baseUri.resolve(
+        ManagementV1.companionsByCompanionIdLifecyclePath(companionId),
+      ),
+      accessToken: accessToken,
+      what: lifecycleState == 'archived' ? '收起来' : '让它回来',
+      body: {
+        'lifecycle_state': lifecycleState,
+        if (replacementCompanionId != null)
+          'replacement_companion_id': replacementCompanionId,
+        if (expectedRevision != null) 'expected_revision': expectedRevision,
+      },
+    );
+    return CompanionLifecycleView.fromJson(body);
   }
 
   /// Add another Eidolon for this Owner.
@@ -590,10 +637,12 @@ class ManagementClient {
       throw ManagementRequestException('$what失败：$error');
     }
     if (response.statusCode != 200) {
+      final body = _text(response);
       throw ManagementRequestException(
         '$what被拒绝',
         statusCode: response.statusCode,
-        reason: _reason(_text(response)),
+        reason: _reason(body),
+        code: _code(body),
       );
     }
     final decoded = jsonDecode(_text(response));
@@ -614,14 +663,38 @@ class ManagementClient {
       utf8.decode(response.bodyBytes);
 
   /// The Host's own words, when it gave any.
+  ///
+  /// Two shapes: a plain sentence, or `{code, message}` for the refusals a
+  /// client is expected to act on differently. Both are read here so a screen
+  /// never has to know which route it called.
   static String? _reason(String body) {
+    final detail = _detail(body);
+    if (detail is String) {
+      return detail;
+    }
+    if (detail is Map && detail['message'] is String) {
+      return detail['message'] as String;
+    }
+    return null;
+  }
+
+  /// The refusal code, when the Host named one.
+  static String? _code(String body) {
+    final detail = _detail(body);
+    if (detail is Map && detail['code'] is String) {
+      return detail['code'] as String;
+    }
+    return null;
+  }
+
+  static Object? _detail(String body) {
     if (body.isEmpty) {
       return null;
     }
     try {
       final decoded = jsonDecode(body);
-      if (decoded is Map && decoded['detail'] is String) {
-        return decoded['detail'] as String;
+      if (decoded is Map) {
+        return decoded['detail'];
       }
     } on FormatException {
       return null;

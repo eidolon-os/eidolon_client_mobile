@@ -1,29 +1,45 @@
 import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
+import 'lifecycle_sheet.dart';
 import 'management_client.dart';
 import '../protocol/companion_contract.dart';
 
 /// One Eidolon, opened from the roster.
 ///
-/// Read-only, and it says so by having nothing to press. Renaming, archiving
-/// and making one the default are writes; a screen that showed those controls
-/// greyed out would be promising something this Host cannot do yet, and a
-/// screen that showed them working would be lying.
+/// It has exactly one thing to press, and only when the Host says it can do it:
+/// putting this Eidolon away, or bringing it back. Renaming still is not here,
+/// because a control that is greyed out promises something this Host cannot do
+/// yet, and one that appears to work while nothing happens behind it is worse.
 ///
 /// It carries `revision` without displaying it. The number means nothing to a
-/// person, but the first write from this screen will have to present it, and
-/// having it already read is the difference between one round trip and two —
-/// the second of which could see a different value.
+/// person, but a write from this screen presents it, and having it already read
+/// is the difference between one round trip and two — the second of which could
+/// see a different value.
 class CompanionDetailScreen extends StatefulWidget {
   const CompanionDetailScreen({
     super.key,
     required this.companionId,
     required this.load,
+    this.setLifecycle,
+    this.others = const [],
   });
 
   final String companionId;
   final Future<CompanionDetailView> Function(String companionId) load;
+
+  /// Puts this Eidolon away or brings it back. Null leaves the screen with
+  /// nothing to press, which is what a Host that cannot do this yet deserves to
+  /// look like.
+  final Future<CompanionLifecycleView> Function(
+    String companionId,
+    String lifecycleState,
+    String? replacementCompanionId,
+  )? setLifecycle;
+
+  /// This Owner's other Eidolons, for the successor question — asked only if
+  /// the Host says it needs asking.
+  final List<CompanionSummaryView> others;
 
   @override
   State<CompanionDetailScreen> createState() => _CompanionDetailScreenState();
@@ -142,8 +158,51 @@ class _CompanionDetailScreenState extends State<CompanionDetailScreen> {
             ),
           ),
         ),
+        if (widget.setLifecycle != null &&
+            (companion.lifecycleState == 'active' ||
+                companion.lifecycleState == 'archived')) ...[
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton(
+              key: const Key('detail-lifecycle'),
+              onPressed: () => _openLifecycleSheet(companion),
+              child: Text(
+                companion.lifecycleState == 'active' ? '收起来' : '让它回来',
+              ),
+            ),
+          ),
+        ],
       ],
     );
+  }
+
+  /// Only ``active`` and ``archived`` offer the action. ``retiring`` is a step
+  /// the Host is walking through and ``deleting`` is not something this screen
+  /// interrupts; either way the honest thing is a screen with nothing to press,
+  /// not a button that will be refused.
+  Future<void> _openLifecycleSheet(CompanionDetailView companion) async {
+    final change = widget.setLifecycle;
+    if (change == null) return;
+    final moved = await showModalBottomSheet<CompanionLifecycleView>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => CompanionLifecycleSheet(
+        companion: companion,
+        others: widget.others
+            .where((row) =>
+                row.companionId != companion.companionId &&
+                row.lifecycleState == 'active')
+            .toList(),
+        setLifecycle: (state, replacement) =>
+            change(companion.companionId, state, replacement),
+      ),
+    );
+    if (moved == null || !mounted) return;
+    // Read back rather than patching what is on screen: this screen shows a
+    // Companion, and the answer to a lifecycle change describes a move, not a
+    // Companion. Painting one from the other is how the two drift.
+    await _read();
   }
 }
 

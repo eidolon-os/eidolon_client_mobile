@@ -13,6 +13,7 @@ class ManagementV1 {
   static String companionsByCompanionIdPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}';
   static String companionsByCompanionIdConversationsPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/conversations';
   static String companionsByCompanionIdConversationsByConversationIdTurnsPath(String companionId, String conversationId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/conversations/${Uri.encodeComponent(conversationId)}/turns';
+  static String companionsByCompanionIdLifecyclePath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/lifecycle';
   static String companionsByCompanionIdPersonaHistoryPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona-history';
   static String companionsByCompanionIdPersonaRestorationsPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona-restorations';
   static String companionsByCompanionIdTasksPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks';
@@ -127,6 +128,58 @@ class CompanionDetailView {
       displayName: value['display_name'] as String?,
       isDefault: value['is_default'] as bool,
       kind: value['kind'] as String,
+      lifecycleState: value['lifecycle_state'] as String,
+      revision: value['revision'] as int,
+    );
+  }
+}
+
+class CompanionLifecycleRequest {
+  const CompanionLifecycleRequest({
+    this.expectedRevision,
+    required this.lifecycleState,
+    this.replacementCompanionId,
+  });
+
+  final int? expectedRevision;
+
+  final String lifecycleState;
+
+  final String? replacementCompanionId;
+
+  factory CompanionLifecycleRequest.fromJson(Map<String, dynamic> value) {
+    return CompanionLifecycleRequest(
+      expectedRevision: value['expected_revision'] as int?,
+      lifecycleState: value['lifecycle_state'] as String,
+      replacementCompanionId: value['replacement_companion_id'] as String?,
+    );
+  }
+}
+
+class CompanionLifecycleView {
+  const CompanionLifecycleView({
+    required this.companionId,
+    this.contractVersion,
+    this.defaultCompanionId,
+    required this.lifecycleState,
+    required this.revision,
+  });
+
+  final String companionId;
+
+  final String? contractVersion;
+
+  final String? defaultCompanionId;
+
+  final String lifecycleState;
+
+  final int revision;
+
+  factory CompanionLifecycleView.fromJson(Map<String, dynamic> value) {
+    return CompanionLifecycleView(
+      companionId: value['companion_id'] as String,
+      contractVersion: value['contract_version'] as String?,
+      defaultCompanionId: value['default_companion_id'] as String?,
       lifecycleState: value['lifecycle_state'] as String,
       revision: value['revision'] as int,
     );

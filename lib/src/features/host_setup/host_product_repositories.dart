@@ -387,6 +387,28 @@ class HostManagementRepository {
         ),
       );
 
+  /// Put one away, or bring it back.
+  ///
+  /// [replacementCompanionId] is only sent once the Host has asked for one: the
+  /// rule about who must answer lives there, and a client that pre-empted it
+  /// would be keeping a second copy of it.
+  Future<CompanionLifecycleView> setCompanionLifecycle({
+    required String companionId,
+    required String lifecycleState,
+    String? replacementCompanionId,
+    int? expectedRevision,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.setCompanionLifecycle(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          lifecycleState: lifecycleState,
+          replacementCompanionId: replacementCompanionId,
+          expectedRevision: expectedRevision,
+        ),
+      );
+
   /// One page. [cursor] is a value a previous page handed back, forwarded as-is.
   Future<CompanionRosterView> roster({String? cursor}) =>
       _session.executeManagement(
