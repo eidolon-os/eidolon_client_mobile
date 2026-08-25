@@ -13,44 +13,37 @@ const _candidate = DeviceProvisioningCandidate(
   transportId: 'nearby-1',
   displayName: 'Eidolon Body 1',
   transportKind: 'test',
-  trust: DeviceProvisioningTrust.manufacturerBound,
+  trust: SetupDescriptorTrustV1.manufacturerBound,
 );
 
+// The device's own half of the descriptor comes from the canonical binding, so
+// these fixtures cannot describe a device the contract would not allow.
+final _setup = SetupDescriptorV1.fromJson({
+  'contract_version': '1',
+  'device_id': 'device_01',
+  'device_kind': 'esp32-display',
+  'display_name': 'Eidolon Body 1',
+  'identity_fingerprint':
+      'p256:591d7c62d0bc738376935f77ff2acd5472bbee64207a765df03af6d6240c07dc',
+  'session_id': 'setup_session_01',
+  'expires_in_seconds': 600,
+  'trust': 'manufacturer-bound',
+});
+
 final _descriptor = DeviceProvisioningDescriptor(
-  contractVersion: '1',
-  deviceId: 'device_01',
-  deviceKind: 'esp32-display',
-  displayName: 'Eidolon Body 1',
-  identityFingerprint: 'sha256:device-1',
-  sessionId: 'session-1',
+  setup: _setup,
   expiresAt: _now.add(const Duration(minutes: 10)),
-  trust: DeviceProvisioningTrust.manufacturerBound,
 );
 
 // A device that has never been commissioned keeps its offer open, so there is
 // no instant to carry here at all.
 final _descriptorWithoutExpiry = DeviceProvisioningDescriptor(
-  contractVersion: '1',
-  deviceId: 'device_01',
-  deviceKind: 'esp32-display',
-  displayName: 'Eidolon Body 1',
-  identityFingerprint: 'sha256:device-1',
-  sessionId: 'session-1',
+  setup: _setup,
   expiresAt: null,
-  trust: DeviceProvisioningTrust.manufacturerBound,
 );
 
 DeviceProvisioningDescriptor _descriptorExpiringAt(DateTime expiresAt) =>
-    DeviceProvisioningDescriptor(
-      contractVersion: '1',
-      deviceId: 'device_01',
-      deviceKind: 'esp32-display',
-      displayName: 'Eidolon Body 1',
-      identityFingerprint: 'sha256:device-1',
-      sessionId: 'session-1',
-      expiresAt: expiresAt,
-      trust: DeviceProvisioningTrust.manufacturerBound,
-    );
+    DeviceProvisioningDescriptor(setup: _setup, expiresAt: expiresAt);
 
 void main() {
   test('network commit persists stable command IDs before explicit Decision',
@@ -330,7 +323,7 @@ class _Session implements DeviceProvisioningSession {
       'ack': ackCommandId,
     };
     return const CommissioningStatusEvidenceV1(
-      sessionId: 'session-1',
+      sessionId: 'setup_session_01',
       setupGeneration: 1,
       stateRevision: 5,
       state: CommissioningStatusStateV1.committed,

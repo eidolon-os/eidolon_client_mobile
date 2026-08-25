@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly SDK_COMMIT="6ecd5428cc37cdbad1f6623240efc2a82485b9cf"
+readonly SDK_COMMIT="8b30facf5c5b9dc65f631f279f07ed6724621ac5"
 readonly SDK_BINDING="contracts/device_foundation/v1/generated/dart/device_foundation_v1.dart"
 readonly MOBILE_BINDING="lib/src/generated/device_foundation_v1.dart"
 readonly SDK_CONSUMER_FIXTURE="contracts/device_foundation/v1/examples/valid/admission-consumer-surface.json"
@@ -15,6 +15,12 @@ readonly MOBILE_ADMISSION_GOLDEN="test/fixtures/device_foundation/admission-even
 # missed here without a red test.
 readonly SDK_DESCRIPTOR_GOLDEN="contracts/device_foundation/v1/golden/owner-domain-descriptor.json"
 readonly MOBILE_DESCRIPTOR_GOLDEN="test/fixtures/device_foundation/owner-domain-descriptor.json"
+# The setup descriptor's field table. It used to be written by hand in the
+# firmware and again by hand here, which is how the device came to encode an
+# endless setup window as 0 while this side refused any duration it could not
+# act on. Both ends now answer to this vector.
+readonly SDK_SETUP_DESCRIPTOR_GOLDEN="contracts/device_foundation/v1/golden/setup-descriptor.json"
+readonly MOBILE_SETUP_DESCRIPTOR_GOLDEN="test/fixtures/device_foundation/setup-descriptor.json"
 
 mode="${1:---check}"
 sdk_root="${EIDOLON_SDK_ROOT:-../eidolon_sdk}"
@@ -33,6 +39,7 @@ sdk_paths=(
   "$SDK_ADMISSION_FIXTURE"
   "$SDK_ADMISSION_GOLDEN"
   "$SDK_DESCRIPTOR_GOLDEN"
+  "$SDK_SETUP_DESCRIPTOR_GOLDEN"
 )
 mobile_paths=(
   "$MOBILE_BINDING"
@@ -40,6 +47,7 @@ mobile_paths=(
   "$MOBILE_ADMISSION_FIXTURE"
   "$MOBILE_ADMISSION_GOLDEN"
   "$MOBILE_DESCRIPTOR_GOLDEN"
+  "$MOBILE_SETUP_DESCRIPTOR_GOLDEN"
 )
 
 drifted=0

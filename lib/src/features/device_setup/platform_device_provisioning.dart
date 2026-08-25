@@ -332,7 +332,7 @@ DeviceProvisioningCandidate _candidateFromPlatform(
     // Nothing discoverable proves a manufacturer-bound identity: only the
     // descriptor read over an authenticated session can, and the coordinator
     // refuses a session whose trust changed between the two.
-    trust: DeviceProvisioningTrust.developmentTofu,
+    trust: SetupDescriptorTrustV1.developmentTofu,
     signalStrength: signalStrength is int ? signalStrength : null,
   );
 }
@@ -356,99 +356,49 @@ DeviceWifiNetwork _networkFromPlatform(Map<Object?, Object?> value) {
 
 /// Read the descriptor a device answers with over the provisioning session.
 ///
-/// The device reports how long its window lasts rather than when it ends: it has
-/// not joined a network and has no clock to name an instant with. The absolute
-/// expiry the contract carries is therefore computed here, against the clock of
-/// the phone that is doing the asking.
+/// The field table and every rule about it belong to the generated canonical
+/// binding. They used to live here as a hand-written check and in the firmware
+/// as hand-written JSON, kept in step by review: the device encoded "this offer
+/// never ends" as `expires_in_seconds: 0`, this side required a duration it
+/// could act on, and every device out of the box was refused for breaking a
+/// contract neither end had broken.
 ///
-/// A device whose offer does not end reports no duration at all, and then there
-/// is no instant to compute: an offer with no deadline stays an offer with no
-/// deadline all the way through, rather than becoming one that has already
-/// lapsed.
+/// What is left here is the one thing the device could not tell us. It reports
+/// how long its window lasts rather than when it ends — it has not joined a
+/// network and has no clock to name an instant with — so the absolute expiry is
+/// computed here, against the clock of the phone that is doing the asking. An
+/// offer with no duration stays an offer with no deadline all the way through,
+/// rather than becoming one that has already lapsed.
 DeviceProvisioningDescriptor _parseDescriptor(String raw,
     {required DateTime now}) {
   final Object? decoded;
   try {
     decoded = jsonDecode(raw);
   } on FormatException {
+    // Not the same answer as a descriptor that parsed and said the wrong
+    // thing: this one never reached the contract at all.
     throw const DeviceProvisioningTransportException(
       'descriptor_invalid',
       '设备返回的说明无法解析。',
     );
   }
-  if (decoded is! Map<String, dynamic>) {
-    throw const DeviceProvisioningTransportException(
-      'descriptor_invalid',
-      '设备返回的说明不是一个 v1 描述符。',
-    );
-  }
-  final contractVersion = decoded['contract_version'];
-  final deviceId = decoded['device_id'];
-  final deviceKind = decoded['device_kind'];
-  final displayName = decoded['display_name'];
-  final identityFingerprint = decoded['identity_fingerprint'];
-  final sessionId = decoded['session_id'];
-  final expiresInSeconds = decoded['expires_in_seconds'];
-  final trust = decoded['trust'];
-  if (contractVersion != '1' ||
-      deviceId is! String ||
-      deviceId.isEmpty ||
-      deviceId.length > 128 ||
-      deviceKind is! String ||
-      deviceKind.isEmpty ||
-      displayName is! String ||
-      displayName.isEmpty ||
-      identityFingerprint is! String ||
-      identityFingerprint.isEmpty ||
-      sessionId is! String ||
-      sessionId.isEmpty) {
+  final SetupDescriptorV1 setup;
+  try {
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('descriptor is not an object');
+    }
+    setup = SetupDescriptorV1.fromJson(decoded);
+  } on FormatException {
     throw const DeviceProvisioningTransportException(
       'descriptor_invalid',
       '设备返回的说明与 v1 契约不一致。',
     );
   }
-  // Whether the offer ends at all is a separate fact from how long it lasts, so
-  // it arrives separately: a device nobody has claimed keeps advertising until
-  // it is claimed, cancelled or powered off, and says so by naming no duration.
-  //
-  // The absence is the whole of that answer. Devices used to encode it as 0,
-  // and because a positive duration was required here, every device out of the
-  // box was refused as breaking the contract. A duration that IS named must
-  // still be one the device can honour: 0 or a negative one cannot be told
-  // apart from a field nobody filled in, so it stays a refusal.
-  final DateTime? expiresAt;
-  if (expiresInSeconds == null) {
-    expiresAt = null;
-  } else if (expiresInSeconds is int && expiresInSeconds > 0) {
-    expiresAt = now.add(Duration(seconds: expiresInSeconds));
-  } else {
-    throw const DeviceProvisioningTransportException(
-      'descriptor_invalid',
-      '设备声明的配网时限不是一个能用的时长。',
-    );
-  }
-  final DeviceProvisioningTrust parsedTrust;
-  switch (trust) {
-    case 'manufacturer-bound':
-      parsedTrust = DeviceProvisioningTrust.manufacturerBound;
-    case 'development-tofu':
-      parsedTrust = DeviceProvisioningTrust.developmentTofu;
-    default:
-      // A trust level this build does not know is not something to guess at in
-      // the safe direction or the unsafe one.
-      throw const DeviceProvisioningTransportException(
-        'descriptor_invalid',
-        '设备声明了一个本版本不认识的信任级别。',
-      );
-  }
+  final expiresIn = setup.expiresIn;
   return DeviceProvisioningDescriptor(
-    contractVersion: contractVersion as String,
-    deviceId: deviceId,
-    deviceKind: deviceKind,
-    displayName: displayName,
-    identityFingerprint: identityFingerprint,
-    sessionId: sessionId,
-    expiresAt: expiresAt,
-    trust: parsedTrust,
+    setup: setup,
+    expiresAt: expiresIn == null
+        ? null
+        : now.add(Duration(seconds: expiresIn.seconds)),
   );
 }

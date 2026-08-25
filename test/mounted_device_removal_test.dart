@@ -3,6 +3,7 @@ import 'package:eidolon_client_mobile/src/features/device_management/mounted_dev
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
 import 'package:flutter/material.dart';
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
+import 'package:eidolon_client_mobile/src/management/management_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 MountedDevice _device({String state = 'ready'}) => MountedDevice.fromView(
@@ -106,23 +107,8 @@ void main() {
 
     expect(removed, 'mobile-android-0123456789abcdef');
     expect(find.byKey(const Key('mounted-device-detail')), findsOneWidget);
-    expect(find.textContaining('设备本地擦除尚未确认'), findsOneWidget);
-  });
-
-  testWidgets('a revoked-but-still-mounted device says so', (tester) async {
-    await _open(tester, (_, __) async => _progress('unfinished'));
-
-    await tester.tap(find.byKey(const Key('remove-mounted-device')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('confirm-device-removal-action')));
-    await tester.pumpAndSettle();
-
-    final notice = tester.widget<Text>(
-      find.byKey(const Key('device-removal-notice')),
-    );
-    expect(notice.data, contains('平台访问授权已撤销'));
-    expect(notice.data, contains('授权已撤销'));
-    expect(find.byKey(const Key('mounted-device-detail')), findsOneWidget);
+    expect(find.textContaining('已失去访问，移除已经生效'), findsOneWidget);
+    expect(find.textContaining('尚未确认擦除'), findsOneWidget);
   });
 
   testWidgets('a failed removal keeps the device on screen', (tester) async {
@@ -139,6 +125,80 @@ void main() {
     final notice = tester.widget<Text>(
       find.byKey(const Key('device-removal-notice')),
     );
+    expect(notice.data, contains('继续同一移除意图'));
+  });
+
+  testWidgets(
+      'a revoked device is told it lost access, and what has not happened',
+      (tester) async {
+    // The two facts a removal produces are not one fact. The device losing
+    // access has already happened and cannot be undone by anything the device
+    // does; whether the device erased its copy of the Owner's data depends on
+    // whether it ever comes back. A dead board never will, and the screen has
+    // to say which of the two is which.
+    await _open(tester, (_, __) async => _progress('unfinished'));
+
+    await tester.tap(find.byKey(const Key('remove-mounted-device')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirm-device-removal-action')));
+    await tester.pumpAndSettle();
+
+    final notice = tester.widget<Text>(
+      find.byKey(const Key('device-removal-notice')),
+    );
+    expect(notice.data, contains('已失去访问'));
+    expect(notice.data, contains('主机挂载正在独立收敛'));
+    expect(notice.data, contains('尚未确认擦除'));
+    expect(notice.data, isNot(contains('暂时无法')));
+    expect(find.byKey(const Key('mounted-device-detail')), findsOneWidget);
+  });
+
+  testWidgets(
+      'a Host that refused is not reported as a Host that may not have heard',
+      (tester) async {
+    // 「暂时无法确认主机是否已受理」 was the wording for every throw on this
+    // path, including a definite refusal carrying the Host's own envelope. It
+    // read as "nothing happened, try again" for an answer that had in fact
+    // arrived, about an operation that had not started.
+    await _open(
+      tester,
+      (_, __) async => throw const ManagementRequestException(
+        '移除设备被拒绝',
+        statusCode: 409,
+        refusal: Refusal(kind: 'conflict', reason: 'stale generation'),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('remove-mounted-device')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirm-device-removal-action')));
+    await tester.pumpAndSettle();
+
+    final notice = tester.widget<Text>(
+      find.byKey(const Key('device-removal-notice')),
+    );
+    expect(notice.data, isNot(contains('暂时无法确认')));
+    expect(notice.data, contains('有人先改过了'));
+  });
+
+  testWidgets('a Host that never answered still says the intent is preserved',
+      (tester) async {
+    // No envelope means no answer: a dropped socket, a timeout. Here the
+    // uncertainty is real and re-confirming continues the same intent.
+    await _open(
+      tester,
+      (_, __) async => throw const ManagementRequestException('移除设备没有完成'),
+    );
+
+    await tester.tap(find.byKey(const Key('remove-mounted-device')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirm-device-removal-action')));
+    await tester.pumpAndSettle();
+
+    final notice = tester.widget<Text>(
+      find.byKey(const Key('device-removal-notice')),
+    );
+    expect(notice.data, contains('暂时无法确认主机是否已受理'));
     expect(notice.data, contains('继续同一移除意图'));
   });
 

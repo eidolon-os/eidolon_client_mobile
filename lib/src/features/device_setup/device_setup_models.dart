@@ -4,14 +4,6 @@ import '../../generated/management_v1.dart';
 
 import '../../generated/device_foundation_v1.dart';
 
-enum DeviceProvisioningTrust {
-  /// Development-only discovery without a manufacturer-bound identity.
-  developmentTofu,
-
-  /// Descriptor identity is bound to a product credential or equivalent proof.
-  manufacturerBound,
-}
-
 enum DeviceProvisioningState {
   notStarted,
   discovering,
@@ -57,28 +49,24 @@ class DeviceProvisioningCandidate {
   final String transportId;
   final String displayName;
   final String transportKind;
-  final DeviceProvisioningTrust trust;
+  final SetupDescriptorTrustV1 trust;
   final int? signalStrength;
 }
 
+/// What a device said about itself, plus the one thing it could not say.
+///
+/// The device's own words are [setup], read through the canonical binding — the
+/// field table is the SDK's, not a second one written out here. What this adds
+/// is [expiresAt]: the device reports a duration because it has not joined a
+/// network and has no wall clock, so only the phone holding the clock can turn
+/// that into an instant.
 class DeviceProvisioningDescriptor {
   const DeviceProvisioningDescriptor({
-    required this.contractVersion,
-    required this.deviceId,
-    required this.deviceKind,
-    required this.displayName,
-    required this.identityFingerprint,
-    required this.sessionId,
+    required this.setup,
     required this.expiresAt,
-    required this.trust,
   });
 
-  final String contractVersion;
-  final String deviceId;
-  final String deviceKind;
-  final String displayName;
-  final String identityFingerprint;
-  final String sessionId;
+  final SetupDescriptorV1 setup;
 
   /// When this setup offer stops being valid, or null when it does not end.
   ///
@@ -88,7 +76,11 @@ class DeviceProvisioningDescriptor {
   /// substitute an instant for the absence — that is how a factory device ends
   /// up looking like one whose window closed before anybody reached it.
   final DateTime? expiresAt;
-  final DeviceProvisioningTrust trust;
+
+  String get deviceId => setup.deviceId;
+  String get displayName => setup.displayName;
+  String get sessionId => setup.sessionId;
+  SetupDescriptorTrustV1 get trust => setup.trust;
 }
 
 class DeviceWifiNetwork {
@@ -280,7 +272,8 @@ class DeviceRemovalProgress {
           _ => ActOutcome.unfinished,
         },
         conditions: {
-          for (final condition in view.conditions) condition.name: condition.state,
+          for (final condition in view.conditions)
+            condition.name: condition.state,
         },
       );
 

@@ -529,6 +529,143 @@ class DeviceLocalEraseOperationStatusV1 {
   }
 }
 
+/// Whether a descriptor's identity is bound to a product credential.
+///
+/// Development and production devices differ in this value only; the setup act
+/// that follows is the same one either way.
+enum SetupDescriptorTrustV1 {
+  developmentTofu('development-tofu'),
+  manufacturerBound('manufacturer-bound');
+
+  const SetupDescriptorTrustV1(this.wireValue);
+  final String wireValue;
+}
+
+/// How much longer a setup offer lasts, when it lasts a bounded time at all.
+///
+/// The type exists so that "this offer does not end" cannot be written as a
+/// number. There is no public constructor, and the only way in refuses anything
+/// that is not a duration a controller could act on — so 0, the sentinel the
+/// descriptor used to carry for an endless window, cannot survive being read.
+/// Absence of a deadline is `null`, and on the wire it is an absent field.
+final class SetupWindowRemainingSecondsV1 {
+  const SetupWindowRemainingSecondsV1._(this.seconds);
+
+  final int seconds;
+
+  /// Reads a duration that is present. Absence is the caller's to notice: this
+  /// type is only reached once the field is there, and a field that is there
+  /// has to name a duration a controller could act on. `null`, 0 and negatives
+  /// are all refused for the same reason — none of them is a duration, and
+  /// letting any of them through is what a sentinel is.
+  factory SetupWindowRemainingSecondsV1.parse(Object? raw) {
+    if (raw is! int || raw is bool || raw < 1) {
+      throw const FormatException('Invalid setup window duration');
+    }
+    return SetupWindowRemainingSecondsV1._(raw);
+  }
+}
+
+/// What a device says about itself before it belongs to anyone.
+class SetupDescriptorV1 {
+  const SetupDescriptorV1({
+    required this.deviceId,
+    required this.deviceKind,
+    required this.displayName,
+    required this.identityFingerprint,
+    required this.sessionId,
+    required this.expiresIn,
+    required this.trust,
+  });
+
+  /// The descriptor's own wire version, not the Device Foundation `1.0`: this
+  /// document predates a device having any Owner.
+  static const String contractVersion = '1';
+
+  static const Set<String> requiredFields = {
+    'contract_version',
+    'device_id',
+    'device_kind',
+    'display_name',
+    'identity_fingerprint',
+    'session_id',
+    'trust',
+  };
+
+  /// The one field a descriptor may leave out, and the only way to say that
+  /// this setup offer does not end.
+  static const Set<String> optionalFields = {'expires_in_seconds'};
+
+  final String deviceId;
+  final String deviceKind;
+  final String displayName;
+  final String identityFingerprint;
+  final String sessionId;
+
+  /// How long this offer still lasts, or null when it does not end.
+  ///
+  /// A duration, not an instant: the device has not joined a network and has no
+  /// wall clock, so the absolute expiry is the reader's to compute against its
+  /// own. Null is neither "already expired" nor "expires now" — nothing may
+  /// substitute an instant for the absence.
+  final SetupWindowRemainingSecondsV1? expiresIn;
+  final SetupDescriptorTrustV1 trust;
+
+  factory SetupDescriptorV1.fromJson(Map<String, dynamic> value) {
+    final keys = value.keys.toSet();
+    if (requiredFields.difference(keys).isNotEmpty ||
+        keys.difference(requiredFields.union(optionalFields)).isNotEmpty ||
+        value['contract_version'] != contractVersion) {
+      throw const FormatException('Invalid setup descriptor envelope');
+    }
+    final fingerprint = _text(value['identity_fingerprint'], 128);
+    if (!RegExp(r'^p256:[0-9a-f]{64}$').hasMatch(fingerprint)) {
+      throw const FormatException('Invalid device identity fingerprint');
+    }
+    final sessionId = _text(value['session_id'], 128);
+    if (sessionId.length < 16 ||
+        !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(sessionId)) {
+      throw const FormatException('Invalid setup session id');
+    }
+    SetupDescriptorTrustV1? trust;
+    for (final candidate in SetupDescriptorTrustV1.values) {
+      if (candidate.wireValue == value['trust']) trust = candidate;
+    }
+    if (trust == null) {
+      // A trust level this build does not know is not something to guess at in
+      // the safe direction or the unsafe one.
+      throw const FormatException('Unknown setup descriptor trust level');
+    }
+    return SetupDescriptorV1(
+      deviceId: _identifier(value['device_id']),
+      deviceKind: _identifier(value['device_kind']),
+      displayName: _text(value['display_name'], 128),
+      identityFingerprint: fingerprint,
+      sessionId: sessionId,
+      // A field that is there names a duration; a field that is not there is
+      // the offer that does not end. Nothing in between: writing the key with
+      // no value is the same mistake as writing 0 in it.
+      expiresIn: value.containsKey('expires_in_seconds')
+          ? SetupWindowRemainingSecondsV1.parse(value['expires_in_seconds'])
+          : null,
+      trust: trust,
+    );
+  }
+
+  /// The wire form. An offer with no deadline carries no duration field at all:
+  /// writing `null` there would be the same mistake as writing 0.
+  Map<String, dynamic> toJson() => {
+    'contract_version': contractVersion,
+    'device_id': deviceId,
+    'device_kind': deviceKind,
+    'display_name': displayName,
+    if (expiresIn != null) 'expires_in_seconds': expiresIn!.seconds,
+    'identity_fingerprint': identityFingerprint,
+    'session_id': sessionId,
+    'trust': trust.wireValue,
+  };
+}
+
 enum CommissioningStatusStateV1 {
   applyingConfiguration('applying-configuration'),
   committed('committed'),

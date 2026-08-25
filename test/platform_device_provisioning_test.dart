@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/platform_device_provisioning.dart';
+import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -36,7 +37,8 @@ void main() {
         'device_id': '10:51:db:7e:24:44',
         'device_kind': 'atk-dnesp32s3',
         'display_name': 'atk-dnesp32s3',
-        'identity_fingerprint': 'sha256:abc',
+        'identity_fingerprint':
+            'p256:591d7c62d0bc738376935f77ff2acd5472bbee64207a765df03af6d6240c07dc',
         'session_id': 'setup_session_01',
         if (declaresExpiry) 'expires_in_seconds': expiresInSeconds,
         'trust': trust,
@@ -78,13 +80,13 @@ void main() {
         transportId: 'eidolon-7e2444',
         displayName: 'eidolon-7e2444',
         transportKind: 'softap',
-        trust: DeviceProvisioningTrust.developmentTofu,
+        trust: SetupDescriptorTrustV1.developmentTofu,
       ),
     );
 
     expect(session.descriptor.expiresAt, now.add(const Duration(seconds: 600)));
     expect(session.descriptor.deviceId, '10:51:db:7e:24:44');
-    expect(session.descriptor.trust, DeviceProvisioningTrust.developmentTofu);
+    expect(session.descriptor.trust, SetupDescriptorTrustV1.developmentTofu);
   });
 
   test('accepts an offer that names no duration as one with no deadline',
@@ -106,7 +108,7 @@ void main() {
         transportId: 'eidolon-7e2444',
         displayName: 'eidolon-7e2444',
         transportKind: 'softap',
-        trust: DeviceProvisioningTrust.developmentTofu,
+        trust: SetupDescriptorTrustV1.developmentTofu,
       ),
     );
 
@@ -129,10 +131,10 @@ void main() {
         transportId: 't',
         displayName: 'd',
         transportKind: 'softap',
-        trust: DeviceProvisioningTrust.developmentTofu,
+        trust: SetupDescriptorTrustV1.developmentTofu,
       ),
     );
-    expect(session.descriptor.trust, DeviceProvisioningTrust.manufacturerBound);
+    expect(session.descriptor.trust, SetupDescriptorTrustV1.manufacturerBound);
   });
 
   test('refuses a descriptor from a contract or trust level it does not know',
@@ -160,7 +162,7 @@ void main() {
             transportId: 't',
             displayName: 'd',
             transportKind: 'softap',
-            trust: DeviceProvisioningTrust.developmentTofu,
+            trust: SetupDescriptorTrustV1.developmentTofu,
           ),
         ),
         throwsA(isA<DeviceProvisioningTransportException>()),
@@ -215,7 +217,7 @@ void main() {
         transportId: 't',
         displayName: 'd',
         transportKind: 'softap',
-        trust: DeviceProvisioningTrust.developmentTofu,
+        trust: SetupDescriptorTrustV1.developmentTofu,
       ),
     );
     await session.configureNetwork(
@@ -257,7 +259,7 @@ void main() {
         transportId: 't',
         displayName: 'd',
         transportKind: 'softap',
-        trust: DeviceProvisioningTrust.developmentTofu,
+        trust: SetupDescriptorTrustV1.developmentTofu,
       ),
     );
 
@@ -308,7 +310,7 @@ void main() {
         transportId: 't',
         displayName: 'd',
         transportKind: 'softap',
-        trust: DeviceProvisioningTrust.developmentTofu,
+        trust: SetupDescriptorTrustV1.developmentTofu,
       ),
     );
     await expectLater(
@@ -350,7 +352,7 @@ void main() {
         transportId: 't',
         displayName: 'd',
         transportKind: 'softap',
-        trust: DeviceProvisioningTrust.developmentTofu,
+        trust: SetupDescriptorTrustV1.developmentTofu,
       ),
     );
     await expectLater(
@@ -385,7 +387,7 @@ void main() {
         transportId: 't',
         displayName: 'd',
         transportKind: 'softap',
-        trust: DeviceProvisioningTrust.developmentTofu,
+        trust: SetupDescriptorTrustV1.developmentTofu,
       ),
     );
     await expectLater(

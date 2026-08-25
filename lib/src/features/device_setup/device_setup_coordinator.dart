@@ -297,7 +297,7 @@ class DeviceSetupCoordinator {
       );
     }
     if (!allowDevelopmentTrust &&
-        descriptor.trust == DeviceProvisioningTrust.developmentTofu) {
+        descriptor.trust == SetupDescriptorTrustV1.developmentTofu) {
       throw const DeviceSetupException(
         code: 'untrusted_device_provisioning',
         message: 'Device provisioning is not bound to a product identity',

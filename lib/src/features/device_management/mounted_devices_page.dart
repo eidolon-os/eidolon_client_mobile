@@ -10,6 +10,7 @@ import '../device_setup/device_setup_page.dart';
 import '../device_setup/host_controller_device_admission.dart';
 import '../device_setup/platform_device_provisioning.dart';
 import '../../generated/management_v1.dart';
+import '../../management/management_client.dart';
 import '../host_setup/host_product_controller.dart';
 import 'mounted_device_models.dart';
 
@@ -309,6 +310,17 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
   bool _removing = false;
   bool _binding = false;
   bool _platformRemoved = false;
+
+  /// Whether the device has already lost access, which is a different fact from
+  /// [_platformRemoved].
+  ///
+  /// One flag used to carry both, and they are not the same question: losing
+  /// access has happened the moment the Host revokes the Claim and nothing the
+  /// device does can undo it, while "there is nothing left to ask the Host for"
+  /// also waits on the mount. Reading a removal that had already taken the
+  /// device's access away as a setback is what made the screen's own answer
+  /// sound like the operation had failed.
+  bool _accessRevoked = false;
   String? _notice;
   String? _removalRequestId;
 
@@ -381,9 +393,12 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
       if (progress.outcome == ActOutcome.done) {
         setState(() {
           _platformRemoved = true;
+          _accessRevoked = true;
           _notice = progress.deviceEraseAcknowledged
-              ? '已从平台移除，设备也已确认清除本地状态。'
-              : '已从平台移除；设备本地擦除尚未确认。离线设备再次出现时旧凭据会被拒绝，必要时请执行物理复位。';
+              ? '这台设备已失去访问，移除已经生效；它也确认清除了本地数据。'
+              : '这台设备已失去访问，移除已经生效。它本地的数据尚未确认擦除：'
+                  '设备若再次上线，旧凭据会被拒绝并被要求擦除；若它已经坏了，'
+                  '只能按物理处置。';
         });
         return;
       }
@@ -391,9 +406,16 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
         if (progress.outcome == ActOutcome.refused) {
           _removalRequestId = null;
         }
+        _accessRevoked = progress.platformAccessRevoked;
         _notice = switch (progress) {
+          // Two facts, in the order they settle. Access is gone already and no
+          // longer depends on anything; the mount converges on the Host's own
+          // schedule and the erase depends on whether the device ever returns.
           _ when progress.platformAccessRevoked && !progress.mountRemoved =>
-            '平台访问授权已撤销；主机挂载正在独立收敛。',
+            '这台设备已失去访问，移除已经生效；主机挂载正在独立收敛。'
+                '它本地的数据尚未确认擦除。',
+          _ when progress.platformAccessRevoked =>
+            '这台设备已失去访问，移除已经生效。它本地的数据尚未确认擦除。',
           _ when progress.outcome == ActOutcome.unfinished =>
             '主机已受理移除，正在等待各权威状态收敛。设备本地擦除尚未确认。',
           // The Host decided. Offering "try again" here would be offering
@@ -403,9 +425,18 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
       });
     } catch (error) {
       if (!mounted) return;
-      setState(
-        () => _notice = '暂时无法确认主机是否已受理；再次确认会继续同一移除意图：$error',
-      );
+      // A refusal envelope means the Host answered. Saying 「暂时无法确认主机是否
+      // 已受理」 to a definite refusal reads as "nothing happened, try again"
+      // about an answer that already arrived — and it was this path's wording
+      // for every throw, refusals included.
+      final refused =
+          error is ManagementRequestException && error.refusal != null;
+      setState(() {
+        if (refused && !canRetry(error)) _removalRequestId = null;
+        _notice = refused
+            ? '主机拒绝了这次移除：${refusalText(error, subject: '这台设备')}'
+            : '暂时无法确认主机是否已受理；再次确认会继续同一移除意图：$error';
+      });
     } finally {
       if (mounted) setState(() => _removing = false);
     }
@@ -497,7 +528,9 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
           const SizedBox(height: 24),
           if (_notice case final notice?) ...[
             Card(
-              color: _platformRemoved
+              // Access already gone is not a setback, whatever is still
+              // converging behind it.
+              color: _accessRevoked
                   ? Theme.of(context).colorScheme.tertiaryContainer
                   : Theme.of(context).colorScheme.errorContainer,
               child: Padding(
