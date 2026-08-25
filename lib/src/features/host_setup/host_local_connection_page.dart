@@ -13,6 +13,7 @@ import '../setup/controller_key_bridge.dart';
 import '../setup/host_registry.dart';
 import 'face_picker.dart';
 import 'host_product_controller.dart';
+import '../../management/management_client.dart';
 import '../../management/companion_roster_screen.dart';
 import '../../management/memory_library_screen.dart';
 import 'companion_page.dart';
@@ -277,6 +278,16 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   /// The search box answers "do you remember X"; this answers "what do you
   /// have", which is the question someone asks before they know what to search
   /// for.
+  /// Why the Host is withholding a feature, or null if it is not.
+  ///
+  /// Nothing when the capabilities have not been read: silence is "not asked
+  /// yet", and treating it as a refusal would withdraw every feature for the
+  /// moment after connecting.
+  String? _capabilityHold(String capability) {
+    final context = _controller.managementCapabilities;
+    return context == null ? null : capabilityHold(context, capability);
+  }
+
   Future<void> _openMemoryLibrary() => Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => MemoryLibraryScreen(
@@ -558,6 +569,9 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                     changeService: _controller.changeHostService,
                     readVitals: _controller.hostVitals,
                     revokeRuntimeSessions: _controller.revokeRuntimeSessions,
+                    // A destructive action on a Host that cannot perform it is
+                    // the clearest case for saying so rather than offering it.
+                    sessionRevokeHold: _capabilityHold('session.revoke'),
                   ),
                 ),
               ),
@@ -575,6 +589,10 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               onOpenCompanion: _openCompanion,
               onOpenRoster: _openRoster,
               onOpenMemoryLibrary: _openMemoryLibrary,
+              // Read once when the Host connected. A Host that never got its
+              // memory credential says so here rather than handing over a row
+              // that opens onto a page which cannot load.
+              memoryHold: _capabilityHold('memory.read'),
               onRenameOwner: _renameOwner,
               onChangeNetwork: _openNetworkChange,
             ),
@@ -775,6 +793,7 @@ class _WorkspaceCard extends StatelessWidget {
     required this.onOpenCompanion,
     required this.onOpenRoster,
     required this.onOpenMemoryLibrary,
+    this.memoryHold,
     required this.onRenameOwner,
   });
 
@@ -797,6 +816,9 @@ class _WorkspaceCard extends StatelessWidget {
   /// Reachable whether or not the runtime answered: what is remembered is the
   /// Owner's memory, and it does not depend on a Companion running right now.
   final VoidCallback onOpenMemoryLibrary;
+
+  /// Why this Host is not offering its memory, when it is not offering it.
+  final String? memoryHold;
 
   /// Null until the Host has a Workspace to name anyone in.
   final VoidCallback? onRenameOwner;
@@ -995,6 +1017,7 @@ class _WorkspaceCard extends StatelessWidget {
             _WorkspaceResourceStatus(
               key: const Key('memory-library-row'),
               onOpen: onOpenMemoryLibrary,
+              hold: memoryHold,
               openKey: const Key('open-memory-library'),
               openTooltip: '看它记住的',
               icon: Icons.auto_stories_outlined,
@@ -1139,6 +1162,7 @@ class _WorkspaceResourceStatus extends StatelessWidget {
     this.onOpen,
     this.openKey,
     this.openTooltip,
+    this.hold,
   });
 
   final IconData icon;
@@ -1160,6 +1184,12 @@ class _WorkspaceResourceStatus extends StatelessWidget {
   final Key? openKey;
   final String? openTooltip;
 
+  /// Why this row is not openable, when the Host says it is not.
+  ///
+  /// The row stays and carries the reason. Removing it would teach someone the
+  /// feature was gone; leaving the button would open a page that cannot load.
+  final String? hold;
+
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 5),
@@ -1176,7 +1206,9 @@ class _WorkspaceResourceStatus extends StatelessWidget {
                 ],
               ),
             ),
-            if (onOpen != null)
+            if (hold != null)
+              Chip(label: Text(hold!))
+            else if (onOpen != null)
               IconButton(
                 key: openKey,
                 onPressed: onOpen,

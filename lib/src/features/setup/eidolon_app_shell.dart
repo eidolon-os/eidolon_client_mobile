@@ -4,6 +4,7 @@ import '../naming/ask_for_a_name.dart';
 import 'package:flutter/foundation.dart';
 
 import '../device_setup/device_setup_ports.dart';
+import '../../management/management_client.dart';
 import '../host_setup/host_local_connection_page.dart';
 import 'commissioning_transport.dart';
 import 'change_network_page.dart';
@@ -501,7 +502,7 @@ class _ManagementEntry extends StatelessWidget {
           title: Text(title),
           subtitle: Text(subtitle),
           trailing: _unavailable
-              ? const Chip(label: Text('尚未开放'))
+              ? const Chip(label: Text(holdNotBuilt))
               : const Icon(Icons.chevron_right),
           enabled: !_unavailable,
           onTap: _onTap,

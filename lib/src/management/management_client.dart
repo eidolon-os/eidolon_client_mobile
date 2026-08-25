@@ -1243,6 +1243,17 @@ class CompanionDetailOutcome {
 bool hostCan(ManagementContextView context, String capability) =>
     context.capabilities[capability] == true;
 
+/// What a held-back control says, by reason.
+///
+/// Declared here, once, because these words appear on controls in three
+/// different features and a second literal of them is how two rows come to
+/// describe the same state differently. This file already owns what the Host's
+/// answers read as (see [refusalText]); a label for "the Host is not offering
+/// this" belongs beside them.
+const holdNotBuilt = '尚未开放';
+const holdHostNotConfigured = '主机未配置';
+const holdUnknownReason = '暂不可用';
+
 /// Why this Host is not offering something, in words for the person holding it.
 ///
 /// Null when the Host can do it, or when it cannot and said nothing useful
@@ -1262,9 +1273,9 @@ String? capabilityHold(ManagementContextView context, String capability) {
   if (hostCan(context, capability)) return null;
   switch (context.unavailable?[capability]) {
     case 'host_not_configured':
-      return '主机未配置';
+      return holdHostNotConfigured;
     case 'not_built':
-      return '尚未开放';
+      return holdNotBuilt;
   }
-  return '暂不可用';
+  return holdUnknownReason;
 }

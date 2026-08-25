@@ -14,6 +14,7 @@ const ownerDomainDescriptorJsonFixture = <String, dynamic>{
   'owner_domain_id': ownerDomainIdFixture,
   'owner_domain_generation': 1,
   'directory_revision': 7,
+  'descriptor_uri': 'https://owner-a.local/api/device-onboarding/v1/descriptor',
   'trust_root_refs': [
     'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   ],

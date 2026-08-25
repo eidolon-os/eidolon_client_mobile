@@ -66,6 +66,7 @@ HostProductConnection _connection() => HostProductConnection(
 Future<void> _pump(
   WidgetTester tester, {
   Future<RevokedSessionsView> Function()? revoke,
+  String? hold,
 }) async {
   await tester.binding.setSurfaceSize(const Size(900, 2000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -75,6 +76,7 @@ Future<void> _pump(
         host: _host(),
         connection: _connection(),
         revokeRuntimeSessions: revoke,
+        sessionRevokeHold: hold,
       ),
     ),
   );
@@ -87,6 +89,7 @@ RevokedSessionsView _revoked() => RevokedSessionsView.fromJson(const {
     });
 
 void main() {
+  _heldBackTests();
   test('the client posts to the owner action and names no subject', () async {
     http.Request? sent;
     final client = ManagementClient(
@@ -189,5 +192,30 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('这台主机现在做不了这件事，设备仍然在线'), findsOneWidget);
+  });
+}
+
+void _heldBackTests() {
+  testWidgets('a Host that cannot sign devices out says so, and does not offer',
+      (tester) async {
+    // The clearest case for holding back rather than hiding or offering: this
+    // ends every device's session, and a Host missing the Agent credential
+    // cannot do it. Hiding leaves somebody hunting for the control; offering it
+    // promises something that will fail on contact.
+    await _pump(tester, revoke: () async => _revoked(), hold: '主机未配置');
+
+    expect(find.byKey(const Key('sign-out-devices-held')), findsOneWidget);
+    expect(find.byKey(const Key('sign-out-devices')), findsNothing);
+    expect(find.text('主机未配置'), findsOneWidget);
+    // The name of the action stays visible, so the person can see what it is
+    // they cannot do here rather than wondering whether it exists.
+    expect(find.text('让所有设备重新登录'), findsOneWidget);
+  });
+
+  testWidgets('a Host that can do it is offered it', (tester) async {
+    await _pump(tester, revoke: () async => _revoked());
+
+    expect(find.byKey(const Key('sign-out-devices')), findsOneWidget);
+    expect(find.byKey(const Key('sign-out-devices-held')), findsNothing);
   });
 }

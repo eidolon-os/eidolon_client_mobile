@@ -105,6 +105,7 @@ class OwnerDomainDescriptorV1 {
     required this.ownerDomainId,
     required this.ownerDomainGeneration,
     required this.directoryRevision,
+    required this.descriptorUri,
     required this.trustRootRefs,
     required this.endpoints,
     required this.issuedAt,
@@ -116,6 +117,7 @@ class OwnerDomainDescriptorV1 {
   final String ownerDomainId;
   final int ownerDomainGeneration;
   final int directoryRevision;
+  final String descriptorUri;
   final List<AuthorityEndpointV1> endpoints;
   final List<String> trustRootRefs;
   final String issuedAt;
@@ -128,6 +130,7 @@ class OwnerDomainDescriptorV1 {
       'owner_domain_id',
       'owner_domain_generation',
       'directory_revision',
+      'descriptor_uri',
       'trust_root_refs',
       'endpoints',
       'issued_at',
@@ -142,6 +145,8 @@ class OwnerDomainDescriptorV1 {
     final ownerDomainId = _text(value['owner_domain_id'], 128);
     final ownerDomainGeneration = value['owner_domain_generation'];
     final revision = value['directory_revision'];
+    final descriptorUri = _text(value['descriptor_uri'], 2048);
+    final parsedDescriptorUri = Uri.tryParse(descriptorUri);
     final roots = value['trust_root_refs'];
     final rawEndpoints = value['endpoints'];
     final issuedAt = DateTime.tryParse(value['issued_at'] as String? ?? '');
@@ -150,6 +155,9 @@ class OwnerDomainDescriptorV1 {
         ownerDomainGeneration < 1 ||
         revision is! int ||
         revision < 1 ||
+        parsedDescriptorUri == null ||
+        parsedDescriptorUri.scheme != 'https' ||
+        parsedDescriptorUri.host.isEmpty ||
         roots is! List ||
         roots.isEmpty ||
         roots.length > 16 ||
@@ -171,6 +179,7 @@ class OwnerDomainDescriptorV1 {
       ownerDomainId: ownerDomainId,
       ownerDomainGeneration: ownerDomainGeneration,
       directoryRevision: revision,
+      descriptorUri: descriptorUri,
       trustRootRefs: trustRoots,
       endpoints: rawEndpoints
           .map((item) {
@@ -193,6 +202,7 @@ class OwnerDomainDescriptorV1 {
     'owner_domain_id': ownerDomainId,
     'owner_domain_generation': ownerDomainGeneration,
     'directory_revision': directoryRevision,
+    'descriptor_uri': descriptorUri,
     'trust_root_refs': trustRootRefs,
     'endpoints': endpoints.map((item) => item.toJson()).toList(growable: false),
     'issued_at': issuedAt,

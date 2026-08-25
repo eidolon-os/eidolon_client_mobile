@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly SDK_COMMIT="dc83e8885f5cca97ef78f0d1012c8d0a4fe06195"
+readonly SDK_COMMIT="6ecd5428cc37cdbad1f6623240efc2a82485b9cf"
 readonly SDK_BINDING="contracts/device_foundation/v1/generated/dart/device_foundation_v1.dart"
 readonly MOBILE_BINDING="lib/src/generated/device_foundation_v1.dart"
 readonly SDK_CONSUMER_FIXTURE="contracts/device_foundation/v1/examples/valid/admission-consumer-surface.json"
@@ -10,6 +10,11 @@ readonly SDK_ADMISSION_FIXTURE="contracts/device_foundation/v1/examples/valid/ad
 readonly MOBILE_ADMISSION_FIXTURE="test/fixtures/device_foundation/admission.json"
 readonly SDK_ADMISSION_GOLDEN="contracts/device_foundation/v1/golden/admission-event-stream.json"
 readonly MOBILE_ADMISSION_GOLDEN="test/fixtures/device_foundation/admission-event-stream.json"
+# The single authority for the descriptor canonical signing bytes; the Dart
+# canonicaliser is tested against it so a field added in the SDK cannot be
+# missed here without a red test.
+readonly SDK_DESCRIPTOR_GOLDEN="contracts/device_foundation/v1/golden/owner-domain-descriptor.json"
+readonly MOBILE_DESCRIPTOR_GOLDEN="test/fixtures/device_foundation/owner-domain-descriptor.json"
 
 mode="${1:---check}"
 sdk_root="${EIDOLON_SDK_ROOT:-../eidolon_sdk}"
@@ -27,12 +32,14 @@ sdk_paths=(
   "$SDK_CONSUMER_FIXTURE"
   "$SDK_ADMISSION_FIXTURE"
   "$SDK_ADMISSION_GOLDEN"
+  "$SDK_DESCRIPTOR_GOLDEN"
 )
 mobile_paths=(
   "$MOBILE_BINDING"
   "$MOBILE_CONSUMER_FIXTURE"
   "$MOBILE_ADMISSION_FIXTURE"
   "$MOBILE_ADMISSION_GOLDEN"
+  "$MOBILE_DESCRIPTOR_GOLDEN"
 )
 
 drifted=0

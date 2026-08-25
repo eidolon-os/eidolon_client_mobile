@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:eidolon_client_mobile/src/features/device_setup/owner_domain_directory_verifier.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
 import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
@@ -9,25 +11,23 @@ import 'support/owner_domain_fixtures.dart';
 void main() {
   test('descriptor signing document is deterministic and excludes signature',
       () {
-    final canonical = canonicalOwnerDomainDescriptorSigningJson(
-      deviceOnboardingTargetFixture(),
-    );
+    // Byte-exactness against the canonical contract is asserted in
+    // owner_domain_canonical_golden_test.dart, against the SDK golden vector.
+    // Restating the expected bytes here too would make this file a second
+    // authority for them, and the two copies drift the moment the descriptor
+    // gains a field.
+    final target = deviceOnboardingTargetFixture();
+    final canonical = canonicalOwnerDomainDescriptorSigningJson(target);
 
+    expect(canonical, canonicalOwnerDomainDescriptorSigningJson(target));
     expect(canonical, isNot(contains('"signature"')));
+    expect(canonical, contains('"descriptor_uri"'));
+    final decoded = jsonDecode(canonical) as Map<String, dynamic>;
+    final keys = decoded.keys.toList();
+    expect(keys, equals(List<String>.from(keys)..sort()));
     expect(
-      canonical,
-      '{"directory_revision":7,"endpoints":[{"authority":"admission",'
-      '"logical_audience":"owner-local:admission","priority":10,'
-      '"transport_profile":"https-json","uri":"https://owner-a.local/'
-      'api/admission/v1"},{"authority":"device-control",'
-      '"logical_audience":"owner-local:device-control","priority":10,'
-      '"transport_profile":"https-json","uri":"https://owner-a.local/'
-      'api/device-control/v1"}],"expires_at":"2036-08-18T00:00:00Z",'
-      '"issued_at":"2026-08-18T00:00:00Z","owner_domain_generation":1,'
-      '"owner_domain_id":"owner-local",'
-      '"signing_key_id":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
-      'bbbbbbbbbbbbbbbbbbbbbbbb","trust_root_refs":["sha256:aaaaaaaaaaaa'
-      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]}',
+      decoded['descriptor_uri'],
+      target.ownerDomainDescriptor.descriptorUri,
     );
   });
 

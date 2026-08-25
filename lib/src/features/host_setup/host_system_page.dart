@@ -26,6 +26,7 @@ class HostSystemPage extends StatelessWidget {
     this.changeService,
     this.readVitals,
     this.revokeRuntimeSessions,
+    this.sessionRevokeHold,
   });
 
   final ManagedHost host;
@@ -44,6 +45,14 @@ class HostSystemPage extends StatelessWidget {
   /// devices one because it is not aimed at a device: it ends *all* of them, and
   /// the reason someone wants it is that one of them is out of their hands.
   final Future<RevokedSessionsView> Function()? revokeRuntimeSessions;
+
+  /// Why this Host is not offering to sign every device out.
+  ///
+  /// The card stays and says so. A destructive control that cannot work is the
+  /// clearest case there is for holding it back with a reason: hiding it leaves
+  /// somebody looking for it, and offering it promises something the Host
+  /// cannot do.
+  final String? sessionRevokeHold;
 
   @override
   Widget build(BuildContext context) {
@@ -113,7 +122,7 @@ class HostSystemPage extends StatelessWidget {
           ],
           if (revokeRuntimeSessions case final revoke?) ...[
             const SizedBox(height: 16),
-            _SignOutDevicesCard(revoke: revoke),
+            _SignOutDevicesCard(revoke: revoke, hold: sessionRevokeHold),
           ],
           const SizedBox(height: 12),
           Text(
@@ -134,9 +143,12 @@ class HostSystemPage extends StatelessWidget {
 /// which phones may *manage* this Host. Someone reading "让所有设备重新登录"
 /// could reasonably fear it locks them out of this very app, and it does not.
 class _SignOutDevicesCard extends StatefulWidget {
-  const _SignOutDevicesCard({required this.revoke});
+  const _SignOutDevicesCard({required this.revoke, this.hold});
 
   final Future<RevokedSessionsView> Function() revoke;
+
+  /// Non-null holds the button back and says why instead of running it.
+  final String? hold;
 
   @override
   State<_SignOutDevicesCard> createState() => _SignOutDevicesCardState();
@@ -204,12 +216,24 @@ class _SignOutDevicesCardState extends State<_SignOutDevicesCard> {
         const SizedBox(height: 12),
         Align(
           alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
-            key: const Key('sign-out-devices'),
-            onPressed: _busy ? null : _confirmAndRevoke,
-            icon: const Icon(Icons.logout),
-            label: const Text('让所有设备重新登录'),
-          ),
+          child: widget.hold != null
+              ? Row(
+                  key: const Key('sign-out-devices-held'),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.logout, size: 18),
+                    const SizedBox(width: 8),
+                    const Text('让所有设备重新登录'),
+                    const SizedBox(width: 8),
+                    Chip(label: Text(widget.hold!)),
+                  ],
+                )
+              : OutlinedButton.icon(
+                  key: const Key('sign-out-devices'),
+                  onPressed: _busy ? null : _confirmAndRevoke,
+                  icon: const Icon(Icons.logout),
+                  label: const Text('让所有设备重新登录'),
+                ),
         ),
         if (_busy)
           const Padding(
