@@ -1,147 +1,178 @@
-/// What has happened on this Host lately, as its Owner reads it.
+import '../../generated/management_v1.dart';
+
+/// What has been done to this Owner's things lately, as they read it.
 ///
-/// The Host answers in terms of what happened and who did it, not in the
-/// wording a screen shows. The sentence is composed here, next to the rest of
-/// this app's language, so the Host does not have to know Chinese to be able
-/// to say a device arrived.
+/// The Host records facts — an action, what it was done to, when, and what that
+/// thing is called. **The sentence is composed here**, next to the rest of this
+/// app's language, so a Host does not have to know Chinese to be able to say
+/// that an Eidolon was put away.
+///
+/// It replaced a device-shaped model that read a route which no longer exists.
+/// Devices arriving and leaving belong to the device line and had their producer
+/// removed; what this reads is the governance record every change to a Companion
+/// has been writing all along, in the same transaction as the change itself.
 enum HostMomentKind {
-  /// A device announced itself and is waiting to be accepted.
-  deviceKnocked,
-  deviceAccepted,
-  deviceRemoved,
+  companionArrived,
+  companionPutAway,
+  companionBack,
+  companionGone,
+  answeringChanged,
+  faceChanged,
+  memoryCatalogued,
+  ownerNamed,
 
   /// Something this app is too old to have a word for. It still happened.
   other,
 }
 
-enum HostMomentActor { owner, device, host }
-
-/// Tolerant on purpose: a Host newer than this app may record acts this
-/// version has never heard of, and an unrecognised act is still an act. What
-/// is refused is a malformed record, not an unfamiliar one.
-HostMomentKind _kind(Object? value) => switch (value) {
-      'device-knocked' => HostMomentKind.deviceKnocked,
-      'device-accepted' => HostMomentKind.deviceAccepted,
-      'device-removed' => HostMomentKind.deviceRemoved,
+/// Tolerant on purpose: a Host newer than this app records acts this version has
+/// never heard of, and an unrecognised act is still an act. A history with holes
+/// in it is worse than a history with an unfamiliar line in it.
+HostMomentKind _kind(String action) => switch (action) {
+      'companion.workspace.initialized' => HostMomentKind.companionArrived,
+      // The archive is two facts in one transaction — the record says the
+      // retirement happened, because it did — and `collapseMoments` is what
+      // keeps that from being two lines in front of a person.
+      'companion.retirement_begun' => HostMomentKind.companionPutAway,
+      'companion.archived' => HostMomentKind.companionPutAway,
+      'companion.restored' => HostMomentKind.companionBack,
+      'companion.deleted' => HostMomentKind.companionGone,
+      'owner.default_companion_changed' => HostMomentKind.answeringChanged,
+      'companion.face_asset.activated' => HostMomentKind.faceChanged,
+      'companion.face_asset.cleared' => HostMomentKind.faceChanged,
+      'memory_realm.cataloged' => HostMomentKind.memoryCatalogued,
+      'owner.created' => HostMomentKind.ownerNamed,
+      'owner.updated' => HostMomentKind.ownerNamed,
       _ => HostMomentKind.other,
-    };
-
-HostMomentActor _actor(Object? value) => switch (value) {
-      'owner' => HostMomentActor.owner,
-      'device' => HostMomentActor.device,
-      _ => HostMomentActor.host,
     };
 
 class HostMoment {
   const HostMoment({
     required this.eventId,
     required this.occurredAt,
-    required this.kind,
-    required this.actor,
-    required this.deviceId,
-    this.deviceName = '',
-    this.deviceKind = '',
-    this.reason = '',
-    this.eventType = '',
+    required this.action,
+    required this.subjectType,
+    required this.subjectId,
+    required this.subjectName,
+    required this.outcome,
+    this.detail = const {},
   });
 
-  factory HostMoment.fromJson(Map<String, dynamic> value) {
-    final eventId = value['event_id'];
-    final occurredAt = value['occurred_at'];
-    final deviceId = value['device_id'];
-    if (eventId is! String ||
-        eventId.isEmpty ||
-        occurredAt is! String ||
-        deviceId is! String ||
-        deviceId.isEmpty) {
-      throw const FormatException('主机返回的记录不符合契约');
-    }
-    final at = DateTime.tryParse(occurredAt);
-    if (at == null) {
-      throw const FormatException('主机返回的记录没有可读的时间');
-    }
-    return HostMoment(
-      eventId: eventId,
-      occurredAt: at.toUtc(),
-      kind: _kind(value['kind']),
-      actor: _actor(value['actor']),
-      deviceId: deviceId,
-      deviceName:
-          value['device_name'] is String ? value['device_name'] as String : '',
-      deviceKind:
-          value['device_kind'] is String ? value['device_kind'] as String : '',
-      reason: value['reason'] is String ? value['reason'] as String : '',
-      eventType:
-          value['event_type'] is String ? value['event_type'] as String : '',
-    );
-  }
+  factory HostMoment.fromView(ActivityMomentView view) => HostMoment(
+        eventId: view.eventId,
+        occurredAt:
+            DateTime.tryParse(view.occurredAt)?.toUtc() ?? DateTime.now().toUtc(),
+        action: view.action,
+        subjectType: view.subjectType,
+        subjectId: view.subjectId,
+        subjectName: view.subjectName ?? '',
+        outcome: view.outcome,
+        detail: view.detail ?? const {},
+      );
 
   final String eventId;
   final DateTime occurredAt;
-  final HostMomentKind kind;
-  final HostMomentActor actor;
+
+  /// The Host's own word for what happened. Kept as given, so a line this app
+  /// cannot phrase can still be shown and still be recognised later.
+  final String action;
+  final String subjectType;
 
   /// Carried for the technical corner of a screen. It is never the name.
-  final String deviceId;
+  final String subjectId;
 
-  /// Empty when the Host could not say what the device is called. It is left
-  /// empty rather than filled with the identifier: an identifier is what
-  /// someone falls back to when nobody will tell them what a thing is.
-  final String deviceName;
-  final String deviceKind;
-  final String reason;
-  final String eventType;
+  /// Empty when the Owner never named it, or when it no longer exists.
+  final String subjectName;
+  final String outcome;
+  final Map<String, String> detail;
+
+  HostMomentKind get kind => _kind(action);
+
+  bool get succeeded => outcome == 'success';
 }
 
 class HostActivity {
-  const HostActivity({required this.coverage, required this.moments});
+  const HostActivity({required this.moments, this.nextCursor});
 
-  factory HostActivity.fromJson(Map<String, dynamic> value) {
-    final coverage = value['coverage'];
-    final moments = value['moments'];
-    if (coverage is! String || moments is! List) {
-      throw const FormatException('主机返回的动态不符合契约');
-    }
-    return HostActivity(
-      coverage: coverage,
-      moments: moments
-          .map((item) => HostMoment.fromJson(Map<String, dynamic>.from(
-                item as Map,
-              )))
-          .toList(growable: false),
-    );
-  }
+  factory HostActivity.fromView(ActivityView view) => HostActivity(
+        moments: collapseMoments(
+          (view.moments).map(HostMoment.fromView).toList(growable: false),
+        ),
+        nextCursor: view.nextCursor,
+      );
 
-  /// What this record covers, said by the Host. Only device lifecycle today —
-  /// this Host keeps no presence signal and no runtime telemetry, so a screen
-  /// must not let a short list imply a quiet Host.
-  final String coverage;
   final List<HostMoment> moments;
+
+  /// Stored and sent back for the page before this one. Null means this is as
+  /// far back as the Host still holds — **not** that nothing happened before,
+  /// and a screen must not say otherwise.
+  final String? nextCursor;
 }
 
-/// What happened, in one line.
+/// One act, one line.
 ///
-/// The device is named. Where the Host could not name it, the sentence says
-/// "一台设备" rather than reciting an identifier at someone.
+/// Putting an Eidolon away writes two facts in one transaction — it retires and
+/// then it is archived — because the record has to say both happened. A person
+/// did one thing, so they see one line. The retirement is dropped only when the
+/// archive for the same Eidolon is right beside it; a retirement left on its own
+/// is a real state and keeps its line.
+List<HostMoment> collapseMoments(List<HostMoment> moments) {
+  final kept = <HostMoment>[];
+  for (var index = 0; index < moments.length; index += 1) {
+    final moment = moments[index];
+    if (moment.action != 'companion.retirement_begun') {
+      kept.add(moment);
+      continue;
+    }
+    // Newest first, so the archive sits *above* the retirement it finished.
+    final archived = index > 0 &&
+        moments[index - 1].action == 'companion.archived' &&
+        moments[index - 1].subjectId == moment.subjectId;
+    if (!archived) kept.add(moment);
+  }
+  return kept;
+}
+
+/// What happened, in words.
+///
+/// An Eidolon nobody named is 「一个 Eidolon」 rather than its identifier: an
+/// identifier is what someone falls back to when nobody will tell them what a
+/// thing is.
 String hostMomentSentence(HostMoment moment) {
-  final name = switch (moment) {
-    HostMoment(deviceName: final given) when given.isNotEmpty => given,
-    HostMoment(deviceKind: final kind) when kind.isNotEmpty => kind,
-    _ => '一台设备',
-  };
-  final byOwner = moment.actor == HostMomentActor.owner;
+  // Always bracketed, named or not: 「」 ends the phrase in Chinese punctuation,
+  // so the templates below need no spacing rules around a Latin name.
+  final name = moment.subjectName.isNotEmpty
+      ? '「${moment.subjectName}」'
+      : (moment.subjectType == 'companion' ? '「还没起名的 Eidolon」' : '你');
+  // Who took over, when the Host said. For "who answers now changed" the
+  // subject is the Owner and the meaning is entirely in this field.
+  final successor = moment.detail['companion_id_name'] ??
+      moment.detail['replacement_companion_id_name'];
   return switch (moment.kind) {
-    HostMomentKind.deviceKnocked => '$name 敲了门',
-    HostMomentKind.deviceAccepted => byOwner ? '你接受了 $name' : '$name 被接受了',
-    HostMomentKind.deviceRemoved => byOwner ? '你移除了 $name' : '$name 被移除了',
-    HostMomentKind.other => '$name 有一次变动',
+    HostMomentKind.companionArrived => '$name来了',
+    HostMomentKind.companionPutAway => successor == null
+        ? '你把$name收了起来'
+        : '你把$name收了起来，改由「$successor」回答',
+    HostMomentKind.companionBack => '$name回来了',
+    HostMomentKind.companionGone => '$name被删除了',
+    HostMomentKind.answeringChanged => successor == null
+        // The Host did not say who took over. Better to say that much than to
+        // put the Owner's own name where a Companion's belongs.
+        ? '没有指名的时候，改由另一个 Eidolon 回答'
+        : '没有指名的时候，改由「$successor」回答',
+    HostMomentKind.faceChanged => '$name换了一张脸',
+    HostMomentKind.memoryCatalogued => '记忆的地方准备好了',
+    HostMomentKind.ownerNamed => '这台主机认了你',
+    // Said plainly rather than dressed up: this app does not know what happened,
+    // and pretending to would be worse than admitting it.
+    HostMomentKind.other => '$name有一次变动（${moment.action}）',
   };
 }
 
 /// When it happened, in this phone's own time.
 ///
 /// Today and yesterday are said as such, because that is how someone asking
-/// "did it arrive?" holds time. Anything older gets a date.
+/// "did it happen?" holds time. Anything older gets a date.
 String hostMomentTime(DateTime at, {required DateTime now}) {
   final local = at.toLocal();
   final today = DateTime(now.year, now.month, now.day);
@@ -154,17 +185,3 @@ String hostMomentTime(DateTime at, {required DateTime now}) {
 }
 
 String _two(int number) => number.toString().padLeft(2, '0');
-
-/// The rest of what is known about a moment, for people who want it.
-String hostMomentDetail(HostMoment moment) {
-  final parts = <String>[
-    if (moment.kind == HostMomentKind.deviceKnocked) '等待你接受',
-    if (moment.reason == 'owner-removed')
-      '由你发起'
-    else if (moment.reason.isNotEmpty)
-      '原因：${moment.reason}',
-    if (moment.deviceKind.isNotEmpty) moment.deviceKind,
-    moment.deviceId,
-  ];
-  return parts.join(' · ');
-}

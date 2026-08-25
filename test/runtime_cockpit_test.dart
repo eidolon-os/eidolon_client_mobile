@@ -127,7 +127,7 @@ Future<void> _open(
         loadVitals: loadVitals ?? () async => _vitals(const []),
         listServices: listServices ?? () async => _services(),
         loadActivity: loadActivity ??
-            () async => const HostActivity(coverage: 'full', moments: []),
+            () async => const HostActivity(moments: []),
         listControllers:
             listControllers ?? () async => const <ControllerView>[],
         devices: devices,

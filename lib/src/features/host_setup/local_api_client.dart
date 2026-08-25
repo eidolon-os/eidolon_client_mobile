@@ -9,7 +9,6 @@ import '../device_management/mounted_device_models.dart';
 import '../device_setup/device_setup_models.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/setup_trust.dart';
-import 'activity_models.dart';
 import 'controller_session.dart';
 import 'host_models.dart';
 import 'workspace_models.dart';
@@ -448,27 +447,6 @@ class LocalApiClient {
   ///
   /// No Owner is named: the session already says whose it is, and the Host
   /// refuses to be told otherwise.
-  /// What has happened to this Owner's devices lately.
-  ///
-  /// No Owner is named: the session already says whose Host this is.
-  Future<HostActivity> fetchActivity(
-    String baseUrl, {
-    required String accessToken,
-    int limit = 50,
-  }) async {
-    final response = await _httpClient
-        .get(
-          parseBaseUri(baseUrl).resolve('/api/local/v1/activity').replace(
-            queryParameters: {'limit': '$limit'},
-          ),
-          headers: _authorizedHeaders(accessToken),
-        )
-        .timeout(timeout);
-    return HostActivity.fromJson(
-      _decodeResponse(response, operation: 'Host activity'),
-    );
-  }
-
   static Uri _deviceRemovalUri(String baseUrl, String deviceId) {
     final normalized = _boundedId(deviceId, 'device ID');
     final base = parseBaseUri(baseUrl);

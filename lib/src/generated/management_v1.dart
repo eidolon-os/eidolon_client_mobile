@@ -9,6 +9,7 @@
 class ManagementV1 {
   const ManagementV1._();
 
+  static const String activityPath = '/api/management/v1/activity';
   static const String companionsPath = '/api/management/v1/companions';
   static String companionsByCompanionIdPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}';
   static String companionsByCompanionIdConversationsPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/conversations';
@@ -39,6 +40,70 @@ class ManagementV1 {
   static const String ownerPath = '/api/management/v1/owner';
   static const String ownerActionsRevokeRuntimeSessionsPath = '/api/management/v1/owner/actions/revoke-runtime-sessions';
   static const String ownerDefaultCompanionPath = '/api/management/v1/owner/default-companion';
+}
+
+class ActivityMomentView {
+  const ActivityMomentView({
+    required this.action,
+    this.detail,
+    required this.eventId,
+    required this.occurredAt,
+    required this.outcome,
+    required this.subjectId,
+    this.subjectName,
+    required this.subjectType,
+  });
+
+  final String action;
+
+  final Map<String, String>? detail;
+
+  final String eventId;
+
+  final String occurredAt;
+
+  final String outcome;
+
+  final String subjectId;
+
+  final String? subjectName;
+
+  final String subjectType;
+
+  factory ActivityMomentView.fromJson(Map<String, dynamic> value) {
+    return ActivityMomentView(
+      action: value['action'] as String,
+      detail: value['detail'] == null ? null : ((value['detail'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as String))),
+      eventId: value['event_id'] as String,
+      occurredAt: value['occurred_at'] as String,
+      outcome: value['outcome'] as String,
+      subjectId: value['subject_id'] as String,
+      subjectName: value['subject_name'] as String?,
+      subjectType: value['subject_type'] as String,
+    );
+  }
+}
+
+class ActivityView {
+  const ActivityView({
+    this.contractVersion,
+    required this.moments,
+    this.nextCursor,
+  });
+
+  final String? contractVersion;
+
+  final List<ActivityMomentView> moments;
+
+  final String? nextCursor;
+
+  factory ActivityView.fromJson(Map<String, dynamic> value) {
+    return ActivityView(
+      contractVersion: value['contract_version'] as String?,
+      moments: ((value['moments'] as List<dynamic>).map((entry) => ActivityMomentView.fromJson(entry as Map<String, dynamic>)).toList()),
+      nextCursor: value['next_cursor'] as String?,
+    );
+  }
 }
 
 class CompanionCreateRequest {
@@ -629,20 +694,6 @@ class ForgetTargetRequest {
   }
 }
 
-class HTTPValidationError {
-  const HTTPValidationError({
-    this.detail,
-  });
-
-  final List<ValidationError>? detail;
-
-  factory HTTPValidationError.fromJson(Map<String, dynamic> value) {
-    return HTTPValidationError(
-      detail: value['detail'] == null ? null : ((value['detail'] as List<dynamic>).map((entry) => ValidationError.fromJson(entry as Map<String, dynamic>)).toList()),
-    );
-  }
-}
-
 class HostServiceInventoryView {
   const HostServiceInventoryView({
     this.services,
@@ -1215,6 +1266,32 @@ class RecollectionsView {
   }
 }
 
+class Refusal {
+  const Refusal({
+    this.code,
+    required this.kind,
+    this.reason,
+    this.retryable,
+  });
+
+  final String? code;
+
+  final String kind;
+
+  final String? reason;
+
+  final bool? retryable;
+
+  factory Refusal.fromJson(Map<String, dynamic> value) {
+    return Refusal(
+      code: value['code'] as String?,
+      kind: value['kind'] as String,
+      reason: value['reason'] as String?,
+      retryable: value['retryable'] as bool?,
+    );
+  }
+}
+
 class RenameRequest {
   const RenameRequest({
     required this.displayName,
@@ -1405,36 +1482,6 @@ class TranscriptView {
       conversationId: value['conversation_id'] as String,
       nextCursor: value['next_cursor'] as String?,
       turns: ((value['turns'] as List<dynamic>).map((entry) => TranscriptTurnView.fromJson(entry as Map<String, dynamic>)).toList()),
-    );
-  }
-}
-
-class ValidationError {
-  const ValidationError({
-    this.ctx,
-    this.input,
-    required this.loc,
-    required this.msg,
-    required this.type,
-  });
-
-  final Map<String, Object?>? ctx;
-
-  final Object? input;
-
-  final List<Object> loc;
-
-  final String msg;
-
-  final String type;
-
-  factory ValidationError.fromJson(Map<String, dynamic> value) {
-    return ValidationError(
-      ctx: value['ctx'] == null ? null : ((value['ctx'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as Object?))),
-      input: value['input'],
-      loc: ((value['loc'] as List<dynamic>).map((entry) => entry as Object).toList()),
-      msg: value['msg'] as String,
-      type: value['type'] as String,
     );
   }
 }

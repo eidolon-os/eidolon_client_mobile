@@ -485,11 +485,15 @@ class HostActivityRepository {
 
   final HostProductSession _session;
 
-  Future<HostActivity> list({int limit = 50}) => _session.execute(
-        (client, baseUrl, accessToken) => client.fetchActivity(
-          baseUrl,
-          accessToken: accessToken,
-          limit: limit,
+  Future<HostActivity> list({int limit = 50, String? cursor}) async =>
+      HostActivity.fromView(
+        await _session.executeManagement(
+          (client, baseUri, accessToken) => client.fetchActivity(
+            baseUri,
+            accessToken: accessToken,
+            limit: limit,
+            cursor: cursor,
+          ),
         ),
       );
 }

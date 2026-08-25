@@ -166,6 +166,32 @@ class ManagementClient {
     );
   }
 
+  /// What has been done to this Owner's things lately.
+  ///
+  /// [cursor] is a position the Host handed out; this app stores it and sends it
+  /// back, and never builds one. Running out of them means "no further back
+  /// from here", which is not the same as nothing having happened.
+  Future<ActivityView> fetchActivity(
+    Uri baseUri, {
+    required String accessToken,
+    int? limit,
+    String? cursor,
+  }) async {
+    final query = <String, String>{
+      if (limit != null) 'limit': '$limit',
+      if (cursor != null) 'cursor': cursor,
+    };
+    final body = await _send(
+      'GET',
+      baseUri.resolve(ManagementV1.activityPath).replace(
+            queryParameters: query.isEmpty ? null : query,
+          ),
+      accessToken: accessToken,
+      what: '读取主机动态',
+    );
+    return ActivityView.fromJson(body);
+  }
+
   /// How the machine holding this Eidolon is doing.
   ///
   /// Already phrased and already judged by the Host — this app does no

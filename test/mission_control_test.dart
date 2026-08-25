@@ -3,9 +3,10 @@ import 'dart:convert';
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_device_models.dart';
 import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/activity_models.dart';
+import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_service_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/mission_control_page.dart';
-import 'package:eidolon_client_mobile/src/features/host_setup/local_api_client.dart';
+import 'package:eidolon_client_mobile/src/management/management_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -13,23 +14,20 @@ import 'package:http/testing.dart';
 
 HostMoment _moment({
   String eventId = 'evt-1',
-  HostMomentKind kind = HostMomentKind.deviceAccepted,
-  HostMomentActor actor = HostMomentActor.owner,
-  String deviceName = 'atk-dnesp32s3',
-  String deviceKind = 'atk-dnesp32s3',
-  String reason = '',
+  String action = 'companion.archived',
+  String subjectName = '小忆',
+  Map<String, String> detail = const {},
   DateTime? at,
 }) =>
     HostMoment(
       eventId: eventId,
       occurredAt: at ?? DateTime.utc(2026, 8, 17, 2, 14),
-      kind: kind,
-      actor: actor,
-      deviceId: '10:51:db:7e:24:44',
-      deviceName: deviceName,
-      deviceKind: deviceKind,
-      reason: reason,
-      eventType: 'eidolon.device.approved.v1',
+      action: action,
+      subjectType: 'companion',
+      subjectId: 'companion-a',
+      subjectName: subjectName,
+      outcome: 'success',
+      detail: detail,
     );
 
 HostServiceInventory _services({int ready = 2, int failed = 0}) =>
@@ -101,7 +99,6 @@ Future<void> _open(
       home: MissionControlPage(
         loadActivity: loadActivity ??
             () async => HostActivity(
-                  coverage: 'device-lifecycle',
                   moments: [_moment()],
                 ),
         listServices: listServices ?? () async => _services(),
@@ -120,37 +117,32 @@ void main() {
     await _open(
       tester,
       loadActivity: () async => HostActivity(
-        coverage: 'device-lifecycle',
         moments: [
+          _moment(eventId: 'evt-2', action: 'companion.workspace.initialized'),
           _moment(
-              eventId: 'evt-2',
-              kind: HostMomentKind.deviceKnocked,
-              actor: HostMomentActor.device),
-          _moment(),
+            detail: const {'companion_id_name': '阿力'},
+          ),
         ],
       ),
     );
 
-    expect(find.text('atk-dnesp32s3 敲了门'), findsOneWidget);
-    expect(find.text('你接受了 atk-dnesp32s3'), findsOneWidget);
-    // The Hub's own wording never reaches the person.
-    expect(find.textContaining('eidolon.device.'), findsNothing);
+    expect(find.text('「小忆」来了'), findsOneWidget);
+    expect(find.text('你把「小忆」收了起来，改由「阿力」回答'), findsOneWidget);
+    // The Host's own wording never reaches the person.
+    expect(find.textContaining('companion.'), findsNothing);
   });
 
-  testWidgets('a device the Host cannot name is not named by its identifier', (
+  testWidgets('an Eidolon nobody named is not named by its identifier', (
     tester,
   ) async {
     await _open(
       tester,
       loadActivity: () async => HostActivity(
-        coverage: 'device-lifecycle',
-        moments: [_moment(deviceName: '', deviceKind: '')],
+        moments: [_moment(subjectName: '')],
       ),
     );
 
-    expect(find.text('你接受了 一台设备'), findsOneWidget);
-    // The identifier is still reachable, in the technical line underneath.
-    expect(find.textContaining('10:51:db:7e:24:44'), findsOneWidget);
+    expect(find.text('你把「还没起名的 Eidolon」收了起来'), findsOneWidget);
   });
 
   testWidgets('a history that could not be read is never an empty history', (
@@ -172,7 +164,7 @@ void main() {
     await _open(
       tester,
       loadActivity: () async =>
-          const HostActivity(coverage: 'device-lifecycle', moments: []),
+          const HostActivity(moments: []),
     );
 
     expect(
@@ -186,14 +178,14 @@ void main() {
     await _open(tester, loadActivity: () async {
       attempts += 1;
       if (attempts == 1) throw StateError('主机没有回答');
-      return HostActivity(coverage: 'device-lifecycle', moments: [_moment()]);
+      return HostActivity(moments: [_moment()]);
     });
 
     await tester.tap(find.byKey(const Key('retry-mission-control-activity')));
     await tester.pumpAndSettle();
 
     expect(attempts, 2);
-    expect(find.text('你接受了 atk-dnesp32s3'), findsOneWidget);
+    expect(find.text('你把「小忆」收了起来'), findsOneWidget);
   });
 
   testWidgets('what is running is counted, and what is not is named', (
@@ -244,57 +236,52 @@ void main() {
     final coverage = tester.widget<Text>(
       find.byKey(const Key('mission-control-coverage')),
     );
-    expect(coverage.data, contains('不记录设备是否在线'));
+    expect(coverage.data, contains('设备是否在线不在其中'));
     expect(find.textContaining('在线'), findsOneWidget);
   });
 
   group('what the Host answered', () {
-    test('a record without a time or a device is refused', () {
-      expect(
-        () => HostMoment.fromJson({
-          'event_id': 'evt-1',
-          'device_id': 'device-1',
-          'occurred_at': 'not a time',
-        }),
-        throwsFormatException,
-      );
-      expect(
-        () => HostMoment.fromJson({
-          'event_id': 'evt-1',
-          'occurred_at': '2026-08-17T02:14:00Z',
-        }),
-        throwsFormatException,
-      );
-      expect(
-          () => HostActivity.fromJson({'moments': []}), throwsFormatException);
-    });
-
     test('an act this app has no word for is still an act', () {
-      final moment = HostMoment.fromJson({
-        'event_id': 'evt-9',
-        'occurred_at': '2026-08-17T02:14:00Z',
-        'kind': 'device-hummed',
-        'actor': 'quartermaster',
-        'device_id': 'device-1',
-        'device_name': '客厅的 Box-3',
-      });
+      // A Host newer than its client records acts the client cannot phrase, and
+      // a history with holes in it is worse than one with an unfamiliar line.
+      final moment = HostMoment.fromView(
+        ActivityMomentView.fromJson({
+          'event_id': 'evt-9',
+          'action': 'companion.hummed',
+          'subject_type': 'companion',
+          'subject_id': 'companion-a',
+          'subject_name': '小忆',
+          'occurred_at': '2026-08-17T02:14:00Z',
+          'outcome': 'success',
+          'detail': <String, String>{},
+        }),
+      );
 
       expect(moment.kind, HostMomentKind.other);
-      expect(moment.actor, HostMomentActor.host);
-      expect(hostMomentSentence(moment), '客厅的 Box-3 有一次变动');
+      // Said plainly, with the Host's own word kept, rather than dressed up as
+      // something this app pretends to understand.
+      expect(hostMomentSentence(moment), '「小忆」有一次变动（companion.hummed）');
     });
 
-    test('an act somebody else took is not attributed to the Owner', () {
-      final moment = _moment(
-        kind: HostMomentKind.deviceRemoved,
-        actor: HostMomentActor.host,
-      );
+    test('putting one away is one line, not two', () {
+      // The Host writes two facts in one transaction because the record has to
+      // say both happened. A person did one thing.
+      final collapsed = collapseMoments([
+        _moment(eventId: 'evt-2', action: 'companion.archived'),
+        _moment(eventId: 'evt-1', action: 'companion.retirement_begun'),
+      ]);
 
-      expect(hostMomentSentence(moment), 'atk-dnesp32s3 被移除了');
-      expect(
-        hostMomentSentence(_moment(kind: HostMomentKind.deviceRemoved)),
-        '你移除了 atk-dnesp32s3',
-      );
+      expect(collapsed.map((moment) => moment.eventId), ['evt-2']);
+    });
+
+    test('a retirement left on its own keeps its line', () {
+      // Half-done is a real state, and hiding it would leave a person unable to
+      // see the Eidolon that is neither here nor put away.
+      final collapsed = collapseMoments([
+        _moment(eventId: 'evt-1', action: 'companion.retirement_begun'),
+      ]);
+
+      expect(collapsed.map((moment) => moment.eventId), ['evt-1']);
     });
 
     test('time is told the way someone waiting for a device holds it', () {
@@ -315,77 +302,78 @@ void main() {
   });
 
   group('what this app asks the Host for', () {
-    /// The body below is the Local API's own answer, field for field.
+    /// The body below is the management surface's own answer, field for field.
     ///
     /// Pinned here because the two halves of this feature live in different
     /// repositories: a page tested against a fake proves the page reads an
     /// answer correctly, never that the Host gives that answer. The matching
     /// half is asserted in eidolon_admin's
-    /// test_an_owner_can_see_what_happened_to_their_devices — if either side
-    /// renames a field, one of the two fails.
+    /// test_the_history_is_the_signed_in_owners_and_pages_backwards — if either
+    /// side renames a field, one of the two fails.
     const wire = {
       'contract_version': '1',
-      'coverage': 'device-lifecycle',
       'moments': [
         {
-          'event_id': 'evt-approved',
+          'event_id': 'evt-archived',
+          'action': 'companion.archived',
+          'subject_type': 'companion',
+          'subject_id': 'companion-a',
+          'subject_name': '小忆',
           'occurred_at': '2026-08-17T10:14:40Z',
-          'kind': 'device-accepted',
-          'actor': 'owner',
-          'device_id': '10:51:db:7e:24:44',
-          'device_name': 'atk-dnesp32s3',
-          'device_kind': 'atk-dnesp32s3',
-          'reason': '',
-          'event_type': 'eidolon.device.approved.v1',
+          'outcome': 'success',
+          'detail': <String, String>{},
         },
       ],
+      'next_cursor': '7',
     };
 
     test('the route, the session and the shape all line up', () async {
       Uri? asked;
       String? sentToken;
-      final client = LocalApiClient(
+      final client = ManagementClient(
         httpClient: MockClient((request) async {
           asked = request.url;
-          sentToken = request.headers['authorization'];
-          return http.Response(
-            jsonEncode(wire),
+          sentToken = request.headers['Authorization'];
+          return http.Response.bytes(
+            utf8.encode(jsonEncode(wire)),
             200,
             headers: const {'content-type': 'application/json'},
           );
         }),
       );
 
-      final activity = await client.fetchActivity(
-        'https://192.168.1.26:9002',
+      final view = await client.fetchActivity(
+        Uri.parse('https://192.168.1.26:9002'),
         accessToken: 'session-token',
         limit: 25,
       );
+      final activity = HostActivity.fromView(view);
 
-      expect(asked?.path, '/api/local/v1/activity');
+      expect(asked?.path, '/api/management/v1/activity');
       expect(asked?.queryParameters['limit'], '25');
       // No Owner is named by the client: the session already said whose Host
       // this is, and a client that could name another would create a question
       // this boundary would then have to answer.
       expect(asked.toString(), isNot(contains('owner')));
       expect(sentToken, 'Bearer session-token');
-      expect(activity.coverage, 'device-lifecycle');
-      expect(hostMomentSentence(activity.moments.single), '你接受了 atk-dnesp32s3');
+      // Stored and sent back, never built: this is a position the Host issued.
+      expect(activity.nextCursor, '7');
+      expect(hostMomentSentence(activity.moments.single), '你把「小忆」收了起来');
     });
 
     test('a Host that refuses is not read as a Host with no history', () async {
-      final client = LocalApiClient(
+      final client = ManagementClient(
         httpClient: MockClient(
-          (_) async => http.Response('{"detail":"hub is down"}', 503),
+          (_) async => http.Response('{"detail":"data is down"}', 503),
         ),
       );
 
       expect(
         () => client.fetchActivity(
-          'https://192.168.1.26:9002',
+          Uri.parse('https://192.168.1.26:9002'),
           accessToken: 'session-token',
         ),
-        throwsA(isA<LocalApiRequestException>()),
+        throwsA(isA<ManagementRequestException>()),
       );
     });
   });

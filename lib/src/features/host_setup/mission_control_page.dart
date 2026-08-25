@@ -154,7 +154,7 @@ class _MissionControlPageState extends State<MissionControlPage> {
                   child: Padding(
                     padding: EdgeInsets.all(18),
                     child: Text(
-                      '这台主机还没有记下设备的来去。',
+                      '这台主机还没有记下任何变动。',
                       key: Key('mission-control-activity-empty'),
                     ),
                   ),
@@ -165,7 +165,10 @@ class _MissionControlPageState extends State<MissionControlPage> {
               Text(
                 // What this screen does not know, said out loud rather than
                 // implied by a short list.
-                '这里只记录设备的到来、接受和移除。这台主机不记录设备是否在线，所以这一屏不说谁在线。',
+                // What this screen does not know, said out loud rather than
+                // implied by a short list.
+                '这里记的是这台主机做过的改动——伙伴的来去、谁来回答、换过的脸。'
+                '设备是否在线不在其中，这台主机不记那个。',
                 key: const Key('mission-control-coverage'),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
@@ -284,17 +287,21 @@ class _MomentTile extends StatelessWidget {
           leading: Icon(_icon(moment.kind)),
           title: Text(hostMomentSentence(moment)),
           subtitle: Text(
-            '${hostMomentTime(moment.occurredAt, now: DateTime.now())}'
-            ' · ${hostMomentDetail(moment)}',
+            hostMomentTime(moment.occurredAt, now: DateTime.now()),
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ),
       );
 
   static IconData _icon(HostMomentKind kind) => switch (kind) {
-        HostMomentKind.deviceKnocked => Icons.door_front_door_outlined,
-        HostMomentKind.deviceAccepted => Icons.check_circle_outline,
-        HostMomentKind.deviceRemoved => Icons.remove_circle_outline,
+        HostMomentKind.companionArrived => Icons.auto_awesome_outlined,
+        HostMomentKind.companionPutAway => Icons.inventory_2_outlined,
+        HostMomentKind.companionBack => Icons.undo_outlined,
+        HostMomentKind.companionGone => Icons.remove_circle_outline,
+        HostMomentKind.answeringChanged => Icons.record_voice_over_outlined,
+        HostMomentKind.faceChanged => Icons.face_retouching_natural,
+        HostMomentKind.memoryCatalogued => Icons.library_books_outlined,
+        HostMomentKind.ownerNamed => Icons.person_outline,
         HostMomentKind.other => Icons.history,
       };
 }
