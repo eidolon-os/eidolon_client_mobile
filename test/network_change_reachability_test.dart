@@ -13,6 +13,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'support/local_api_fixtures.dart';
+
 import 'support/setup_fixtures.dart';
 
 /// The phone saying its own network changed.
@@ -39,18 +41,18 @@ class _CountingDiscovery implements LocalApiDiscovery {
   var rounds = 0;
 
   @override
-  Future<List<LocalApiEndpoint>> discover({
+  Future<LocalApiSurvey> discover({
     Duration timeout = const Duration(seconds: 5),
   }) async {
     rounds += 1;
-    return [
+    return announcedSurvey(const [
       LocalApiEndpoint(
         instanceName: 'Eidolon Local API',
         baseUrl: 'https://192.168.1.20:9002',
         ipAddress: '192.168.1.20',
         contractVersion: '1',
       ),
-    ];
+    ]);
   }
 }
 

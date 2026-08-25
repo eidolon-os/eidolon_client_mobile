@@ -100,7 +100,12 @@ class RememberedAddressSource implements HostAddressSource {
   }
 }
 
-/// Whoever answers the announcement on this network.
+/// Whatever this network turns up right now, by every probe there is.
+///
+/// Only the addresses are taken here. The survey knows more — which probe was
+/// silent, which could not run, what answered on another contract — and that
+/// belongs to the flow that has a person in front of it, not to relocating a
+/// Host that is already claimed.
 class AnnouncedAddressSource implements HostAddressSource {
   const AnnouncedAddressSource(this._discovery);
 
@@ -110,8 +115,8 @@ class AnnouncedAddressSource implements HostAddressSource {
   HostAddressEvidence get evidence => HostAddressEvidence.announced;
 
   @override
-  Future<List<LocalApiEndpoint>> locate(ManagedHost host) =>
-      _discovery.discover();
+  Future<List<LocalApiEndpoint>> locate(ManagedHost host) async =>
+      (await _discovery.discover()).endpoints;
 }
 
 /// Where a Host might be, from every means available.

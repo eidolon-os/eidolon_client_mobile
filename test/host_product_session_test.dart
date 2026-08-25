@@ -11,6 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'support/local_api_fixtures.dart';
+
 import 'support/setup_fixtures.dart';
 
 const _controllerId = 'ectrl-0123456789abcdefabcd';
@@ -22,10 +24,10 @@ class _Discovery implements LocalApiDiscovery {
   List<LocalApiEndpoint> endpoints;
 
   @override
-  Future<List<LocalApiEndpoint>> discover({
+  Future<LocalApiSurvey> discover({
     Duration timeout = const Duration(seconds: 5),
   }) async =>
-      endpoints;
+      announcedSurvey(endpoints);
 }
 
 class _ControllerKeys implements ControllerKeyBridge {

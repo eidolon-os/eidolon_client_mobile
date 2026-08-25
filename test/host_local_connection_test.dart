@@ -15,6 +15,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'support/local_api_fixtures.dart';
+
 import 'support/setup_fixtures.dart';
 
 const _tlsFingerprint = 'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8';
@@ -23,17 +25,17 @@ const _workspaceOperationId = '32c421a3-e0df-40f9-8f75-68745ae39d81';
 
 class _FakeDiscovery implements LocalApiDiscovery {
   @override
-  Future<List<LocalApiEndpoint>> discover({
+  Future<LocalApiSurvey> discover({
     Duration timeout = const Duration(seconds: 5),
   }) async =>
-      const [
+      announcedSurvey(const [
         LocalApiEndpoint(
           instanceName: 'Eidolon Local API on eidolon-pi5',
           baseUrl: 'https://192.168.1.26:9002',
           ipAddress: '192.168.1.26',
           contractVersion: '1',
         ),
-      ];
+      ]);
 }
 
 class _FakeControllerKeys implements ControllerKeyBridge {

@@ -503,10 +503,16 @@ class MainActivity : FlutterActivity() {
             }
             multicastLock?.let { if (it.isHeld) it.release() }
             multicastLock = null
-            if (resolved.isNotEmpty()) {
-                result.success(resolved.values.toList())
+            // Finding nothing is an answer, not an error. Reporting NOT_FOUND
+            // here was the bug: a browse that never sees a service — which is
+            // what happens whenever multicast does not reach this phone — was
+            // indistinguishable from "there is no Host", and Dart had no way to
+            // keep looking by any other means. Only the mechanism failing to
+            // run at all is an error now.
+            if (code != null && resolved.isEmpty()) {
+                result.error(code, message ?: "Local API discovery failed", null)
             } else {
-                result.error(code ?: "NOT_FOUND", message ?: "No Eidolon Local API found", null)
+                result.success(resolved.values.toList())
             }
         }
 
@@ -515,7 +521,13 @@ class MainActivity : FlutterActivity() {
             val attributes = info.attributes.mapValues {
                 String(it.value, StandardCharsets.UTF_8)
             }
-            if (attributes["contract"] != "1" || attributes["scheme"] != "https") return
+            // The scheme decides whether a base URL can be built at all, so an
+            // announcement without it is unusable here. The contract version is
+            // passed through untouched: a Host speaking another version is
+            // present and unreachable, which is a different thing to tell the
+            // Owner than "nothing is there", and only Dart says such things.
+            if (attributes["scheme"] != "https") return
+            val contractVersion = attributes["contract"] ?: ""
             val addresses = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 info.hostAddresses
             } else {
@@ -555,7 +567,7 @@ class MainActivity : FlutterActivity() {
                     "instanceName" to info.serviceName,
                     "baseUrl" to baseUrl,
                     "ipAddress" to ipAddress,
-                    "contractVersion" to "1",
+                    "contractVersion" to contractVersion,
                 )
             }
         }
@@ -608,9 +620,7 @@ class MainActivity : FlutterActivity() {
             }
         }
         discoveryListener = listener
-        mainHandler.postDelayed({
-            finish("NOT_FOUND", "No compatible Eidolon Local API found on the LAN")
-        }, timeoutMs.toLong())
+        mainHandler.postDelayed({ finish() }, timeoutMs.toLong())
         nsd.discoverServices(LOCAL_API_SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
     }
 

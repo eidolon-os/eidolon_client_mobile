@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../host_setup/local_api_discovery.dart';
 import 'development_lan_commissioning.dart';
 import 'host_registry.dart';
 import 'setup_models.dart';
@@ -33,16 +34,17 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
 
   Future<void> _discover() async {
     await _run(() async {
-      setState(() => _progress = '正在通过 mDNS 查找已联网的开发 Host');
-      final hosts = await widget.commissioning.discover();
-      if (hosts.isEmpty) {
-        throw const CommissioningRequestException(
-          'host_not_found',
-          '没有找到已生成有效 Setup 码的开发 Host',
-        );
-      }
+      setState(
+        () => _progress = '正在同时用 mDNS 服务浏览、主机名解析和本网段探测查找开发 Host',
+      );
+      final discovered = await widget.commissioning.discover();
+      // The report already knows which of the several ways this can come up
+      // empty happened, and what to do about each; the page must not flatten
+      // that back into one sentence.
+      final failure = discovered.failure;
+      if (failure != null) throw failure;
       setState(() {
-        _hosts = hosts;
+        _hosts = discovered.hosts;
         _progress = null;
       });
     });
@@ -97,7 +99,8 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
           padding: const EdgeInsets.all(24),
           children: [
             const Text(
-              '仅限 Debug：mDNS 只发现候选，App 仍会验证 Host 签名并 pin TLS。'
+              '仅限 Debug：mDNS 服务浏览、主机名解析和本网段探测都只发现候选，'
+              'App 仍会验证 Host 签名并 pin TLS。'
               '请先在 Host 上生成短期 $setupCodeDigits 位 Setup 码。',
             ),
             const SizedBox(height: 16),
@@ -120,7 +123,8 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
                   ),
                   title: Text(host.displayName),
                   subtitle: Text(
-                    '${host.endpoint.hostId}\n${host.localApi.baseUrl}',
+                    '${host.endpoint.hostId}\n${host.localApi.baseUrl}'
+                    '（${host.candidate.origin.label}）',
                   ),
                 ),
               ),

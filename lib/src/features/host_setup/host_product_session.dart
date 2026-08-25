@@ -12,6 +12,7 @@ import 'controller_session.dart';
 import 'host_locator.dart';
 import 'host_models.dart';
 import '../../management/management_client.dart';
+import 'local_api_candidate_sources.dart';
 import 'local_api_client.dart';
 import 'local_api_discovery.dart';
 import 'pinned_http_client.dart';
@@ -86,7 +87,7 @@ class HostProductSession {
     // the Host is asked directly where it is.
     _locator = locator ??
         HostLocator.standard(
-          discovery ?? PlatformLocalApiDiscovery(),
+          discovery ?? platformLocalApiDiscovery(),
           readPublished: (_) async =>
               (await _readEndpointOverBle()).localApiBaseUrls,
         );
@@ -180,7 +181,11 @@ class HostProductSession {
       if (answered) break;
     }
     if (lastFailure != null) throw lastFailure;
-    throw const LocalApiRequestException('局域网中没有兼容的 Eidolon 主机');
+    throw const LocalApiRequestException(
+      '局域网里没有任何设备应答这台主机的 Local API。'
+      '已经试过 mDNS 服务浏览、主机名解析、本网段探测，以及上次连上的地址。'
+      '请确认主机已开机、并和这台手机在同一个局域网。$controllerResetGuidance',
+    );
   }
 
   /// Runs a typed Local API operation, recovering once from either of the two
@@ -333,8 +338,7 @@ class HostProductSession {
                 error.statusCode == 403 ||
                 error.statusCode == 404 ||
                 error.statusCode == 409
-            ? '主机已重置或不再授权这台管理设备。请让持有主机的人执行 Controller Reset，'
-                '然后像首次开箱一样重新连接；主机数据不会丢失。'
+            ? '主机已重置或不再授权这台管理设备。$controllerResetGuidance'
             : '管理会话已失效，且暂时无法重新认证。请重新连接主机。',
       );
     } on SetupTrustException catch (error) {
@@ -378,8 +382,7 @@ class HostProductSession {
           error.statusCode == 404 ||
           error.statusCode == 409) {
         throw const HostControllerAuthorizationException(
-          '主机已重置或不再授权这台管理设备。请让持有主机的人执行 Controller Reset，'
-          '然后像首次开箱一样重新连接；主机数据不会丢失。',
+          '主机已重置或不再授权这台管理设备。$controllerResetGuidance',
         );
       }
       rethrow;
