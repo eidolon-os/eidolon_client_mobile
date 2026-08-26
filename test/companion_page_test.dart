@@ -23,6 +23,7 @@ MountedDeviceInventory _devices(List<String?> attachedTo) =>
               'answers_as_companion_id': companion,
               'answers_as_companion_name': companion == null ? '' : '小忆',
               'revision': 1,
+              'mount_revision': 2,
               'updated_at': '2026-08-25T08:10:00Z',
               'online': 'unknown',
               'online_reason': '这台主机没有任何东西在观测设备是否开着',

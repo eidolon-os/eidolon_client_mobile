@@ -176,6 +176,7 @@ Map<String, dynamic> _deviceInventory({bool withReadyDevice = false}) => {
                 'answers_as_companion_id': 'companion_primary',
                 'answers_as_companion_name': '小忆',
                 'revision': 2,
+                'mount_revision': 2,
                 'updated_at': '2026-08-09T08:10:00Z',
                 'online': 'unknown',
                 'online_reason': '这台主机没有任何东西在观测设备是否开着',

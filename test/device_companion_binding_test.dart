@@ -8,7 +8,12 @@ import 'package:flutter_test/flutter_test.dart';
 /// say which, every device this product added arrived correct and unusable:
 /// mounted, claimed, and bound to no Companion, with no way forward.
 
-MountedDevice _device({String? companionId, int revision = 1, String state = 'ready'}) =>
+MountedDevice _device({
+  String? companionId,
+  int revision = 1,
+  String state = 'ready',
+  String quietBecause = '',
+}) =>
     MountedDevice.fromView(
       DeviceView.fromJson({
         'device_id': 'device-instance-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
@@ -17,7 +22,9 @@ MountedDevice _device({String? companionId, int revision = 1, String state = 're
         'state': state,
         'answers_as_companion_id': companionId,
         'answers_as_companion_name': companionId == null ? '' : '小忆',
+        'quiet_because': quietBecause,
         'revision': revision,
+        'mount_revision': 7,
         'updated_at': '2026-08-25T08:10:00Z',
         'online': 'unknown',
         'online_reason': '这台主机没有任何东西在观测设备是否开着',
@@ -83,7 +90,9 @@ void main() {
       ),
     );
 
-    expect(find.text('尚未关联'), findsOneWidget);
+    // Nobody has decided about this device yet, which is not the same as its
+    // having gone quiet — and the revision it will send is the Body's.
+    expect(find.text('还没有指定'), findsOneWidget);
     await tester.tap(find.byKey(const Key('bind-device-companion')));
     await tester.pumpAndSettle();
 
@@ -124,7 +133,8 @@ void main() {
       ),
     );
 
-    expect(find.text('c_01'), findsOneWidget);
+    // The name, not the identifier: the row says who answers.
+    expect(find.text('小忆'), findsOneWidget);
     await tester.tap(find.byKey(const Key('bind-device-companion')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('companion-choice-none')));
@@ -206,6 +216,54 @@ void main() {
 
     expect(find.byKey(const Key('device-companion-binding')), findsOneWidget);
     expect(find.byKey(const Key('bind-device-companion')), findsNothing);
+  });
+
+  testWidgets('a speaker that went quiet says which way it went quiet',
+      (tester) async {
+    // The three ways of answering as nobody leave the same empty assignment
+    // behind. Telling someone whose Eidolon was put away that they had "not
+    // decided yet" is the one reading that makes a working Host look broken.
+    Future<void> show(String word) => tester.pumpWidget(
+          MaterialApp(
+            home: MountedDeviceDetailPage(
+              device: _device(state: 'awaiting_companion', quietBecause: word),
+              onRemove: (_, __) async => throw StateError('not this test'),
+            ),
+          ),
+        );
+
+    await show('you_cleared_it');
+    expect(find.text('你把它设成了不由谁应答'), findsOneWidget);
+
+    await show('companion_put_away');
+    expect(find.text('原本应答的 Eidolon 被收起来了'), findsOneWidget);
+
+    await show('');
+    expect(find.text('还没有指定'), findsOneWidget);
+  });
+
+  test('the control is held back only once the Host has said it cannot', () {
+    // Two halves, and the second is the one that bites. `body.assign` is read
+    // apart from `device.manage` because a Host could offer one and not the
+    // other — but a Host that has not been asked yet must not read as one that
+    // refused, or every control vanishes for the moment between connecting and
+    // reading /context.
+    ManagementContextView context({required bool assign}) =>
+        ManagementContextView.fromJson({
+          'owner': {
+            'owner_id': 'owner_1',
+            'display_name': '曼森',
+            'revision': 1,
+          },
+          'default_companion_id': 'c_01',
+          'capabilities': {'body.assign': assign, 'device.manage': true},
+          'unavailable': assign ? <String, String>{} : {'body.assign': 'not_built'},
+          'limits': <String, int?>{},
+        });
+
+    expect(hostOffersBodyAssignment(null), isTrue);
+    expect(hostOffersBodyAssignment(context(assign: true)), isTrue);
+    expect(hostOffersBodyAssignment(context(assign: false)), isFalse);
   });
 }
 

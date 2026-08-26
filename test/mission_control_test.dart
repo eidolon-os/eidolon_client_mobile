@@ -72,6 +72,7 @@ MountedDevice _mountedDevice(
         'answers_as_companion_id': companionId,
         'answers_as_companion_name': companionName,
         'revision': 1,
+        'mount_revision': 2,
         'updated_at': '2026-08-17T00:00:00Z',
         'online': 'unknown',
         'online_reason': '这台主机没有任何东西在观测设备是否开着',

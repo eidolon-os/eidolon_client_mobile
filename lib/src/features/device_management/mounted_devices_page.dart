@@ -14,6 +14,23 @@ import '../../management/management_client.dart';
 import '../host_setup/host_product_controller.dart';
 import 'mounted_device_models.dart';
 
+/// Whether to draw the control that points a device at an Eidolon.
+///
+/// A named rule rather than a condition inside a build method, because it has
+/// two halves worth stating separately and a test can only reach one of them
+/// through a whole page otherwise.
+///
+/// `body.assign` is its own capability, read apart from `device.manage`: one is
+/// about which devices are on this Host at all, and a Host could reasonably let
+/// somebody point a speaker somewhere without letting them take it off.
+///
+/// A context that has not been read yet is no objection. Treating "not asked"
+/// as "refused" would make every control disappear for the moment between
+/// connecting to a Host and reading `/context`, which looks like a Host with
+/// nothing on it rather than one nobody has questioned yet.
+bool hostOffersBodyAssignment(ManagementContextView? context) =>
+    context == null || hostCan(context, 'body.assign');
+
 class MountedDevicesPage extends StatefulWidget {
   const MountedDevicesPage({
     super.key,
@@ -49,6 +66,9 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
   void _refresh() {
     if (mounted) setState(() {});
   }
+
+  bool get _hostOffersAssignment =>
+      hostOffersBodyAssignment(widget.controller.managementCapabilities);
 
   Future<void> _openProvisioning() async {
     final admission = HostControllerDeviceAdmission(widget.controller);
@@ -155,7 +175,18 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
                   requestId: requestId,
                 ),
                 loadCompanions: controller.roster,
-                onBindCompanion: controller.setDeviceCompanion,
+                // Its own capability, read separately from taking a device off
+                // the Host: a Host could reasonably offer one and not the
+                // other. Null means the control is not drawn at all rather
+                // than drawn greyed, which is this app's rule for a thing the
+                // Host is not offering.
+                //
+                // Not read yet counts as no objection: making every control
+                // vanish for the moment between connecting and reading
+                // /context would look like a Host with nothing on it.
+                onBindCompanion: _hostOffersAssignment
+                    ? controller.setDeviceCompanion
+                    : null,
               ),
             ),
           ],
@@ -236,7 +267,7 @@ class _MountedDeviceCard extends StatelessWidget {
           Theme.of(context).colorScheme.primary,
         ),
       MountedDeviceState.awaitingCompanion => (
-          '待关联 Companion',
+          '没有谁应答',
           Theme.of(context).colorScheme.tertiary,
         ),
       // Its access is already gone; what is left is the mount. Saying so is
@@ -455,12 +486,25 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
     return '$purpose-$uuid';
   }
 
+  /// What to say where a name would go when nobody answers.
+  ///
+  /// Three sentences rather than one, because the three ways a device ends up
+  /// quiet are not the same event and only one of them is something the person
+  /// did to this device. A single "尚未关联" would tell someone whose Eidolon was
+  /// put away that they had never set the speaker up.
+  static String _quietText(MountedDevice device) => switch (device.quietBecause) {
+        DeviceQuietBecause.ownerCleared => '你把它设成了不由谁应答',
+        DeviceQuietBecause.companionPutAway => '原本应答的 Eidolon 被收起来了',
+        DeviceQuietBecause.hostReleased => '主机把它放开了',
+        DeviceQuietBecause.unstated => '还没有指定',
+      };
+
   @override
   Widget build(BuildContext context) {
     final device = widget.device;
     final stateLabel = switch (device.state) {
       MountedDeviceState.ready => '已接入',
-      MountedDeviceState.awaitingCompanion => '待关联 Companion',
+      MountedDeviceState.awaitingCompanion => '没有谁应答',
       MountedDeviceState.accessRevoked => '已停用，待移除',
     };
     return Scaffold(
@@ -488,13 +532,15 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
                 ListTile(title: const Text('状态'), trailing: Text(stateLabel)),
                 ListTile(
                   title: const Text('挂载 revision'),
-                  trailing: Text('${device.revision}'),
+                  trailing: Text('${device.mountRevision}'),
                 ),
                 ListTile(
                   key: const Key('device-companion-binding'),
-                  title: const Text('关联 Companion'),
+                  title: const Text('由谁应答'),
                   subtitle: Text(
-                    device.attachedCompanionId ?? '尚未关联',
+                    device.attachedCompanionName.isNotEmpty
+                        ? device.attachedCompanionName
+                        : device.attachedCompanionId ?? _quietText(device),
                   ),
                   trailing: widget.onBindCompanion == null
                       ? null
@@ -505,7 +551,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
                               : _bindCompanion,
                           child: Text(
                             device.attachedCompanionId == null
-                                ? '关联'
+                                ? '指定'
                                 : '更换或解除',
                           ),
                         ),

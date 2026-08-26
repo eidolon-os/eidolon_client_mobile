@@ -42,6 +42,7 @@ class ManagementV1 {
   static const String memoryForgetPreviewPath = '/api/management/v1/memory/forget/preview';
   static const String memoryLibraryPath = '/api/management/v1/memory/library';
   static const String memoryRecollectionsPath = '/api/management/v1/memory/recollections';
+  static const String missionControlSnapshotPath = '/api/management/v1/mission-control/snapshot';
   static const String ownerPath = '/api/management/v1/owner';
   static const String ownerActionsRevokeRuntimeSessionsPath = '/api/management/v1/owner/actions/revoke-runtime-sessions';
   static const String ownerDefaultCompanionPath = '/api/management/v1/owner/default-companion';
@@ -924,9 +925,11 @@ class DeviceView {
     required this.label,
     this.manifestId,
     this.manifestRevision,
+    required this.mountRevision,
     this.online,
     this.onlineReason,
     required this.ownerDomainGeneration,
+    this.quietBecause,
     required this.revision,
     required this.state,
     required this.trustEpoch,
@@ -951,11 +954,15 @@ class DeviceView {
 
   final int? manifestRevision;
 
+  final int mountRevision;
+
   final String? online;
 
   final String? onlineReason;
 
   final int ownerDomainGeneration;
+
+  final String? quietBecause;
 
   final int revision;
 
@@ -976,9 +983,11 @@ class DeviceView {
       label: value['label'] as String,
       manifestId: value['manifest_id'] as String?,
       manifestRevision: value['manifest_revision'] as int?,
+      mountRevision: value['mount_revision'] as int,
       online: value['online'] as String?,
       onlineReason: value['online_reason'] as String?,
       ownerDomainGeneration: value['owner_domain_generation'] as int,
+      quietBecause: value['quiet_because'] as String?,
       revision: value['revision'] as int,
       state: value['state'] as String,
       trustEpoch: value['trust_epoch'] as int,
@@ -997,9 +1006,11 @@ class DeviceView {
       'label': label,
       if (manifestId != null) 'manifest_id': manifestId,
       if (manifestRevision != null) 'manifest_revision': manifestRevision,
+      'mount_revision': mountRevision,
       if (online != null) 'online': online,
       if (onlineReason != null) 'online_reason': onlineReason,
       'owner_domain_generation': ownerDomainGeneration,
+      if (quietBecause != null) 'quiet_because': quietBecause,
       'revision': revision,
       'state': state,
       'trust_epoch': trustEpoch,

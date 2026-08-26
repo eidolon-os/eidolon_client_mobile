@@ -4,15 +4,37 @@ import '../../generated/management_v1.dart';
 ///
 /// Three facts, from three authorities, deliberately not collapsed into one:
 /// Hub says whether the Claim still stands, Kernel says whether the device is
-/// mounted, and the mount says which Companion it answers as. A device whose
-/// Claim was revoked but whose mount survives is a real, reachable state — a
-/// removal that finished its first half — and folding it into "fine" is how
+/// mounted, and its Body says which Companion answers through it. A device
+/// whose Claim was revoked but whose mount survives is a real, reachable state
+/// — a removal that finished its first half — and folding it into "fine" is how
 /// the one screen that could offer the retry stopped being able to say so.
+/// Why a device answers as nobody.
+///
+/// The three ways it happens leave the same empty assignment behind and are not
+/// the same event. A person who cleared a speaker knows why it is silent; a
+/// person whose Eidolon was put away is owed the sentence; and a speaker nobody
+/// ever pointed anywhere was never quiet in the first place. One word for all
+/// three would read as a fault in at least one of them.
+enum DeviceQuietBecause {
+  /// Nothing to explain: something answers, or nobody has decided yet.
+  unstated,
+
+  /// The Owner pointed it at nobody.
+  ownerCleared,
+
+  /// The Eidolon it answered as was put away.
+  companionPutAway,
+
+  /// The Host let it go on its own.
+  hostReleased,
+}
+
 enum MountedDeviceState {
   /// The Claim stands and a Companion answers through this device.
   ready,
 
-  /// The Claim stands; nothing answers through it yet.
+  /// The Claim stands; nothing answers through it. Why nothing does is
+  /// [MountedDevice.quietBecause], and it is a different sentence each way.
   awaitingCompanion,
 
   /// Platform access is gone and the Host still lists it. The device is
@@ -28,7 +50,9 @@ class MountedDevice {
     required this.state,
     required this.attachedCompanionId,
     required this.attachedCompanionName,
+    required this.quietBecause,
     required this.revision,
+    required this.mountRevision,
     required this.updatedAt,
     required this.online,
     required this.onlineReason,
@@ -62,7 +86,17 @@ class MountedDevice {
         },
         attachedCompanionId: view.answersAsCompanionId,
         attachedCompanionName: view.answersAsCompanionName ?? '',
+        quietBecause: switch (view.quietBecause) {
+          'you_cleared_it' => DeviceQuietBecause.ownerCleared,
+          'companion_put_away' => DeviceQuietBecause.companionPutAway,
+          'host_released_it' => DeviceQuietBecause.hostReleased,
+          // Empty is the ordinary case — something answers, or nobody ever
+          // decided — and a word this version has not heard of falls here too:
+          // saying nothing is better than inventing a reason.
+          _ => DeviceQuietBecause.unstated,
+        },
         revision: view.revision,
+        mountRevision: view.mountRevision,
         updatedAt: DateTime.tryParse(view.updatedAt)?.toUtc(),
         online: view.online ?? 'unknown',
         onlineReason: view.onlineReason ?? '',
@@ -89,8 +123,18 @@ class MountedDevice {
   /// not the same as nothing answering through this device.
   final String attachedCompanionName;
 
-  /// Echoed back on every change so a stale screen cannot win a race.
+  /// Why nobody answers through it, when nobody does.
+  final DeviceQuietBecause quietBecause;
+
+  /// The *Body's* version, echoed back on every change so a stale screen cannot
+  /// win a race. Zero for a device nobody has pointed anywhere yet: that is a
+  /// value to send, not one that is missing.
   final int revision;
+
+  /// Whether this device is on the Host, at which version. Never sent back —
+  /// it is one of the canonical facts a person is asked for when something is
+  /// wrong, and it is a different number from the one above.
+  final int mountRevision;
   final DateTime? updatedAt;
 
   /// Always `unknown` today. Nothing on the Host observes presence, and this

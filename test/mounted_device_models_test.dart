@@ -18,6 +18,8 @@ Map<String, dynamic> _wire({
   String? companionId = 'c_01',
   String label = 'box3-device-manifest',
   String kind = 'box3-device-manifest',
+  String quietBecause = '',
+  int revision = 2,
 }) =>
     <String, dynamic>{
       'device_id': _deviceId,
@@ -26,7 +28,9 @@ Map<String, dynamic> _wire({
       'state': state,
       'answers_as_companion_id': companionId,
       'answers_as_companion_name': companionId == null ? '' : '小忆',
-      'revision': 2,
+      'quiet_because': quietBecause,
+      'revision': revision,
+      'mount_revision': 7,
       'updated_at': '2026-08-25T08:10:00Z',
       'online': 'unknown',
       'online_reason': '这台主机没有任何东西在观测设备是否开着',
@@ -41,12 +45,21 @@ Map<String, dynamic> _wire({
 MountedDeviceInventory _inventory({
   String state = 'ready',
   String? companionId = 'c_01',
+  String quietBecause = '',
+  int revision = 2,
 }) =>
     MountedDeviceInventory.fromView(
       DevicesView.fromJson({
         'contract_version': '1',
         'coverage': '只包含已经属于你的设备。',
-        'devices': [_wire(state: state, companionId: companionId)],
+        'devices': [
+          _wire(
+            state: state,
+            companionId: companionId,
+            quietBecause: quietBecause,
+            revision: revision,
+          )
+        ],
       }),
     );
 
@@ -65,6 +78,9 @@ void main() {
     expect(device.claimGeneration, 1);
     expect(device.ownerDomainGeneration, 3);
     expect(device.revision, 2);
+    // A different number, kept rather than folded into the one above: it is
+    // what a person is asked for when a device is not behaving.
+    expect(device.mountRevision, 7);
   });
 
   test('a device nothing answers through is not shown as ready', () {
@@ -75,6 +91,38 @@ void main() {
 
     expect(device.state, MountedDeviceState.awaitingCompanion);
     expect(device.attachedCompanionName, '');
+    // Nobody decided yet, which is not the same as having gone quiet.
+    expect(device.quietBecause, DeviceQuietBecause.unstated);
+  });
+
+  test('the three ways of answering as nobody stay three different things', () {
+    // They leave the same empty assignment behind. One word for all of them
+    // would tell somebody whose Eidolon was put away that they had never set
+    // this speaker up.
+    DeviceQuietBecause read(String word) => _inventory(
+          state: 'awaiting_companion',
+          companionId: null,
+          quietBecause: word,
+        ).devices.single.quietBecause;
+
+    expect(read('you_cleared_it'), DeviceQuietBecause.ownerCleared);
+    expect(read('companion_put_away'), DeviceQuietBecause.companionPutAway);
+    expect(read('host_released_it'), DeviceQuietBecause.hostReleased);
+    // A word this version has not heard of says nothing rather than a guess.
+    expect(read('eaten_by_a_bear'), DeviceQuietBecause.unstated);
+  });
+
+  test('a device nobody has pointed anywhere carries revision zero', () {
+    // The revision echoed back is the Body's, and zero is the value the first
+    // change sends rather than a value that is missing. Refusing it would make
+    // the state every device starts in the one nobody could act on.
+    final device = _inventory(
+      state: 'awaiting_companion',
+      companionId: null,
+      revision: 0,
+    ).devices.single;
+
+    expect(device.revision, 0);
   });
 
   test('a withdrawn Claim with a surviving mount is its own state', () {
