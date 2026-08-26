@@ -411,21 +411,66 @@ OpenAPI 文档是**从路由导出**的(`generate.py`，`--check` 是漂移门�
 词汇（`biz/contracts/mission_control.py`）留在 SDK 是对的；wire schema 与 golden
 应随文档搬到 management 那边。
 
-### 7.9 剩下的活在控制面，不在这两侧
+### 7.9 已接上真主机：缺口在哪、为什么是那里（2026-08-26 复核）
 
-星图现在两侧都按契约就位了，缺口全在 **Admin 控制面边界**：Local API 触达权威只
-经显式 Port，所以要新增控制面能力才能填满剩下五条 lane。
+这一节此前列了五条「缺的控制面能力」，并断言「星图现在两侧都按契约就位，缺口全在
+Admin 控制面边界」。前半句对，后半句把范围说大了 —— **生产者一直都在**，只在
+operator 面（`/api/mission-control/*`，owner 靠 query 参数）。缺的是它在 Owner
+面上的暴露。补上之后真机实况是：
 
-| 缺的控制面能力 | 填哪条 lane |
-|---|---|
-| Owner 逐设备在场（运行黑板 lease-aware + Hub 兜底） | `devices[].presence`（现在全是 `unknown/none`） |
-| Owner 伙伴列表 | `companions`（现在只有主伙伴） |
-| Owner 活动 / 轮次 / 任务投影 | `activities` `turns` `jobs` |
-| Owner 记忆投影（realms、runners、写入策略） | `memory` |
-| Owner 事件游标接口（audit index `ingest_seq` 之后重放） | `events` + SSE 流 + 脉冲 |
+| lane | 现状（真机 `20260826-owner-runtime-map-6`） | 来源 |
+|---|---|---|
+| `services` | **ok**，13 个服务带真实延迟 | 服务注册表 + supervisord |
+| `activities` | **ok**，12 条带逐跳链路 | 由 turns / long tasks 投影 |
+| `turns` | **degraded**，12 条 | Agent 轮次；Data 不发布对话历史 |
+| `jobs` | **degraded**，1 条 | Agent 长任务；Data 不发布任务清单 |
+| `devices` | 存在=清单(Owner 面 join)，在场=**无生产者** | 见下 |
+| `memory` | **unavailable** | Memory 只发布 recollections，无 realm/runner 名册 |
+| `events` | **unavailable** | 这台 Host 的 audit indexer 没在跑 |
 
-**事件流是唯一能让飞镖动起来的东西。** adapter 现在不发脉冲，也不从两次 snapshot
-的差异里编造 —— 差异出来的箭会宣称一个方向和一个瞬间，而那是没人观测到的。
+三条仍未点亮，各有明确的主：
+
+* **事件流** —— `EIDOLON_ADMIN_AUDIT_NATS_URL` 在主机上存在但为空，indexer 因此不
+  启动（消费端就是创建流的那一方，所以上游也不发布）。方案 Phase 6 后半把
+  「indexer 纳入服务清单」判给 operator 面，不在这条线上。**它一配上，事件 lane
+  和飞镖同时活** —— 见 §7.11。
+* **逐设备在场** —— `9a5880f align admin with data v2 and kernel boundary` 收走了
+  Admin 直读运行黑板的能力，至今没有权威通过 HTTP 发布逐设备在场。谁来重建是边界
+  决定。在场缺席期间，身体照画、在场标 `unknown`（永不 `offline`）。
+* **per-companion 记忆域 / runner 名册** —— 在 `eidolon_memory` 那条线。roster 是
+  存在性与身份的权威，不带 realm。
+
+### 7.9.1 Owner 面的暴露怎么走的（四层，没有例外）
+
+`app/management/mission_control_router.py`（服务凭据，只读，与 mutation 分文件）→
+`local_api/management/backend.py`（loopback）→ `/api/management/v1/mission-control/
+snapshot`（Owner 只来自会话，没有 `owner_id` 入参）→ 重新生成 OpenAPI / TS / Dart。
+
+投影（`app/management/mission_control.py`）不是 re-export：operator 专属材料（运行
+黑板、trace span、证据链、权限账本）不过界，身份不在其中（`/context` 与 roster 是
+它的权威），每条 lane 带 state/detail/observed_at/latency_ms/truncated。形状的权威
+是 SDK 的 JSON Schema，用 `jsonschema` 验证投影，不写会与之分歧的 pydantic 镜像。
+
+**lane 在读取的那一行记账**（`app/mission_control/lanes.py`）：每次读取声明它决定
+哪些 lane，`SOURCE_LANES` 必须穷尽，没登记的来源当场抛。console 要的扁平
+`source_status` 由同一本账派生，所以两个视图不可能对「观测到了什么」有分歧。
+
+**设备 lane 是两个权威的 join，在 Owner 面合成**
+（`local_api/management/mission_control.py`）：存在来自这个面本来就在替 Owner 读的
+清单（Claims + mounts，Controller 会话），在场来自 admin 进程。存在永不被读成在场。
+
+### 7.9.2 一次重构切掉四项能力，而合成对着四个都还在伸手
+
+真机第一次调用这条新路由是 500：`'HubManagementClient' object has no attribute
+'list_devices'`。追下去，`9a5880f / 06e7a2e` 那次重构搬走或删掉了 admin 的四项
+能力，而 Mission Control 的合成对着四个全部还在调 —— Hub 设备清单、Hub 事件流、
+`app.memory.runners`、NATS KV 客户端。每一处都被宽 `except` 或 `_safe` 的构造盲区
+藏住，所以 **operator 控制台那张星图从那时起一直 500，而没人发现**：唯一覆盖它的
+测试是对着仍带旧方法的 stub 断言的。
+
+四处都退役并说清缺失，而不是接回来。另加三道结构闸（`test_mission_control_router.py`）：
+组合调用的权威方法必须存在于真实客户端类上、函数内 import 的模块必须真的能 import、
+上游方法被删只损失它自己的 lane。每一道都验证过会咬。
 
 ### 7.10 观测的生命周期归页面：为什么这是契约的事，不是补一行
 
@@ -459,3 +504,25 @@ OpenAPI 文档是**从路由导出**的(`generate.py`，`--check` 是漂移门�
 
 验证过这道闸会咬：把 `_feed.start()` 注掉，除新测试外既有 widget 套件立刻红 17 个
 （mock 不再自驱之后，它们全都开始真的依赖这个 seam）。
+
+### 7.11 飞镖已经接好，等的是事件流
+
+`PolledCockpitFeed` 现在会发脉冲，而且不是从 snapshot 差异里编造的。原先那条理由
+（「差异出来的箭会宣称一个没人观测到的方向和瞬间」）成立，但它讲的是**状态**：两次
+读取里在线身体从 2 变 3，说不出这件事何时、怎么发生的。它不适用于事件 lane —— 那是
+主机的审计尾巴，每一行都有 id、时刻、主体、结果，还有主机指派的序号。上次没有、这次
+有的那一行，就是在这两次之间发生的。
+
+三条纪律（`test/polled_cockpit_feed_test.dart`）：第一次读取只建基线（带回来的是
+一百条没人在看时的瞬间，全画出来就是宣称它们正在发生）；同一个瞬间只发一次；没有
+序号的事件不猜。外加：事件 lane 读不到时**不动水位**，恢复后那段空档照样发出来。
+
+所以飞镖今天不动的唯一原因是这台 Host 的事件 lane 是空的（indexer 没跑）。**不需要
+再写 mobile 侧的代码**；`EIDOLON_ADMIN_AUDIT_NATS_URL` 一配上就会动。
+
+SSE 暂时没做，理由记在这里以免下一个人当成漏项：服务端自己是每秒轮询 sqlite 发现
+新事件的，所以 SSE 是「在轮询上加推送」，延迟下限一样；而代价是 local_api 至今没有
+任何流式路径（要新开一种 backend port 形状）、手机端要加 SSE 解析与重连退避、
+keepalive 每 5 秒一帧的耗电。游标已经是精确的（`ingest_seq` 单调），批量读取
+`after_seq` 在语义上不输：恰好一次、有序、无需去重。**SSE 值得付这个代价的时刻，是
+审计索引变成推送的时候**（indexer 可以通知），那时同一条路由升级，游标语义不变。
