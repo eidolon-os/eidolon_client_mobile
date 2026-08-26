@@ -58,6 +58,22 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   String? _error;
   String? _progress;
   bool _busy = false;
+
+  /// A resumed setup the Host has already finished refusing.
+  ///
+  /// It is not "in progress" and no amount of asking the Host again will move
+  /// it, so the screen that offers only "recover from the Host" is the wrong
+  /// screen. Keeping it also keeps the entrance shut: `_resumePersistedAdmission`
+  /// treats every non-ready checkpoint as resumable, so one refused Enrollment
+  /// made this phone unable to set up any further device — including the same
+  /// board after a fresh start.
+  bool _refused = false;
+
+  /// Set once the person has said "set up a device again" on this page.
+  ///
+  /// Without it, backgrounding and returning re-runs the resume scan and drags
+  /// them back into a checkpoint they have already dismissed.
+  bool _resumeDismissed = false;
   String? _activeSetupId;
   String? _activeRequestId;
 
@@ -65,13 +81,13 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    unawaited(_resumePersistedAdmission());
+    unawaited(_autoResumePersistedAdmission());
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && !_busy) {
-      unawaited(_resumePersistedAdmission());
+      unawaited(_autoResumePersistedAdmission());
     }
   }
 
@@ -191,6 +207,11 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         allowDevelopmentTrust: widget.allowDevelopmentTrust,
       );
 
+  Future<void> _autoResumePersistedAdmission() async {
+    if (_resumeDismissed) return;
+    await _resumePersistedAdmission();
+  }
+
   Future<void> _resumePersistedAdmission() => _run(() async {
         final target = _target ??= await widget.loadTarget();
         final checkpoints = await widget.checkpoints.list();
@@ -227,13 +248,47 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         _step = _Step.complete;
         _progress = null;
         _error = null;
+        _refused = false;
       } else {
         _step = _Step.working;
-        _progress = _admissionProgress(checkpoint.admissionState);
+        // `rejected` is the Host's final word on this Enrollment. Everything
+        // else here is still moving, including `failed`, which says out loud
+        // that retrying is safe.
+        _refused = checkpoint.admissionState == DeviceAdmissionState.rejected;
+        _progress = _refused ? null : _admissionProgress(checkpoint.admissionState);
         _error = checkpoint.failure?.message;
       }
     });
   }
+
+  /// Let go of a refused setup so the next device can be set up.
+  ///
+  /// Forgetting the checkpoint is the whole point: it is what the resume scan
+  /// reads, so a refused one that stays written is a permanently occupied
+  /// entrance rather than a stale screen.
+  Future<void> _startOver() => _run(() async {
+        final setupId = _activeSetupId;
+        if (setupId != null) {
+          await widget.checkpoints.remove(setupId);
+        }
+        if (!mounted) return;
+        setState(() {
+          _activeSetupId = null;
+          _activeRequestId = null;
+          _refused = false;
+          _resumeDismissed = true;
+          _progress = null;
+          _error = null;
+          _candidates = const [];
+          _candidate = null;
+          _session = null;
+          _networks = const [];
+          _network = null;
+          _password.clear();
+          _hiddenSsid.clear();
+          _step = _Step.introduction;
+        });
+      });
 
   String _admissionProgress(DeviceAdmissionState state) => switch (state) {
         DeviceAdmissionState.awaitingEnrollment => '网络已提交，等待设备创建 Enrollment',
@@ -407,7 +462,9 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         ],
       );
 
-  Widget _working() => Column(
+  Widget _working() => _refused ? _refusedSetup() : _admissionInProgress();
+
+  Widget _admissionInProgress() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('设备接入进行中', style: Theme.of(context).textTheme.titleLarge),
@@ -419,6 +476,23 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             onPressed: _busy ? null : _resumePersistedAdmission,
             icon: const Icon(Icons.refresh),
             label: const Text('从主机恢复状态'),
+          ),
+        ],
+      );
+
+  Widget _refusedSetup() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('这次接入已终止', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          const Text('主机不会再为这次 Enrollment 交付 Grant。设备本身没有被改动，'
+              '重新设置一次即可——包括同一台设备。'),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            key: const Key('restart-device-setup'),
+            onPressed: _busy ? null : _startOver,
+            icon: const Icon(Icons.restart_alt),
+            label: const Text('重新设置设备'),
           ),
         ],
       );
