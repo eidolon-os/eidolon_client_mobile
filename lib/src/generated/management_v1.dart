@@ -2007,7 +2007,7 @@ class PersonaAuthoring {
       relationshipNarrative: value['relationship_narrative'] as String?,
       safetyBoundaries: value['safety_boundaries'] == null ? null : ((value['safety_boundaries'] as List<dynamic>).map((entry) => entry as String).toList()),
       selfConcept: value['self_concept'] as String?,
-      traits: value['traits'] == null ? null : ((value['traits'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as PersonaTraitState))),
+      traits: value['traits'] == null ? null : ((value['traits'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, PersonaTraitState.fromJson(entry as Map<String, dynamic>)))),
       values: value['values'] == null ? null : ((value['values'] as List<dynamic>).map((entry) => entry as String).toList()),
       voicePortrait: value['voice_portrait'] as String?,
     );
