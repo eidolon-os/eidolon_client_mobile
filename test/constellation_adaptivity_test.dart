@@ -57,7 +57,7 @@ Future<void> _open(
         ),
         child: child!,
       ),
-      home: ConstellationCockpitPage(feed: feed),
+      home: ConstellationCockpitPage(openFeed: () => feed),
     ),
   );
   await tester.pump();

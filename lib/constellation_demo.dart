@@ -33,6 +33,6 @@ class ConstellationDemoApp extends StatelessWidget {
         ),
         // The one place the staged world is constructed. Nothing in the product
         // navigation reaches this page, and the page itself has no fallback.
-        home: ConstellationCockpitPage(feed: MockCockpitFeed()),
+        home: ConstellationCockpitPage(openFeed: MockCockpitFeed.new),
       );
 }

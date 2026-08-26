@@ -68,6 +68,13 @@ class PolledCockpitFeed implements CockpitFeed {
       const CockpitObservation(state: ObservationState.connecting);
   Timer? _timer;
   Duration _backoff = Duration.zero;
+
+  /// Whether this feed's observation is open at all.
+  ///
+  /// Not "has `start` been called": [refresh] is a caller asking too, and it
+  /// keeps the schedule alive, so it opens the observation just as legitimately.
+  /// What must never open it is construction.
+  var _observing = false;
   var _paused = false;
   var _disposed = false;
   var _reading = false;
@@ -89,16 +96,26 @@ class PolledCockpitFeed implements CockpitFeed {
   @override
   Stream<CockpitObservation> get observations => _observations.stream;
 
-  /// Start reading. Safe to call twice.
+  /// Start reading. Safe to call twice — a second call is a no-op rather than a
+  /// second polling schedule racing the first.
+  ///
+  /// The first read's failure is swallowed here, not because it does not matter
+  /// but because it has already been reported on [observations] and there is no
+  /// caller to rethrow it to. Only [refresh] has one: the reader who pressed
+  /// retry.
+  @override
   void start() {
-    if (_disposed || _paused) return;
-    unawaited(refresh());
+    if (_disposed || _observing) return;
+    _observing = true;
+    if (_paused) return;
+    unawaited(refresh().catchError((_) {}));
   }
 
   @override
   Future<void> refresh() async {
     if (_disposed || _reading) return;
     _reading = true;
+    _observing = true;
     try {
       final snapshot = await read();
       if (_disposed) return;
@@ -179,6 +196,10 @@ class PolledCockpitFeed implements CockpitFeed {
   void resume() {
     if (!_paused || _disposed) return;
     _paused = false;
+    // Nothing to resume if nobody ever asked: a resumed feed that had never
+    // been started would silently become a started one, which is the confusion
+    // this lifecycle exists to prevent.
+    if (!_observing) return;
     // Read immediately rather than waiting out an interval: whatever is on
     // screen was true when the app went away, which may have been a while ago.
     unawaited(refresh().catchError((_) {}));

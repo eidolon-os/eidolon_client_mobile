@@ -33,7 +33,7 @@ Future<void> _open(WidgetTester tester, MockCockpitFeed feed) async {
         data: MediaQuery.of(context).copyWith(disableAnimations: true),
         child: child!,
       ),
-      home: ConstellationCockpitPage(feed: feed),
+      home: ConstellationCockpitPage(openFeed: () => feed),
     ),
   );
   await tester.pump();

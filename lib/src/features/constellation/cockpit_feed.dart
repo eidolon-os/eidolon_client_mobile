@@ -57,11 +57,31 @@ class CockpitObservation {
 ///   first round trip, and handing over an empty snapshot instead would make
 ///   "not read yet" look like "nothing there".
 /// * [observations] gives failure its own channel.
-/// * [pause] / [resume] are in the interface because the consumer really calls
-///   them — the page hangs them off `AppLifecycleState`.
+/// * [start] / [pause] / [resume] / [dispose] are in the interface because the
+///   consumer really drives them — the page starts one when it mounts, hangs
+///   pause/resume off `AppLifecycleState`, and disposes on the way out.
 /// * [refresh] must throw on failure. A refresh button that fails silently is
 ///   the worst kind of button.
+///
+/// The lifecycle is the interface's business, not each implementation's private
+/// habit. It was not, once: nothing here said "begin observing", so the mock
+/// began inside its own constructor and the polled feed waited to be asked —
+/// and the page, holding this type, had no way to ask. It showed a spinner
+/// forever against a real Host while every test passed, because the mock was
+/// driving itself. So: **a feed must not observe anything until [start]**, and
+/// creating one must have no effect a reader could see. That way the mock and
+/// the real transport wear the same lifecycle, and any consumer that forgets to
+/// start one is starved by both.
 abstract class CockpitFeed {
+  /// Begin observing. Nothing arrives on any stream before this is called, and
+  /// a feed that is never started reports nothing rather than inventing a
+  /// quiet domain.
+  ///
+  /// Must be safe to call twice. The caller subscribes first and starts second:
+  /// these streams are broadcast, so they do not keep an event for a listener
+  /// who was not there yet.
+  void start();
+
   /// The last read, or null before the first one lands.
   CockpitSnapshot? get snapshot;
 
@@ -86,8 +106,12 @@ abstract class CockpitFeed {
   void pause();
 
   /// Start again, from [CockpitObservation.cursor] where the transport supports
-  /// it. Must be safe to call twice.
+  /// it. Must be safe to call twice. Not a substitute for [start]: a feed that
+  /// was never started has nothing to resume.
   void resume();
 
+  /// Release the transport. Whoever created this feed calls it — and the
+  /// consumer is the one that creates it, so that the observation cannot
+  /// outlive the screen that wanted it.
   void dispose();
 }

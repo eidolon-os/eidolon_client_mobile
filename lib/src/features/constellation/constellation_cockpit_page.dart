@@ -21,16 +21,25 @@ import 'constellation_stage.dart';
 /// the phone is the interaction, not the instrument — you fly the map instead of
 /// taking it all in at once, and detail arrives as you arrive.
 ///
-/// It reads one [CockpitFeed]. Today that is a mock world, and the screen says
-/// so in two places rather than letting a demo pass for a Host's word. When the
-/// Owner-scoped projection lands, the adapter changes and this file does not.
+/// It reads one [CockpitFeed]. When the Owner-scoped projection lands, the
+/// adapter changes and this file does not.
 class ConstellationCockpitPage extends StatefulWidget {
-  const ConstellationCockpitPage({super.key, required this.feed});
+  const ConstellationCockpitPage({super.key, required this.openFeed});
 
-  /// Where the facts come from. Required, and deliberately not defaulted to the
-  /// mock: a screen that falls back to a staged world when nobody passed it one
-  /// is a screen that can show fiction because of a missing argument.
-  final CockpitFeed feed;
+  /// How to open the feed this screen observes — a factory, not an instance,
+  /// because the observation's lifetime is exactly this screen's.
+  ///
+  /// Taking an instance made ownership a matter of opinion, and both halves of
+  /// it went missing: nobody started the feed (a real Host showed a spinner
+  /// forever) and nobody disposed it (a popped star map kept polling that Host
+  /// every six seconds for the rest of the process). With a factory there is
+  /// one owner, its four transitions live in one [State], and `dispose` is
+  /// covered by the one the framework already calls.
+  ///
+  /// Required, and deliberately not defaulted to the mock: a screen that falls
+  /// back to a staged world when nobody passed it one is a screen that can show
+  /// fiction because of a missing argument.
+  final CockpitFeed Function() openFeed;
 
   @override
   State<ConstellationCockpitPage> createState() =>
@@ -39,12 +48,11 @@ class ConstellationCockpitPage extends StatefulWidget {
 
 class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  CockpitFeed get _feed => widget.feed;
+  late final CockpitFeed _feed;
   late final AnimationController _clock = AnimationController.unbounded(
     vsync: this,
   );
-  late final ValueNotifier<CockpitSnapshot?> _snapshot =
-      ValueNotifier<CockpitSnapshot?>(_feed.snapshot);
+  late final ValueNotifier<CockpitSnapshot?> _snapshot;
   final _stage = GlobalKey<ConstellationStageState>();
   final List<CockpitPulse> _pulses = <CockpitPulse>[];
   final List<Timer> _pulseTimers = <Timer>[];
@@ -57,7 +65,7 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
   /// How well this screen is observing, as opposed to what it observed. The
   /// feed's own channel — an unread domain is not a quiet one, and the map on
   /// screen after a failure is a memory, not an observation.
-  late CockpitObservation _observation = _feed.observation;
+  late CockpitObservation _observation;
 
   String? get _readFailure =>
       _observation.healthy || _observation.state == ObservationState.connecting
@@ -77,6 +85,9 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
     super.initState();
     _clockText = formatClock(DateTime.now());
     WidgetsBinding.instance.addObserver(this);
+    _feed = widget.openFeed();
+    _snapshot = ValueNotifier<CockpitSnapshot?>(_feed.snapshot);
+    _observation = _feed.observation;
     _snapshotSub = _feed.updates.listen(_onSnapshot, onError: _onFeedError);
     _pulseSub = _feed.pulses.listen(_onPulse, onError: _onFeedError);
     _observationSub = _feed.observations.listen(
@@ -88,6 +99,9 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
     _secondHand = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _clockText = formatClock(DateTime.now()));
     });
+    // Subscribed first, started second: these are broadcast streams, so a feed
+    // that publishes its first read synchronously would publish it to nobody.
+    _feed.start();
   }
 
   @override
@@ -184,6 +198,9 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
     _snapshotSub?.cancel();
     _pulseSub?.cancel();
     _observationSub?.cancel();
+    // This screen opened the feed, so this screen closes it. Anything else
+    // leaves a poll running against a Host nobody is looking at.
+    _feed.dispose();
     _clock.dispose();
     _snapshot.dispose();
     super.dispose();

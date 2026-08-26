@@ -25,6 +25,64 @@ CockpitSnapshot _snapshot({
     );
 
 void main() {
+  test('start 才开始读；再 start 一次不会多出一个轮询', () async {
+    var reads = 0;
+    final feed = PolledCockpitFeed(read: () async {
+      reads += 1;
+      return _snapshot();
+    });
+    addTearDown(feed.dispose);
+
+    // 构造只是准备好，不是开始。
+    expect(reads, 0);
+
+    feed.start();
+    await Future<void>.delayed(Duration.zero);
+    expect(reads, 1);
+
+    // 幂等：第二次 start 不该再排一次期，否则两条轮询会并行敲同一台主机。
+    feed.start();
+    await Future<void>.delayed(Duration.zero);
+    expect(reads, 1);
+  });
+
+  test('start 的第一次读失败：报在观测通道上，不抛到 zone 里', () async {
+    final feed = PolledCockpitFeed(
+      read: () async => throw StateError('主机没有回应'),
+      retryFloor: const Duration(milliseconds: 50),
+    );
+    addTearDown(feed.dispose);
+
+    final states = <ObservationState>[];
+    feed.observations.listen((observation) => states.add(observation.state));
+
+    // 没有 caller 可以接这个异常。逃到 zone 里就是一次未捕获错误，这个测试会自己红。
+    feed.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(states, [ObservationState.lost]);
+    expect(feed.observation.detail, contains('主机没有回应'));
+  });
+
+  test('没 start 过的 resume 不会偷偷开始观测', () async {
+    var reads = 0;
+    final feed = PolledCockpitFeed(read: () async {
+      reads += 1;
+      return _snapshot();
+    });
+    addTearDown(feed.dispose);
+
+    // resume 是「继续」，不是「开始」：一个从未开始的 feed 没有东西可以继续。
+    feed.pause();
+    feed.resume();
+    await Future<void>.delayed(Duration.zero);
+    expect(reads, 0);
+
+    feed.start();
+    await Future<void>.delayed(Duration.zero);
+    expect(reads, 1);
+  });
+
   test('第一次读到之前没有 snapshot，状态是 connecting', () {
     final feed = PolledCockpitFeed(read: () async => _snapshot());
     addTearDown(feed.dispose);

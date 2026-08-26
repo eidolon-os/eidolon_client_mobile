@@ -35,7 +35,7 @@ Future<void> _openCockpit(
         data: MediaQuery.of(context).copyWith(disableAnimations: true),
         child: child!,
       ),
-      home: ConstellationCockpitPage(feed: feed),
+      home: ConstellationCockpitPage(openFeed: () => feed),
     ),
   );
   await tester.pump();
@@ -368,6 +368,7 @@ class _FailingFeed implements CockpitFeed {
   final _updates = StreamController<CockpitSnapshot>.broadcast();
   final _pulses = StreamController<CockpitPulse>.broadcast();
   final _observations = StreamController<CockpitObservation>.broadcast();
+  StreamSubscription<CockpitSnapshot>? _backingSub;
   var refreshes = 0;
   var paused = false;
 
@@ -387,6 +388,14 @@ class _FailingFeed implements CockpitFeed {
   Stream<CockpitObservation> get observations => _observations.stream;
 
   @override
+  void start() {
+    // Subscribe before starting the staged world, then let it read: whatever it
+    // publishes travels this feed's own channel so `fail` can break the same one.
+    _backingSub ??= _backing.updates.listen(_updates.add);
+    _backing.start();
+  }
+
+  @override
   void pause() => paused = true;
 
   @override
@@ -402,6 +411,7 @@ class _FailingFeed implements CockpitFeed {
 
   @override
   void dispose() {
+    _backingSub?.cancel();
     _updates.close();
     _pulses.close();
     _observations.close();
@@ -464,6 +474,7 @@ class _UnreadFeed implements CockpitFeed {
   var _observation =
       const CockpitObservation(state: ObservationState.connecting);
   var refreshes = 0;
+  var starts = 0;
 
   @override
   CockpitSnapshot? get snapshot => null;
@@ -487,6 +498,9 @@ class _UnreadFeed implements CockpitFeed {
     );
     _observations.add(_observation);
   }
+
+  @override
+  void start() => starts += 1;
 
   @override
   Future<void> refresh() async => refreshes += 1;

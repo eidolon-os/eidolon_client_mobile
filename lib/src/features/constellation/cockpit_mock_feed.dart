@@ -24,16 +24,6 @@ class MockCockpitFeed implements CockpitFeed {
     this.firstReadDelay = Duration.zero,
   }) : _startedAt = startedAt ?? DateTime.now() {
     _world = _MockWorld(_startedAt);
-    if (firstReadDelay == Duration.zero) {
-      _publish();
-    } else {
-      // Lets a caller exercise the state a real adapter always starts in: no
-      // facts yet, and a screen that has to say so.
-      Timer(firstReadDelay, () {
-        if (!_disposed) _publish();
-      });
-    }
-    if (autoplay) _scheduleBeat();
   }
 
   /// Off in tests that want one deterministic frame instead of a moving one.
@@ -44,6 +34,7 @@ class MockCockpitFeed implements CockpitFeed {
 
   final DateTime _startedAt;
   late _MockWorld _world;
+  var _started = false;
   CockpitSnapshot? _snapshot;
   CockpitObservation _observation =
       const CockpitObservation(state: ObservationState.connecting);
@@ -70,6 +61,28 @@ class MockCockpitFeed implements CockpitFeed {
   @override
   Stream<CockpitObservation> get observations => _observations.stream;
 
+  /// The script does not run until somebody asks for it.
+  ///
+  /// This used to happen in the constructor, which made the mock the only feed
+  /// in the codebase that observed without being asked — so the page could get
+  /// away with never asking, and did. A staged world that self-starts is a
+  /// staged lifecycle too, and the lifecycle is the part that has to be real.
+  @override
+  void start() {
+    if (_disposed || _started) return;
+    _started = true;
+    if (firstReadDelay == Duration.zero) {
+      _publish();
+    } else {
+      // Lets a caller exercise the state a real adapter always starts in: no
+      // facts yet, and a screen that has to say so.
+      Timer(firstReadDelay, () {
+        if (!_disposed) _publish();
+      });
+    }
+    if (autoplay) _scheduleBeat();
+  }
+
   @override
   Future<void> refresh() async {
     _publish();
@@ -87,7 +100,7 @@ class MockCockpitFeed implements CockpitFeed {
   void resume() {
     if (!_paused) return;
     _paused = false;
-    if (autoplay) _scheduleBeat();
+    if (_started && autoplay) _scheduleBeat();
   }
 
   /// Whether the script is currently running. Tests assert on this rather than

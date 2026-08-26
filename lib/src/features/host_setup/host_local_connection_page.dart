@@ -564,7 +564,9 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   Future<void> _openConstellation() => Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => ConstellationCockpitPage(
-            feed: PolledCockpitFeed(
+            // A factory: the page owns the poll for exactly as long as it is on
+            // screen, and starting and stopping it are its job, not this one's.
+            openFeed: () => PolledCockpitFeed(
               read: CockpitComposer(
                 readContext: _controller.managementContext,
                 readRoster: _controller.roster,
