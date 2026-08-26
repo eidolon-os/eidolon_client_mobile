@@ -26,18 +26,29 @@ import 'management_client.dart';
 class CompanionLifecycleSheet extends StatefulWidget {
   const CompanionLifecycleSheet({
     super.key,
-    required this.companion,
+    required this.displayName,
+    required this.lifecycleState,
     required this.others,
     required this.setLifecycle,
   });
 
   /// The Eidolon this sheet is about, as the detail read described it.
-  final CompanionDetailView companion;
+  /// What this Eidolon is called, and where it is in its life.
+  ///
+  /// Two facts rather than a detail read. The sheet asks "put this away, and
+  /// who should answer instead?" — it needs a name and a state, and taking a
+  /// whole view model meant every caller had to have performed that read first,
+  /// which is why the only way to put an Eidolon away used to be through one
+  /// particular screen.
+  final String displayName;
+  final String lifecycleState;
 
   /// This Owner's other Eidolons, for the successor question. Only ones that
   /// can actually take the role are offered — the Host would refuse the rest,
   /// and offering a choice that gets refused is worse than not offering it.
-  final List<CompanionSummaryView> others;
+  /// The other active Eidolons, as (id, name) — one of them may have to take
+  /// over answering. Minimal for the same reason as above.
+  final List<LifecycleSuccessor> others;
 
   /// Performs the change. A null replacement is the first ask; the sheet only
   /// names one after the Host has said it needs one.
@@ -62,7 +73,7 @@ class _CompanionLifecycleSheetState extends State<CompanionLifecycleSheet> {
   /// Set when the Host says there is nobody else. A statement, not a retry.
   String? _blocked;
 
-  bool get _archiving => widget.companion.lifecycleState == 'active';
+  bool get _archiving => widget.lifecycleState == 'active';
 
   Future<void> _ask({String? replacementCompanionId}) async {
     setState(() {
@@ -102,8 +113,8 @@ class _CompanionLifecycleSheetState extends State<CompanionLifecycleSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final name = widget.companion.displayName?.isNotEmpty == true
-        ? widget.companion.displayName!
+    final name = widget.displayName.isNotEmpty
+        ? widget.displayName
         : '这个 Eidolon';
     return SafeArea(
       key: const Key('companion-lifecycle-sheet'),
@@ -202,8 +213,8 @@ class _CompanionLifecycleSheetState extends State<CompanionLifecycleSheet> {
           contentPadding: EdgeInsets.zero,
           leading: const CircleAvatar(child: Icon(Icons.face_retouching_natural)),
           title: Text(
-            other.displayName?.isNotEmpty == true
-                ? other.displayName!
+            other.displayName.isNotEmpty
+                ? other.displayName
                 : other.companionId,
           ),
           onTap: _busy
@@ -223,4 +234,13 @@ class _CloseButton extends StatelessWidget {
         onPressed: () => Navigator.of(context).pop(),
         child: const Text('先不'),
       );
+}
+
+
+/// One Eidolon that could answer instead, as this sheet needs it.
+class LifecycleSuccessor {
+  const LifecycleSuccessor({required this.companionId, required this.displayName});
+
+  final String companionId;
+  final String displayName;
 }

@@ -3,7 +3,6 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
-import 'companion_detail_screen.dart';
 import 'companion_authoring_page.dart';
 import 'companion_roster_page.dart';
 import 'management_client.dart';
@@ -42,7 +41,16 @@ class CompanionRosterScreen extends StatefulWidget {
 
   /// Reads one Eidolon. Null leaves the rows unopenable rather than opening
   /// something that cannot load.
-  final Future<CompanionDetailView> Function(String companionId)? openCompanion;
+  /// Open one Eidolon. The row is handed up rather than a page being built
+  /// here, so the list and the home screen open the *same* page.
+  ///
+  /// They did not. This screen used to push a thinner Companion page of its
+  /// own — default badge, rename, put-away — while the richer one (who it is,
+  /// what it remembers, what it is doing) was reachable only from the home
+  /// card, and only for the Eidolon that answers when nobody was named. So
+  /// "open one of my Eidolons" led to two different pages depending on where
+  /// you tapped, and only one of them let you change who it is.
+  final void Function(CompanionSummaryView companion)? openCompanion;
 
   /// Read once when this screen opens, for two things it cannot infer:
   /// whether this Host can change the default at all, and which Owner revision
@@ -289,36 +297,7 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
         children: [
           CompanionRosterPage(
             roster: roster,
-            onOpen: widget.openCompanion == null
-                ? null
-                : (companion) => Navigator.of(context)
-                    .push<void>(
-                      MaterialPageRoute(
-                        builder: (_) => CompanionDetailScreen(
-                          companionId: companion.companionId,
-                          load: widget.openCompanion!,
-                          // Both names are read, because both are answers to
-                          // real questions: a Host may be able to put one away
-                          // and not bring one back. A flag nothing checks is a
-                          // claim nobody verifies.
-                          canPutAway: _context != null &&
-                              hostCan(_context!, 'companion.archive'),
-                          canBringBack: _context != null &&
-                              hostCan(_context!, 'companion.restore'),
-                          setLifecycle: widget.setCompanionLifecycle,
-                          loadFace: widget.loadCompanionFace,
-                          rename: widget.renameCompanion,
-                          canRename: _context != null &&
-                              hostCan(_context!, 'companion.rename'),
-                          // The rows this screen already has. The successor
-                          // question is asked from what the person is looking
-                          // at, not from a second read that could disagree
-                          // with it.
-                          others: roster.companions,
-                        ),
-                      ),
-                    )
-                    .then((_) => _read()),
+            onOpen: widget.openCompanion,
             onLoadMore: roster.nextCursor == null
                 ? null
                 : () => _read(cursor: roster.nextCursor),

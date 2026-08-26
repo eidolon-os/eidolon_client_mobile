@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
-import 'package:eidolon_client_mobile/src/management/companion_detail_screen.dart';
 import 'package:eidolon_client_mobile/src/management/companion_roster_page.dart';
 import 'package:eidolon_client_mobile/src/management/companion_roster_screen.dart';
 import 'package:eidolon_client_mobile/src/management/management_client.dart';
@@ -1079,17 +1078,19 @@ void creationTests() {
 
 void detailTests() {
   group('one Eidolon, opened', () {
-    testWidgets('a row opens the Eidolon it names', (tester) async {
-      String? opened;
+    testWidgets('a row hands the Eidolon it names upward', (tester) async {
+      // The row does not build a page. It used to push a Companion screen of
+      // its own — thinner than the one the home card opened, and the only one
+      // the roster could reach — so "open one of my Eidolons" led somewhere
+      // different depending on where it was tapped, and only one of the two
+      // let a person change who the Eidolon is.
+      CompanionSummaryView? opened;
       await tester.pumpWidget(
         MaterialApp(
           home: CompanionRosterScreen(
             load: ({String? cursor}) async =>
                 CompanionRosterView.fromJson(rosterWire()),
-            openCompanion: (companionId) async {
-              opened = companionId;
-              return detail();
-            },
+            openCompanion: (companion) => opened = companion,
           ),
         ),
       );
@@ -1097,11 +1098,13 @@ void detailTests() {
       await tester.tap(find.byKey(const Key('roster-row-companion-b')));
       await tester.pumpAndSettle();
 
-      expect(opened, 'companion-b');
-      expect(find.byKey(const Key('companion-detail-screen')), findsOneWidget);
+      expect(opened?.companionId, 'companion-b');
+      // The whole row, not just an id: whoever opens the page already has
+      // everything the list knew, so it can draw before any read returns.
+      expect(opened?.displayName, isNotNull);
     });
 
-    testWidgets('rows do not pretend to open when nothing can load them',
+    testWidgets('rows do not pretend to open when nothing will take them',
         (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -1112,69 +1115,11 @@ void detailTests() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('roster-row-companion-a')));
-      await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('companion-detail-screen')), findsNothing);
-    });
-
-    testWidgets('the default badge comes from the Host, not from the list',
-        (tester) async {
-      // The roster compares against a page-level pointer; this screen shows a
-      // comparison the Host made. Both read the same one field, so they cannot
-      // disagree — and the detail screen must not infer it from the row it was
-      // opened from.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CompanionDetailScreen(
-            companionId: 'companion-a',
-            load: (_) async => detail(isDefault: false),
-          ),
-        ),
+      final row = tester.widget<ListTile>(
+        find.byKey(const Key('roster-row-companion-a')),
       );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('detail-default-badge')), findsNothing);
-    });
-
-    testWidgets('a kind this version does not know is still described',
-        (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CompanionDetailScreen(
-            companionId: 'companion-a',
-            load: (_) async => detail(kind: 'a-kind-from-a-later-release'),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('这台 Host 上的另一类 Eidolon'), findsOneWidget);
-      expect(find.text('a-kind-from-a-later-release'), findsNothing);
-    });
-
-    testWidgets('an Eidolon that is not yours reads as absent', (tester) async {
-      // Not "you may not see it": that would confirm the id exists, turning
-      // this screen into a way to test identifiers.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CompanionDetailScreen(
-            companionId: 'someone-elses',
-            load: (_) => Future.error(
-              const ManagementRequestException(
-                '读取失败',
-                statusCode: 404,
-                // 404 is also the answer for "not yours": saying more would
-                // turn this screen into a way to test identifiers.
-                refusal: Refusal(kind: 'not_found'),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('这台主机上没有这个 Eidolon'), findsOneWidget);
+      expect(row.onTap, isNull);
     });
   });
 }

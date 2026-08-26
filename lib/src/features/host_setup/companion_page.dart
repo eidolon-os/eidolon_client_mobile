@@ -25,6 +25,8 @@ class CompanionPage extends StatelessWidget {
   const CompanionPage({
     super.key,
     required this.companion,
+    this.isDefault = false,
+    this.onChangeLifecycle,
     required this.devices,
     required this.onRename,
     required this.onOpenPersona,
@@ -41,6 +43,17 @@ class CompanionPage extends StatelessWidget {
   /// page; the counts and the machine line belong to the screen that opened it.
   /// The Eidolon this page is about.
   final HostCompanion companion;
+
+  /// Whether the Owner's pointer names this one — 「没指名时由它回答」.
+  ///
+  /// Passed in rather than derived here: it is one comparison against the
+  /// Owner's single pointer, and a page that worked it out for itself would be
+  /// a second place that can disagree about which Eidolon is the default.
+  final bool isDefault;
+
+  /// Put it away, or bring it back. Null when this Host cannot, and the button
+  /// is then absent rather than present and refused.
+  final VoidCallback? onChangeLifecycle;
 
   /// Everything this Host has mounted. Which of them belong to this Eidolon is
   /// decided here rather than asked for separately: the Host already answered.
@@ -144,6 +157,14 @@ class CompanionPage extends StatelessWidget {
                           _stateLine(companion),
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
+                        if (isDefault) ...[
+                          const SizedBox(height: 6),
+                          const Chip(
+                            key: Key('companion-default-badge'),
+                            label: Text('没指名时由它回答'),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -214,6 +235,17 @@ class CompanionPage extends StatelessWidget {
             onOpen: onOpenPersona,
             hold: _hold('persona.author'),
           ),
+          if (onChangeLifecycle != null) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton(
+                key: const Key('companion-lifecycle'),
+                onPressed: onChangeLifecycle,
+                child: Text(companion.isPutAway ? '让它回来' : '收起来'),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           Text('它的设备', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),

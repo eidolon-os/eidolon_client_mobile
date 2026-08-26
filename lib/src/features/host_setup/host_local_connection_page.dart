@@ -16,6 +16,7 @@ import 'host_product_controller.dart';
 import '../../management/management_client.dart';
 import '../../management/companion_roster_screen.dart';
 import '../../management/memory_library_screen.dart';
+import '../../management/lifecycle_sheet.dart';
 import '../../management/persona_edit_page.dart';
 import '../../generated/management_v1.dart';
 import 'companion_page.dart';
@@ -195,6 +196,56 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   ///
   /// It used to open ``home.answering`` regardless, so an Owner with three
   /// Eidolons could reach exactly one of them and the other two had no page.
+  /// Put this Eidolon away, or bring it back.
+  ///
+  /// Reachable from the Eidolon's own page, which is the only page there is
+  /// now. It used to live on a second, thinner Companion screen that only the
+  /// roster could reach — so whether you could put an Eidolon away depended on
+  /// which of two paths you had taken to it.
+  Future<void> _changeLifecycle(HostCompanion companion) async {
+    final moved = await showModalBottomSheet<CompanionLifecycleView>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => CompanionLifecycleSheet(
+        displayName: companion.displayName,
+        lifecycleState: companion.lifecycleState,
+        // Only the other active ones can take over answering. Offering an
+        // archived Eidolon as a successor would offer to wake something the
+        // person deliberately put away.
+        others: [
+          for (final row in _controller.home?.companions ?? const [])
+            if (row.companionId != companion.companionId &&
+                row.lifecycleState == 'active')
+              LifecycleSuccessor(
+                companionId: row.companionId,
+                displayName: row.displayName,
+              ),
+        ],
+        setLifecycle: (state, replacement) => _controller.setCompanionLifecycle(
+          companionId: companion.companionId,
+          lifecycleState: state,
+          replacementCompanionId: replacement,
+        ),
+      ),
+    );
+    if (moved == null || !mounted) return;
+    final released = moved.releasedDevices ?? const <String>[];
+    if (released.isNotEmpty) {
+      // Said out loud: a speaker that goes quiet without a sentence cannot be
+      // told from a broken one.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            released.length == 1
+                ? '有 1 台设备不再由它应答了'
+                : '有 ${released.length} 台设备不再由它应答了',
+          ),
+        ),
+      );
+    }
+    await _controller.refreshWorkspace();
+  }
+
   Future<void> _openCompanion(HostCompanion companion) {
     final answering = companion;
     // Asked for as the page opens rather than with the rest of the home read:
@@ -227,6 +278,12 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               // whose row was tapped. They used to be about ``answering``, so
               // opening any Eidolon and editing it would have edited the
               // default one.
+              isDefault:
+                  current.companionId == _controller.home?.defaultCompanionId,
+              onChangeLifecycle:
+                  _capabilityHold('companion.archive') == null
+                      ? () => _changeLifecycle(current)
+                      : null,
               onRename: () => _renameCompanion(current),
               onOpenPersona: () => _openPersonaEdit(current),
               onOpenRecollections: () => _openRecollections(current),
@@ -252,8 +309,10 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         MaterialPageRoute(
           builder: (_) => CompanionRosterScreen(
             load: ({String? cursor}) => _controller.roster(cursor: cursor),
-            openCompanion: (companionId) =>
-                _controller.companion(companionId: companionId),
+            // The same page the home rows open. One Eidolon, one page,
+            // wherever it was tapped from.
+            openCompanion: (row) =>
+                _openCompanion(HostCompanion.fromView(row)),
             loadContext: _controller.managementContext,
             setDefaultCompanion: (companionId, expectedRevision) =>
                 _controller.setDefaultCompanion(

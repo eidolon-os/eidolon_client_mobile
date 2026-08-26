@@ -1,7 +1,9 @@
 import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
-import 'package:eidolon_client_mobile/src/management/companion_detail_screen.dart';
+import 'package:eidolon_client_mobile/src/features/device_management/mounted_device_models.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/companion_page.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/home_models.dart';
 import 'package:eidolon_client_mobile/src/management/lifecycle_sheet.dart';
 import 'package:eidolon_client_mobile/src/management/management_client.dart';
 import 'package:flutter/material.dart';
@@ -22,31 +24,6 @@ http.Response _answer(Map<String, dynamic> body, {int status = 200}) =>
       status,
       headers: const {'content-type': 'application/json'},
     );
-
-CompanionDetailView _detail({
-  String lifecycleState = 'active',
-  bool isDefault = true,
-}) =>
-    CompanionDetailView.fromJson({
-      'contract_version': '1',
-      'companion_id': 'companion-a',
-      'display_name': '小忆',
-      'kind': 'standard',
-      'lifecycle_state': lifecycleState,
-      'revision': 2,
-      'is_default': isDefault,
-    });
-
-CompanionSummaryView _row(String id, String name, {String state = 'active'}) =>
-    CompanionSummaryView.fromJson({
-      'companion_id': id,
-      'display_name': name,
-      'kind': 'standard',
-      'lifecycle_state': state,
-      'revision': 1,
-      'created_at': '2026-08-24T09:30:00+00:00',
-      'updated_at': '2026-08-24T09:30:00+00:00',
-    });
 
 void main() {
   group('the client call', () {
@@ -140,8 +117,9 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: CompanionLifecycleSheet(
-              companion: _detail(),
-              others: [_row('companion-b', '阿力')],
+              displayName: '小忆',
+              lifecycleState: 'active',
+              others: const [LifecycleSuccessor(companionId: 'companion-b', displayName: '阿力')],
               setLifecycle: (state, replacement) async {
                 asked.add([state, replacement]);
                 return CompanionLifecycleView.fromJson({
@@ -180,8 +158,9 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: CompanionLifecycleSheet(
-              companion: _detail(),
-              others: [_row('companion-b', '阿力')],
+              displayName: '小忆',
+              lifecycleState: 'active',
+              others: const [LifecycleSuccessor(companionId: 'companion-b', displayName: '阿力')],
               setLifecycle: (state, replacement) async {
                 asked.add([state, replacement]);
                 if (replacement == null) {
@@ -229,8 +208,9 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: CompanionLifecycleSheet(
-              companion: _detail(),
-              others: const [],
+              displayName: '小忆',
+              lifecycleState: 'active',
+              others: const <LifecycleSuccessor>[],
               setLifecycle: (state, replacement) async =>
                   throw const ManagementRequestException(
                 '收起来被拒绝',
@@ -265,8 +245,9 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: CompanionLifecycleSheet(
-              companion: _detail(lifecycleState: 'archived', isDefault: false),
-              others: [_row('companion-b', '阿力')],
+              displayName: '小忆',
+              lifecycleState: 'archived',
+              others: const [LifecycleSuccessor(companionId: 'companion-b', displayName: '阿力')],
               setLifecycle: (state, replacement) async {
                 asked.add([state, replacement]);
                 return CompanionLifecycleView.fromJson({
@@ -296,184 +277,90 @@ void main() {
     });
   });
 
-  group('the screen', () {
-    testWidgets('a Host that cannot do this has nothing to press',
-        (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CompanionDetailScreen(
-            companionId: 'companion-a',
-            load: (_) async => _detail(),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('detail-lifecycle')), findsNothing);
-    });
-
-    testWidgets('each action waits on its own capability', (tester) async {
-      // A Host that can put one away and not bring one back is a Host this
-      // screen has to be able to draw. Inferring the second flag from the first
-      // would be this app answering a question only the Host can.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CompanionDetailScreen(
-            companionId: 'companion-a',
-            load: (_) async => _detail(lifecycleState: 'archived'),
-            canPutAway: true,
-            setLifecycle: (_, __, ___) async =>
-                throw AssertionError('never asked'),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('detail-lifecycle')), findsNothing);
-    });
-
-    testWidgets('mid-move states offer no button', (tester) async {
-      // ``retiring`` is a step the Host is walking through. A button on it
-      // would be one that gets refused.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CompanionDetailScreen(
-            companionId: 'companion-a',
-            load: (_) async => _detail(lifecycleState: 'retiring'),
-            canPutAway: true,
-            canBringBack: true,
-            setLifecycle: (_, __, ___) async =>
-                throw AssertionError('never asked'),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('detail-lifecycle')), findsNothing);
-    });
-
-    testWidgets('a face that will not load leaves the placeholder', (tester) async {
-      // There is nothing for a person to do about it, and an error where a
-      // portrait goes makes an Eidolon look broken because a photograph did
-      // not arrive.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CompanionDetailScreen(
-            companionId: 'companion-a',
-            load: (_) async => _detail(),
-            loadFace: (_) async => throw Exception('主机没给'),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('detail-face')), findsOneWidget);
-      expect(find.text('主机没给'), findsNothing);
-      expect(find.byIcon(Icons.face_retouching_natural), findsOneWidget);
-    });
-
-    testWidgets('renaming waits on the Host saying it can', (tester) async {
-      final named = <String>[];
-      Future<void> open({required bool canRename}) => tester.pumpWidget(
-            MaterialApp(
-              home: CompanionDetailScreen(
-                companionId: 'companion-a',
-                load: (_) async => _detail(),
-                canRename: canRename,
-                rename: (companionId, displayName) async {
-                  named.add(displayName);
-                  return displayName;
-                },
+  group('the Eidolon\'s page', () {
+    /// The page every path now opens. There used to be two: a thin one the
+    /// roster pushed (default badge, rename, put-away) and a rich one only the
+    /// home card could reach, and only for the Eidolon that answers when
+    /// nobody was named. Which page you got depended on where you tapped, and
+    /// only one of them let you change who the Eidolon is.
+    Future<void> open(
+      WidgetTester tester, {
+      String lifecycleState = 'active',
+      bool isDefault = false,
+      VoidCallback? onChangeLifecycle,
+    }) =>
+        tester.pumpWidget(
+          MaterialApp(
+            home: CompanionPage(
+              companion: HostCompanion.fromView(
+                CompanionSummaryView.fromJson({
+                  'companion_id': 'companion-a',
+                  'display_name': '小忆',
+                  'kind': 'conversational',
+                  'lifecycle_state': lifecycleState,
+                  'revision': 4,
+                  'created_at': '2026-08-01T00:00:00+00:00',
+                  'updated_at': '2026-08-01T00:00:00+00:00',
+                  'running': true,
+                  'last_active_at': '2026-08-26T09:30:00+00:00',
+                }),
               ),
+              isDefault: isDefault,
+              onChangeLifecycle: onChangeLifecycle,
+              devices: const MountedDeviceInventory(devices: []),
+              onRename: () {},
+              onOpenPersona: () {},
             ),
-          );
-
-      await open(canRename: false);
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('detail-rename')), findsNothing);
-
-      await open(canRename: true);
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('detail-rename')));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(const Key('detail-name-field')), '  阿力  ');
-      await tester.tap(find.byKey(const Key('detail-confirm-name')));
-      await tester.pumpAndSettle();
-
-      expect(named, ['阿力']);
-    });
-
-    testWidgets('released devices are said out loud', (tester) async {
-      // A speaker that goes quiet without a sentence is indistinguishable from
-      // a broken one. The Host releases them so the runtime does not refuse
-      // them silently; this is the half a person sees.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CompanionDetailScreen(
-            companionId: 'companion-a',
-            load: (_) async => _detail(isDefault: false),
-            others: [_row('companion-b', '阿力')],
-            canPutAway: true,
-            canBringBack: true,
-            setLifecycle: (companionId, state, replacement) async =>
-                CompanionLifecycleView.fromJson({
-              'companion_id': companionId,
-              'lifecycle_state': state,
-              'revision': 3,
-              'default_companion_id': 'companion-b',
-              'released_devices': ['speaker-living-room', 'speaker-study'],
-            }),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
 
-      await tester.tap(find.byKey(const Key('detail-lifecycle')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('lifecycle-confirm')));
-      await tester.pumpAndSettle();
-
-      expect(find.text('有 2 台设备不再由它应答了'), findsOneWidget);
-    });
-
-    testWidgets('after a move the screen re-reads rather than repaints itself',
+    testWidgets('a Host that cannot put one away has nothing to press',
         (tester) async {
-      // The answer to a lifecycle change describes a move, not a Companion.
-      // Painting one from the other is how a screen and a Host drift apart.
-      var reads = 0;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CompanionDetailScreen(
-            companionId: 'companion-a',
-            load: (_) async {
-              reads += 1;
-              return _detail(
-                lifecycleState: reads == 1 ? 'active' : 'archived',
-                isDefault: false,
-              );
-            },
-            others: [_row('companion-b', '阿力')],
-            canPutAway: true,
-            canBringBack: true,
-            setLifecycle: (companionId, state, replacement) async =>
-                CompanionLifecycleView.fromJson({
-              'companion_id': companionId,
-              'lifecycle_state': state,
-              'revision': 3,
-              'default_companion_id': 'companion-b',
-            }),
-          ),
-        ),
+      // Absent rather than present-and-refused: a button that exists to be
+      // rejected teaches a person to distrust the ones that work.
+      await open(tester);
+
+      expect(find.byKey(const Key('companion-lifecycle')), findsNothing);
+    });
+
+    testWidgets('the action says which direction it goes', (tester) async {
+      await open(tester, onChangeLifecycle: () {});
+      expect(find.text('收起来'), findsOneWidget);
+
+      await open(
+        tester,
+        lifecycleState: 'archived',
+        onChangeLifecycle: () {},
       );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byKey(const Key('detail-lifecycle')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('lifecycle-confirm')));
-      await tester.pumpAndSettle();
-
-      expect(reads, 2);
       expect(find.text('让它回来'), findsOneWidget);
+    });
+
+    testWidgets('being put away outranks whatever the runtime says',
+        (tester) async {
+      // The row still reports running — the Host may not have torn the runtime
+      // down yet — but what the person decided is the thing to show.
+      await open(tester, lifecycleState: 'archived', onChangeLifecycle: () {});
+
+      expect(find.text('已经收起来了'), findsOneWidget);
+      expect(find.textContaining('正在运行'), findsNothing);
+    });
+
+    testWidgets('the default one is marked, not renamed or promoted',
+        (tester) async {
+      await open(tester, isDefault: true);
+
+      expect(find.byKey(const Key('companion-default-badge')), findsOneWidget);
+      expect(find.text('没指名时由它回答'), findsOneWidget);
+      // And it is still just this Eidolon's page: no greeting to the Owner,
+      // which used to sit under the name and make the card read as a profile.
+      expect(find.textContaining('你好'), findsNothing);
+    });
+
+    testWidgets('an Eidolon that is not the default says nothing about it',
+        (tester) async {
+      await open(tester);
+
+      expect(find.byKey(const Key('companion-default-badge')), findsNothing);
     });
   });
 }
