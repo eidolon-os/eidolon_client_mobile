@@ -144,7 +144,7 @@ EnrollmentRecoveryProjectionV1 _projection({
 
 class _Platform extends PlatformBridge {
   @override
-  Future<DeviceIdentity> getDeviceIdentity() async => const DeviceIdentity(
+  Future<DeviceIdentity> getDeviceIdentity() async => DeviceIdentity(
         deviceId: namedDeviceInstanceId('mobile-android-test'),
         fingerprint: 'p256:mobile-test',
       );

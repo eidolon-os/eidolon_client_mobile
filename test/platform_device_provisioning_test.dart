@@ -87,8 +87,35 @@ void main() {
     );
 
     expect(session.descriptor.expiresAt, now.add(const Duration(seconds: 600)));
-    expect(session.descriptor.deviceId, namedDeviceInstanceId('waveshare-2-06'));
+    expect(
+        session.descriptor.deviceId, namedDeviceInstanceId('waveshare-2-06'));
     expect(session.descriptor.trust, SetupDescriptorTrustV1.developmentTofu);
+  });
+
+  test('a ten minute phone clock skew cannot change a relative setup window',
+      () async {
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'openProvisioningSession') return descriptorJson();
+      return null;
+    });
+
+    for (final skew in const [Duration(minutes: -10), Duration(minutes: 10)]) {
+      final phoneNow = now.add(skew);
+      final session =
+          await PlatformDeviceProvisioning(clock: () => phoneNow).open(
+        const DeviceProvisioningCandidate(
+          transportId: 'eidolon-7e2444',
+          displayName: 'eidolon-7e2444',
+          transportKind: 'softap',
+          trust: SetupDescriptorTrustV1.developmentTofu,
+        ),
+      );
+
+      expect(
+        session.descriptor.expiresAt?.difference(phoneNow),
+        const Duration(minutes: 10),
+      );
+    }
   });
 
   test('accepts an offer that names no duration as one with no deadline',
@@ -422,6 +449,37 @@ void main() {
       throwsA(isA<DeviceProvisioningTransportException>()),
     );
   });
+
+  test(
+    'B-005 rejects a transport profile this Mobile version does not support',
+    () async {
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'discoverProvisionableDevices') {
+          return <Object?>[
+            <Object?, Object?>{
+              'transportId': 'future-transport-1',
+              'displayName': 'Future device',
+              'transportKind': 'future-radio-v2',
+            },
+          ];
+        }
+        return null;
+      });
+
+      await expectLater(
+        build().discover(),
+        throwsA(
+          isA<DeviceProvisioningTransportException>().having(
+            (error) => error.code,
+            'code',
+            'unsupported_profile',
+          ),
+        ),
+      );
+    },
+    skip:
+        'B-005 product gap: candidate parsing currently accepts any non-empty transportKind',
+  );
 
   group('what the phone said, said to a person', () {
     test('a refused scan is not reported as an empty room', () async {

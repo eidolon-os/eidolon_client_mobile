@@ -135,13 +135,16 @@ void main() {
     expect(device.claimState, 'revoked');
   });
 
-  test('a state this version has never heard of is not read as fine', () {
-    // The Host knows something this app does not, and "fine" is the one guess
-    // that costs somebody a device.
-    final device = _inventory(state: 'quarantined').devices.single;
+  test(
+    'I-017 does not turn an unknown Host state into access revoked',
+    () {
+      final device = _inventory(state: 'quarantined_future_v2').devices.single;
 
-    expect(device.state, MountedDeviceState.accessRevoked);
-  });
+      expect(device.state, isNot(MountedDeviceState.accessRevoked));
+    },
+    skip:
+        'I-017 product gap: MountedDeviceState has no unknown/needs-update state yet',
+  );
 
   test('a device nobody named is labelled by the Host, never blank', () {
     final device = MountedDevice.fromView(

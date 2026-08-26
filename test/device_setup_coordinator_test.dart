@@ -276,6 +276,7 @@ EnrollmentRecoveryProjectionV1 _projection({
     canonicalProjection(
       state: state,
       ownerDomainId: ownerDomainId,
+      deviceId: namedDeviceInstanceId('device_01'),
       withDecision: withDecision,
       withDelivery: withDelivery,
       claimState: claimState,
