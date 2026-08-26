@@ -72,6 +72,49 @@ void main() {
       throwsA(isA<FormatException>()),
     );
   });
+
+  test(
+      'another device this Owner holds cannot take down this phone\'s conversation',
+      () async {
+    // The list is the whole Owner Domain. Validating every record on the way
+    // past made this phone's conversation depend on the health of every other
+    // device: one unrelated projection the phone disagreed with threw
+    // FormatException out of provision() and the flow died, over a record that
+    // was never this device's business.
+    final admission = _Admission([
+      _projection(
+        state: 'pending_review',
+        deviceId: 'device-instance-someone-else',
+        ownerDomainId: 'owner-domain_99',
+      ),
+      _projection(
+        state: 'pending_review',
+        deviceId: 'mobile-android-test',
+      ),
+    ]);
+
+    final config = await _provisioner(admission).provision();
+
+    expect(config.status, HubConfigStatus.pendingApproval);
+  });
+
+  test('a record that is ours but belongs to another Owner is still refused',
+      () async {
+    // Skipping other devices must not skip the check that matters: the record
+    // this phone accepts has to be this Owner's.
+    final admission = _Admission([
+      _projection(
+        state: 'pending_review',
+        deviceId: 'mobile-android-test',
+        ownerDomainId: 'owner-domain_99',
+      ),
+    ]);
+
+    expect(
+      () => _provisioner(admission).provision(),
+      throwsA(isA<FormatException>()),
+    );
+  });
 }
 
 MobileConversationProvisioner _provisioner(DeviceAdmissionPort admission) =>

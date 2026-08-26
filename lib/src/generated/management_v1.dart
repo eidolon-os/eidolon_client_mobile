@@ -17,6 +17,7 @@ class ManagementV1 {
   static String companionsByCompanionIdFacePath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/face';
   static String companionsByCompanionIdFaceStatePath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/face-state';
   static String companionsByCompanionIdLifecyclePath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/lifecycle';
+  static String companionsByCompanionIdPersonaPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona';
   static String companionsByCompanionIdPersonaHistoryPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona-history';
   static String companionsByCompanionIdPersonaRestorationsPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona-restorations';
   static String companionsByCompanionIdTasksPath(String companionId) => '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks';

@@ -55,11 +55,12 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
     do {
       final page = await _admission.listRecovery(after: cursor);
       for (final projection in page.projections) {
-        projection.validateForOwner(
-          target.ownerDomainId,
-          ownerDomainGeneration:
-              target.ownerDomainDescriptor.ownerDomainGeneration,
-        );
+        // Find ours, then validate ours. Validating every projection on the
+        // way past made this device's conversation depend on the health of
+        // every other device in the Owner Domain: one unrelated record with a
+        // generation the phone disagreed with threw FormatException and took
+        // down a flow that had nothing to do with it. The record that is found
+        // is validated below, which is the one that has to be sound.
         if (projection.proposal.json['device_instance_candidate_id'] ==
             identity.deviceId) {
           found = projection;
