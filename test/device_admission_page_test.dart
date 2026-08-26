@@ -64,13 +64,13 @@ void main() {
       ),
       canonicalProjection(
         state: 'grant_delivered',
-        deviceId: 'device_02',
+        deviceId: namedDeviceInstanceId('device_02'),
         withDecision: true,
         withDelivery: true,
       ),
       canonicalProjection(
         state: 'grant_acknowledged',
-        deviceId: 'device_03',
+        deviceId: namedDeviceInstanceId('device_03'),
         withDecision: true,
         withDelivery: true,
         claimState: 'active',

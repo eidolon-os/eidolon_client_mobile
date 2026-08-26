@@ -5,7 +5,7 @@
     "id": "event_01",
     "source": "urn:eidolon:authority:admission",
     "type": "live.eidolon.device.claim-revoked.v1",
-    "subject": "device-instances/device_01",
+    "subject": "device-instances/device-instance-3164c593258209d757654dbd421d2bd9732fe088bce70d8c90be15dd98b587ba",
     "time": "2026-08-18T00:05:00Z",
     "datacontenttype": "application/json",
     "dataschema": "https://contracts.eidolon.live/device-foundation/v1/events/claim-revoked-data.schema.json",
@@ -16,7 +16,7 @@
     "causationid": "command_01",
     "data": {
       "device_ref": {
-        "device_instance_id": "device_01",
+        "device_instance_id": "device-instance-3164c593258209d757654dbd421d2bd9732fe088bce70d8c90be15dd98b587ba",
         "owner_domain_id": "owner-domain_01",
         "owner_domain_generation": 3,
         "claim_generation": 2,
@@ -26,7 +26,7 @@
       "revoked_at": "2026-08-18T00:05:00Z"
     }
   },
-  "business_event_sha256": "sha256:da77525f9653094f2d22127919a64bf599729a1e00529979a021f4cf459db27f",
+  "business_event_sha256": "sha256:638e2d844c476b8ffc50ad2cda2d90c47a7e295ec59d4e5799a0b7006d222438",
   "stream_items": [
     {
       "stream_position": 41,

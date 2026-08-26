@@ -7,6 +7,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/admission_fixtures.dart';
+
 import 'support/owner_domain_fixtures.dart';
 
 void main() {
@@ -34,7 +36,7 @@ void main() {
   }) =>
       jsonEncode({
         'contract_version': contractVersion,
-        'device_id': '10:51:db:7e:24:44',
+        'device_id': namedDeviceInstanceId('waveshare-2-06'),
         'device_kind': 'atk-dnesp32s3',
         'display_name': 'atk-dnesp32s3',
         'identity_fingerprint':
@@ -85,7 +87,7 @@ void main() {
     );
 
     expect(session.descriptor.expiresAt, now.add(const Duration(seconds: 600)));
-    expect(session.descriptor.deviceId, '10:51:db:7e:24:44');
+    expect(session.descriptor.deviceId, namedDeviceInstanceId('waveshare-2-06'));
     expect(session.descriptor.trust, SetupDescriptorTrustV1.developmentTofu);
   });
 
@@ -201,7 +203,7 @@ void main() {
         });
         return jsonEncode({
           'contract_version': '1',
-          'device_id': '10:51:db:7e:24:44',
+          'device_id': namedDeviceInstanceId('waveshare-2-06'),
           'owner_domain_id': target.ownerDomainId,
           'staged': true,
         });
@@ -244,7 +246,7 @@ void main() {
       if (call.method == 'provisioningHandOverTrust') {
         return jsonEncode({
           'contract_version': '1',
-          'device_id': '10:51:db:7e:24:44',
+          'device_id': namedDeviceInstanceId('waveshare-2-06'),
           'owner_domain_id': target.ownerDomainId,
           'staged': true,
         });
@@ -288,7 +290,7 @@ void main() {
       if (call.method == 'provisioningHandOverTrust') {
         return jsonEncode({
           'contract_version': '1',
-          'device_id': '10:51:db:7e:24:44',
+          'device_id': namedDeviceInstanceId('waveshare-2-06'),
           'owner_domain_id': target.ownerDomainId,
           'staged': true,
         });

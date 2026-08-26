@@ -30,7 +30,7 @@
           "profile_id": "eidolon-trust-p256-hpke-v1",
           "enrollment_id": "enrollment_01",
           "proposal_revision": 2,
-          "device_instance_id": "device_01",
+          "device_instance_id": "device-instance-3164c593258209d757654dbd421d2bd9732fe088bce70d8c90be15dd98b587ba",
           "hardware_evidence_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
           "manifest_ref": {"manifest_id": "manifest_01", "revision": 2, "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"},
           "owner_domain_id": "owner-domain_01",
@@ -54,7 +54,7 @@
       "value": {
         "proposal": {
           "enrollment_id": "enrollment_01", "proposal_revision": 2, "state": "grant_delivered",
-          "device_instance_candidate_id": "device_01", "requested_owner_domain_id": "owner-domain_01",
+          "device_instance_candidate_id": "device-instance-3164c593258209d757654dbd421d2bd9732fe088bce70d8c90be15dd98b587ba", "requested_owner_domain_id": "owner-domain_01",
           "hardware_evidence_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
           "manifest_ref": {"manifest_id": "manifest_01", "revision": 2, "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"},
           "handoff_key_id": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
@@ -111,13 +111,13 @@
         "stream_position": 1,
         "event": {
           "specversion": "1.0", "id": "event_01", "source": "urn:eidolon:authority:admission",
-          "type": "live.eidolon.device.claim-activated.v1", "subject": "device-instances/device_01",
+          "type": "live.eidolon.device.claim-activated.v1", "subject": "device-instances/device-instance-3164c593258209d757654dbd421d2bd9732fe088bce70d8c90be15dd98b587ba",
           "time": "2026-08-18T00:05:00Z", "datacontenttype": "application/json",
           "dataschema": "https://contracts.eidolon.live/device-foundation/v1/events/claim-activated-data.schema.json",
           "audience": "eidolon-claim-consumers", "ownerdomainid": "owner-domain_01", "aggregaterev": 1,
           "correlationid": "intent_01", "causationid": "command_01",
           "data": {
-            "device_ref": {"device_instance_id": "device_01", "owner_domain_id": "owner-domain_01", "owner_domain_generation": 3, "claim_generation": 2, "trust_epoch": 1},
+            "device_ref": {"device_instance_id": "device-instance-3164c593258209d757654dbd421d2bd9732fe088bce70d8c90be15dd98b587ba", "owner_domain_id": "owner-domain_01", "owner_domain_generation": 3, "claim_generation": 2, "trust_epoch": 1},
             "business_owner_id": "owner_01",
             "manifest_ref": {"manifest_id": "manifest_01", "revision": 2, "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"},
             "approval_decision_id": "decision_01", "activated_at": "2026-08-18T00:05:00Z"

@@ -20,7 +20,7 @@ const _candidate = DeviceProvisioningCandidate(
 // these fixtures cannot describe a device the contract would not allow.
 final _setup = SetupDescriptorV1.fromJson({
   'contract_version': '1',
-  'device_id': 'device_01',
+  'device_id': namedDeviceInstanceId('device_01'),
   'device_kind': 'esp32-display',
   'display_name': 'Eidolon Body 1',
   'identity_fingerprint':
@@ -294,7 +294,7 @@ DeviceSetupCheckpoint _checkpoint(String setupId) => DeviceSetupCheckpoint(
       admissionState: DeviceAdmissionState.pendingReview,
       updatedAt: _now,
       onboardingTarget: deviceOnboardingTargetFixture(),
-      deviceId: 'device_01',
+      deviceId: namedDeviceInstanceId('device_01'),
       enrollmentId: 'enrollment_01',
       expectedProposalRevision: 2,
     );

@@ -15,6 +15,25 @@ final class OwnerDomainIdV1 {
   }
 }
 
+final class DeviceInstanceIdV1 {
+  const DeviceInstanceIdV1._(this.value);
+  final String value;
+
+  /// A device instance identity is a statement about the device's own
+  /// operational key, not a name a client may choose. An invented id — this
+  /// app once derived `mobile-android-<hash>` from ANDROID_ID — is refused
+  /// here rather than compared unequal forever against Hub's records.
+  factory DeviceInstanceIdV1.parse(Object? raw) {
+    final value = _text(raw, 80);
+    if (!RegExp(r'^device-instance-[0-9a-f]{64}$').hasMatch(value)) {
+      throw const FormatException(
+        'Device instance ID is not derived from an operational key',
+      );
+    }
+    return DeviceInstanceIdV1._(value);
+  }
+}
+
 final class BusinessOwnerIdV1 {
   const BusinessOwnerIdV1._(this.value);
   final String value;
@@ -64,7 +83,9 @@ final class DeviceRefV1 {
       throw const FormatException('Invalid DeviceRef generation');
     }
     return DeviceRefV1(
-      deviceInstanceId: _text(value['device_instance_id'], 128),
+      deviceInstanceId: DeviceInstanceIdV1.parse(
+        value['device_instance_id'],
+      ).value,
       ownerDomainId: OwnerDomainIdV1.parse(value['owner_domain_id']),
       ownerDomainGeneration: domainGeneration,
       claimGeneration: claimGeneration,
@@ -637,7 +658,7 @@ class SetupDescriptorV1 {
       throw const FormatException('Unknown setup descriptor trust level');
     }
     return SetupDescriptorV1(
-      deviceId: _identifier(value['device_id']),
+      deviceId: DeviceInstanceIdV1.parse(value['device_id']).value,
       deviceKind: _identifier(value['device_kind']),
       displayName: _text(value['display_name'], 128),
       identityFingerprint: fingerprint,
@@ -978,6 +999,7 @@ class EnrollmentProposalV1 extends _AdmissionMapV1 {
         'created_at',
         'expires_at',
       }) {
+    DeviceInstanceIdV1.parse(json['device_instance_candidate_id']);
     OwnerDomainIdV1.parse(json['requested_owner_domain_id']);
     ManifestRefV1.fromJson(_map(json['manifest_ref']));
     _positive(json['proposal_revision']);
@@ -1072,6 +1094,7 @@ class CreateEnrollmentV1 extends _AdmissionMapV1 {
         'handoff_key',
         'operational_key',
       }) {
+    DeviceInstanceIdV1.parse(json['device_instance_candidate_id']);
     if (json['profile_id'] != 'eidolon-trust-p256-hpke-v1') {
       throw const FormatException('Invalid Admission profile');
     }
@@ -1161,6 +1184,7 @@ class ClaimGrantAADV1 extends _AdmissionMapV1 {
         'trust_epoch',
         'grant_id',
       }) {
+    DeviceInstanceIdV1.parse(json['device_instance_id']);
     if (json['contract'] != 'eidolon.device-foundation.claim-grant-aad' ||
         json['profile_id'] != 'eidolon-trust-p256-hpke-v1') {
       throw const FormatException('Invalid ClaimGrant AAD profile');

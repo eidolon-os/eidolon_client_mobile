@@ -14,7 +14,7 @@ void main() {
     final admission = _Admission([
       _projection(
         state: 'pending_review',
-        deviceId: 'mobile-android-test',
+        deviceId: namedDeviceInstanceId('mobile-android-test'),
       ),
     ]);
     final config = await _provisioner(admission).provision();
@@ -29,18 +29,18 @@ void main() {
     final cases = <EnrollmentRecoveryProjectionV1>[
       _projection(
         state: 'approved_awaiting_handoff',
-        deviceId: 'mobile-android-test',
+        deviceId: namedDeviceInstanceId('mobile-android-test'),
         withDecision: true,
       ),
       _projection(
         state: 'grant_delivered',
-        deviceId: 'mobile-android-test',
+        deviceId: namedDeviceInstanceId('mobile-android-test'),
         withDecision: true,
         withDelivery: true,
       ),
       _projection(
         state: 'grant_acknowledged',
-        deviceId: 'mobile-android-test',
+        deviceId: namedDeviceInstanceId('mobile-android-test'),
         withDecision: true,
         withDelivery: true,
         claimState: 'active',
@@ -64,7 +64,7 @@ void main() {
     final admission = _Admission([
       _projection(
         ownerDomainId: 'owner-domain_other',
-        deviceId: 'mobile-android-test',
+        deviceId: namedDeviceInstanceId('mobile-android-test'),
       ),
     ]);
     await expectLater(
@@ -84,12 +84,12 @@ void main() {
     final admission = _Admission([
       _projection(
         state: 'pending_review',
-        deviceId: 'device-instance-someone-else',
+        deviceId: namedDeviceInstanceId('someone-else'),
         ownerDomainId: 'owner-domain_99',
       ),
       _projection(
         state: 'pending_review',
-        deviceId: 'mobile-android-test',
+        deviceId: namedDeviceInstanceId('mobile-android-test'),
       ),
     ]);
 
@@ -105,7 +105,7 @@ void main() {
     final admission = _Admission([
       _projection(
         state: 'pending_review',
-        deviceId: 'mobile-android-test',
+        deviceId: namedDeviceInstanceId('mobile-android-test'),
         ownerDomainId: 'owner-domain_99',
       ),
     ]);
@@ -127,7 +127,7 @@ MobileConversationProvisioner _provisioner(DeviceAdmissionPort admission) =>
 EnrollmentRecoveryProjectionV1 _projection({
   String state = 'pending_review',
   String ownerDomainId = ownerDomainIdFixture,
-  String deviceId = 'device_01',
+  String? deviceId,
   bool withDecision = false,
   bool withDelivery = false,
   String? claimState,
@@ -145,7 +145,7 @@ EnrollmentRecoveryProjectionV1 _projection({
 class _Platform extends PlatformBridge {
   @override
   Future<DeviceIdentity> getDeviceIdentity() async => const DeviceIdentity(
-        deviceId: 'mobile-android-test',
+        deviceId: namedDeviceInstanceId('mobile-android-test'),
         fingerprint: 'p256:mobile-test',
       );
 }

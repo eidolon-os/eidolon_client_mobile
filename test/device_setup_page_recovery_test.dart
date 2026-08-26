@@ -71,7 +71,7 @@ DeviceSetupCheckpoint _checkpoint() => DeviceSetupCheckpoint(
       admissionState: DeviceAdmissionState.approvedAwaitingHandoff,
       updatedAt: DateTime.utc(2026, 8, 18),
       onboardingTarget: deviceOnboardingTargetFixture(),
-      deviceId: 'device_01',
+      deviceId: namedDeviceInstanceId('device_01'),
       enrollmentId: 'enrollment_01',
       expectedProposalRevision: 2,
     );

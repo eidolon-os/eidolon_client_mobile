@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
+
 import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 
 Map<String, dynamic> canonicalAdmissionValue(String caseId) {
@@ -29,7 +31,7 @@ Map<String, dynamic> canonicalAdmissionGolden() => Map<String, dynamic>.from(
 Map<String, dynamic> canonicalProposal({
   String state = 'pending_review',
   String ownerDomainId = 'owner-domain_01',
-  String deviceId = 'device_01',
+  String? deviceId,
   int revision = 2,
 }) {
   final value = canonicalAdmissionValue('DF-ADMISSION-PROPOSAL-VALID');
@@ -37,7 +39,7 @@ Map<String, dynamic> canonicalProposal({
     ...value,
     'state': state,
     'requested_owner_domain_id': ownerDomainId,
-    'device_instance_candidate_id': deviceId,
+    'device_instance_candidate_id': deviceId ?? namedDeviceInstanceId('device-01'),
     'proposal_revision': revision,
   };
 }
@@ -59,7 +61,7 @@ Map<String, dynamic> canonicalDecision({
 EnrollmentRecoveryProjectionV1 canonicalProjection({
   String state = 'pending_review',
   String ownerDomainId = 'owner-domain_01',
-  String deviceId = 'device_01',
+  String? deviceId,
   int revision = 2,
 
   /// The projection's own revision, which advances past the Proposal's content
@@ -97,7 +99,7 @@ EnrollmentRecoveryProjectionV1 canonicalProjection({
       'state': claimState,
       'device_ref': {
         ...ref,
-        'device_instance_id': deviceId,
+        'device_instance_id': deviceId ?? namedDeviceInstanceId('device-01'),
         'owner_domain_id': ownerDomainId,
         'owner_domain_generation': claimOwnerDomainGeneration,
       },
@@ -146,4 +148,16 @@ extension EnrollmentRecoveryProjectionV1Mutation
     document['approval_decision'] = decision;
     return EnrollmentRecoveryProjectionV1.fromJson(document);
   }
+}
+
+/// A valid device instance id for the device a test calls [label].
+///
+/// A device instance id is the digest of that device's operational key, so the
+/// names these fixtures used — `device_01`, `mobile-android-test`, and in one
+/// case a MAC address — described devices that cannot exist. Tests still want
+/// to say which device they mean, so the name becomes a real id here, by the
+/// same rule Hub applies: SHA-256 over the bytes the name stands for.
+String namedDeviceInstanceId(String label) {
+  final digest = sha256.convert(utf8.encode(label));
+  return DeviceInstanceIdV1.parse('device-instance-${digest.toString()}').value;
 }
