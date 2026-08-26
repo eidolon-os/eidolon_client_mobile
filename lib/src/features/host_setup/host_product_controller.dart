@@ -395,6 +395,20 @@ class HostProductController extends ChangeNotifier {
         persona: persona,
       );
 
+  /// Who this Eidolon is now, in the words somebody wrote.
+  Future<PersonaAuthoring> persona({required String companionId}) =>
+      _managementRepository.persona(companionId: companionId);
+
+  /// Say who this Eidolon is now.
+  Future<PersonaAuthoring> setPersona({
+    required String companionId,
+    required PersonaAuthoring persona,
+  }) =>
+      _managementRepository.setPersona(
+        companionId: companionId,
+        persona: persona,
+      );
+
   /// Who a new Eidolon would be if nobody said anything.
   Future<PersonaAuthoring> personaAuthoringTemplate() =>
       _managementRepository.personaAuthoringTemplate();
@@ -533,24 +547,6 @@ class HostProductController extends ChangeNotifier {
     required String taskId,
   }) =>
       _managementRepository.retryTask(companionId: companionId, taskId: taskId);
-
-  /// What this Eidolon has been.
-  Future<PersonaHistoryView> personaHistory({required String companionId}) =>
-      _managementRepository.personaHistory(companionId: companionId);
-
-  /// Make it the way it was then, and re-read the workspace so what is shown
-  /// afterwards is what the Host now says it is.
-  Future<PersonaHistoryView> restorePersona({
-    required String companionId,
-    required String chapterId,
-  }) async {
-    final history = await _managementRepository.restorePersona(
-      companionId: companionId,
-      chapterId: chapterId,
-    );
-    await refreshWorkspace();
-    return history;
-  }
 
   /// Which phones hold this Host, as the Host says.
   Future<List<ControllerView>> listControllers() =>

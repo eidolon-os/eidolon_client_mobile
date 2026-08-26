@@ -16,12 +16,13 @@ import 'host_product_controller.dart';
 import '../../management/management_client.dart';
 import '../../management/companion_roster_screen.dart';
 import '../../management/memory_library_screen.dart';
+import '../../management/persona_edit_page.dart';
+import '../../generated/management_v1.dart';
 import 'companion_page.dart';
 import 'managed_controllers_page.dart';
 import 'mission_control_page.dart';
 import 'home_models.dart';
 import 'runtime_cockpit_page.dart';
-import 'persona_history_page.dart';
 import '../../management/conversations_screen.dart';
 import '../../management/tasks_screen.dart';
 import 'recollections_page.dart';
@@ -215,7 +216,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               // cannot serve says so instead of opening onto a page that fails.
               hostContext: _controller.managementCapabilities,
               onRename: _renameCompanion,
-              onOpenHistory: _openPersonaHistory,
+              onOpenPersona: () => _openPersonaEdit(current.answering!),
               onOpenRecollections: () => _openRecollections(current.answering!),
               onOpenTasks: () => _openTasks(current.answering!),
               onOpenConversations: () => _openConversations(current.answering!),
@@ -409,24 +410,40 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     }
   }
 
-  Future<void> _openPersonaHistory() {
-    final companion = _controller.home?.answering;
-    if (companion == null) return Future<void>.value();
-    final name = companion.displayName.isNotEmpty ? companion.displayName : '它';
-    return Navigator.of(context).push<void>(
+  /// Change who this Eidolon is.
+  ///
+  /// Read first, then edit: the form has to open on who it currently is, or
+  /// saving would replace everything the person did not retype. A read that
+  /// fails opens no form and says why — a form full of guesses would describe
+  /// an Eidolon this Host does not have.
+  Future<void> _openPersonaEdit(HostHomeCompanion companion) async {
+    final PersonaAuthoring standing;
+    try {
+      standing = await _controller.persona(companionId: companion.companionId);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('读不到它是谁：$error')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => PersonaHistoryPage(
-          companionName: name,
-          loadHistory: () => _controller.personaHistory(
+        builder: (_) => _PersonaEditRoute(
+          displayName: companion.displayName,
+          standing: standing,
+          save: (authored) => _controller.setPersona(
             companionId: companion.companionId,
-          ),
-          restore: (chapterId) => _controller.restorePersona(
-            companionId: companion.companionId,
-            chapterId: chapterId,
+            persona: authored,
           ),
         ),
       ),
     );
+    if (!mounted) return;
+    // The chapter line on the home card moves when the persona does, so the
+    // one read that composes it is the one to redo.
+    await _controller.refreshWorkspace();
   }
 
   Future<void> _openControllers() => Navigator.of(context).push<void>(
@@ -583,7 +600,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               onSetupComplete: widget.onSetupComplete,
               onReconnect: _controller.connect,
               onRenameCompanion: _renameCompanion,
-              onOpenPersona: _openPersonaHistory,
               onOpenCompanion: _openCompanion,
               onOpenRoster: _openRoster,
               onOpenMemoryLibrary: _openMemoryLibrary,
@@ -787,7 +803,6 @@ class _WorkspaceCard extends StatelessWidget {
     required this.onReconnect,
     required this.onChangeNetwork,
     required this.onRenameCompanion,
-    required this.onOpenPersona,
     required this.onOpenCompanion,
     required this.onOpenRoster,
     required this.onOpenMemoryLibrary,
@@ -803,7 +818,6 @@ class _WorkspaceCard extends StatelessWidget {
   final Future<void> Function() onReconnect;
   final Future<void> Function() onChangeNetwork;
   final VoidCallback onRenameCompanion;
-  final VoidCallback onOpenPersona;
   final VoidCallback onOpenCompanion;
 
   /// Reachable whether or not the runtime answered: "what do I have" is a
@@ -1239,4 +1253,59 @@ String _localTime(DateTime value) {
   final local = value.toLocal();
   String two(int number) => number.toString().padLeft(2, '0');
   return '${two(local.hour)}:${two(local.minute)}';
+}
+
+
+/// The edit page plus the request state it cannot own.
+///
+/// Separate so the page stays a form: it renders who the Eidolon is and hands
+/// back what was typed. Keeping the request here also puts a refusal *on* the
+/// form, beside the words that caused it, rather than behind a pop back to the
+/// Eidolon's page where the person can no longer see what they wrote.
+class _PersonaEditRoute extends StatefulWidget {
+  const _PersonaEditRoute({
+    required this.displayName,
+    required this.standing,
+    required this.save,
+  });
+
+  final String displayName;
+  final PersonaAuthoring standing;
+  final Future<PersonaAuthoring> Function(PersonaAuthoring authored) save;
+
+  @override
+  State<_PersonaEditRoute> createState() => _PersonaEditRouteState();
+}
+
+class _PersonaEditRouteState extends State<_PersonaEditRoute> {
+  bool _busy = false;
+  String? _refusal;
+
+  @override
+  Widget build(BuildContext context) {
+    return PersonaEditPage(
+      displayName: widget.displayName,
+      standing: widget.standing,
+      busy: _busy,
+      refusal: _refusal,
+      onSave: (authored) async {
+        final navigator = Navigator.of(context);
+        setState(() {
+          _busy = true;
+          _refusal = null;
+        });
+        try {
+          await widget.save(authored);
+          if (!mounted) return;
+          navigator.pop();
+        } catch (error) {
+          if (!mounted) return;
+          setState(() {
+            _busy = false;
+            _refusal = '没能保存：$error';
+          });
+        }
+      },
+    );
+  }
 }

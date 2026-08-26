@@ -20,7 +20,7 @@ class CompanionPage extends StatelessWidget {
     required this.home,
     required this.devices,
     required this.onRename,
-    required this.onOpenHistory,
+    required this.onOpenPersona,
     this.onOpenRecollections,
     this.onOpenTasks,
     this.onOpenConversations,
@@ -38,7 +38,14 @@ class CompanionPage extends StatelessWidget {
   /// decided here rather than asked for separately: the Host already answered.
   final MountedDeviceInventory? devices;
   final VoidCallback onRename;
-  final VoidCallback onOpenHistory;
+  /// Open who it is, to change it.
+  ///
+  /// Where 「它的变化」 used to be. The record of what this Eidolon has been is
+  /// still kept and still appended to by every edit; it is simply not on screen
+  /// while nothing but a person writes to it. It comes back when genomes start
+  /// evolving on their own, which is the case it was built for — a history
+  /// somebody can only fill in themselves is an undo log wearing a bigger name.
+  final VoidCallback onOpenPersona;
 
   /// Null on a Host too old to be asked what it remembers.
   final VoidCallback? onOpenRecollections;
@@ -188,12 +195,12 @@ class CompanionPage extends StatelessWidget {
             hold: _hold('conversation.read'),
           ),
           _FeatureRow(
-            tileKey: const Key('companion-open-history'),
+            tileKey: const Key('companion-open-persona'),
             icon: Icons.auto_awesome_outlined,
-            title: '它的变化',
-            subtitle: '看看它变成过什么样，也可以让它回到之前',
-            onOpen: onOpenHistory,
-            hold: _hold('persona.read'),
+            title: '它是谁',
+            subtitle: '它怎么看自己、在乎什么、不会做什么、怎么说话',
+            onOpen: onOpenPersona,
+            hold: _hold('persona.author'),
           ),
           const SizedBox(height: 16),
           Text('它的设备', style: Theme.of(context).textTheme.titleMedium),

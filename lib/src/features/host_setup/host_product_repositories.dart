@@ -176,6 +176,30 @@ class HostManagementRepository {
         ),
       );
 
+  /// Who this Eidolon is now, in the words somebody wrote.
+  Future<PersonaAuthoring> persona({required String companionId}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchPersona(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+        ),
+      );
+
+  /// Say who this Eidolon is now. Appends a chapter; never edits one.
+  Future<PersonaAuthoring> setPersona({
+    required String companionId,
+    required PersonaAuthoring persona,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.setPersona(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          persona: persona,
+        ),
+      );
+
   /// What the Host would write if the authoring form came back untouched.
   Future<PersonaAuthoring> personaAuthoringTemplate() =>
       _session.executeManagement(
@@ -295,31 +319,6 @@ class HostManagementRepository {
           accessToken: accessToken,
           companionId: companionId,
           taskId: taskId,
-        ),
-      );
-
-  /// What this Eidolon has been.
-  Future<PersonaHistoryView> personaHistory({required String companionId}) =>
-      _session.executeManagement(
-        (client, baseUri, accessToken) => client.fetchPersonaHistory(
-          baseUri,
-          accessToken: accessToken,
-          companionId: companionId,
-        ),
-      );
-
-  /// Make it the way it was then. Idempotent: the chapter it already is
-  /// succeeds rather than conflicting.
-  Future<PersonaHistoryView> restorePersona({
-    required String companionId,
-    required String chapterId,
-  }) =>
-      _session.executeManagement(
-        (client, baseUri, accessToken) => client.restorePersona(
-          baseUri,
-          accessToken: accessToken,
-          companionId: companionId,
-          chapterId: chapterId,
         ),
       );
 

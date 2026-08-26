@@ -35,7 +35,7 @@ Future<void> _open(
           home: _home(),
           devices: const MountedDeviceInventory(devices: []),
           onRename: () {},
-          onOpenHistory: () {},
+          onOpenPersona: () {},
           face: face,
           onChangeFace: onChangeFace,
           onClearFace: onClearFace,

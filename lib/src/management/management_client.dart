@@ -759,6 +759,42 @@ class ManagementClient {
     return PersonaAuthoring.fromJson(body);
   }
 
+  /// Who this Eidolon is now, in the words somebody wrote.
+  ///
+  /// The read the edit screen opens on. Editing has to start from who it
+  /// currently is, or saving would replace everything the person did not
+  /// retype with whatever the form happened to be showing.
+  Future<PersonaAuthoring> fetchPersona(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+  }) async {
+    final body = await _send(
+      'GET',
+      baseUri.resolve(ManagementV1.companionsByCompanionIdPersonaPath(companionId)),
+      accessToken: accessToken,
+      what: '读取它是谁',
+    );
+    return PersonaAuthoring.fromJson(body);
+  }
+
+  /// Say who this Eidolon is now. Appends a chapter; never edits one.
+  Future<PersonaAuthoring> setPersona(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+    required PersonaAuthoring persona,
+  }) async {
+    final body = await _send(
+      'PUT',
+      baseUri.resolve(ManagementV1.companionsByCompanionIdPersonaPath(companionId)),
+      accessToken: accessToken,
+      what: '改它是谁',
+      body: persona.toJson(),
+    );
+    return PersonaAuthoring.fromJson(body);
+  }
+
   Future<CreatedCompanion> createCompanion(
     Uri baseUri, {
     required String accessToken,
@@ -1010,50 +1046,6 @@ class ManagementClient {
   /// to refuse both.
   Uri _withQuery(Uri endpoint, Map<String, String> query) =>
       query.isEmpty ? endpoint : endpoint.replace(queryParameters: query);
-
-  /// What this Eidolon has been.
-  ///
-  /// A record rather than a settings screen, and no proposal queue: a Companion
-  /// considering a change has not changed, and being handed that would turn
-  /// living with an Eidolon into appraising it.
-  Future<PersonaHistoryView> fetchPersonaHistory(
-    Uri baseUri, {
-    required String accessToken,
-    required String companionId,
-  }) async {
-    final body = await _get(
-      baseUri.resolve(
-        ManagementV1.companionsByCompanionIdPersonaHistoryPath(companionId),
-      ),
-      accessToken: accessToken,
-      what: '读取人格变化',
-    );
-    return PersonaHistoryView.fromJson(body);
-  }
-
-  /// Make it the way it was then, and answer with where that leaves it.
-  ///
-  /// A `PUT` naming the chapter it should be, so the same request twice leaves
-  /// the same Eidolon — asking for the chapter it already is succeeds rather than
-  /// conflicting. Going back appends to the record instead of rewinding it.
-  Future<PersonaHistoryView> restorePersona(
-    Uri baseUri, {
-    required String accessToken,
-    required String companionId,
-    required String chapterId,
-  }) async {
-    final body = await _send(
-      'PUT',
-      baseUri.resolve(
-        ManagementV1.companionsByCompanionIdPersonaRestorationsPath(
-            companionId),
-      ),
-      accessToken: accessToken,
-      what: '回到那时候',
-      body: {'chapter_id': chapterId},
-    );
-    return PersonaHistoryView.fromJson(body);
-  }
 
   /// 你还记得…吗 — what it remembers about something.
   ///

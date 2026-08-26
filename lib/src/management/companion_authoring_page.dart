@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
-import 'authoring_lines.dart';
+import 'persona_form.dart';
 
 /// Saying who a new Eidolon is, before it has been anything.
 ///
@@ -58,47 +58,14 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
   static const _steps = ['TA 是谁', '你们的关系', 'TA 如何表达', '确认'];
 
   final _name = TextEditingController();
-  late final TextEditingController _selfConcept;
-  late final TextEditingController _characterPortrait;
-  late final TextEditingController _relationshipNarrative;
-  late final TextEditingController _voicePortrait;
-
-  late List<String> _values;
-  late List<String> _boundaries;
-  late List<String> _commitments;
-  late List<String> _pinnedFacts;
-  late List<String> _safetyBoundaries;
-  late List<String> _behaviorGuidance;
-  late List<String> _dialogueExamples;
+  late final PersonaForm _form = PersonaForm(widget.template);
 
   int _step = 0;
 
   @override
-  void initState() {
-    super.initState();
-    final template = widget.template;
-    _selfConcept = TextEditingController(text: template.selfConcept ?? '');
-    _characterPortrait =
-        TextEditingController(text: template.characterPortrait ?? '');
-    _relationshipNarrative =
-        TextEditingController(text: template.relationshipNarrative ?? '');
-    _voicePortrait = TextEditingController(text: template.voicePortrait ?? '');
-    _values = [...?template.values];
-    _boundaries = [...?template.boundaries];
-    _commitments = [...?template.commitments];
-    _pinnedFacts = [...?template.pinnedFacts];
-    _safetyBoundaries = [...?template.safetyBoundaries];
-    _behaviorGuidance = [...?template.behaviorGuidance];
-    _dialogueExamples = [...?template.dialogueExamples];
-  }
-
-  @override
   void dispose() {
     _name.dispose();
-    _selfConcept.dispose();
-    _characterPortrait.dispose();
-    _relationshipNarrative.dispose();
-    _voicePortrait.dispose();
+    _form.dispose();
     super.dispose();
   }
 
@@ -108,48 +75,8 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
   /// same request an older client sends, which is what keeps a retry after a
   /// lost answer a replay rather than a conflict. Sending back a copy of the
   /// template would work and would also quietly claim the person authored it.
-  PersonaAuthoring? _authored() {
-    final draft = PersonaAuthoring(
-      archetype: widget.template.archetype,
-      selfConcept: _selfConcept.text.trim(),
-      characterPortrait: _characterPortrait.text.trim(),
-      relationshipNarrative: _relationshipNarrative.text.trim(),
-      voicePortrait: _voicePortrait.text.trim(),
-      values: _values,
-      boundaries: _boundaries,
-      commitments: _commitments,
-      pinnedFacts: _pinnedFacts,
-      safetyBoundaries: _safetyBoundaries,
-      behaviorGuidance: _behaviorGuidance,
-      dialogueExamples: _dialogueExamples,
-      modalityNotes: widget.template.modalityNotes,
-      traits: widget.template.traits,
-    );
-    return _sameAsTemplate(draft) ? null : draft;
-  }
-
-  bool _sameAsTemplate(PersonaAuthoring draft) {
-    final template = widget.template;
-    bool sameLines(List<String>? mine, List<String>? theirs) {
-      final a = mine ?? const [];
-      final b = theirs ?? const [];
-      return a.length == b.length &&
-          List.generate(a.length, (index) => a[index] == b[index])
-              .every((equal) => equal);
-    }
-
-    return draft.selfConcept == (template.selfConcept ?? '') &&
-        draft.characterPortrait == (template.characterPortrait ?? '') &&
-        draft.relationshipNarrative == (template.relationshipNarrative ?? '') &&
-        draft.voicePortrait == (template.voicePortrait ?? '') &&
-        sameLines(draft.values, template.values) &&
-        sameLines(draft.boundaries, template.boundaries) &&
-        sameLines(draft.commitments, template.commitments) &&
-        sameLines(draft.pinnedFacts, template.pinnedFacts) &&
-        sameLines(draft.safetyBoundaries, template.safetyBoundaries) &&
-        sameLines(draft.behaviorGuidance, template.behaviorGuidance) &&
-        sameLines(draft.dialogueExamples, template.dialogueExamples);
-  }
+  PersonaAuthoring? _authored() =>
+      _form.unchanged ? null : _form.authoring;
 
   bool get _named => _name.text.trim().isNotEmpty;
 
@@ -235,6 +162,7 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
   }
 
   Widget _body(ThemeData theme) {
+    void changed() => setState(() {});
     switch (_step) {
       case 0:
         return Column(
@@ -251,110 +179,18 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
               decoration: const InputDecoration(hintText: '比如「小南」'),
             ),
             const SizedBox(height: 24),
-            AuthoringProse(
-              fieldKey: const Key('authoring-self-concept'),
-              label: '自我认知',
-              help: 'TA 认为自己是什么。用 TA 的口吻写。',
-              controller: _selfConcept,
-            ),
-            const SizedBox(height: 24),
-            AuthoringProse(
-              fieldKey: const Key('authoring-character-portrait'),
-              label: '人格画像',
-              help: '别人会怎么形容 TA。',
-              controller: _characterPortrait,
-              minLines: 4,
-            ),
-            const SizedBox(height: 24),
-            AuthoringLines(
-              fieldKey: const Key('authoring-values'),
-              label: '价值观',
-              help: 'TA 长期坚持的东西。',
-              hint: '一条长期坚持的价值',
-              lines: _values,
-              onChanged: (lines) => setState(() => _values = lines),
-            ),
-            const SizedBox(height: 24),
-            AuthoringLines(
-              fieldKey: const Key('authoring-boundaries'),
-              label: '不可突破的边界',
-              help: 'TA 无论如何都不会做的事。',
-              hint: '一条绝不跨过的边界',
-              lines: _boundaries,
-              onChanged: (lines) => setState(() => _boundaries = lines),
-            ),
+            ..._form.whoItIs(changed),
           ],
         );
       case 1:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AuthoringProse(
-              fieldKey: const Key('authoring-relationship'),
-              label: '关系叙事',
-              help: '你和 TA 是什么关系，从哪里开始的。',
-              controller: _relationshipNarrative,
-              minLines: 4,
-            ),
-            const SizedBox(height: 24),
-            AuthoringLines(
-              fieldKey: const Key('authoring-commitments'),
-              label: '关系承诺',
-              help: 'TA 对这段关系许下的事。',
-              hint: 'TA 对这段关系的一条承诺',
-              lines: _commitments,
-              onChanged: (lines) => setState(() => _commitments = lines),
-            ),
-            const SizedBox(height: 24),
-            AuthoringLines(
-              fieldKey: const Key('authoring-pinned-facts'),
-              label: '已确认事实',
-              help: '关于你的、TA 一开始就该知道的事。',
-              hint: '关于你已确认的事实',
-              lines: _pinnedFacts,
-              onChanged: (lines) => setState(() => _pinnedFacts = lines),
-            ),
-            const SizedBox(height: 24),
-            AuthoringLines(
-              fieldKey: const Key('authoring-safety-boundaries'),
-              label: '关系安全边界',
-              help: '在你们之间始终要守住的东西。',
-              hint: '在关系中需要始终遵守的边界',
-              lines: _safetyBoundaries,
-              onChanged: (lines) => setState(() => _safetyBoundaries = lines),
-            ),
-          ],
+          children: _form.theRelationship(changed),
         );
       case 2:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AuthoringProse(
-              fieldKey: const Key('authoring-voice-portrait'),
-              label: '表达画像',
-              help: 'TA 说话是什么样的。',
-              controller: _voicePortrait,
-              minLines: 4,
-            ),
-            const SizedBox(height: 24),
-            AuthoringLines(
-              fieldKey: const Key('authoring-behavior-guidance'),
-              label: '行为引导',
-              help: '看得出来的表达习惯。',
-              hint: '一条可观察的表达习惯',
-              lines: _behaviorGuidance,
-              onChanged: (lines) => setState(() => _behaviorGuidance = lines),
-            ),
-            const SizedBox(height: 24),
-            AuthoringLines(
-              fieldKey: const Key('authoring-dialogue-examples'),
-              label: '典型对话示例',
-              help: '一句能代表 TA 的话。',
-              hint: '一段能代表 TA 的自然表达',
-              lines: _dialogueExamples,
-              onChanged: (lines) => setState(() => _dialogueExamples = lines),
-            ),
-          ],
+          children: _form.howItSpeaks(changed),
         );
       default:
         return _review(theme);
@@ -368,18 +204,23 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
   /// through anything that could change them, so a round trip would only add a
   /// way for the review to be wrong.
   Widget _review(ThemeData theme) {
+    final written = _form.authoring;
     final sections = <(String, String, List<String>)>[
-      ('自我认知', _selfConcept.text.trim(), _values),
-      ('人格画像', _characterPortrait.text.trim(), _boundaries),
+      ('自我认知', written.selfConcept ?? '', written.values ?? const []),
+      ('人格画像', written.characterPortrait ?? '', written.boundaries ?? const []),
       (
         '关系',
-        _relationshipNarrative.text.trim(),
-        [..._commitments, ..._pinnedFacts, ..._safetyBoundaries],
+        written.relationshipNarrative ?? '',
+        [
+          ...?written.commitments,
+          ...?written.pinnedFacts,
+          ...?written.safetyBoundaries,
+        ],
       ),
       (
         '表达',
-        _voicePortrait.text.trim(),
-        [..._behaviorGuidance, ..._dialogueExamples],
+        written.voicePortrait ?? '',
+        [...?written.behaviorGuidance, ...?written.dialogueExamples],
       ),
     ];
     return Column(

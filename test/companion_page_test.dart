@@ -49,7 +49,7 @@ Future<void> _open(
         home: home ?? _home(),
         devices: devices,
         onRename: () {},
-        onOpenHistory: () {},
+        onOpenPersona: () {},
       ),
     ),
   );
@@ -172,7 +172,7 @@ Future<void> _pumpWithContext(
         home: _home(),
         devices: null,
         onRename: () {},
-        onOpenHistory: () {},
+        onOpenPersona: () {},
         onOpenRecollections: () {},
         onOpenTasks: () {},
         onOpenConversations: () {},
@@ -197,7 +197,7 @@ void _withheldRowTests() {
             'memory.read': false,
             'task.read': false,
             'conversation.read': true,
-            'persona.read': true,
+            'persona.author': true,
           },
           unavailable: {
             'memory.read': 'host_not_configured',
@@ -227,7 +227,7 @@ void _withheldRowTests() {
             'memory.read': true,
             'task.read': true,
             'conversation.read': true,
-            'persona.read': true,
+            'persona.author': true,
           },
         ),
       );
@@ -251,7 +251,7 @@ void _withheldRowTests() {
         'companion-open-recollections',
         'companion-open-tasks',
         'companion-open-conversations',
-        'companion-open-history',
+        'companion-open-persona',
       ]) {
         final row = tester.widget<ListTile>(find.byKey(Key(key)));
         expect(row.enabled, isTrue, reason: key);
@@ -270,7 +270,7 @@ void _withheldRowTests() {
             'memory.read': false,
             'task.read': true,
             'conversation.read': true,
-            'persona.read': true,
+            'persona.author': true,
           },
           unavailable: {'memory.read': 'something_new'},
         ),
@@ -287,14 +287,14 @@ void _withheldRowTests() {
       // rather than pretending the feature works.
       await _pumpWithContext(
         tester,
-        _context(capabilities: {'persona.read': true}),
+        _context(capabilities: {'persona.author': true}),
       );
 
       expect(find.text('暂不可用'), findsNWidgets(3));
-      final history = tester.widget<ListTile>(
-        find.byKey(const Key('companion-open-history')),
+      final persona = tester.widget<ListTile>(
+        find.byKey(const Key('companion-open-persona')),
       );
-      expect(history.enabled, isTrue, reason: 'the one it did name');
+      expect(persona.enabled, isTrue, reason: 'the one it did name');
     });
   });
 }
