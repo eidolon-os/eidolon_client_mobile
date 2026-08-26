@@ -357,6 +357,76 @@ void main() {
       expect(failure.message, contains('9'));
     });
 
+    test('a Host that does not carry this entrance says which door to use',
+        () async {
+      // The Pi answers the LAN probe with 404: it commissions over BLE and
+      // never opens this route. Counting that as one more silent address is
+      // how "局域网里没有任何设备应答" came to be printed under two addresses
+      // the App had just resolved and talked to.
+      final service = DevelopmentLanCommissioning(
+        discovery: _Discovery(_announced(['192.168.3.206'])),
+        endpointFetcher: (baseUrl) async => throw DevelopmentEndpointRefused(
+          baseUrl: baseUrl,
+          statusCode: 404,
+          detail: 'development LAN commissioning is unavailable on this Host',
+        ),
+        clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
+      );
+
+      final discovered = await service.discover();
+
+      expect(
+        discovered.rejections.single.refusal,
+        DevelopmentLanRefusal.entranceUnavailable,
+      );
+      final failure = discovered.failure!;
+      expect(failure.code, 'development_lan_entrance_absent');
+      expect(failure.message, contains('192.168.3.206'));
+      expect(failure.message, contains('development LAN commissioning'));
+      expect(failure.message, contains('查找附近 Eidolon 主机'));
+      // The old sentence was not merely unhelpful, it was false.
+      expect(failure.message, isNot(contains('没有任何设备应答')));
+    });
+
+    test('a Host that errored on the probe is not reported as absent',
+        () async {
+      final service = DevelopmentLanCommissioning(
+        discovery: _Discovery(_announced(['192.168.3.206'])),
+        endpointFetcher: (baseUrl) async => throw DevelopmentEndpointRefused(
+          baseUrl: baseUrl,
+          statusCode: 503,
+        ),
+        clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
+      );
+
+      final discovered = await service.discover();
+
+      expect(
+        discovered.rejections.single.refusal,
+        DevelopmentLanRefusal.endpointRefused,
+      );
+      final failure = discovered.failure!;
+      expect(failure.code, 'development_lan_endpoint_refused');
+      expect(failure.message, contains('503'));
+      expect(failure.message, contains('不是找不到 Host'));
+    });
+
+    test('candidates that never answered are counted, named and quoted',
+        () async {
+      final discovered = await silent(
+        _announced(['192.168.3.206', '192.168.3.207']),
+      ).discover();
+
+      final failure = discovered.failure!;
+      // An address that was resolved and then went quiet is a different claim
+      // from an empty network, and the reason it gave is the lead.
+      expect(failure.code, 'host_unreachable');
+      expect(failure.message, contains('2 个候选地址'));
+      expect(failure.message, contains('https://192.168.3.206:9002'));
+      expect(failure.message, contains('https://192.168.3.207:9002'));
+      expect(failure.message, isNot(contains('没有任何设备应答')));
+    });
+
     test('a verified Host without an open Setup session says so', () async {
       final service = DevelopmentLanCommissioning(
         discovery: _Discovery(_announced(['192.168.1.25'])),

@@ -41,8 +41,51 @@ enum DevelopmentLanRefusal {
   /// It proved it is a Host, and has no open development Setup session.
   noSetupSession,
 
+  /// It answered, and said this entrance does not exist on it. A Host with a
+  /// BLE commissioning listener never opens the LAN one — so this is a fact
+  /// about which door to use, not a fault. Kept apart from [silent] because
+  /// the two have opposite next steps: one says go knock somewhere else, the
+  /// other says nobody is home.
+  entranceUnavailable,
+
+  /// It answered the endpoint probe with an error of its own. Not silence and
+  /// not an impostor: a Host that is there, said something, and said no.
+  endpointRefused,
+
   /// It never answered at all. Says nothing about anything.
   silent,
+}
+
+/// A Host answered the development endpoint probe and refused to serve it.
+///
+/// Kept as a type rather than folded into the generic catch because the status
+/// line is the whole message: a 404 here is a Host saying "not this door",
+/// which the generic catch turned into "nothing on this network answered" —
+/// the exact opposite of what happened, in front of a person whose Host was
+/// answering the whole time.
+class DevelopmentEndpointRefused implements Exception {
+  const DevelopmentEndpointRefused({
+    required this.baseUrl,
+    required this.statusCode,
+    this.detail,
+  });
+
+  final String baseUrl;
+  final int statusCode;
+
+  /// What the Host called it, when it said. Hosts answer this route with a
+  /// FastAPI `detail`, and repeating the Host's own words beats paraphrasing
+  /// a number.
+  final String? detail;
+
+  /// This Host does not carry the LAN development entrance at all.
+  bool get entranceIsAbsent => statusCode == HttpStatus.notFound;
+
+  String get reason =>
+      detail == null ? 'HTTP $statusCode' : 'HTTP $statusCode：$detail';
+
+  @override
+  String toString() => 'development endpoint at $baseUrl refused: $reason';
 }
 
 class DevelopmentLanRejection {
@@ -105,6 +148,28 @@ class DevelopmentLanDiscovery {
             '说明它的身份已经和这台手机记住的不一样了。$controllerResetGuidance',
       );
     }
+    final closed = _refused(DevelopmentLanRefusal.entranceUnavailable);
+    if (closed.isNotEmpty) {
+      final refused = closed.first;
+      return CommissioningRequestException(
+        'development_lan_entrance_absent',
+        'Host 在 ${refused.candidate.endpoint.baseUrl} 应答了，但它不开放局域网开发认领'
+            '（${refused.reason}）。这不是找不到 Host，也不是网络问题——'
+            '带蓝牙的开发 Host 首次设置走的是蓝牙那条路：'
+            '请退回上一步，用「查找附近 Eidolon 主机」。'
+            '局域网这条路只留给没有蓝牙的开发 Host（比如 macOS 工作站）。',
+      );
+    }
+    final erroring = _refused(DevelopmentLanRefusal.endpointRefused);
+    if (erroring.isNotEmpty) {
+      final refused = erroring.first;
+      return CommissioningRequestException(
+        'development_lan_endpoint_refused',
+        'Host 在 ${refused.candidate.endpoint.baseUrl} 应答了，'
+            '但没有交出签名 endpoint（${refused.reason}）。'
+            '这不是找不到 Host，是这台 Host 这一刻答不了——请看它的 Local API 日志。',
+      );
+    }
     if (survey.incompatible.isNotEmpty) {
       final answer = survey.incompatible.first;
       return CommissioningRequestException(
@@ -114,12 +179,27 @@ class DevelopmentLanDiscovery {
             '这不是找不到 Host，而是版本对不上——请把 App 和 Host 更新到同一个版本。',
       );
     }
-    final silent = _refused(DevelopmentLanRefusal.silent).length;
+    // A candidate that never answered is not the same claim as an empty
+    // network, and saying the second when the first happened is how "没有任何
+    // 设备应答" came to be printed underneath two addresses the App had just
+    // resolved. Each is now said in its own words, and the reason the address
+    // gave is repeated rather than counted.
+    final silent = _refused(DevelopmentLanRefusal.silent).toList();
+    if (silent.isNotEmpty) {
+      return CommissioningRequestException(
+        'host_unreachable',
+        '找到了 ${silent.length} 个候选地址，但没有一个回答 Host 身份查询：'
+            '${silent.map((rejection) => '${rejection.candidate.endpoint.baseUrl}'
+                '（${rejection.reason}）').join('；')}。'
+            '已尝试：${survey.describeAttempts()}。'
+            '请确认手机和 Host 在同一个局域网、没有 AP 隔离，'
+            '并且 Host 的 Local API 端口 $localApiPort 可达。$controllerResetGuidance',
+      );
+    }
     return CommissioningRequestException(
       'host_not_found',
       '局域网里没有任何设备应答 Eidolon Local API。'
           '已尝试：${survey.describeAttempts()}。'
-          '${silent > 0 ? '其中 $silent 个候选地址没有回答 Host 身份查询。' : ''}'
           '请确认 Host 已开机、和这台手机在同一个局域网。$controllerResetGuidance',
     );
   }
@@ -193,12 +273,22 @@ class DevelopmentLanCommissioning {
     DevelopmentLanRejection refuse(
       DevelopmentLanRefusal refusal,
       String reason,
-    ) =>
-        DevelopmentLanRejection(
-          candidate: candidate,
-          refusal: refusal,
-          reason: reason,
-        );
+    ) {
+      // The failure that started this was invisible: two addresses resolved,
+      // the identity query failed, and nothing anywhere said so. A probe that
+      // turns a candidate away has to leave a line behind, or the next person
+      // debugging it has only the summary sentence to go on.
+      debugPrint(
+        'DevelopmentLanCommissioning: refused '
+        '${candidate.endpoint.baseUrl} (${candidate.origin.label}) '
+        '— ${refusal.name}: $reason',
+      );
+      return DevelopmentLanRejection(
+        candidate: candidate,
+        refusal: refusal,
+        reason: reason,
+      );
+    }
 
     try {
       final raw = await _endpointFetcher(candidate.endpoint.baseUrl);
@@ -227,6 +317,16 @@ class DevelopmentLanCommissioning {
       return (
         host: DevelopmentLanHost(candidate: candidate, endpoint: endpoint),
         rejection: null,
+      );
+    } on DevelopmentEndpointRefused catch (error) {
+      return (
+        host: null,
+        rejection: refuse(
+          error.entranceIsAbsent
+              ? DevelopmentLanRefusal.entranceUnavailable
+              : DevelopmentLanRefusal.endpointRefused,
+          error.reason,
+        ),
       );
     } on SetupTrustException catch (error) {
       return (
@@ -380,11 +480,6 @@ Future<String> _fetchSignedEndpointForDevelopment(String baseUrl) async {
     request.followRedirects = false;
     request.headers.set(HttpHeaders.acceptHeader, 'application/json');
     final response = await request.close().timeout(const Duration(seconds: 5));
-    if (response.statusCode != HttpStatus.ok) {
-      throw HttpException(
-        'development endpoint returned ${response.statusCode}',
-      );
-    }
     final bytes = <int>[];
     await for (final chunk in response) {
       bytes.addAll(chunk);
@@ -392,8 +487,35 @@ Future<String> _fetchSignedEndpointForDevelopment(String baseUrl) async {
         throw const FormatException('development endpoint is too large');
       }
     }
-    return utf8.decode(bytes);
+    final body = utf8.decode(bytes, allowMalformed: true);
+    if (response.statusCode != HttpStatus.ok) {
+      throw DevelopmentEndpointRefused(
+        baseUrl: baseUrl,
+        statusCode: response.statusCode,
+        detail: _refusalDetail(body),
+      );
+    }
+    return body;
   } finally {
     client.close(force: true);
   }
+}
+
+/// The Host's own words for a refusal, when it gave any.
+///
+/// Every refusal on this route arrives as a FastAPI `{"detail": ...}`. Reading
+/// it costs one decode and turns a status number into the sentence the Host
+/// actually wrote, which is the difference between "HTTP 404" and "development
+/// LAN commissioning is unavailable on this Host".
+String? _refusalDetail(String body) {
+  try {
+    final decoded = jsonDecode(body);
+    if (decoded is Map && decoded['detail'] is String) {
+      final detail = (decoded['detail'] as String).trim();
+      if (detail.isNotEmpty) return detail;
+    }
+  } on FormatException {
+    // Not JSON. The status code still says everything this call promised.
+  }
+  return null;
 }

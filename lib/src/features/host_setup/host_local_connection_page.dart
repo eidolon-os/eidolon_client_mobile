@@ -685,12 +685,36 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               ),
             ),
             const SizedBox(height: 16),
-            FilledButton.icon(
-              key: const Key('retry-local-connection'),
-              onPressed: _controller.connect,
-              icon: const Icon(Icons.refresh),
-              label: const Text('重新连接'),
-            ),
+            // A Host whose identity changed will never change back, so a retry
+            // is the one thing that cannot work — and it used to be the only
+            // control on this screen. The two routes that do work are on the
+            // page underneath, so name them and open it.
+            if (_controller.connectionRecovery ==
+                HostConnectionRecovery.identityChanged) ...[
+              const Text(
+                '重新连接改变不了这件事：主机重装或重置之后会换一把新钥匙，'
+                '而这台手机记的还是旧的那把。'
+                '上一页的「恢复」里有两条路——'
+                '「不再管理这台主机」让这台手机忘掉旧身份，重新设置一次；'
+                '「手机丢失或重新认领」在有人能到主机旁边时重新拿回管理权。',
+                key: Key('local-connection-identity-changed'),
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                key: const Key('open-host-recovery'),
+                onPressed: Navigator.of(context).canPop()
+                    ? () => Navigator.of(context).pop()
+                    : null,
+                icon: const Icon(Icons.settings_backup_restore),
+                label: const Text('回到主机管理'),
+              ),
+            ] else
+              FilledButton.icon(
+                key: const Key('retry-local-connection'),
+                onPressed: _controller.connect,
+                icon: const Icon(Icons.refresh),
+                label: const Text('重新连接'),
+              ),
           ],
         ],
       ),

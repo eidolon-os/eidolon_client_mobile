@@ -498,6 +498,68 @@ void main() {
   });
 
   testWidgets(
+      'a Host whose identity changed is not offered a retry that cannot work',
+      (tester) async {
+    // A reinstalled Host issues a new key and keeps it, so 「重新连接」 is the
+    // one control on this screen that can never succeed — and it used to be
+    // the only one. What works is on the page underneath.
+    const otherHostId = 'ehost-0123456789abcdefabcd';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) =>
+              _clientFor(_hostOverview(hostId: otherHostId)),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('retry-local-connection')), findsNothing);
+    expect(
+      find.byKey(const Key('local-connection-identity-changed')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('open-host-recovery')), findsOneWidget);
+    // Both ways back are named, not just gestured at.
+    expect(find.textContaining('不再管理这台主机'), findsOneWidget);
+    expect(find.textContaining('手机丢失或重新认领'), findsOneWidget);
+  });
+
+  testWidgets('an ordinary connection failure still offers a retry',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => LocalApiClient(
+            httpClient: MockClient((_) async => http.Response('', 503)),
+          ),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('local-connection-error')), findsOneWidget);
+    expect(find.byKey(const Key('retry-local-connection')), findsOneWidget);
+    expect(
+      find.byKey(const Key('local-connection-identity-changed')),
+      findsNothing,
+    );
+  });
+
+  testWidgets(
       'Workspace outage does not turn a valid Host connection into failure',
       (tester) async {
     await tester.pumpWidget(

@@ -28,6 +28,23 @@ import 'network_changes.dart';
 
 typedef ManagedHostUpdater = Future<void> Function(ManagedHost host);
 
+/// What is actually left to do about a connection that failed.
+///
+/// Almost every failure here is a network that will come back, and 「重新连接」
+/// is the whole answer. One is not: when the Host's cryptographic identity no
+/// longer matches what this phone saved, no amount of retrying can change it
+/// back — a reinstalled Host issues a new key and keeps it. Offering only a
+/// retry there is a promise the Host cannot keep, so the failure has to carry
+/// which of the two it is.
+enum HostConnectionRecovery {
+  /// Try again.
+  retry,
+
+  /// This is not the Host this phone remembers. The ways forward are to stop
+  /// managing it, or to reclaim it through a window opened at the Host.
+  identityChanged,
+}
+
 class HostProductController extends ChangeNotifier {
   HostProductController({
     required ManagedHost host,
@@ -88,6 +105,7 @@ class HostProductController extends ChangeNotifier {
   bool _disposed = false;
   String? _progress;
   String? _connectionError;
+  HostConnectionRecovery _connectionRecovery = HostConnectionRecovery.retry;
   HostProductConnection? _connection;
   WorkspaceStatus? _workspace;
   String? _workspaceError;
@@ -115,6 +133,10 @@ class HostProductController extends ChangeNotifier {
   bool get devicesBusy => _devicesBusy;
   String? get progress => _progress;
   String? get connectionError => _connectionError;
+
+  /// What [connectionError] leaves a person able to do. Meaningless while
+  /// [connectionError] is null.
+  HostConnectionRecovery get connectionRecovery => _connectionRecovery;
   HostProductConnection? get connection => _connection;
   WorkspaceStatus? get workspace => _workspace;
   String? get workspaceError => _workspaceError;
@@ -133,6 +155,7 @@ class HostProductController extends ChangeNotifier {
     _connecting = true;
     _progress = '正在连接';
     _connectionError = null;
+    _connectionRecovery = HostConnectionRecovery.retry;
     _connection = null;
     _clearProductState();
     _notify();
@@ -155,7 +178,12 @@ class HostProductController extends ChangeNotifier {
       _progress = null;
       await _loadProductState();
     } on SetupTrustException catch (error) {
-      _failConnection(error.message);
+      // The Host answered and named itself as someone else. Same dead end as a
+      // failed pin, reached one layer earlier.
+      _failConnection(
+        error.message,
+        recovery: HostConnectionRecovery.identityChanged,
+      );
     } on CommissioningRequestException catch (error) {
       _failConnection(error.message);
     } on HostControllerAuthorizationException catch (error) {
@@ -163,7 +191,12 @@ class HostProductController extends ChangeNotifier {
     } on LocalApiRequestException catch (error) {
       _failConnection(error.message);
     } on PinnedHttpException catch (error) {
-      _failConnection(_pinnedHttpFailure(error));
+      _failConnection(
+        _pinnedHttpFailure(error),
+        recovery: error.kind == PinnedHttpFailureKind.secureChannel
+            ? HostConnectionRecovery.identityChanged
+            : HostConnectionRecovery.retry,
+      );
     } on PlatformException catch (error) {
       _failConnection(_platformError(error));
     } on FormatException catch (error) {
@@ -860,9 +893,13 @@ class HostProductController extends ChangeNotifier {
     _devicesError = null;
   }
 
-  void _failConnection(String message) {
+  void _failConnection(
+    String message, {
+    HostConnectionRecovery recovery = HostConnectionRecovery.retry,
+  }) {
     _connection = null;
     _connectionError = message;
+    _connectionRecovery = recovery;
     _progress = null;
     _clearProductState();
   }

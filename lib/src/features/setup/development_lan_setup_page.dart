@@ -25,6 +25,10 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
   String? _progress;
   String? _error;
 
+  /// Why the last attempt failed, when the Host said something this page can
+  /// act on. A message can only be read; a code can put the way out on screen.
+  String? _errorCode;
+
   @override
   void dispose() {
     _setupCode.dispose();
@@ -69,6 +73,7 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
     setState(() {
       _busy = true;
       _error = null;
+      _errorCode = null;
     });
     try {
       await action();
@@ -76,6 +81,7 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
       if (mounted) {
         setState(() {
           _error = error.message;
+          _errorCode = error.code;
           _progress = null;
         });
       }
@@ -176,6 +182,20 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
                 key: const Key('development-lan-error'),
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
+              // A Host that will never carry this entrance leaves this page
+              // with nothing left to try, and 「查找开发 Host」 above would only
+              // fail the same way again. The other door is one pop back, so
+              // put it here rather than describing where it is.
+              if (_errorCode == 'development_lan_entrance_absent') ...[
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  key: const Key('development-lan-use-bluetooth'),
+                  onPressed:
+                      _busy ? null : () => Navigator.of(context).pop<ManagedHost>(),
+                  icon: const Icon(Icons.bluetooth_searching),
+                  label: const Text('回到蓝牙设置'),
+                ),
+              ],
             ],
           ],
         ),
