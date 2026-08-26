@@ -33,6 +33,7 @@ import 'local_api_discovery.dart';
 import 'network_changes.dart';
 import 'workspace_models.dart';
 import '../constellation/cockpit_composition.dart';
+import '../constellation/cockpit_wire.dart';
 import '../constellation/constellation_cockpit_page.dart';
 import '../constellation/polled_cockpit_feed.dart';
 import 'host_models.dart';
@@ -570,6 +571,13 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               read: CockpitComposer(
                 readContext: _controller.managementContext,
                 readRoster: _controller.roster,
+                // Three authorities, one screen: /context owns the Owner, the
+                // roster owns which Eidolons exist, and Mission Control owns
+                // only what was observed of them. A runtime read that fails
+                // costs its lanes and nothing else.
+                readRuntime: () async => parseMissionControlRuntime(
+                  await _controller.missionControlSnapshot(),
+                ),
               ).read,
             ),
           ),

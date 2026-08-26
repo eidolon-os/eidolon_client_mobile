@@ -118,6 +118,7 @@ class HostProductController extends ChangeNotifier {
   HostProductConnection? get connection => _connection;
   WorkspaceStatus? get workspace => _workspace;
   String? get workspaceError => _workspaceError;
+
   /// What is mine, right now. Null while it has not been read, or when the
   /// Host refused — and [homeError] says which.
   HostHome? get home => _home;
@@ -374,6 +375,10 @@ class HostProductController extends ChangeNotifier {
   /// the page asks when it opens and when a person asks for more.
   Future<CompanionRosterView> roster({String? cursor}) =>
       _managementRepository.roster(cursor: cursor);
+
+  /// What is happening on this Host right now, lane by lane.
+  Future<Map<String, Object?>> missionControlSnapshot() =>
+      _managementRepository.missionControlSnapshot();
 
   /// One of them, opened.
   Future<CompanionDetailView> companion({required String companionId}) =>
@@ -895,7 +900,6 @@ class HostProductController extends ChangeNotifier {
         422 => 'Workspace 名称未被主机接受，请检查后重试。',
         _ => '主机已安全接入，但 Workspace 服务暂时不可用。认领和 Wi-Fi 不会回滚。',
       };
-
 
   String _deviceFailure(LocalApiRequestException error) =>
       switch (error.statusCode) {

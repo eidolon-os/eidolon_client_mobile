@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:eidolon_client_mobile/src/features/constellation/cockpit_composition.dart';
 import 'package:eidolon_client_mobile/src/features/constellation/constellation_cockpit_page.dart';
+import 'package:eidolon_client_mobile/src/features/constellation/cockpit_wire.dart';
 import 'package:eidolon_client_mobile/src/features/constellation/constellation_nodes.dart';
 import 'package:eidolon_client_mobile/src/features/constellation/polled_cockpit_feed.dart';
 import 'package:eidolon_client_mobile/src/management/management_client.dart';
@@ -75,15 +77,54 @@ Map<String, dynamic> _rosterWire() => {
       'next_cursor': null,
     };
 
-/// Answers the two routes the star map is allowed to need, and nothing else.
+/// The contract's own golden runtime reading, from the SDK beside us.
+///
+/// Read rather than hand-written: this is the payload Python validates against
+/// the schema and the Host produces against the same schema, so a copy here
+/// would be a third description of one shape — and the one nothing gates.
+Map<String, Object?>? _runtimeGolden() {
+  var directory = Directory.current;
+  for (var depth = 0; depth < 4; depth += 1) {
+    final file = File(
+      '${directory.path}/eidolon_sdk/contracts/mission_control/v1/golden/'
+      'snapshot-healthy.json',
+    );
+    if (file.existsSync()) {
+      return jsonDecode(file.readAsStringSync()) as Map<String, Object?>;
+    }
+    final parent = directory.parent;
+    if (parent.path == directory.path) break;
+    directory = parent;
+  }
+  return null;
+}
+
+/// Answers the routes the star map is allowed to need, and nothing else.
 /// An unexpected path is a 500 with its own path in the body, so a test that
 /// starts depending on a third endpoint says which one rather than going quiet.
 MockClient _host({
   bool contextAnswers = true,
   int Function()? contextStatus,
+  Map<String, Object?>? runtime,
+  int runtimeStatus = 200,
 }) =>
     MockClient((request) async {
       final path = request.url.path;
+      if (path == '/api/management/v1/mission-control/snapshot') {
+        if (runtime == null) {
+          return _json(
+            {'detail': '这一屏不该在没有投影时去读它'},
+            status: 500,
+          );
+        }
+        if (runtimeStatus != 200) {
+          return _json(
+            {'detail': 'Mission Control 组不出这次读取'},
+            status: runtimeStatus,
+          );
+        }
+        return _json(runtime);
+      }
       if (path == '/api/management/v1/context') {
         final status = contextStatus?.call() ?? (contextAnswers ? 200 : 503);
         if (status != 200) {
@@ -100,7 +141,11 @@ MockClient _host({
       return _json({'detail': '这一屏不该读 $path'}, status: 500);
     });
 
-Future<void> _open(WidgetTester tester, MockClient host) async {
+Future<void> _open(
+  WidgetTester tester,
+  MockClient host, {
+  bool withRuntime = false,
+}) async {
   tester.view.physicalSize = const Size(1170, 2532);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.reset);
@@ -110,6 +155,14 @@ Future<void> _open(WidgetTester tester, MockClient host) async {
   final composer = CockpitComposer(
     readContext: () => client.fetchContext(_base, accessToken: 'session-token'),
     readRoster: () => client.fetchRoster(_base, accessToken: 'session-token'),
+    readRuntime: withRuntime
+        ? () async => parseMissionControlRuntime(
+              await client.fetchMissionControlSnapshot(
+                _base,
+                accessToken: 'session-token',
+              ),
+            )
+        : null,
   );
 
   await tester.pumpWidget(
@@ -209,6 +262,56 @@ void main() {
 
     expect(find.byKey(const Key('constellation-first-read')), findsNothing);
     expect(find.byType(OwnerCore), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('主机给出运行投影，星图就点亮 —— 不再是一屏读不到', (tester) async {
+    final runtime = _runtimeGolden();
+    if (runtime == null) {
+      markTestSkipped('eidolon_sdk checkout 不在旁边');
+      return;
+    }
+    await _open(tester, _host(runtime: runtime), withRuntime: true);
+
+    expect(find.byKey(const Key('constellation-first-read')), findsNothing);
+    expect(find.byType(OwnerCore), findsOneWidget);
+
+    // 七条运行 lane 全部读到：没有失败条，顶栏可以说 ONLINE。
+    expect(find.byKey(const Key('cockpit-read-failure')), findsNothing);
+    expect(find.text('ONLINE'), findsOneWidget);
+    expect(find.text('UNSTABLE'), findsNothing);
+
+    // 剩下的「读不到」正好是每位伙伴的记忆域，一颗卫星一条 —— 而这不是接线漏了：
+    // roster 是存在性与身份的权威，不带 realm；记忆服务今天只发布 recollections，
+    // 没有 per-companion 的 realm 名册（合成里 data.memory 那条 _unexposed 就是这句）。
+    // 所以它自称未知，而不是被别处的数字顶替。等上游发布了，这条断言应该改成 0。
+    expect(find.textContaining('读不到'), findsNWidgets(2));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('运行投影读不到：伙伴照画，只有运行态未知', (tester) async {
+    final runtime = _runtimeGolden();
+    if (runtime == null) {
+      markTestSkipped('eidolon_sdk checkout 不在旁边');
+      return;
+    }
+    await _open(
+      tester,
+      _host(runtime: runtime, runtimeStatus: 503),
+      withRuntime: true,
+    );
+
+    // 身份读到了，所以图还在；运行态没读到，所以它自称未知。
+    expect(find.byType(OwnerCore), findsOneWidget);
+    expect(find.byType(CompanionPlanet), findsNWidgets(2));
+    expect(find.textContaining('读不到'), findsWidgets);
+    expect(find.text('这一屏有读不到的部分'), findsOneWidget);
+    // 失败的原因必须是主机说的那句，而不是「尚未提供」这种占位。
+    expect(find.textContaining('组不出这次读取'), findsWidgets);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();

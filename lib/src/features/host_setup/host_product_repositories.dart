@@ -36,7 +36,6 @@ class HostWorkspaceRepository {
           companionDisplayName: companionDisplayName,
         ),
       );
-
 }
 
 class HostDevicesRepository {
@@ -434,6 +433,13 @@ class HostManagementRepository {
       );
 
   /// One page. [cursor] is a value a previous page handed back, forwarded as-is.
+  /// The Owner's runtime map, as this Host observed it.
+  Future<Map<String, Object?>> missionControlSnapshot() =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client
+            .fetchMissionControlSnapshot(baseUri, accessToken: accessToken),
+      );
+
   Future<CompanionRosterView> roster({String? cursor}) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.fetchRoster(

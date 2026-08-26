@@ -215,6 +215,26 @@ class ManagementClient {
     return ManagementContextView.fromJson(body);
   }
 
+  /// What this Host observed of the Owner's runtime, lane by lane.
+  ///
+  /// Returned raw. This is the one management payload the app parses itself:
+  /// its authority is the SDK contract at
+  /// `eidolon_sdk/contracts/mission_control/v1/mission-control-snapshot.schema.json`,
+  /// the Host produces it against that schema and `cockpit_wire.dart` reads it
+  /// against the same goldens — so a generated view type here would be a third
+  /// description of one shape, and the one most likely to be quietly wrong.
+  Future<Map<String, Object?>> fetchMissionControlSnapshot(
+    Uri baseUri, {
+    required String accessToken,
+  }) async {
+    final body = await _get(
+      baseUri.resolve(ManagementV1.missionControlSnapshotPath),
+      accessToken: accessToken,
+      what: '读取这台 Host 的运行投影',
+    );
+    return body;
+  }
+
   /// One page of this Owner's Eidolons.
   ///
   /// [cursor] is a value a previous page handed back. It is stored and returned
@@ -771,7 +791,8 @@ class ManagementClient {
   }) async {
     final body = await _send(
       'GET',
-      baseUri.resolve(ManagementV1.companionsByCompanionIdPersonaPath(companionId)),
+      baseUri.resolve(
+          ManagementV1.companionsByCompanionIdPersonaPath(companionId)),
       accessToken: accessToken,
       what: '读取它是谁',
     );
@@ -787,7 +808,8 @@ class ManagementClient {
   }) async {
     final body = await _send(
       'PUT',
-      baseUri.resolve(ManagementV1.companionsByCompanionIdPersonaPath(companionId)),
+      baseUri.resolve(
+          ManagementV1.companionsByCompanionIdPersonaPath(companionId)),
       accessToken: accessToken,
       what: '改它是谁',
       body: persona.toJson(),
