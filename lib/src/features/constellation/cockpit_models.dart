@@ -287,6 +287,7 @@ class CockpitCompanion {
   final String status;
   final String kind;
   final String genomeId;
+
   /// The Companion's memory realm: an id, `''` for "has none", and null for
   /// "nobody asked". The three are different answers and the screen says which.
   final String? realmId;
@@ -336,6 +337,7 @@ class CockpitService {
 class CockpitEvent {
   const CockpitEvent({
     required this.eventId,
+    this.ingestSeq,
     required this.ts,
     required this.source,
     required this.type,
@@ -350,6 +352,12 @@ class CockpitEvent {
   });
 
   final String eventId;
+
+  /// Where this moment sits in the Host's own total order, when the Host keeps
+  /// one. Carried on the event rather than read out of the payload beside it:
+  /// a consumer that has to ask a second function where an event came in the
+  /// order is a consumer that can forget to.
+  final int? ingestSeq;
   final DateTime ts;
   final String source;
   final String type;

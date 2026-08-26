@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'cockpit_feed.dart';
 import 'cockpit_models.dart';
+import 'cockpit_wire.dart';
 
 /// The star map, reading a real Host by polling one snapshot read.
 ///
@@ -11,11 +12,23 @@ import 'cockpit_models.dart';
 /// read function and owns no transport, so the name had no business claiming
 /// one.
 ///
-/// One read, repeated. There is no event stream yet — the Local API's events
-/// lane has no producer, so subscribing to one would be pretending — and this
-/// says so by never emitting a pulse rather than by inventing them from
-/// snapshot diffs. A dart fired because two snapshots differed would claim a
-/// direction and a moment that nobody observed.
+/// One read, repeated — and darts for the moments that arrived between two of
+/// them.
+///
+/// It used to fire nothing, on the grounds that a dart invented from a snapshot
+/// diff claims a direction and a moment nobody observed. That reasoning holds,
+/// and it is about *state*: two readings differing in how many bodies are
+/// online say nothing about when or how that changed. It does not apply to the
+/// events lane, which is the Host's audit tail — each row an id, a moment, a
+/// subject and an outcome the Host recorded, ordered by a sequence it assigned.
+/// A row that was not in the last reading and is in this one happened in
+/// between, and firing a dart for it reports an observation rather than
+/// inventing one.
+///
+/// Two rules keep that honest, both in [eventsAfter]: a reading with no
+/// predecessor fires nothing, because its backlog is history rather than now;
+/// and a row with no sequence is skipped, because a Host that keeps no order
+/// cannot say whether one of its events is new.
 ///
 /// What it does carry is the discipline the contract asks for: a failed read is
 /// an observation state and not a fabricated snapshot, the last good snapshot
@@ -64,6 +77,11 @@ class PolledCockpitFeed implements CockpitFeed {
   final _observations = StreamController<CockpitObservation>.broadcast();
 
   CockpitSnapshot? _snapshot;
+
+  /// The highest event sequence this feed has already reported. Null until the
+  /// first reading lands, which is what makes that reading a baseline rather
+  /// than a hundred darts.
+  int? _watermark;
   CockpitObservation _observation =
       const CockpitObservation(state: ObservationState.connecting);
   Timer? _timer;
@@ -88,8 +106,6 @@ class PolledCockpitFeed implements CockpitFeed {
   @override
   Stream<CockpitSnapshot> get updates => _updates.stream;
 
-  /// Always empty, for now. See the class comment: a pulse is a moment somebody
-  /// observed, and this feed has no source of moments.
   @override
   Stream<CockpitPulse> get pulses => _pulses.stream;
 
@@ -119,6 +135,15 @@ class PolledCockpitFeed implements CockpitFeed {
     try {
       final snapshot = await read();
       if (_disposed) return;
+      final fresh = snapshot.eventsLane.readable
+          ? eventsAfter(_watermark, snapshot.events)
+          : const <CockpitEvent>[];
+      _watermark = snapshot.eventsLane.readable
+          ? highestSequence(_watermark, snapshot.events)
+          // An unreadable lane is not an empty one: keep the mark, so the gap
+          // is reported as darts once the lane answers again rather than
+          // silently skipped.
+          : _watermark;
       _snapshot = snapshot;
       _backoff = Duration.zero;
       _publish(
@@ -130,6 +155,10 @@ class PolledCockpitFeed implements CockpitFeed {
         ),
       );
       _updates.add(snapshot);
+      for (final event in fresh) {
+        final pulse = _pulseFor(event);
+        if (pulse != null) _pulses.add(pulse);
+      }
       _schedule(interval);
     } catch (error) {
       if (_disposed) return;
@@ -153,6 +182,27 @@ class PolledCockpitFeed implements CockpitFeed {
     } finally {
       _reading = false;
     }
+  }
+
+  /// One observed moment, as a dart — or nothing, when this kind of moment does
+  /// not travel a leg of the map. Not every event is a journey: a lifecycle
+  /// change or a policy decision is worth a row in the event list and nothing on
+  /// the glass, and drawing one anyway would put motion where none happened.
+  CockpitPulse? _pulseFor(CockpitEvent event) {
+    final directed = eventToPulse(event);
+    if (directed == null) return null;
+    return CockpitPulse(
+      id: event.eventId,
+      companionId: event.companionId,
+      leg: directed.leg,
+      direction: directed.direction,
+      tone: eventTone(event.severity, event.outcome),
+      // The moment the Host observed, not the moment this screen heard about
+      // it. A dart stamped with now would make a six-second-old event look
+      // like it is happening as you watch.
+      firedAt: event.ts,
+      deviceId: event.deviceId,
+    );
   }
 
   /// A snapshot in which nothing could be read is not a healthy observation,

@@ -223,9 +223,10 @@ void main() {
           .toList();
       expect(events.where(isStreamReset), hasLength(1));
       expect(events.any((event) => event.origin == 'mock'), isFalse);
-      final first =
-          Map<String, Object?>.from((json['events']! as List).first as Map);
-      expect(eventCursor(first), 10491);
+      // Each moment carries its own place in the Host's order, so a consumer
+      // can tell which ones are new without asking a second function where the
+      // one it just parsed came from.
+      expect(events.first.ingestSeq, 10491);
     });
   });
 }

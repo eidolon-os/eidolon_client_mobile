@@ -307,6 +307,7 @@ CockpitService _service(Map<String, Object?> json) => CockpitService(
 
 CockpitEvent parseCockpitEvent(Map<String, Object?> json) => CockpitEvent(
       eventId: _string(json['event_id'], 'event_id 缺失'),
+      ingestSeq: _intOrNull(json[wire.cursorField]),
       ts: _time(json['ts'], 'event.ts 无法解析'),
       source: _string(json['source'], 'event.source 缺失'),
       type: _string(json['type'], 'event.type 缺失'),
@@ -319,10 +320,6 @@ CockpitEvent parseCockpitEvent(Map<String, Object?> json) => CockpitEvent(
       turnId: _stringOr(json['turn_id']),
       milestone: _stringOr(json['milestone']),
     );
-
-/// The event stream's cursor, from one event.
-int? eventCursor(Map<String, Object?> json) =>
-    _intOrNull(json[wire.cursorField]);
 
 /// Whether an event is the stream telling a client its cursor is no longer
 /// honourable. The client drops it and re-reads a snapshot.
@@ -378,4 +375,39 @@ CockpitSnapshot attachRecall(CockpitSnapshot snapshot) {
     streamState: snapshot.streamState,
     traceId: snapshot.traceId,
   );
+}
+
+/// The moments in [events] that arrived after [watermark], oldest first.
+///
+/// The feed fires a dart for each of these. That is not the same as inventing
+/// one from a snapshot diff — the thing this cockpit refuses to do — and the
+/// difference is what an event is: an id, a moment, a subject and a direction
+/// that a Host observed and recorded. Two snapshots differing in *state* say
+/// nothing about when or how it changed; an event that was not in the last
+/// reading and is in this one is a moment that happened in between, and the
+/// Host's own sequence number is the proof of order.
+///
+/// A null [watermark] returns nothing. The first reading carries a backlog —
+/// a hundred moments from before anyone was looking — and firing those would
+/// claim they were happening now. The first reading sets the baseline instead.
+///
+/// Events with no sequence are skipped rather than guessed at: a Host that
+/// keeps no order cannot say whether one of its events is new.
+List<CockpitEvent> eventsAfter(int? watermark, List<CockpitEvent> events) {
+  if (watermark == null) return const <CockpitEvent>[];
+  final fresh = events
+      .where((event) => (event.ingestSeq ?? -1) > watermark)
+      .toList(growable: false)
+    ..sort((a, b) => (a.ingestSeq ?? 0).compareTo(b.ingestSeq ?? 0));
+  return fresh;
+}
+
+/// The highest sequence in [events], or [previous] when none of them carry one.
+int? highestSequence(int? previous, List<CockpitEvent> events) {
+  var top = previous;
+  for (final event in events) {
+    final seq = event.ingestSeq;
+    if (seq != null && (top == null || seq > top)) top = seq;
+  }
+  return top;
 }

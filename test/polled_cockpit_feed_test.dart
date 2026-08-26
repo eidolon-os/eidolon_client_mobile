@@ -3,9 +3,23 @@ import 'package:eidolon_client_mobile/src/features/constellation/cockpit_models.
 import 'package:eidolon_client_mobile/src/features/constellation/polled_cockpit_feed.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+CockpitEvent _event(int seq, {String milestone = 'brain_first_delta'}) =>
+    CockpitEvent(
+      eventId: 'event-$seq',
+      ingestSeq: seq,
+      ts: DateTime.utc(2026, 8, 26, 12, 0, seq),
+      source: 'channel',
+      type: 'channel.turn.progress',
+      milestone: milestone,
+      companionId: 'companion-a',
+      summary: '一件事',
+    );
+
 CockpitSnapshot _snapshot({
   bool memoryReadable = true,
   DateTime? at,
+  List<CockpitEvent>? events,
+  bool eventsReadable = true,
 }) =>
     CockpitSnapshot(
       provenance: CockpitProvenance.host,
@@ -23,6 +37,12 @@ CockpitSnapshot _snapshot({
       memoryLane: memoryReadable
           ? const CockpitLane<CockpitMemory?>.ok(CockpitMemory())
           : const CockpitLane<CockpitMemory?>.missing(null, '记忆服务没有回应'),
+      eventsLane: eventsReadable
+          ? CockpitLane<List<CockpitEvent>>.ok(events ?? const <CockpitEvent>[])
+          : const CockpitLane<List<CockpitEvent>>.missing(
+              <CockpitEvent>[],
+              '审计索引没有回应',
+            ),
     );
 
 void main() {
@@ -192,7 +212,7 @@ void main() {
     feed.pause();
   });
 
-  test('永远不发脉冲：没有观测到的瞬间，就不画箭', () async {
+  test('事件 lane 里一个瞬间都没有，就不画箭', () async {
     final feed = PolledCockpitFeed(read: () async => _snapshot());
     addTearDown(feed.dispose);
     final fired = <CockpitPulse>[];
@@ -203,5 +223,125 @@ void main() {
     await feed.refresh();
     await Future<void>.delayed(const Duration(milliseconds: 5));
     expect(fired, isEmpty);
+  });
+
+  group('飞镖只对真的新到达的瞬间发', () {
+    test('第一次读取只建基线：积压的历史不当作正在发生', () async {
+      final feed = PolledCockpitFeed(
+        read: () async => _snapshot(events: [_event(1), _event(2), _event(3)]),
+      );
+      addTearDown(feed.dispose);
+      final fired = <CockpitPulse>[];
+      final sub = feed.pulses.listen(fired.add);
+      addTearDown(sub.cancel);
+
+      await feed.refresh();
+      await Future<void>.delayed(Duration.zero);
+
+      // 一百条来自没人看的时候的瞬间，全部画出来就是在宣称它们正在发生。
+      expect(fired, isEmpty);
+    });
+
+    test('第二次读取里新增的那一条，发一支', () async {
+      var reads = 0;
+      final feed = PolledCockpitFeed(
+        read: () async {
+          reads += 1;
+          return _snapshot(
+            events: reads == 1
+                ? [_event(1), _event(2)]
+                : [_event(1), _event(2), _event(3)],
+          );
+        },
+      );
+      addTearDown(feed.dispose);
+      final fired = <CockpitPulse>[];
+      final sub = feed.pulses.listen(fired.add);
+      addTearDown(sub.cancel);
+
+      await feed.refresh();
+      await feed.refresh();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(fired, hasLength(1));
+      // 时刻是主机观测到的那个，不是这一屏听说的那个 —— 否则六秒前的事看起来
+      // 像正在眼前发生。
+      expect(fired.single.firedAt, DateTime.utc(2026, 8, 26, 12, 0, 3));
+      expect(fired.single.id, 'event-3');
+    });
+
+    test('同一份读取再来一次，不会重放', () async {
+      final feed = PolledCockpitFeed(
+        read: () async => _snapshot(events: [_event(1), _event(2)]),
+      );
+      addTearDown(feed.dispose);
+      final fired = <CockpitPulse>[];
+      final sub = feed.pulses.listen(fired.add);
+      addTearDown(sub.cancel);
+
+      await feed.refresh();
+      await feed.refresh();
+      await feed.refresh();
+      await Future<void>.delayed(Duration.zero);
+
+      // 一个瞬间只发生一次。重复的读取里它还在，但它不是新的。
+      expect(fired, isEmpty);
+    });
+
+    test('事件 lane 读不到时不动水位：恢复后那段空档照样发出来', () async {
+      var reads = 0;
+      final feed = PolledCockpitFeed(
+        read: () async {
+          reads += 1;
+          if (reads == 1) return _snapshot(events: [_event(1)]);
+          if (reads == 2) return _snapshot(eventsReadable: false);
+          return _snapshot(events: [_event(1), _event(2), _event(3)]);
+        },
+      );
+      addTearDown(feed.dispose);
+      final fired = <CockpitPulse>[];
+      final sub = feed.pulses.listen(fired.add);
+      addTearDown(sub.cancel);
+
+      await feed.refresh();
+      await feed.refresh();
+      await feed.refresh();
+      await Future<void>.delayed(Duration.zero);
+
+      // 读不到不是「没有」：水位留在 1，所以恢复之后 2 和 3 都还算新。
+      expect(fired.map((pulse) => pulse.id), ['event-2', 'event-3']);
+    });
+
+    test('没有序号的事件不猜：主机不保序就无从判断新旧', () async {
+      var reads = 0;
+      final feed = PolledCockpitFeed(
+        read: () async {
+          reads += 1;
+          return _snapshot(
+            events: [
+              CockpitEvent(
+                eventId: 'event-unordered-$reads',
+                ts: DateTime.utc(2026, 8, 26, 12, 5),
+                source: 'channel',
+                type: 'channel.turn.progress',
+                milestone: 'brain_first_delta',
+                companionId: 'companion-a',
+                summary: '一件没有序号的事',
+              ),
+            ],
+          );
+        },
+      );
+      addTearDown(feed.dispose);
+      final fired = <CockpitPulse>[];
+      final sub = feed.pulses.listen(fired.add);
+      addTearDown(sub.cancel);
+
+      await feed.refresh();
+      await feed.refresh();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(fired, isEmpty);
+    });
   });
 }
