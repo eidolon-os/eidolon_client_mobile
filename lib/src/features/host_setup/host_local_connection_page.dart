@@ -164,9 +164,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   }
 
   /// Ask what this Eidolon should be called, and tell the Host.
-  Future<void> _renameCompanion() async {
-    final companion = _controller.home?.answering;
-    if (companion == null) return;
+  /// Rename the Eidolon whose page this is — not whichever one answers.
+  Future<void> _renameCompanion(HostCompanion companion) async {
     final name = await askForAName(
       context,
       question: '这个 Eidolon 叫什么？',
@@ -192,9 +191,12 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
 
   /// Open the Eidolon itself. A Host is a machine someone owns; this is who
   /// they talk to, and it had been living as rows on the machine's card.
-  Future<void> _openCompanion() {
-    final answering = _controller.home?.answering;
-    if (answering == null) return Future<void>.value();
+  /// Open one Eidolon — the one whose row was tapped.
+  ///
+  /// It used to open ``home.answering`` regardless, so an Owner with three
+  /// Eidolons could reach exactly one of them and the other two had no page.
+  Future<void> _openCompanion(HostCompanion companion) {
+    final answering = companion;
     // Asked for as the page opens rather than with the rest of the home read:
     // a photograph is worth fetching when someone is about to look at it.
     unawaited(
@@ -207,24 +209,34 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         builder: (_) => AnimatedBuilder(
           animation: _controller,
           builder: (_, __) {
-            final current = _controller.home;
-            if (current?.answering == null) return const SizedBox.shrink();
+            // Re-read from the live home so the page follows a rename or a
+            // state change, and falls back to what the row said if this Eidolon
+            // has since left the first page of the list.
+            final current = _controller.home?.companions.firstWhere(
+                  (row) => row.companionId == companion.companionId,
+                  orElse: () => companion,
+                ) ??
+                companion;
             return CompanionPage(
-              home: current!,
+              companion: current,
               devices: _controller.devices,
               // Read once when the Host was connected, so a row this Host
               // cannot serve says so instead of opening onto a page that fails.
               hostContext: _controller.managementCapabilities,
-              onRename: _renameCompanion,
-              onOpenPersona: () => _openPersonaEdit(current.answering!),
-              onOpenRecollections: () => _openRecollections(current.answering!),
-              onOpenTasks: () => _openTasks(current.answering!),
-              onOpenConversations: () => _openConversations(current.answering!),
+              // Every action is about the Eidolon this page is about — the one
+              // whose row was tapped. They used to be about ``answering``, so
+              // opening any Eidolon and editing it would have edited the
+              // default one.
+              onRename: () => _renameCompanion(current),
+              onOpenPersona: () => _openPersonaEdit(current),
+              onOpenRecollections: () => _openRecollections(current),
+              onOpenTasks: () => _openTasks(current),
+              onOpenConversations: () => _openConversations(current),
               face: _controller.companionFace,
-              onChangeFace: () => _changeCompanionFace(current.answering!),
+              onChangeFace: () => _changeCompanionFace(current),
               onClearFace: _controller.companionFace == null
                   ? null
-                  : () => _clearCompanionFace(current.answering!),
+                  : () => _clearCompanionFace(current),
             );
           },
         ),
@@ -313,7 +325,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   /// Its own screen: the two actions on it change what a Companion is doing, and
   /// a control like that inside a summary card is a control someone presses by
   /// accident.
-  Future<void> _openTasks(HostHomeCompanion companion) {
+  Future<void> _openTasks(HostCompanion companion) {
     final companionId = companion.companionId;
     return Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -334,7 +346,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   }
 
   /// When this Eidolon and I talked, and what was said.
-  Future<void> _openConversations(HostHomeCompanion companion) {
+  Future<void> _openConversations(HostCompanion companion) {
     final companionId = companion.companionId;
     return Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -354,7 +366,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   }
 
   /// Ask this Eidolon what it remembers.
-  Future<void> _openRecollections(HostHomeCompanion companion) {
+  Future<void> _openRecollections(HostCompanion companion) {
     final name = companion.displayName;
     return Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -372,7 +384,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   /// face is a conditioning image for a digital human — a camera's full
   /// resolution is of no use to it, and would not fit through the pinned
   /// transport that carries everything else this app says to its Host.
-  Future<void> _changeCompanionFace(HostHomeCompanion companion) async {
+  Future<void> _changeCompanionFace(HostCompanion companion) async {
     final Uint8List? bytes;
     try {
       bytes = await (widget.facePicker ?? const GalleryFacePicker()).pickFace();
@@ -397,7 +409,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     }
   }
 
-  Future<void> _clearCompanionFace(HostHomeCompanion companion) async {
+  Future<void> _clearCompanionFace(HostCompanion companion) async {
     try {
       await _controller.clearCompanionFace(
         companionId: companion.companionId,
@@ -416,7 +428,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   /// saving would replace everything the person did not retype. A read that
   /// fails opens no form and says why — a form full of guesses would describe
   /// an Eidolon this Host does not have.
-  Future<void> _openPersonaEdit(HostHomeCompanion companion) async {
+  Future<void> _openPersonaEdit(HostCompanion companion) async {
     final PersonaAuthoring standing;
     try {
       standing = await _controller.persona(companionId: companion.companionId);
@@ -599,7 +611,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               setupContinuation: widget.setupContinuation,
               onSetupComplete: widget.onSetupComplete,
               onReconnect: _controller.connect,
-              onRenameCompanion: _renameCompanion,
               onOpenCompanion: _openCompanion,
               onOpenRoster: _openRoster,
               onOpenMemoryLibrary: _openMemoryLibrary,
@@ -802,7 +813,6 @@ class _WorkspaceCard extends StatelessWidget {
     required this.onSetupComplete,
     required this.onReconnect,
     required this.onChangeNetwork,
-    required this.onRenameCompanion,
     required this.onOpenCompanion,
     required this.onOpenRoster,
     required this.onOpenMemoryLibrary,
@@ -817,8 +827,7 @@ class _WorkspaceCard extends StatelessWidget {
   final VoidCallback? onSetupComplete;
   final Future<void> Function() onReconnect;
   final Future<void> Function() onChangeNetwork;
-  final VoidCallback onRenameCompanion;
-  final VoidCallback onOpenCompanion;
+  final void Function(HostCompanion companion) onOpenCompanion;
 
   /// Reachable whether or not the runtime answered: "what do I have" is a
   /// question the management contract answers on its own, and a Host that
@@ -960,6 +969,82 @@ class _WorkspaceCard extends StatelessWidget {
         companionDisplayName: companionName.text,
       );
 
+  /// One row per Eidolon this person has.
+  ///
+  /// The default one is *marked*, not promoted: 「默认应答」 is a setting on one
+  /// row, where it used to be the identity of the whole card. Running state
+  /// comes from the Host and has three values — a runtime it could not ask
+  /// about says so rather than reading as "stopped".
+  List<Widget> _companionRows(BuildContext context, HostHome? home) {
+    if (home == null) return const [];
+    if (home.companions.isEmpty) {
+      return [
+        _WorkspaceResourceStatus(
+          key: const Key('no-companions-row'),
+          icon: Icons.face_retouching_natural,
+          label: '还没有 Eidolon',
+          statusLabel: '可新建',
+          detail: '在「你所有的 Eidolon」里建第一个',
+          onOpen: onOpenRoster,
+          openKey: const Key('open-roster-empty'),
+          openTooltip: '新建',
+        ),
+      ];
+    }
+    return [
+      for (final companion in home.companions)
+        _WorkspaceResourceStatus(
+          key: Key('home-companion-${companion.companionId}'),
+          onOpen: () => onOpenCompanion(companion),
+          openKey: Key('open-companion-${companion.companionId}'),
+          openTooltip: '打开它',
+          icon: Icons.face_retouching_natural,
+          // The name its Owner gave it. The identifier is what remains when the
+          // Host cannot say — never shown as if it were a name.
+          label: companion.displayName.isNotEmpty
+              ? companion.displayName
+              : '未命名的 Eidolon',
+          statusLabel: _companionStatus(companion, home),
+          detail: _companionDetail(companion, home),
+        ),
+    ];
+  }
+
+  /// What state this Eidolon is in, in three words or fewer.
+  ///
+  /// Life comes first: an Eidolon somebody put away is put away whatever the
+  /// runtime says, and showing 运行中 over 已收起 would describe the machine
+  /// instead of the person's decision.
+  String _companionStatus(HostCompanion companion, HostHome home) {
+    if (companion.isPutAway) return '已收起';
+    switch (companion.running) {
+      case true:
+        return '在运行';
+      case false:
+        return '没在运行';
+      default:
+        return '状态未知';
+    }
+  }
+
+  String _companionDetail(HostCompanion companion, HostHome home) {
+    final parts = <String>[];
+    if (companion.companionId == home.defaultCompanionId) {
+      parts.add('没指名时由它回答');
+    }
+    if (companion.running == null && home.runtimeUnavailable.isNotEmpty) {
+      // Why it is unknown, not merely that it is: 「主机的运行服务在启动」 and
+      // 「这台主机没有运行服务」 send a person to different places.
+      parts.add(switch (home.runtimeUnavailable) {
+        'runtime_starting' => '运行服务正在启动，稍后再看',
+        'runtime_not_configured' => '这台主机没有配置运行服务',
+        _ => '暂时问不到运行服务',
+      });
+    }
+    if (parts.isEmpty) parts.add('打开它：它是谁、它记得什么、连着哪些设备');
+    return parts.join(' · ');
+  }
+
   Widget _buildReady(BuildContext context, WorkspaceStatus workspace) {
     final home = controller.home;
     return Card(
@@ -1000,27 +1085,12 @@ class _WorkspaceCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            _WorkspaceResourceStatus(
-              key: const Key('workspace-companion'),
-              onOpen: home?.answering == null ? null : onOpenCompanion,
-              openKey: const Key('open-companion'),
-              openTooltip: '打开它',
-              icon: Icons.face_retouching_natural,
-              // The name its Owner gave it, which is what they typed at setup
-              // and had never been shown back to them. The identifier is what
-              // remains when the Host cannot say.
-              label: home?.answering?.displayName.isNotEmpty ?? false
-                  ? home!.answering!.displayName
-                  : '主 Companion',
-              statusLabel: home?.answering == null ? '已创建' : '运行中',
-              detail: home?.answering == null
-                  ? 'Workspace 已创建'
-                  // What it has been through, when the Host could say — which is
-                  // the one line on this card a person can act on.
-                  : (home!.answering!.personaChapter.isNotEmpty
-                      ? '${home.answering!.personaChapter} · 打开它的页面'
-                      : '打开它的页面：改名、它的变化、连到它的设备'),
-            ),
+            // Every Eidolon this person has, one row each. Not one promoted to
+            // the top of the card with the rest reduced to a number: the Owner's
+            // own screen is about their Eidolons, and which of them replies when
+            // nobody was named is a setting on the set rather than the shape of
+            // it. Two of them can be running at once, and this can say so.
+            ..._companionRows(context, home),
             _WorkspaceResourceStatus(
               key: const Key('companion-roster-row'),
               onOpen: onOpenRoster,
@@ -1028,8 +1098,10 @@ class _WorkspaceCard extends StatelessWidget {
               openTooltip: '看全部',
               icon: Icons.groups_2_outlined,
               label: '你所有的 Eidolon',
-              statusLabel: '可查看',
-              detail: '这台主机上属于你的每一个,以及哪一个是默认',
+              statusLabel: home == null
+                  ? '可查看'
+                  : '${home.companionCounts.total} 个',
+              detail: '新建一个，或者改由谁来应答',
             ),
             _WorkspaceResourceStatus(
               key: const Key('memory-library-row'),
@@ -1038,18 +1110,25 @@ class _WorkspaceCard extends StatelessWidget {
               openKey: const Key('open-memory-library'),
               openTooltip: '看它记住的',
               icon: Icons.auto_stories_outlined,
-              label: '它的记忆',
-              statusLabel: home?.answering == null ? '已创建' : '运行中',
+              // The Owner's, not any one Eidolon's: one Realm per person, and
+              // every Eidolon reads and writes it through an audience. This row
+              // used to say 它的记忆 and describe whichever one answered.
+              label: '你的记忆',
+              // Reachable, not "running". Whether a memory can be opened is
+              // about this Host's memory service; the old label read
+              // 「有没有默认伙伴」 and printed 运行中, which was a guess about a
+              // different thing entirely.
+              statusLabel: memoryHold == null ? '可查看' : '暂不可用',
               // Not the realm identifier. That line was the only thing this
               // row ever said, and it named a thing an Owner cannot open,
               // search or act on — an identifier standing in for the fact
               // that there is nothing here to show yet.
-              // What it actually remembers when the Host could say, and an
-              // honest placeholder when it could not: an Eidolon that has not
-              // written anything down yet is a real and ordinary state.
-              detail: home?.answering?.memory.isNotEmpty == true
-                  ? '${home!.answering!.memory}，留在这台主机上，没有离开过'
-                  : '已经为它准备好',
+              // What it actually holds when the Host could say, and an honest
+              // placeholder when it could not: a memory nothing has been
+              // written into yet is a real and ordinary state.
+              detail: home?.memory.isNotEmpty == true
+                  ? '${home!.memory}，留在这台主机上，没有离开过'
+                  : '还没记下什么，留在这台主机上，没有离开过',
             ),
             if (controller.homeError case final error?) ...[
               const SizedBox(height: 12),

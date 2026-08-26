@@ -230,8 +230,11 @@ class CompanionDetailView {
     this.displayName,
     required this.isDefault,
     required this.kind,
+    this.lastActiveAt,
     required this.lifecycleState,
+    this.personaChapter,
     required this.revision,
+    this.running,
   });
 
   final String companionId;
@@ -244,9 +247,15 @@ class CompanionDetailView {
 
   final String kind;
 
+  final String? lastActiveAt;
+
   final String lifecycleState;
 
+  final String? personaChapter;
+
   final int revision;
+
+  final bool? running;
 
   factory CompanionDetailView.fromJson(Map<String, dynamic> value) {
     return CompanionDetailView(
@@ -255,8 +264,11 @@ class CompanionDetailView {
       displayName: value['display_name'] as String?,
       isDefault: value['is_default'] as bool,
       kind: value['kind'] as String,
+      lastActiveAt: value['last_active_at'] as String?,
       lifecycleState: value['lifecycle_state'] as String,
+      personaChapter: value['persona_chapter'] as String?,
       revision: value['revision'] as int,
+      running: value['running'] as bool?,
     );
   }
 
@@ -267,8 +279,11 @@ class CompanionDetailView {
       if (displayName != null) 'display_name': displayName,
       'is_default': isDefault,
       'kind': kind,
+      if (lastActiveAt != null) 'last_active_at': lastActiveAt,
       'lifecycle_state': lifecycleState,
+      if (personaChapter != null) 'persona_chapter': personaChapter,
       'revision': revision,
+      if (running != null) 'running': running,
     };
   }
 }
@@ -429,6 +444,7 @@ class CompanionRosterView {
     this.contractVersion,
     this.defaultCompanionId,
     this.nextCursor,
+    this.runtimeUnavailable,
   });
 
   final List<CompanionSummaryView> companions;
@@ -439,12 +455,15 @@ class CompanionRosterView {
 
   final String? nextCursor;
 
+  final String? runtimeUnavailable;
+
   factory CompanionRosterView.fromJson(Map<String, dynamic> value) {
     return CompanionRosterView(
       companions: ((value['companions'] as List<dynamic>).map((entry) => CompanionSummaryView.fromJson(entry as Map<String, dynamic>)).toList()),
       contractVersion: value['contract_version'] as String?,
       defaultCompanionId: value['default_companion_id'] as String?,
       nextCursor: value['next_cursor'] as String?,
+      runtimeUnavailable: value['runtime_unavailable'] as String?,
     );
   }
 
@@ -454,6 +473,7 @@ class CompanionRosterView {
       if (contractVersion != null) 'contract_version': contractVersion,
       if (defaultCompanionId != null) 'default_companion_id': defaultCompanionId,
       if (nextCursor != null) 'next_cursor': nextCursor,
+      if (runtimeUnavailable != null) 'runtime_unavailable': runtimeUnavailable,
     };
   }
 }
@@ -464,8 +484,10 @@ class CompanionSummaryView {
     required this.createdAt,
     this.displayName,
     required this.kind,
+    this.lastActiveAt,
     required this.lifecycleState,
     required this.revision,
+    this.running,
     required this.updatedAt,
   });
 
@@ -477,9 +499,13 @@ class CompanionSummaryView {
 
   final String kind;
 
+  final String? lastActiveAt;
+
   final String lifecycleState;
 
   final int revision;
+
+  final bool? running;
 
   final String updatedAt;
 
@@ -489,8 +515,10 @@ class CompanionSummaryView {
       createdAt: value['created_at'] as String,
       displayName: value['display_name'] as String?,
       kind: value['kind'] as String,
+      lastActiveAt: value['last_active_at'] as String?,
       lifecycleState: value['lifecycle_state'] as String,
       revision: value['revision'] as int,
+      running: value['running'] as bool?,
       updatedAt: value['updated_at'] as String,
     );
   }
@@ -501,8 +529,10 @@ class CompanionSummaryView {
       'created_at': createdAt,
       if (displayName != null) 'display_name': displayName,
       'kind': kind,
+      if (lastActiveAt != null) 'last_active_at': lastActiveAt,
       'lifecycle_state': lifecycleState,
       'revision': revision,
+      if (running != null) 'running': running,
       'updated_at': updatedAt,
     };
   }
@@ -1183,61 +1213,6 @@ class ForgetTargetRequest {
   }
 }
 
-class HomeCompanionView {
-  const HomeCompanionView({
-    required this.companionId,
-    this.displayName,
-    this.hasFace,
-    required this.lifecycleState,
-    this.memory,
-    this.personaChapter,
-    this.personaGenomeId,
-    required this.revision,
-  });
-
-  final String companionId;
-
-  final String? displayName;
-
-  final bool? hasFace;
-
-  final String lifecycleState;
-
-  final String? memory;
-
-  final String? personaChapter;
-
-  final String? personaGenomeId;
-
-  final int revision;
-
-  factory HomeCompanionView.fromJson(Map<String, dynamic> value) {
-    return HomeCompanionView(
-      companionId: value['companion_id'] as String,
-      displayName: value['display_name'] as String?,
-      hasFace: value['has_face'] as bool?,
-      lifecycleState: value['lifecycle_state'] as String,
-      memory: value['memory'] as String?,
-      personaChapter: value['persona_chapter'] as String?,
-      personaGenomeId: value['persona_genome_id'] as String?,
-      revision: value['revision'] as int,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'companion_id': companionId,
-      if (displayName != null) 'display_name': displayName,
-      if (hasFace != null) 'has_face': hasFace,
-      'lifecycle_state': lifecycleState,
-      if (memory != null) 'memory': memory,
-      if (personaChapter != null) 'persona_chapter': personaChapter,
-      if (personaGenomeId != null) 'persona_genome_id': personaGenomeId,
-      'revision': revision,
-    };
-  }
-}
-
 class HomeCountsView {
   const HomeCountsView({
     required this.putAway,
@@ -1275,54 +1250,69 @@ class HomeCountsView {
 
 class HomeView {
   const HomeView({
-    this.answering,
-    required this.companions,
+    required this.companionCounts,
+    this.companions,
     this.contractVersion,
+    this.defaultCompanionId,
     required this.devices,
     this.machineAttention,
+    this.memory,
     this.ownerDisplayName,
     required this.ownerRevision,
+    this.runtimeUnavailable,
     this.unavailable,
   });
 
-  final HomeCompanionView? answering;
+  final HomeCountsView companionCounts;
 
-  final HomeCountsView companions;
+  final List<CompanionSummaryView>? companions;
 
   final String? contractVersion;
+
+  final String? defaultCompanionId;
 
   final HomeCountsView devices;
 
   final List<String>? machineAttention;
 
+  final String? memory;
+
   final String? ownerDisplayName;
 
   final int ownerRevision;
+
+  final String? runtimeUnavailable;
 
   final Map<String, String>? unavailable;
 
   factory HomeView.fromJson(Map<String, dynamic> value) {
     return HomeView(
-      answering: value['answering'] == null ? null : HomeCompanionView.fromJson(value['answering'] as Map<String, dynamic>),
-      companions: HomeCountsView.fromJson(value['companions'] as Map<String, dynamic>),
+      companionCounts: HomeCountsView.fromJson(value['companion_counts'] as Map<String, dynamic>),
+      companions: value['companions'] == null ? null : ((value['companions'] as List<dynamic>).map((entry) => CompanionSummaryView.fromJson(entry as Map<String, dynamic>)).toList()),
       contractVersion: value['contract_version'] as String?,
+      defaultCompanionId: value['default_companion_id'] as String?,
       devices: HomeCountsView.fromJson(value['devices'] as Map<String, dynamic>),
       machineAttention: value['machine_attention'] == null ? null : ((value['machine_attention'] as List<dynamic>).map((entry) => entry as String).toList()),
+      memory: value['memory'] as String?,
       ownerDisplayName: value['owner_display_name'] as String?,
       ownerRevision: value['owner_revision'] as int,
+      runtimeUnavailable: value['runtime_unavailable'] as String?,
       unavailable: value['unavailable'] == null ? null : ((value['unavailable'] as Map<String, dynamic>).map((key, entry) => MapEntry(key, entry as String))),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      if (answering != null) 'answering': answering?.toJson(),
-      'companions': companions.toJson(),
+      'companion_counts': companionCounts.toJson(),
+      if (companions != null) 'companions': companions?.map((entry) => entry.toJson()).toList(),
       if (contractVersion != null) 'contract_version': contractVersion,
+      if (defaultCompanionId != null) 'default_companion_id': defaultCompanionId,
       'devices': devices.toJson(),
       if (machineAttention != null) 'machine_attention': machineAttention,
+      if (memory != null) 'memory': memory,
       if (ownerDisplayName != null) 'owner_display_name': ownerDisplayName,
       'owner_revision': ownerRevision,
+      if (runtimeUnavailable != null) 'runtime_unavailable': runtimeUnavailable,
       if (unavailable != null) 'unavailable': unavailable,
     };
   }

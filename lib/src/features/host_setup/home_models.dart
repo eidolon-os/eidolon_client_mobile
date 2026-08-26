@@ -2,12 +2,19 @@ import '../../generated/management_v1.dart';
 
 /// What is mine, right now — the one read this app makes when it opens.
 ///
-/// It replaced a single-Companion runtime projection whose shape assumed there
-/// was one Eidolon and one of everything under it. What changed is not only the
-/// count: the Host now answers in words a person can act on — which chapter its
-/// persona is on rather than a genome id, how much it remembers rather than a
-/// realm identifier — and names the parts it could not read instead of leaving
-/// them blank.
+/// **This is the Owner's view, and its subject is the Owner and their Eidolons —
+/// plural.** It was not. The Host used to lead with `answering`: one Companion,
+/// promoted, carrying every rich fact while the rest were a number. That put a
+/// routing fallback ("who replies when nobody was named", explicitly *not* a
+/// rank) at the centre of a person's own home screen, and it could not show two
+/// Eidolons being live at once — which is ordinary, since a Host keeps runtime
+/// context per Companion.
+///
+/// So what belongs here is what belongs to the *person*: their name, their
+/// Eidolons, their memory (one Realm, shared by all of them), their devices,
+/// their machine. What belongs to one Eidolon — its persona, its face, what it
+/// has been through — belongs on that Eidolon's own page, or only the one that
+/// happened to answer would have any of it.
 class HostHomeCounts {
   const HostHomeCounts({
     required this.total,
@@ -36,56 +43,69 @@ class HostHomeCounts {
   final int putAway;
 }
 
-/// The Eidolon that answers when nobody was named.
-class HostHomeCompanion {
-  const HostHomeCompanion({
+/// One of this Owner's Eidolons, as the list shows it.
+///
+/// Deliberately thin. A row says which Eidolon this is, what state its life is
+/// in, and whether the Host is running it — enough to choose one. Everything
+/// else is read when that one is opened, which is also what stops the list from
+/// making N calls to fill in facts nobody has asked for yet.
+class HostCompanion {
+  const HostCompanion({
     required this.companionId,
     required this.displayName,
+    required this.kind,
     required this.lifecycleState,
     required this.revision,
-    required this.hasFace,
-    required this.personaChapter,
-    required this.memory,
-    required this.personaGenomeId,
+    required this.running,
+    required this.lastActiveAt,
   });
 
-  factory HostHomeCompanion.fromView(HomeCompanionView view) =>
-      HostHomeCompanion(
+  factory HostCompanion.fromView(CompanionSummaryView view) => HostCompanion(
         companionId: view.companionId,
         displayName: view.displayName ?? '',
+        kind: view.kind,
         lifecycleState: view.lifecycleState,
         revision: view.revision,
-        hasFace: view.hasFace ?? false,
-        personaChapter: view.personaChapter ?? '',
-        memory: view.memory ?? '',
-        personaGenomeId: view.personaGenomeId ?? '',
+        running: view.running,
+        lastActiveAt: view.lastActiveAt ?? '',
       );
 
   final String companionId;
   final String displayName;
+  final String kind;
+
+  /// active / retiring / archived / deleting, as the Host says it. A value this
+  /// build does not know still renders — the Host may be newer than the app.
   final String lifecycleState;
   final int revision;
-  final bool hasFace;
 
-  /// Which chapter it is on, in words — 「第 3 章 · 我发现你不喜欢被打断」. Empty
-  /// when the Host could not read the history, which is not the same as an
-  /// Eidolon that has never changed; that difference is in [HostHome.unavailable].
-  final String personaChapter;
+  /// Whether the Host is running it at this moment.
+  ///
+  /// **Three states, and null is "nobody could say".** Rendering unknown as
+  /// "not running" is the same class of mistake as the one this replaced: the
+  /// screen used to show 运行中 whenever the Owner had a default Companion, so
+  /// it was reading a routing setting and calling it runtime state.
+  ///
+  /// It is not presence either. True means the Host is holding a runtime, not
+  /// that any body is reachable — nothing on the Host tracks that, which is why
+  /// devices still report their own online state as unknown.
+  final bool? running;
 
-  /// What it remembers, as a count rather than a place. Empty when unread.
-  final String memory;
+  /// When anything last addressed it. Empty when unknown or when nothing has.
+  final String lastActiveAt;
 
-  /// For the technical corner of a screen, and for reading out when asking for
-  /// help. Never what a person is shown first.
-  final String personaGenomeId;
+  bool get isPutAway => lifecycleState == 'archived';
 }
 
 class HostHome {
   const HostHome({
     required this.ownerDisplayName,
     required this.ownerRevision,
-    required this.answering,
     required this.companions,
+    required this.defaultCompanionId,
+    required this.runtimeUnavailable,
+    required this.memory,
+    required this.companionCounts,
     required this.devices,
     required this.machineAttention,
     required this.unavailable,
@@ -94,10 +114,14 @@ class HostHome {
   factory HostHome.fromView(HomeView view) => HostHome(
         ownerDisplayName: view.ownerDisplayName ?? '',
         ownerRevision: view.ownerRevision,
-        answering: view.answering == null
-            ? null
-            : HostHomeCompanion.fromView(view.answering!),
-        companions: HostHomeCounts.fromView(view.companions),
+        companions: [
+          for (final row in view.companions ?? const <CompanionSummaryView>[])
+            HostCompanion.fromView(row),
+        ],
+        defaultCompanionId: view.defaultCompanionId,
+        runtimeUnavailable: view.runtimeUnavailable ?? '',
+        memory: view.memory ?? '',
+        companionCounts: HostHomeCounts.fromView(view.companionCounts),
         devices: HostHomeCounts.fromView(view.devices),
         machineAttention: view.machineAttention ?? const [],
         unavailable: view.unavailable ?? const {},
@@ -106,10 +130,24 @@ class HostHome {
   final String ownerDisplayName;
   final int ownerRevision;
 
-  /// Null is a real state — every Eidolon put away, or none created yet — and
+  /// This Owner's Eidolons. The first page of them, in the Host's order.
+  final List<HostCompanion> companions;
+
+  /// Which one replies when nobody was named — a setting this person made, and
+  /// nothing more. Null is a real state (all put away, or none created yet) and
   /// this app must not resolve it by picking one.
-  final HostHomeCompanion? answering;
-  final HostHomeCounts companions;
+  final String? defaultCompanionId;
+
+  /// Why every row's [HostCompanion.running] is unknown, when it is. Empty
+  /// means the runtime answered, so each row carries a real answer.
+  final String runtimeUnavailable;
+
+  /// What this Owner's memory holds, in words. **Theirs** — one Realm per
+  /// Owner, every Eidolon reading and writing it through an audience. This used
+  /// to hang off whichever Companion answered and be labelled 它的记忆.
+  final String memory;
+
+  final HostHomeCounts companionCounts;
   final HostHomeCounts devices;
 
   /// What the Host said needs attention, already phrased on that side. Empty
@@ -123,12 +161,26 @@ class HostHome {
 
   bool get sawEverything => unavailable.isEmpty;
 
-  /// Whether this answer describes the Companion the setup just produced.
+  /// The Eidolon that replies when nobody was named, if this answer lists it.
+  HostCompanion? get answering {
+    final id = defaultCompanionId;
+    if (id == null) return null;
+    for (final row in companions) {
+      if (row.companionId == id) return row;
+    }
+    return null;
+  }
+
+  /// Whether this answer includes the Companion the setup just produced.
   ///
   /// The cross-Owner half of the old check is structurally gone: the Owner is
   /// derived from the session and is not expressible by a caller. What is left
-  /// worth checking is that the Eidolon named here is the one this device just
-  /// helped create.
+  /// worth checking is that the Eidolon this device just helped create is among
+  /// the ones the Host says exist — a *membership* test now, where it used to
+  /// ask whether it was the promoted one. A newly created Eidolon is not
+  /// necessarily the one that answers, and treating that as a mismatch refused
+  /// to show a person their own Host.
   bool answersFor(String? companionId) =>
-      companionId == null || answering?.companionId == companionId;
+      companionId == null ||
+      companions.any((row) => row.companionId == companionId);
 }

@@ -41,12 +41,12 @@ MountedDeviceInventory _devices(List<String?> attachedTo) =>
 Future<void> _open(
   WidgetTester tester, {
   MountedDeviceInventory? devices,
-  HostHome? home,
+  HostCompanion? companion,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       home: CompanionPage(
-        home: home ?? _home(),
+        companion: companion ?? _companion(),
         devices: devices,
         onRename: () {},
         onOpenPersona: () {},
@@ -56,30 +56,29 @@ Future<void> _open(
   await tester.pumpAndSettle();
 }
 
-/// What the Host now answers when a screen opens: words a person can act on,
-/// with the identifiers underneath.
-HostHome _home({String name = '小忆', String? companionId = _companionId}) =>
-    HostHome.fromView(
-      HomeView.fromJson({
-        'contract_version': '1',
-        'owner_display_name': 'Manson',
-        'owner_revision': 3,
-        'answering': companionId == null
-            ? null
-            : {
-                'companion_id': companionId,
-                'display_name': name,
-                'lifecycle_state': 'active',
-                'revision': 4,
-                'has_face': false,
-                'persona_chapter': '第 1 章 · 它刚来的样子',
-                'memory': '还没记下什么',
-                'persona_genome_id': 'genome_origin',
-              },
-        'companions': {'total': 1, 'ready': 1, 'waiting': 0, 'put_away': 0},
-        'devices': {'total': 0, 'ready': 0, 'waiting': 0, 'put_away': 0},
-        'machine_attention': <String>[],
-        'unavailable': <String, String>{},
+/// The Eidolon this page is about.
+///
+/// A Companion, not a home read. This page used to take the whole home answer
+/// and pull ``answering`` out of it, which meant it could only ever be the
+/// Eidolon that replies when nobody was named — so an Owner with three of them
+/// could open one.
+HostCompanion _companion({
+  String name = '小忆',
+  String id = _companionId,
+  bool? running = true,
+  String lifecycleState = 'active',
+}) =>
+    HostCompanion.fromView(
+      CompanionSummaryView.fromJson({
+        'companion_id': id,
+        'display_name': name,
+        'kind': 'conversational',
+        'lifecycle_state': lifecycleState,
+        'revision': 4,
+        'created_at': '2026-08-01T00:00:00+00:00',
+        'updated_at': '2026-08-01T00:00:00+00:00',
+        'running': running,
+        'last_active_at': running == true ? '2026-08-26T09:30:00+00:00' : '',
       }),
     );
 
@@ -90,7 +89,11 @@ void main() {
     await _open(tester);
 
     expect(find.text('小忆'), findsWidgets);
-    expect(find.text('你好，Manson'), findsOneWidget);
+    // What state *this Eidolon* is in, where it used to greet the Owner —
+    // 「你好，Manson」 under the Eidolon's name, beside a pencil, made the card
+    // read as the person's own profile.
+    expect(find.text('这台主机正在运行它'), findsOneWidget);
+    expect(find.textContaining('你好'), findsNothing);
     // Nothing about the Host, the session or the parts it is built from.
     expect(find.textContaining('Host IP'), findsNothing);
     expect(find.textContaining('genome'), findsNothing);
@@ -139,7 +142,7 @@ void main() {
 
   testWidgets('an unnamed Eidolon is not called by its identifier',
       (tester) async {
-    await _open(tester, home: _home(name: ''));
+    await _open(tester, companion: _companion(name: ''));
 
     expect(find.textContaining(_companionId), findsNothing);
     expect(find.text('这个 Eidolon'), findsWidgets);
@@ -169,7 +172,7 @@ Future<void> _pumpWithContext(
   await tester.pumpWidget(
     MaterialApp(
       home: CompanionPage(
-        home: _home(),
+        companion: _companion(),
         devices: null,
         onRename: () {},
         onOpenPersona: () {},

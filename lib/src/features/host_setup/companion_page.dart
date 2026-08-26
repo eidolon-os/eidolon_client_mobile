@@ -7,17 +7,24 @@ import '../../management/management_client.dart';
 import '../device_management/mounted_device_models.dart';
 import 'home_models.dart';
 
-/// One place that is the Eidolon.
+/// One place that is **one** Eidolon.
 ///
 /// Everything about it used to be rows on the Host's connection card, beside
 /// service state and session expiry — which is the Host's story, not its. A
-/// Host is a machine someone owns; the Eidolon is who they talk to. Putting
-/// the second inside the first made the person read past infrastructure to
-/// find the thing they came for.
+/// Host is a machine someone owns; the Eidolon is who they talk to. Putting the
+/// second inside the first made the person read past infrastructure to find the
+/// thing they came for.
+///
+/// It takes the Companion it is about. It used to take the whole home read and
+/// pull `answering` out of it, which meant this page could only ever be the
+/// Eidolon that replies when nobody was named — so somebody with three of them
+/// could open exactly one, and the other two had no page at all. Which one
+/// answers unaddressed is a setting on the Owner; it was never a statement
+/// about which Eidolons are worth looking at.
 class CompanionPage extends StatelessWidget {
   const CompanionPage({
     super.key,
-    required this.home,
+    required this.companion,
     required this.devices,
     required this.onRename,
     required this.onOpenPersona,
@@ -32,7 +39,8 @@ class CompanionPage extends StatelessWidget {
 
   /// What is mine, right now. The Eidolon that answers is the subject of this
   /// page; the counts and the machine line belong to the screen that opened it.
-  final HostHome home;
+  /// The Eidolon this page is about.
+  final HostCompanion companion;
 
   /// Everything this Host has mounted. Which of them belong to this Eidolon is
   /// decided here rather than asked for separately: the Host already answered.
@@ -86,13 +94,12 @@ class CompanionPage extends StatelessWidget {
       (devices?.devices ?? const <MountedDevice>[])
           .where(
             (device) =>
-                device.attachedCompanionId == home.answering?.companionId,
+                device.attachedCompanionId == companion.companionId,
           )
           .toList(growable: false);
 
   @override
   Widget build(BuildContext context) {
-    final companion = home.answering!;
     final name =
         companion.displayName.isNotEmpty ? companion.displayName : '这个 Eidolon';
     final bound = _itsDevices;
@@ -128,8 +135,13 @@ class CompanionPage extends StatelessWidget {
                           style: Theme.of(context).textTheme.headlineSmall,
                         ),
                         const SizedBox(height: 4),
+                        // What state *this Eidolon* is in. It used to greet the
+                        // Owner here — 「你好，Manson」 under the Eidolon's name,
+                        // with a pencil beside it — which made the card read as
+                        // the person's own profile and the pencil look like it
+                        // renamed them. It renames the Eidolon.
                         Text(
-                          '你好，${home.ownerDisplayName}',
+                          _stateLine(companion),
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                       ],
@@ -285,4 +297,21 @@ class _FeatureRow extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// What state this Eidolon is in, for the line under its name.
+///
+/// Life first: one that has been put away is put away whatever the runtime
+/// says, because that is the person's own decision and it outranks a machine
+/// state. Unknown is said rather than rendered as "not running" — the screens
+/// this replaces printed 运行中 whenever the Owner had a default Eidolon, which
+/// read a routing setting as a runtime fact.
+String _stateLine(HostCompanion companion) {
+  if (companion.isPutAway) return '已经收起来了';
+  return switch (companion.running) {
+    true => '这台主机正在运行它',
+    false => '这台主机现在没有在运行它',
+    _ => '运行状态读不到',
+  };
 }

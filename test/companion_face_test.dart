@@ -32,7 +32,7 @@ Future<void> _open(
     tester.pumpWidget(
       MaterialApp(
         home: CompanionPage(
-          home: _home(),
+          companion: _companion(),
           devices: const MountedDeviceInventory(devices: []),
           onRename: () {},
           onOpenPersona: () {},
@@ -43,30 +43,19 @@ Future<void> _open(
       ),
     );
 
-/// What the Host now answers when a screen opens: words a person can act on,
-/// with the identifiers underneath.
-HostHome _home({String name = '小忆', String? companionId = 'companion_primary'}) =>
-    HostHome.fromView(
-      HomeView.fromJson({
-        'contract_version': '1',
-        'owner_display_name': 'Manson',
-        'owner_revision': 3,
-        'answering': companionId == null
-            ? null
-            : {
-                'companion_id': companionId,
-                'display_name': name,
-                'lifecycle_state': 'active',
-                'revision': 4,
-                'has_face': false,
-                'persona_chapter': '第 1 章 · 它刚来的样子',
-                'memory': '还没记下什么',
-                'persona_genome_id': 'genome_origin',
-              },
-        'companions': {'total': 1, 'ready': 1, 'waiting': 0, 'put_away': 0},
-        'devices': {'total': 0, 'ready': 0, 'waiting': 0, 'put_away': 0},
-        'machine_attention': <String>[],
-        'unavailable': <String, String>{},
+/// The Eidolon this page is about.
+HostCompanion _companion({String name = '小忆', String id = 'companion_primary'}) =>
+    HostCompanion.fromView(
+      CompanionSummaryView.fromJson({
+        'companion_id': id,
+        'display_name': name,
+        'kind': 'conversational',
+        'lifecycle_state': 'active',
+        'revision': 4,
+        'created_at': '2026-08-01T00:00:00+00:00',
+        'updated_at': '2026-08-01T00:00:00+00:00',
+        'running': true,
+        'last_active_at': '2026-08-26T09:30:00+00:00',
       }),
     );
 

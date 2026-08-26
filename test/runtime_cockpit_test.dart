@@ -87,19 +87,31 @@ HostHome _home({String name = '小忆', String? companionId = 'cmp-1'}) =>
         'contract_version': '1',
         'owner_display_name': 'Manson',
         'owner_revision': 3,
-        'answering': companionId == null
-            ? null
-            : {
-                'companion_id': companionId,
-                'display_name': name,
-                'lifecycle_state': 'active',
-                'revision': 4,
-                'has_face': false,
-                'persona_chapter': '第 2 章 · 我发现你不喜欢被打断',
-                'memory': '记着 12 条',
-                'persona_genome_id': 'genome_2',
-              },
-        'companions': {'total': 1, 'ready': 1, 'waiting': 0, 'put_away': 0},
+        'companions': companionId == null
+            ? <Map<String, dynamic>>[]
+            : [
+                {
+                  'companion_id': companionId,
+                  'display_name': name,
+                  'kind': 'conversational',
+                  'lifecycle_state': 'active',
+                  'revision': 4,
+                  'created_at': '2026-08-01T00:00:00+00:00',
+                  'updated_at': '2026-08-01T00:00:00+00:00',
+                  'running': true,
+                  'last_active_at': '2026-08-26T09:30:00+00:00',
+                },
+              ],
+        'default_companion_id': companionId,
+        'runtime_unavailable': '',
+        // The Owner's, not any one Eidolon's.
+        'memory': '记着 12 条',
+        'companion_counts': {
+          'total': companionId == null ? 0 : 1,
+          'ready': companionId == null ? 0 : 1,
+          'waiting': 0,
+          'put_away': 0,
+        },
         'devices': {'total': 1, 'ready': 1, 'waiting': 0, 'put_away': 0},
         'machine_attention': <String>[],
         'unavailable': <String, String>{},
@@ -146,9 +158,14 @@ void main() {
     expect(find.byKey(const Key('cockpit-sovereign-domain')), findsOneWidget);
     expect(find.text('Manson'), findsOneWidget);
     expect(find.text('小忆'), findsOneWidget);
-    // Words, not identifiers: which chapter it is on and how much it remembers,
-    // where a genome version and a realm id used to be.
-    expect(find.text('第 2 章 · 我发现你不喜欢被打断'), findsOneWidget);
+    // What the cockpit is about is the runtime, so the line under the name is
+    // its runtime state — and unknown is said rather than shown as stopped.
+    // Which chapter its persona is on is a fact about the Eidolon and lives on
+    // the Eidolon's own page; here it only ever described whichever one
+    // happened to answer.
+    expect(find.text('主机正在运行它'), findsOneWidget);
+    // The memory is the Owner's — one Realm per person — where this used to
+    // read it off the promoted Companion.
     expect(find.text('记着 12 条'), findsOneWidget);
     expect(find.text('esp-box-3'), findsOneWidget);
     expect(find.text('已附体'), findsNWidgets(2));

@@ -224,17 +224,36 @@ Map<String, dynamic> _homeAnswer(_OwnerName ownerName) => {
       'contract_version': '1',
       'owner_display_name': ownerName.value,
       'owner_revision': 3,
-      'answering': {
-        'companion_id': 'companion_primary',
-        'display_name': '小忆',
-        'lifecycle_state': 'active',
-        'revision': 4,
-        'has_face': false,
-        'persona_chapter': '第 1 章 · 它刚来的样子',
-        'memory': '还没记下什么',
-        'persona_genome_id': 'genome_origin',
-      },
-      'companions': {'total': 1, 'ready': 1, 'waiting': 0, 'put_away': 0},
+      // A list, and two of them running at once — the case the old shape could
+      // not express, because it carried one promoted Companion.
+      'companions': [
+        {
+          'companion_id': 'companion_primary',
+          'display_name': '小忆',
+          'kind': 'conversational',
+          'lifecycle_state': 'active',
+          'revision': 4,
+          'created_at': '2026-08-01T00:00:00+00:00',
+          'updated_at': '2026-08-01T00:00:00+00:00',
+          'running': true,
+          'last_active_at': '2026-08-26T09:30:00+00:00',
+        },
+        {
+          'companion_id': 'companion_second',
+          'display_name': '阿力',
+          'kind': 'conversational',
+          'lifecycle_state': 'active',
+          'revision': 2,
+          'created_at': '2026-08-02T00:00:00+00:00',
+          'updated_at': '2026-08-02T00:00:00+00:00',
+          'running': true,
+          'last_active_at': '2026-08-26T09:20:00+00:00',
+        },
+      ],
+      'default_companion_id': 'companion_primary',
+      'runtime_unavailable': '',
+      'memory': '还没记下什么',
+      'companion_counts': {'total': 2, 'ready': 2, 'waiting': 0, 'put_away': 0},
       'devices': {'total': 0, 'ready': 0, 'waiting': 0, 'put_away': 0},
       'machine_attention': <String>[],
       'unavailable': <String, String>{},
@@ -559,9 +578,13 @@ void main() {
     expect(find.byKey(const Key('local-connection-error')), findsNothing);
     expect(find.byKey(const Key('home-error')), findsOneWidget);
     expect(find.textContaining('概览暂时读不到'), findsOneWidget);
-    // The Host card carries the Eidolon as one row now; what it has been and
-    // what is connected to it live on its own page.
-    expect(find.text('已创建'), findsNWidgets(2));
+    // The home read failed, so there are no Eidolon rows to draw — and the
+    // card says the overview could not be read rather than drawing rows full of
+    // guesses. What it must not do is invent a state: 「运行中」 used to appear
+    // here whenever a default Companion existed, which was true even when this
+    // very read had failed.
+    expect(find.textContaining('运行中'), findsNothing);
+    expect(find.byKey(const Key('no-companions-row')), findsNothing);
   });
 
   testWidgets('星图入口在 Owner 就绪后出现，且不取代运行驾驶舱', (tester) async {
@@ -878,22 +901,41 @@ void main() {
     await tester.tap(find.byKey(const Key('retry-home')));
     await tester.pumpAndSettle();
 
-    // The rows are named for what they are to a person, not for the parts
-    // they are built from: the Companion by its own name, and its persona by
-    // the thing someone actually wonders about — how it has changed.
+    // One row per Eidolon, each by its own name. Not one promoted with the rest
+    // reduced to a count: this is the Owner's screen, and it is about their
+    // Eidolons.
     expect(find.text('小忆'), findsOneWidget);
-    expect(find.textContaining('第 1 章 · 它刚来的样子'), findsOneWidget);
-    expect(find.byKey(const Key('workspace-companion')), findsOneWidget);
+    expect(find.text('阿力'), findsOneWidget);
+    expect(
+      find.byKey(const Key('home-companion-companion_primary')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('home-companion-companion_second')),
+      findsOneWidget,
+    );
+    // **Both are running**, which the old shape could not say — and the one
+    // that replies unaddressed is marked rather than promoted.
+    expect(find.text('在运行'), findsNWidgets(2));
+    expect(find.textContaining('没指名时由它回答'), findsOneWidget);
+    // What each Eidolon has been through is on its own page, not here: on this
+    // card it could only ever describe whichever one answered.
+    expect(find.textContaining('第 1 章'), findsNothing);
     expect(find.textContaining('genome'), findsNothing);
-    // Named for what it is to the person, not for the subsystem that holds
-    // it — and never by the realm identifier, which nobody can act on.
+    // The memory row is the *Owner's*: one Realm per person, every Eidolon
+    // reading it through an audience. It used to be labelled 它的记忆 and
+    // describe whichever Companion answered.
     expect(find.text('Memory Workspace'), findsNothing);
-    expect(find.text('它的记忆'), findsOneWidget);
+    expect(find.text('你的记忆'), findsOneWidget);
+    expect(find.text('它的记忆'), findsNothing);
     expect(find.textContaining('realm_primary'), findsNothing);
     // The genome version used to be printed here. It said nothing to the
     // person it was printed at, and what it stood for now has a page.
     expect(find.textContaining('v2'), findsNothing);
-    expect(find.text('运行中'), findsNWidgets(2));
+    // 「运行中」 is gone from this card entirely. It was printed whenever the
+    // Owner had a default Companion — a routing setting rendered as a runtime
+    // fact — on two rows that were not even about the same thing.
+    expect(find.text('运行中'), findsNothing);
     expect(find.byKey(const Key('home-error')), findsNothing);
     expect(find.text('我的 Eidolon'), findsOneWidget);
     await tester.tap(find.byKey(const Key('finish-workspace-setup')));

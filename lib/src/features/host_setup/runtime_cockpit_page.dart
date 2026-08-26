@@ -187,7 +187,12 @@ class _SovereignDomain extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // The one that answers when nobody was named, which is what this panel is
+    // about — the routing setting itself, said as such. It is not "the Eidolon"
+    // and not "the running one": the list on the home screen says which are
+    // running, and several can be.
     final companion = home.answering;
+    final memory = home.memory;
     return Card(
       key: const Key('cockpit-sovereign-domain'),
       child: Padding(
@@ -211,16 +216,18 @@ class _SovereignDomain extends StatelessWidget {
                         : '还没有指定由谁回答',
                     style: theme.textTheme.titleMedium,
                   ),
-                  if (companion?.personaChapter.isNotEmpty == true)
+                  if (companion != null)
                     Text(
-                      // Which chapter it is on, not a version number: 「第 3 章 ·
-                      // 我发现你不喜欢被打断」 is the same fact in a form somebody
-                      // can act on.
-                      companion!.personaChapter,
+                      // What state the Host says it is in, which is what this
+                      // panel is about. Which chapter its persona is on is a
+                      // fact about the Eidolon rather than about the runtime,
+                      // and it lives on the Eidolon's own page — here it only
+                      // ever described whichever one happened to answer.
+                      _runtimeLine(companion),
                       style: theme.textTheme.bodySmall,
                     ),
                   const SizedBox(height: 12),
-                  _MemoryRow(memory: companion?.memory ?? ''),
+                  _MemoryRow(memory: memory),
                   const SizedBox(height: 12),
                   _DevicesRow(
                     devices: devices,
@@ -606,5 +613,22 @@ class _NotPublished extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+
+/// What the Host says about this Eidolon's runtime, in words.
+///
+/// Unknown is said out loud rather than shown as "not running": the panel used
+/// to call an Eidolon 运行中 whenever the Owner had a default one, which read a
+/// routing setting as a runtime state and could only ever describe one of them.
+String _runtimeLine(HostCompanion companion) {
+  switch (companion.running) {
+    case true:
+      return '主机正在运行它';
+    case false:
+      return '主机现在没有在运行它';
+    default:
+      return '运行状态读不到';
   }
 }
