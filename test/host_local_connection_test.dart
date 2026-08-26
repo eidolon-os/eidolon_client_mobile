@@ -588,10 +588,11 @@ void main() {
     expect(find.byKey(const Key('no-companions-row')), findsNothing);
   });
 
-  testWidgets('星图入口在 Owner 就绪后出现，且不取代运行驾驶舱', (tester) async {
-    // 两个入口并存是刻意的：驾驶舱的 vitals/服务/动态来自会应答的端点，而星图的
-    // 运行 lane 还没有 producer。用一屏大部分「读不到」的图换掉它，是把退步装成
-    // 进展。§3.2 的替换等运行 lane 落地。
+  testWidgets('Owner 就绪后只有两个入口：驾驶舱与主机运行状态', (tester) async {
+    // 2026-08-27：四个变两个。原先这条测试的名字是「不取代运行驾驶舱」，理由是
+    // 星图的运行 lane 还没有 producer，用一屏大部分「读不到」的图换掉一屏会应答
+    // 的，是把退步装成进展。那个前提已经不成立（§7.9），所以替换发生了，而分法是
+    // §3.2 一直在论证的那条：域看的一块，机器读和操作的一块。
     await tester.binding.setSurfaceSize(const Size(900, 1800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -613,7 +614,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('open-constellation')), findsOneWidget);
-    expect(find.byKey(const Key('open-runtime-cockpit')), findsOneWidget);
+    expect(find.text('驾驶舱'), findsOneWidget);
+    expect(find.byKey(const Key('open-host-runtime-status')), findsOneWidget);
+    expect(find.text('主机运行状态'), findsOneWidget);
+    // 那三块屏没了，它们的入口也不该留下。
+    expect(find.byKey(const Key('open-runtime-cockpit')), findsNothing);
+    expect(find.byKey(const Key('open-mission-control')), findsNothing);
+    expect(find.byKey(const Key('open-host-system-status')), findsNothing);
   });
 
   testWidgets('主机还没有主人时没有星图入口', (tester) async {
@@ -963,10 +970,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('open-host-system-status')));
+    await tester.tap(find.byKey(const Key('open-host-runtime-status')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('host-system-page')), findsOneWidget);
+    expect(find.byKey(const Key('host-runtime-status-page')), findsOneWidget);
+    // Host IP 和 reset epoch 是抄给别人的，所以它们在「出问题时要引用的」里面，
+    // 默认收起 —— 这一屏顶上是判词，不是一堆标识符。
+    await tester.tap(find.byKey(const Key('host-for-quoting')));
+    await tester.pumpAndSettle();
     expect(find.text('192.168.1.26'), findsOneWidget);
     expect(find.text('Reset epoch'), findsOneWidget);
     expect(find.text('已认领'), findsOneWidget);
@@ -1169,7 +1180,7 @@ void main() {
     expect(find.text('你好，Manson。'), findsOneWidget);
   });
 
-  testWidgets('the cockpit is reachable, not merely built', (tester) async {
+  testWidgets('both entries are reachable, not merely built', (tester) async {
     // A page nothing links to is the same fault as a module with no route:
     // present, working, invisible. This has been shipped twice this week in
     // other places, so the entry gets its own assertion rather than being
@@ -1195,14 +1206,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('open-runtime-cockpit')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('open-runtime-cockpit')));
+    // The machine, in words.
+    await tester.tap(find.byKey(const Key('open-host-runtime-status')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('host-runtime-status-page')), findsOneWidget);
+    // Its verdict is the first thing on it, and it is drawn before anything
+    // else has a chance to claim 正常.
+    expect(find.byKey(const Key('host-runtime-verdict')), findsOneWidget);
+
+    await tester.pageBack();
     await tester.pumpAndSettle();
 
-    expect(find.text('运行驾驶舱'), findsOneWidget);
-    // The sovereign domain is the reason this screen exists; if the Workspace
-    // is ready it has to be drawn.
-    expect(find.byKey(const Key('cockpit-sovereign-domain')), findsOneWidget);
+    // The domain, as a picture. It reads its own three authorities, so it only
+    // has to be *reachable* here — what it draws is asserted where it lives.
+    expect(find.byKey(const Key('open-constellation')), findsOneWidget);
   });
 
   testWidgets('the roster is reachable, not merely built', (tester) async {

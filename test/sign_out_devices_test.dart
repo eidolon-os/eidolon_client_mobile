@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/features/host_setup/host_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_product_session.dart';
-import 'package:eidolon_client_mobile/src/features/host_setup/host_system_page.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/host_runtime_status_page.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_discovery.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
 import 'support/setup_fixtures.dart';
@@ -72,7 +72,7 @@ Future<void> _pump(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
-      home: HostSystemPage(
+      home: HostRuntimeStatusPage(
         host: _host(),
         connection: _connection(),
         revokeRuntimeSessions: revoke,

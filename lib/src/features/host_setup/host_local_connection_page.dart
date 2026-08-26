@@ -21,14 +21,12 @@ import '../../management/persona_edit_page.dart';
 import '../../generated/management_v1.dart';
 import 'companion_page.dart';
 import 'managed_controllers_page.dart';
-import 'mission_control_page.dart';
 import 'home_models.dart';
-import 'runtime_cockpit_page.dart';
 import '../../management/conversations_screen.dart';
 import '../../management/tasks_screen.dart';
 import 'recollections_page.dart';
 import 'host_product_session.dart';
-import 'host_system_page.dart';
+import 'host_runtime_status_page.dart';
 import 'local_api_discovery.dart';
 import 'network_changes.dart';
 import 'workspace_models.dart';
@@ -281,10 +279,9 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               // default one.
               isDefault:
                   current.companionId == _controller.home?.defaultCompanionId,
-              onChangeLifecycle:
-                  _capabilityHold('companion.archive') == null
-                      ? () => _changeLifecycle(current)
-                      : null,
+              onChangeLifecycle: _capabilityHold('companion.archive') == null
+                  ? () => _changeLifecycle(current)
+                  : null,
               onRename: () => _renameCompanion(current),
               onOpenPersona: () => _openPersonaEdit(current),
               onOpenRecollections: () => _openRecollections(current),
@@ -312,8 +309,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             load: ({String? cursor}) => _controller.roster(cursor: cursor),
             // The same page the home rows open. One Eidolon, one page,
             // wherever it was tapped from.
-            openCompanion: (row) =>
-                _openCompanion(HostCompanion.fromView(row)),
+            openCompanion: (row) => _openCompanion(HostCompanion.fromView(row)),
             loadContext: _controller.managementContext,
             setDefaultCompanion: (companionId, expectedRevision) =>
                 _controller.setDefaultCompanion(
@@ -365,7 +361,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
           builder: (_) => MemoryLibraryScreen(
             load: _controller.memoryLibrary,
             loadContext: _controller.managementContext,
-            previewForget: (target) => _controller.previewForget(target: target),
+            previewForget: (target) =>
+                _controller.previewForget(target: target),
             confirmForget: (token) =>
                 _controller.confirmForget(confirmationToken: token),
             loadDay: (since) => _controller.memoryEntries(since: since),
@@ -529,20 +526,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         ),
       );
 
-  /// What this Host is doing, and what happened on it lately.
-  Future<void> _openMissionControl() => Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => MissionControlPage(
-            loadActivity: _controller.activity,
-            listServices: _controller.listHostServices,
-            // What the Host already said, rather than asking again: this
-            // screen is a place to look, not a second opinion.
-            devices: _controller.devices,
-            devicesError: _controller.devicesError,
-          ),
-        ),
-      );
-
   /// The sovereign domain of this Host, on one screen.
   ///
   /// The same information model as the console's cockpit — Owner, Companion,
@@ -580,20 +563,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                 ),
               ).read,
             ),
-          ),
-        ),
-      );
-
-  Future<void> _openRuntimeCockpit() => Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => RuntimeCockpitPage(
-            home: _controller.home,
-            loadVitals: _controller.hostVitals,
-            listServices: _controller.listHostServices,
-            loadActivity: _controller.activity,
-            listControllers: _controller.listControllers,
-            devices: _controller.devices,
-            devicesError: _controller.devicesError,
           ),
         ),
       );
@@ -640,12 +609,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               connection: connection,
               // Offered only once there is an Owner for the history to belong
               // to. Before that there is nothing this screen could be about.
-              onOpenActivity: (_controller.workspace?.isReady ?? false)
-                  ? _openMissionControl
-                  : null,
-              onOpenCockpit: (_controller.workspace?.isReady ?? false)
-                  ? _openRuntimeCockpit
-                  : null,
               // Gated on this Host having an Owner, not on the Workspace setup
               // read — which is what it was, and a live Host disproved it: Owner
               // claimed, session valid, `/setup/workspace` failing, and the star
@@ -658,12 +621,16 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                       : null,
               onOpenSystem: () => Navigator.of(context).push<void>(
                 MaterialPageRoute(
-                  builder: (_) => HostSystemPage(
+                  builder: (_) => HostRuntimeStatusPage(
                     host: _controller.host,
                     connection: connection,
+                    readVitals: _controller.hostVitals,
                     listServices: _controller.listHostServices,
                     changeService: _controller.changeHostService,
-                    readVitals: _controller.hostVitals,
+                    loadActivity: _controller.activity,
+                    listControllers: _controller.listControllers,
+                    devices: _controller.devices,
+                    devicesError: _controller.devicesError,
                     revokeRuntimeSessions: _controller.revokeRuntimeSessions,
                     // A destructive action on a Host that cannot perform it is
                     // the clearest case for saying so rather than offering it.
@@ -780,8 +747,6 @@ class _ConnectedHostCard extends StatelessWidget {
   const _ConnectedHostCard({
     required this.connection,
     required this.onOpenSystem,
-    this.onOpenActivity,
-    this.onOpenCockpit,
     this.onOpenConstellation,
   });
 
@@ -789,11 +754,6 @@ class _ConnectedHostCard extends StatelessWidget {
   final VoidCallback onOpenSystem;
 
   /// Null until this Host has an Owner whose devices could have a history.
-  final VoidCallback? onOpenActivity;
-
-  /// Null for the same reason: there is no domain to draw before there is an
-  /// Owner for it to belong to.
-  final VoidCallback? onOpenCockpit;
 
   /// The star map. Offered only once there is an Owner: a sovereign domain with
   /// no Owner has nothing to draw.
@@ -834,38 +794,24 @@ class _ConnectedHostCard extends StatelessWidget {
               Text('Controller：${connection.controllerId}'),
               Text('本次管理会话有效至 ${_localTime(connection.sessionExpiresAt)}'),
               const SizedBox(height: 12),
-              if (onOpenCockpit case final open?) ...[
-                FilledButton.icon(
-                  key: const Key('open-runtime-cockpit'),
-                  onPressed: open,
-                  icon: const Icon(Icons.dashboard_outlined),
-                  label: const Text('运行驾驶舱'),
-                ),
-                const SizedBox(height: 8),
-              ],
+              // Two entries, and the split is the one §3.2 argued for: the
+              // sovereign domain (who, and what is happening for them) is a
+              // picture; this machine (how it is, and what can be done about
+              // it) is text. Four buttons read three of the same sources.
               if (onOpenConstellation case final open?) ...[
-                FilledButton.tonalIcon(
+                FilledButton.icon(
                   key: const Key('open-constellation'),
                   onPressed: open,
                   icon: const Icon(Icons.hub_outlined),
-                  label: const Text('星图'),
-                ),
-                const SizedBox(height: 8),
-              ],
-              if (onOpenActivity case final open?) ...[
-                FilledButton.tonalIcon(
-                  key: const Key('open-mission-control'),
-                  onPressed: open,
-                  icon: const Icon(Icons.timeline),
-                  label: const Text('主机动态'),
+                  label: const Text('驾驶舱'),
                 ),
                 const SizedBox(height: 8),
               ],
               OutlinedButton.icon(
-                key: const Key('open-host-system-status'),
+                key: const Key('open-host-runtime-status'),
                 onPressed: onOpenSystem,
                 icon: const Icon(Icons.monitor_heart_outlined),
-                label: const Text('查看系统状态'),
+                label: const Text('主机运行状态'),
               ),
             ],
           ),
@@ -1167,9 +1113,8 @@ class _WorkspaceCard extends StatelessWidget {
               openTooltip: '看全部',
               icon: Icons.groups_2_outlined,
               label: '你所有的 Eidolon',
-              statusLabel: home == null
-                  ? '可查看'
-                  : '${home.companionCounts.total} 个',
+              statusLabel:
+                  home == null ? '可查看' : '${home.companionCounts.total} 个',
               detail: '新建一个，或者改由谁来应答',
             ),
             _WorkspaceResourceStatus(
@@ -1402,7 +1347,6 @@ String _localTime(DateTime value) {
   String two(int number) => number.toString().padLeft(2, '0');
   return '${two(local.hour)}:${two(local.minute)}';
 }
-
 
 /// The edit page plus the request state it cannot own.
 ///

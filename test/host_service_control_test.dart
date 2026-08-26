@@ -1,7 +1,7 @@
 import 'package:eidolon_client_mobile/src/features/host_setup/host_models.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_product_session.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_service_models.dart';
-import 'package:eidolon_client_mobile/src/features/host_setup/host_system_page.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/host_runtime_status_page.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_discovery.dart';
 
@@ -75,7 +75,7 @@ Future<void> _pumpSystemPage(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
-      home: HostSystemPage(
+      home: HostRuntimeStatusPage(
         host: _host(),
         connection: _connection(),
         listServices: listServices,
@@ -84,6 +84,13 @@ Future<void> _pumpSystemPage(
     ),
   );
   await tester.pumpAndSettle();
+  // 底座 is one line until it is opened: anything wrong is already in the
+  // verdict above, with its restart. This is the browsing path.
+  final floor = find.byKey(const Key('host-floor-line'));
+  if (floor.evaluate().isNotEmpty) {
+    await tester.tap(floor);
+    await tester.pumpAndSettle();
+  }
 }
 
 void main() {
@@ -113,7 +120,7 @@ void main() {
       },
     );
 
-    expect(find.text('主机服务'), findsOneWidget);
+    expect(find.text('底座'), findsOneWidget);
     expect(find.text('eidolon-hub'), findsOneWidget);
 
     await tester.tap(find.text('重启'));
@@ -144,9 +151,15 @@ void main() {
       },
     );
 
+    // The reason lives in the verdict, once — not repeated on the 底座 line.
     expect(find.textContaining('主机服务不可达'), findsOneWidget);
 
-    await tester.tap(find.text('重试'));
+    // One retry for the whole page, in the place a reader looks for it. A
+    // verdict computed from every source makes "read this Host again" one
+    // action rather than five buttons.
+    await tester.tap(find.byKey(const Key('host-runtime-status-refresh')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('host-floor-line')));
     await tester.pumpAndSettle();
 
     expect(find.text('eidolon-hub'), findsOneWidget);
@@ -161,7 +174,11 @@ void main() {
       ),
     );
 
-    expect(find.text('失败'), findsOneWidget);
+    // Said twice on purpose once 底座 is open: the verdict names what needs
+    // attention, the row shows the service's own state. A reader who opened the
+    // list is looking at the same fact from the other end.
+    expect(find.text('失败'), findsWidgets);
+    // And with no changer, nothing offers to restart it — in neither place.
     expect(find.text('重启'), findsNothing);
   });
 }
