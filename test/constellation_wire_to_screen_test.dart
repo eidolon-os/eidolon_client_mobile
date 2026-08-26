@@ -293,6 +293,32 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('读不到的 lane 在 inspector 里也说未知，不说 0/0', (tester) async {
+    final runtime = _runtimeGolden();
+    if (runtime == null) {
+      markTestSkipped('eidolon_sdk checkout 不在旁边');
+      return;
+    }
+    // 运行投影读不到 → 身体与活动都未知。inspector 曾经在同一屏上写 0/0 和 0 记录，
+    // 而卫星写着读不到 —— 两个数字都不是观测到的。
+    await _open(
+      tester,
+      _host(runtime: runtime, runtimeStatus: 503),
+      withRuntime: true,
+    );
+
+    await tester.tap(find.byType(CompanionPlanet).first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(find.text('0/0'), findsNothing);
+    expect(find.text('未知'), findsWidgets);
+    expect(find.text('读不到'), findsWidgets);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
   testWidgets('运行投影读不到：伙伴照画，只有运行态未知', (tester) async {
     final runtime = _runtimeGolden();
     if (runtime == null) {

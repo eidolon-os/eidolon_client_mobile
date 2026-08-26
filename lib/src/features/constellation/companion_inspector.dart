@@ -221,9 +221,17 @@ class _Overview extends StatelessWidget {
           children: [
             _Hero(
               label: '身体',
-              value: '${unit.onlineDevices}/${unit.devices.length}',
-              note: '在线',
-              tone: unit.onlineDevices > 0 ? CockpitTone.ok : CockpitTone.idle,
+              // 「0/0 在线」是一句断言。这条 lane 读不到的时候，卫星已经说了
+              // 「读不到」，而这里曾经在同一屏上说 0/0 —— 两个数字都不是观测到的。
+              value: unit.bodiesReadable
+                  ? '${unit.onlineDevices}/${unit.devices.length}'
+                  : '未知',
+              note: unit.bodiesReadable ? '在线' : '读不到',
+              tone: !unit.bodiesReadable
+                  ? CockpitTone.warn
+                  : unit.onlineDevices > 0
+                      ? CockpitTone.ok
+                      : CockpitTone.idle,
             ),
             _Hero(
               label: '记忆',
@@ -239,9 +247,19 @@ class _Overview extends StatelessWidget {
             ),
             _Hero(
               label: '活动',
-              value: '${active == 0 ? unit.activities.length : active}',
-              note: active == 0 ? '记录' : '进行中',
-              tone: active == 0 ? CockpitTone.idle : CockpitTone.live,
+              value: unit.activitiesReadable
+                  ? '${active == 0 ? unit.activities.length : active}'
+                  : '未知',
+              note: !unit.activitiesReadable
+                  ? '读不到'
+                  : active == 0
+                      ? '记录'
+                      : '进行中',
+              tone: !unit.activitiesReadable
+                  ? CockpitTone.warn
+                  : active == 0
+                      ? CockpitTone.idle
+                      : CockpitTone.live,
             ),
           ],
         ),
