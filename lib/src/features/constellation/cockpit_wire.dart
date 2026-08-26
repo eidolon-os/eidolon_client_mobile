@@ -340,6 +340,8 @@ CockpitSnapshot attachRecall(CockpitSnapshot snapshot) {
     latest.putIfAbsent(turn.companionId, () => turn);
   }
   return CockpitSnapshot(
+    // Carried through: this rebuilds a reading, it does not make one.
+    provenance: snapshot.provenance,
     generatedAt: snapshot.generatedAt,
     cursor: snapshot.cursor,
     defaultCompanionId: snapshot.defaultCompanionId,

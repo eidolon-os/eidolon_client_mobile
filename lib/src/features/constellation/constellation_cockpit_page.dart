@@ -132,13 +132,11 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
     }
     _wasActive = active;
     _snapshot.value = snapshot;
-    setState(() {
-      _observation = CockpitObservation(
-        state: ObservationState.live,
-        lastReadAt: snapshot.generatedAt,
-        cursor: _observation.cursor,
-      );
-    });
+    // Read from the feed, not invented here. Fabricating `live` on every
+    // snapshot clobbered the feed's own graded verdict: a reading where six of
+    // seven lanes came back unreadable was published as `degraded` and then
+    // overwritten, so the header said ONLINE over a screen full of 读不到.
+    setState(() => _observation = _feed.observation);
   }
 
   void _onFeedError(Object error) {
@@ -502,6 +500,7 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
                                       0,
                                     ),
                                     child: _ReadFailureStrip(
+                                      state: _observation.state,
                                       failure: failure,
                                       lastRead: _lastRead,
                                       onRetry: _refresh,
@@ -543,6 +542,7 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
                             Padding(
                               padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
                               child: _ReadFailureStrip(
+                                state: _observation.state,
                                 failure: failure,
                                 lastRead: _lastRead,
                                 onRetry: _refresh,
@@ -609,42 +609,67 @@ extension _FirstOrNull<T> on Iterable<T> {
 /// because the map is still the last thing that was true — but it says so, with
 /// the time of that reading, and it never lets the screen imply that a domain
 /// nobody could read is a domain where nothing is happening.
+/// Two different pieces of bad news, and they are not interchangeable.
+///
+/// `degraded` means the read landed and part of it came back unreadable: what is
+/// on screen is current, and some of it is unknown. `lost` means the reading
+/// itself stopped: what is on screen is a memory. This strip was written for
+/// `lost` only, and once the feed's graded verdict actually reached the screen
+/// it started telling a Host that answered five seconds ago that its map was
+/// stale — the same class of lie, pointed the other way.
 class _ReadFailureStrip extends StatelessWidget {
   const _ReadFailureStrip({
+    required this.state,
     required this.failure,
     required this.lastRead,
     required this.onRetry,
   });
 
+  final ObservationState state;
   final String failure;
   final DateTime? lastRead;
   final VoidCallback onRetry;
 
+  bool get _partial => state == ObservationState.degraded;
+
   @override
   Widget build(BuildContext context) => CockpitSlab(
         key: const Key('cockpit-read-failure'),
-        accent: Cockpit.magenta,
+        accent: _partial ? Cockpit.yellow : Cockpit.magenta,
         borderOpacity: 0.7,
-        fill: const Color(0xFF1A0413).withValues(alpha: 0.95),
+        fill: (_partial
+                ? const Color(0xFF191203)
+                : const Color(0xFF1A0413))
+            .withValues(alpha: 0.95),
         padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
         child: Row(
           children: [
-            const CockpitLed(color: Cockpit.bad, size: 7),
+            CockpitLed(
+              color: _partial ? Cockpit.yellow : Cockpit.bad,
+              size: 7,
+            ),
             const SizedBox(width: 9),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '读不到这台主机的运行投影',
-                    style: Cockpit.sans(size: 12.5, color: Cockpit.bad),
+                    _partial ? '这一屏有读不到的部分' : '读不到这台主机的运行投影',
+                    style: Cockpit.sans(
+                      size: 12.5,
+                      color: _partial ? Cockpit.yellow : Cockpit.bad,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    lastRead == null
-                        ? '屏幕上没有任何一次成功的读取。$failure'
-                        : '屏幕上是 ${formatClock(lastRead!)} 那一次读取的样子，'
-                            '不是现在。$failure',
+                    _partial
+                        ? '${lastRead == null ? '刚刚' : formatClock(lastRead!)}'
+                            ' 这一次读取成功了，但不完整。$failure。'
+                            '它们的状态是未知，不是正常。'
+                        : lastRead == null
+                            ? '屏幕上没有任何一次成功的读取。$failure'
+                            : '屏幕上是 ${formatClock(lastRead!)} 那一次读取的样子，'
+                                '不是现在。$failure',
                     style: Cockpit.mono(
                       size: 9.5,
                       weight: FontWeight.w600,

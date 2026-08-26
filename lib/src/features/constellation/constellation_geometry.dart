@@ -596,7 +596,17 @@ MoonFacts moonFacts(CompanionUnit unit, MoonKind kind) {
         empty: false,
       );
     case MoonKind.mem:
-      if (unit.realm.isEmpty) {
+      final realm = unit.realm;
+      if (realm == null) {
+        // Nobody asked. "无空间" would be a claim about this Eidolon's memory
+        // made out of a field the roster never carried.
+        return const MoonFacts(
+          value: '读不到',
+          tone: CockpitTone.warn,
+          empty: false,
+        );
+      }
+      if (realm.isEmpty) {
         return const MoonFacts(
           value: '无空间',
           tone: CockpitTone.off,

@@ -228,7 +228,14 @@ class _Overview extends StatelessWidget {
             _Hero(
               label: '记忆',
               value: memoryRealmStateLabel(unit.realm),
-              tone: unit.realm.isEmpty ? CockpitTone.idle : CockpitTone.ok,
+              // Three states, three tones: unread is a warning, none is idle,
+              // configured is ok. Folding unread into idle is what made a
+              // never-read realm look like a settled fact.
+              tone: switch (unit.realm) {
+                null => CockpitTone.warn,
+                '' => CockpitTone.idle,
+                _ => CockpitTone.ok,
+              },
             ),
             _Hero(
               label: '活动',
@@ -413,7 +420,8 @@ class _Memory extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final configured = unit.realm.isNotEmpty;
+    final realm = unit.realm;
+    final configured = realm != null && realm.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -441,7 +449,13 @@ class _Memory extends StatelessWidget {
               const SizedBox(width: 9),
               Expanded(
                 child: Text(
-                  configured ? '伙伴记忆域已连接' : '尚未开通记忆空间',
+                  realm == null
+                      // 「尚未开通」是一句关于这位伙伴的断言。没人问过的时候，
+                      // 这一屏欠的是一句「不知道」，而不是一个结论。
+                      ? '记忆空间读不到：这一屏还没有它的投影'
+                      : configured
+                          ? '伙伴记忆域已连接'
+                          : '尚未开通记忆空间',
                   style: Cockpit.sans(
                     size: 12,
                     weight: FontWeight.w700,
@@ -466,7 +480,14 @@ class _Memory extends StatelessWidget {
                   ? '—'
                   : unit.companion.writeDisposition
             ),
-            ('记忆域', configured ? compactId(unit.realm) : '未开通'),
+            (
+              '记忆域',
+              realm == null
+                  ? '未知'
+                  : configured
+                      ? compactId(realm)
+                      : '未开通'
+            ),
           ],
         ),
       ],

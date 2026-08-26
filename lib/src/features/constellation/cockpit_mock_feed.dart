@@ -1027,6 +1027,7 @@ class _MockWorld {
   var memoryReadable = true;
 
   CockpitSnapshot snapshot(StreamState state) => CockpitSnapshot(
+        provenance: CockpitProvenance.staged,
         generatedAt: DateTime.now(),
         ownerLane: const CockpitLane<CockpitOwner?>.ok(
           CockpitOwner(ownerId: 'owner-shenyi', displayName: '沈亦'),

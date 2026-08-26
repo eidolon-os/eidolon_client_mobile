@@ -154,8 +154,39 @@ void main() {
     expect(find.byType(CompanionPlanet), findsNWidgets(2));
     expect(find.textContaining('读不到'), findsWidgets);
 
+    // 记忆域这个字段 roster 根本不带，所以这一屏欠一句「不知道」——
+    // 「无空间」/「未开通」是关于这位伙伴的断言，没人问过就不能下。
+    expect(find.text('无空间'), findsNothing);
+
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
+  });
+
+  testWidgets('主机自己答的一屏不能被标成 MOCK', (tester) async {
+    await _open(tester, _host());
+
+    // 这个角标以前是写死的 —— 于是第一次真实读取一落地就被贴上了演示的标签。
+    expect(find.text('MOCK'), findsNothing);
+  });
+
+  testWidgets('七条 lane 里六条读不到，顶栏就不许说 ONLINE', (tester) async {
+    await _open(tester, _host());
+
+    // 页面曾经在每次 snapshot 上自己造一个 live，把 feed 评定的 degraded 盖掉，
+    // 于是满屏「读不到」的上方写着 ONLINE。
+    expect(find.text('ONLINE'), findsNothing);
+    expect(find.text('UNSTABLE'), findsOneWidget);
+  });
+
+  testWidgets('读到一半不等于读到的是旧的：不许说「不是现在」', (tester) async {
+    await _open(tester, _host());
+
+    // degraded 和 lost 是两条不同的坏消息。这一次读取五秒前刚成功，身份是现在的，
+    // 只有运行态未知 —— 说成「屏幕上是那一次读取的样子，不是现在」是同一类谎的反面。
+    expect(find.byKey(const Key('cockpit-read-failure')), findsOneWidget);
+    expect(find.text('这一屏有读不到的部分'), findsOneWidget);
+    expect(find.textContaining('不是现在'), findsNothing);
+    expect(find.textContaining('未知，不是正常'), findsOneWidget);
   });
 
   testWidgets('主机 500：说出原因并给重试，不是永远转圈', (tester) async {

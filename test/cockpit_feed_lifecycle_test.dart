@@ -25,6 +25,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// they keep holding when the transport changes.
 
 CockpitSnapshot _snapshot() => CockpitSnapshot(
+      provenance: CockpitProvenance.host,
       generatedAt: DateTime.utc(2026, 8, 26, 4, 12),
       ownerLane: const CockpitLane<CockpitOwner?>.ok(
         CockpitOwner(ownerId: 'owner-1', displayName: '沈亦'),

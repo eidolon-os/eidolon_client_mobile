@@ -71,6 +71,7 @@ class CockpitComposer {
 
     return attachRecall(
       CockpitSnapshot(
+        provenance: CockpitProvenance.host,
         generatedAt: runtime.observedAt,
         cursor: runtime.cursor,
         ownerLane: CockpitLane<CockpitOwner?>.ok(

@@ -89,26 +89,31 @@ class CockpitHeader extends StatelessWidget {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 6),
                           // Said in the chrome, not only in the event rows: a
                           // staged world must never be able to pass for the
-                          // Host's own word.
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: Cockpit.yellow.withValues(alpha: 0.55),
+                          // Host's own word. Driven by the reading's own
+                          // provenance — printed unconditionally, it did the
+                          // opposite, and labelled a real Host as staged.
+                          if (snapshot.provenance == CockpitProvenance.staged)
+                            ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: Cockpit.yellow.withValues(alpha: 0.55),
+                                ),
+                              ),
+                              child: Text(
+                                'MOCK',
+                                style: Cockpit.mono(
+                                    size: 7.5, color: Cockpit.yellow),
                               ),
                             ),
-                            child: Text(
-                              'MOCK',
-                              style: Cockpit.mono(
-                                  size: 7.5, color: Cockpit.yellow),
-                            ),
-                          ),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 3),

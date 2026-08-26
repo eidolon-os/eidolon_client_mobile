@@ -276,7 +276,7 @@ class CockpitCompanion {
     required this.status,
     this.kind = 'companion',
     this.genomeId = '',
-    this.realmId = '',
+    this.realmId,
     this.recallHits,
     this.runners = '',
     this.writeDisposition = '',
@@ -287,7 +287,9 @@ class CockpitCompanion {
   final String status;
   final String kind;
   final String genomeId;
-  final String realmId;
+  /// The Companion's memory realm: an id, `''` for "has none", and null for
+  /// "nobody asked". The three are different answers and the screen says which.
+  final String? realmId;
   final int? recallHits;
   final String runners;
   final String writeDisposition;
@@ -389,6 +391,16 @@ class CockpitMemory {
 /// "nobody could tell us about jobs". The plain getters return the payload for
 /// the many places that only need the facts; the `*Lane` fields are for the
 /// places that have to say something when a lane did not read.
+/// Who observed a reading. Not a style flag: it decides whether the chrome is
+/// allowed to call a reading staged.
+enum CockpitProvenance {
+  /// A Host answered.
+  host,
+
+  /// A staged world, which must never be able to pass for a Host's own word.
+  staged,
+}
+
 class CockpitSnapshot {
   const CockpitSnapshot({
     required this.generatedAt,
@@ -408,6 +420,7 @@ class CockpitSnapshot {
     this.traceId = '',
     this.cursor,
     this.defaultCompanionId,
+    required this.provenance,
   });
 
   final DateTime generatedAt;
@@ -422,6 +435,15 @@ class CockpitSnapshot {
   final CockpitLane<CockpitMemory?> memoryLane;
   final StreamState streamState;
   final String traceId;
+
+  /// Who observed this reading: a Host, or a staged world.
+  ///
+  /// Required, and carried by the data rather than assumed by the chrome. The
+  /// header used to print a hardcoded `MOCK` badge, written when the mock was
+  /// the only feed there was — so the first real reading of a real Host arrived
+  /// on screen labelled as staged. A screen may only say where a fact came from
+  /// if the fact says so itself.
+  final CockpitProvenance provenance;
 
   /// Where the event stream should resume: the audit index's own total order.
   final int? cursor;
@@ -499,7 +521,7 @@ class CompanionUnit {
   String get name => companion.displayName.isEmpty
       ? companion.companionId
       : companion.displayName;
-  String get realm => companion.realmId;
+  String? get realm => companion.realmId;
   String get genome => companion.genomeId;
 
   CockpitActivity? get activeActivity =>
@@ -627,7 +649,15 @@ CockpitTone companionLifecycleTone(String state) => switch (state) {
 
 String genomeStateLabel(String genomeId) => genomeId.isEmpty ? '未绑定' : '已绑定';
 
-String memoryRealmStateLabel(String realmId) => realmId.isEmpty ? '未开通' : '已配置';
+/// Three answers, not two. `null` is not the same as none: the roster carries
+/// existence and identity, and the realm is neither — so until a projection
+/// says, this reads 未知 rather than telling the Owner their Eidolon has no
+/// memory.
+String memoryRealmStateLabel(String? realmId) => realmId == null
+    ? '未知'
+    : realmId.isEmpty
+        ? '未开通'
+        : '已配置';
 
 String formatLatency(int? ms) {
   if (ms == null) return '—';

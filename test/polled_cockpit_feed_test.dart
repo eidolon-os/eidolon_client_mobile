@@ -8,6 +8,7 @@ CockpitSnapshot _snapshot({
   DateTime? at,
 }) =>
     CockpitSnapshot(
+      provenance: CockpitProvenance.host,
       generatedAt: at ?? DateTime.utc(2026, 8, 24, 5, 16),
       ownerLane: const CockpitLane<CockpitOwner?>.ok(
         CockpitOwner(ownerId: 'owner-1', displayName: '沈亦'),
