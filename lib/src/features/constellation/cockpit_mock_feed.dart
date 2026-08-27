@@ -624,6 +624,15 @@ class _MockWorld {
         latencyMs: null,
         memoryHits: 0,
         deviceId: deviceId,
+        // Where the time went. Demo numbers, but the same shape a Host sends —
+        // and `first_delta` unmeasured, because this turn has not answered yet.
+        breakdown: const [
+          CockpitTurnPhase(key: 'guard', label: '检查这句话能不能处理', latencyMs: 6),
+          CockpitTurnPhase(key: 'triage', label: '判断这轮怎么走', latencyMs: 14),
+          CockpitTurnPhase(key: 'compile', label: '组装上下文', latencyMs: 92),
+          CockpitTurnPhase(key: 'first_delta', label: '等到第一个字'),
+          CockpitTurnPhase(key: 'output', label: '把话说完'),
+        ],
         stages: const [
           CockpitTurnStage(key: 'input', label: '输入', status: 'running'),
           CockpitTurnStage(
@@ -675,6 +684,7 @@ class _MockWorld {
         latencyMs: latencyMs ?? turn.latencyMs,
         memoryHits: turn.memoryHits,
         toolNames: turn.toolNames,
+        breakdown: turn.breakdown,
         deviceId: turn.deviceId,
         stages: turn.stages
             .map(

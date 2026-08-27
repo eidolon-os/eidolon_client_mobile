@@ -267,6 +267,16 @@ CockpitTurn _turn(Map<String, Object?> json) => CockpitTurn(
           latencyMs: _intOrNull(stage['latency_ms']),
         ),
       ),
+      // No status to read: a phase either was measured or was not reached, and
+      // the latency being null says which.
+      breakdown: _items(
+        json['breakdown'],
+        (phase) => CockpitTurnPhase(
+          key: _string(phase['key'], 'breakdown.key 缺失'),
+          label: _string(phase['label'], 'breakdown.label 缺失'),
+          latencyMs: _intOrNull(phase['latency_ms']),
+        ),
+      ),
     );
 
 CockpitJob _job(Map<String, Object?> json) => CockpitJob(

@@ -233,13 +233,16 @@ class CockpitRail extends StatelessWidget {
                     label: '身体在线',
                     value: '$onlineDevices/${devices.length}',
                   ),
+                  // The active count alone. The denominator used to be
+                  // `activities.length`, which is a page rather than a total —
+                  // the Host bounds that list per companion — so it read as
+                  // "this Owner has had 12 activities, ever" and looked stuck at
+                  // 12 no matter how much was said.
                   _RailRow(
                     glyph: '⚡',
                     color: Cockpit.magenta,
                     label: '活动链路',
-                    value:
-                        '${snapshot.activities.where(isActiveActivity).length}'
-                        '/${snapshot.activities.length}',
+                    value: '${snapshot.activities.where(isActiveActivity).length}',
                   ),
                   _RailRow(
                     glyph: '◉',
@@ -572,9 +575,14 @@ class _CockpitDeckSheetState extends State<CockpitDeckSheet> {
   @override
   Widget build(BuildContext context) {
     final snapshot = widget.snapshot;
+    // A count is shown when it is a total and left off when it is a page.
+    // Activities and events are bounded tails — the Host trims them and says so
+    // through the lane's own `truncated` — so a number beside them is a claim
+    // about history that neither list is making. Services is every service this
+    // Host declares, so its count is the whole of it.
     final tabs = <String>[
-      '活动 ${snapshot.activities.length}',
-      '事件 ${snapshot.events.length}',
+      '活动',
+      '事件',
       '底座 ${snapshot.services.length}',
     ];
     return DecoratedBox(

@@ -318,6 +318,33 @@ void main() {
     await _close(tester);
   });
 
+  testWidgets('打开一条活动，能看到这轮的时间去哪了', (tester) async {
+    // 以前的 admin web 点开一个 companion，能看到每一轮的详细过程。手机上原来
+    // 只有节点链路，没有耗时 —— 而 guard/triage/compile/首字/输出 这些数字一直
+    // 由 Agent 量好写进 trace，只是没人读。
+    final feed = MockCockpitFeed(autoplay: false);
+    addTearDown(feed.dispose);
+    await _openCockpit(tester, feed);
+
+    feed.step();
+    await _settle(tester);
+    await tester.tap(find.text('展开 ⌃'));
+    await _settle(tester);
+    await tester.tap(find.text('活动'));
+    await _settle(tester);
+
+    final activity = feed.snapshot!.activities.firstWhere(isActiveActivity);
+    await tester.tap(find.textContaining(activity.summary).first);
+    await _settle(tester);
+
+    expect(find.textContaining('时间去哪了'), findsOneWidget);
+    expect(find.text('组装上下文'), findsOneWidget);
+    // 没量到的那一段说「没走到」，不是 0 —— 0 会读成"这一步瞬间完成"。
+    expect(find.text('没走到'), findsWidgets);
+
+    await _close(tester);
+  });
+
   testWidgets('演示数据被标成 MOCK，不假装是主机说的', (tester) async {
     final feed = MockCockpitFeed(autoplay: false);
     addTearDown(feed.dispose);
@@ -357,11 +384,14 @@ void main() {
     await tester.tap(find.text('展开 ⌃'));
     await _settle(tester);
 
-    expect(find.textContaining('活动 '), findsOneWidget);
-    expect(find.textContaining('事件 '), findsOneWidget);
+    // 活动与事件不带数字：那两个列表是主机裁过的一页，不是一个总数。带上数字
+    // 就成了对历史的断言，而「12」曾经因此看起来永远卡在 12。底座是这台主机声明
+    // 的全部服务，所以它的数字就是全部。
+    expect(find.text('活动'), findsOneWidget);
+    expect(find.text('事件'), findsOneWidget);
     expect(find.textContaining('底座 '), findsOneWidget);
 
-    await tester.tap(find.textContaining('事件 ').last);
+    await tester.tap(find.text('事件'));
     await _settle(tester);
     expect(find.textContaining('客厅音箱 加入语音房间'), findsWidgets);
 

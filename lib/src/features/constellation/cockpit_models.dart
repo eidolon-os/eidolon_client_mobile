@@ -179,6 +179,25 @@ class CockpitTurnStage {
   final int? latencyMs;
 }
 
+/// One measured stretch inside a turn: where the time went.
+///
+/// Not a [CockpitTurnStage]. A stage is a place on the map that the darts and
+/// the wavefront point at, which is why its keys are a controlled vocabulary; a
+/// phase here is a number read in a list and nothing aims at one. A null
+/// latency means the turn never reached it — different from zero, which would
+/// read as a step that took no time.
+class CockpitTurnPhase {
+  const CockpitTurnPhase({
+    required this.key,
+    required this.label,
+    this.latencyMs,
+  });
+
+  final String key;
+  final String label;
+  final int? latencyMs;
+}
+
 class CockpitTurn {
   const CockpitTurn({
     required this.turnId,
@@ -189,6 +208,7 @@ class CockpitTurn {
     this.memoryHits = 0,
     this.toolNames = const <String>[],
     this.stages = const <CockpitTurnStage>[],
+    this.breakdown = const <CockpitTurnPhase>[],
     this.deviceId = '',
   });
 
@@ -199,6 +219,9 @@ class CockpitTurn {
   final int? latencyMs;
   final int memoryHits;
   final List<String> toolNames;
+
+  /// Where this turn's time went, in order.
+  final List<CockpitTurnPhase> breakdown;
   final List<CockpitTurnStage> stages;
   final String deviceId;
 }

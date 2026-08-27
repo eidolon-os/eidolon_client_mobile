@@ -249,7 +249,17 @@ Widget serviceSheetBody(CockpitService service) => Column(
       ],
     );
 
-Widget activitySheetBody(CockpitActivity activity, String companionName) {
+/// One activity, opened.
+///
+/// [turn] is the interaction this activity is, when there is one — the route
+/// says which nodes it passed through, and the turn says how long each part of
+/// the thinking took. Both were on the Host all along; the second was read by
+/// nothing, so 「哪一段慢」 could not be answered from any screen.
+Widget activitySheetBody(
+  CockpitActivity activity,
+  String companionName, {
+  CockpitTurn? turn,
+}) {
   final current = currentActivityHop(activity);
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -273,8 +283,15 @@ Widget activitySheetBody(CockpitActivity activity, String companionName) {
           if (activity.turnId.isNotEmpty) ('对话轮次', compactId(activity.turnId)),
           if (activity.originDeviceId.isNotEmpty)
             ('来源身体', compactId(activity.originDeviceId)),
+          if (turn != null) ('这轮召回', '${turn.memoryHits} 条'),
+          if (turn != null && turn.toolNames.isNotEmpty)
+            ('用到的工具', turn.toolNames.join('、')),
         ],
       ),
+      if (turn != null && turn.breakdown.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        _Breakdown(phases: turn.breakdown, totalMs: turn.latencyMs),
+      ],
       const SizedBox(height: 14),
       Text(
         '事实链路 · ${activity.route.length} 个节点',
@@ -479,3 +496,104 @@ Widget companionSheetBody(CompanionUnit unit) => Column(
         ],
       ],
     );
+
+/// Where a turn's time went.
+///
+/// The bar is the share of the turn, so a glance answers 「哪一段慢」 without
+/// reading six numbers. A phase the turn never reached shows 「没走到」 rather
+/// than a zero: the shape of a turn includes the steps it did not get to, and a
+/// zero would read as a step that was instant.
+class _Breakdown extends StatelessWidget {
+  const _Breakdown({required this.phases, required this.totalMs});
+
+  final List<CockpitTurnPhase> phases;
+  final int? totalMs;
+
+  @override
+  Widget build(BuildContext context) {
+    // The share is taken against the largest measured phase, not against the
+    // turn's total: the phases overlap (tools run inside the generation) and
+    // they do not have to sum to it, so bars drawn against the total would
+    // quietly claim a completeness this data does not have.
+    final measured = phases
+        .map((phase) => phase.latencyMs)
+        .whereType<int>()
+        .fold<int>(0, (a, b) => a > b ? a : b);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          totalMs == null
+              ? '时间去哪了'
+              : '时间去哪了 · 这轮共 ${formatLatency(totalMs)}',
+          style: Cockpit.mono(size: 9.5, color: Cockpit.inkDim, tracking: 0.1),
+        ),
+        const SizedBox(height: 8),
+        for (final phase in phases)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 7),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 132,
+                  child: Text(
+                    phase.label,
+                    style: Cockpit.sans(size: 11, color: Cockpit.ink),
+                    maxLines: 2,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _Share(
+                    latencyMs: phase.latencyMs,
+                    against: measured,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 58,
+                  child: Text(
+                    phase.latencyMs == null
+                        ? '没走到'
+                        : formatLatency(phase.latencyMs),
+                    textAlign: TextAlign.right,
+                    style: Cockpit.mono(
+                      size: 10,
+                      color: phase.latencyMs == null
+                          ? Cockpit.inkDim
+                          : Cockpit.ink,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _Share extends StatelessWidget {
+  const _Share({required this.latencyMs, required this.against});
+
+  final int? latencyMs;
+  final int against;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = latencyMs;
+    if (value == null || against <= 0) {
+      return const SizedBox(height: 4);
+    }
+    return LayoutBuilder(
+      builder: (context, size) => Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          height: 4,
+          width: (size.maxWidth * (value / against)).clamp(1.0, size.maxWidth),
+          color: Cockpit.cyan.withValues(alpha: 0.55),
+        ),
+      ),
+    );
+  }
+}

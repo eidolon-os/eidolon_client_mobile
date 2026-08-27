@@ -319,6 +319,19 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
         child: serviceSheetBody(service),
       );
 
+  /// The interaction this activity is, if the reading still carries it.
+  ///
+  /// Null is ordinary rather than a failure: the turns lane is bounded, so an
+  /// older activity outlives the turn it came from. The sheet then shows the
+  /// route without the timings, which is what is actually known.
+  CockpitTurn? _turnOf(CockpitSnapshot snapshot, CockpitActivity activity) {
+    if (activity.turnId.isEmpty) return null;
+    for (final turn in snapshot.turns) {
+      if (turn.turnId == activity.turnId) return turn;
+    }
+    return null;
+  }
+
   void _openActivity(CockpitSnapshot snapshot, CockpitActivity activity) {
     if (activity.companionId.isNotEmpty) {
       _focus(activity.companionId, InspectorTab.activity);
@@ -331,6 +344,7 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
       child: activitySheetBody(
         activity,
         _companionName(snapshot, activity.companionId),
+        turn: _turnOf(snapshot, activity),
       ),
     );
   }
