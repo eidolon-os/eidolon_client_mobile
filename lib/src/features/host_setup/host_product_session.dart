@@ -169,6 +169,7 @@ class HostProductSession {
     // the person reading the bug report, were handed an unrelated fact.
     Object? decidedFailure;
     Object? silentFailure;
+    var silentCandidates = 0;
     await for (final tier in _locator.locate(_host)) {
       // Whether anything at these addresses said anything at all. Something
       // that answered and was refused has told us where the Host is not, which
@@ -199,6 +200,7 @@ class HostProductSession {
               _hostDidNotAnswer(error);
           if (silence) {
             silentFailure = error;
+            silentCandidates += 1;
           } else {
             decidedFailure ??= error;
           }
@@ -211,7 +213,17 @@ class HostProductSession {
     }
     // The refusal that decided this, if anything decided it. Only when
     // nothing anywhere answered does silence become the answer.
-    final failure = decidedFailure ?? silentFailure;
+    //
+    // One silent candidate can speak for itself: `failureSentence` grades a
+    // timeout apart from a network that has no route, and with a single
+    // address tried that distinction is both specific and true. Several
+    // silent candidates cannot. Whichever was tried last is an arbitrary pick
+    // among equals, and quoting its address as the account of the failure
+    // describes one address when the fact being reported is that none of them
+    // answered. That fact is not a gap to fill with an example — it already
+    // has its own sentence, written just below, and it is the honest one.
+    final failure = decidedFailure ??
+        (silentCandidates == 1 ? silentFailure : null);
     if (failure != null) throw failure;
     throw const LocalApiRequestException(
       '局域网里没有任何设备应答这台主机的 Local API。'

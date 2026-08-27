@@ -249,6 +249,68 @@ void main() {
     );
   });
 
+  test('when several addresses were silent, no one of them is the account',
+      () async {
+    // The single-candidate case above is entitled to name its failure: the
+    // address it quotes is the only one that was tried. With several in play —
+    // a multi-homed Host, or the subnet sweep turning up more than one
+    // answering address — `silentFailure` held whichever candidate happened to
+    // be tried last, and that one's exception was thrown verbatim. Nothing
+    // chose it. It was last.
+    //
+    // So the person was shown one address's failure as though it were the
+    // whole story, and told it in the confident, specific voice reserved for
+    // things that are known. What is actually known is broader and less
+    // flattering: nothing on this network answered at all. That sentence is
+    // already written a few lines below the throw.
+    //
+    // The two candidates fail in deliberately different ways, because
+    // `failureSentence` renders timeout and unreachable as different
+    // sentences. If either one leaks through, this test sees a
+    // PinnedHttpException instead of the honest LocalApiRequestException.
+    var clients = 0;
+    final session = HostProductSession(
+      host: _host(),
+      transport: _NoopTransport(),
+      controllerKeys: _ControllerKeys(),
+      discovery: _Discovery([
+        _endpoint('192.168.1.20'),
+        _endpoint('192.168.1.26'),
+      ]),
+      clientFactory: (_) {
+        clients += 1;
+        return LocalApiClient(
+          httpClient: clients == 1
+              ? MockClient(
+                  (_) async => throw PinnedHttpException(
+                    kind: PinnedHttpFailureKind.timeout,
+                    message: '主机没有在预期时间内回应',
+                  ),
+                )
+              : MockClient(
+                  (_) async => throw PinnedHttpException(
+                    kind: PinnedHttpFailureKind.unreachable,
+                    message: 'no route to 192.168.1.26',
+                  ),
+                ),
+        );
+      },
+    );
+    addTearDown(session.close);
+
+    await expectLater(
+      session.connect(),
+      throwsA(
+        isA<LocalApiRequestException>().having(
+          (error) => error.message,
+          'message',
+          contains('局域网里没有任何设备应答这台主机的 Local API'),
+        ),
+      ),
+    );
+    expect(clients, 2, reason: 'both candidates are still tried');
+  });
+
   test('tries the next discovered endpoint without weakening Host validation',
       () async {
     var clients = 0;
