@@ -813,6 +813,13 @@ void main() {
 
     expect(find.byKey(const Key('mounted-devices-card')), findsOneWidget);
     expect(find.byKey(const Key('conversation-card')), findsOneWidget);
+    // The converse of the continuation case: off the setup path the two
+    // entries are simply there, and nothing explains an absence that is not
+    // happening.
+    expect(
+      find.byKey(const Key('setup-continuation-entries-held')),
+      findsNothing,
+    );
     await tester.tap(find.byKey(const Key('open-conversation')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('conversation-placeholder')), findsOneWidget);
@@ -1051,6 +1058,23 @@ void main() {
     expect(find.text('运行中'), findsNothing);
     expect(find.byKey(const Key('home-error')), findsNothing);
     expect(find.text('我的 Eidolon'), findsOneWidget);
+    // The Host is ready and 「对话」/「设备」 are still held back — which is
+    // fine, this is a setup step — but the screen has to say so. It did not,
+    // and the two screens are otherwise identical: on a real phone the tester
+    // saw 「Eidolon 已准备就绪」 with all three Eidolons and a valid session,
+    // no 「对话」 card, no 「设备」 card, and no way to tell this was not simply
+    // the product missing two features. They force-stopped the app and came
+    // back in from the Host list to get them.
+    await tester.ensureVisible(
+      find.byKey(const Key('setup-continuation-entries-held')),
+    );
+    expect(
+      find.byKey(const Key('setup-continuation-entries-held')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('进入我的 Eidolon'), findsWidgets);
+    expect(find.byKey(const Key('open-conversation')), findsNothing);
+    await tester.ensureVisible(find.byKey(const Key('finish-workspace-setup')));
     await tester.tap(find.byKey(const Key('finish-workspace-setup')));
     expect(finished, isTrue);
     expect(requests, contains('PUT /api/local/v1/setup/workspace'));

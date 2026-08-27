@@ -85,11 +85,31 @@ final RegExp setupCodePattern = RegExp('^[0-9]{$setupCodeDigits}\$');
 /// It is written into the failure text because of what happened without it: a
 /// phone that could reach its Host, be refused, and say nothing about a
 /// recovery that exists reads as broken hardware.
+/// Two ways back, and the lighter one first.
+///
+/// This used to name only `controller-reset --apply`, which **revokes every
+/// authorized management phone** (`eidolon_admin/.../bootstrap/cli.py`: "revoke
+/// every Controller Grant and open one bounded window"). For the case this text
+/// actually appears in — the Host is fine and *this* phone lost its authority —
+/// that is far more than is needed, and someone following it would have cut off
+/// every other phone in the household to get one back. `commissioning-code`
+/// mints the same one-time Setup code and revokes nothing.
+///
+/// Verified on a real Host rather than read: a phone in exactly this state got
+/// back in with 「不再管理这台主机」 → re-add → a code from `commissioning-code`,
+/// with no reset anywhere.
+///
+/// The constant is still called `controllerResetGuidance` because two of its
+/// call sites are in a file another session has open; the name is now narrower
+/// than what it says.
 const String controllerResetGuidance = '如果这台手机以前连得上（例如重装过 App，管理凭据已随之清空），'
-    '需要有人在主机旁边、能登进这台主机，执行 `eidolon-ops controller-reset --apply`：'
-    '它会撤销所有已授权的管理手机，并当场打开一个限时认领窗口，给出这台手机要用的 Setup 码。'
-    '窗口期内任何一台手机都能像首次开箱一样重新认领，Host 上的数据不会丢失。'
-    '这是物理/本机在场才能做的事，App 不能远程发起。';
+    '需要有人在主机旁边、能登进这台主机。通常这样就够了：执行 '
+    '`eidolon-ops commissioning-code`，它会给出一个一次性 Setup 码；'
+    '在这台手机上「不再管理这台主机」，再重新添加并输入这个码。'
+    '其他已授权的手机不受影响，Host 上的数据也不会丢失。'
+    '只有在你确实想收回所有管理手机的授权时，才需要 `eidolon-ops controller-reset --apply`：'
+    '它会撤销全部授权并当场打开一个限时认领窗口。'
+    '两者都要物理/本机在场，App 不能远程发起。';
 
 class CommissioningEndpoint {
   const CommissioningEndpoint._({

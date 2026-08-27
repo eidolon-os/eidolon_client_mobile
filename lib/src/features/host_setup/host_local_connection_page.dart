@@ -658,24 +658,53 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               onRenameOwner: _renameOwner,
               onChangeNetwork: _openNetworkChange,
             ),
-            if ((_controller.workspace?.isReady ?? false) &&
-                !widget.setupContinuation) ...[
+            if (_controller.workspace?.isReady ?? false) ...[
               const SizedBox(height: 16),
-              if (widget.conversationBuilder case final builder?) ...[
-                _ConversationCard(
-                  onOpen: () => Navigator.of(context).push<void>(
-                    MaterialPageRoute(
-                      builder: (context) => builder(context, _controller),
+              // Still inside setup, so the two entries are not offered yet —
+              // and the screen now says so, which is the whole fix.
+              //
+              // What this looked like on a real phone: claiming finished, the
+              // page said 「Eidolon 已准备就绪」 with all three Eidolons rendered
+              // and a valid session, and the 「对话」 and 「设备」 cards simply
+              // did not exist. The tester force-stopped the app and came back
+              // in from the Host list to get them, having no way to tell that
+              // this screen was a setup step rather than the finished Host
+              // page — the two are otherwise identical.
+              //
+              // Worth recording, because the first diagnosis was that
+              // `setupContinuation` had failed to exit: it cannot. It is a
+              // final field on the widget, so this page either is the
+              // continuation page or is not, for its whole life. Nothing was
+              // stuck. What was missing was a sentence.
+              if (widget.setupContinuation)
+                Card(
+                  key: const Key('setup-continuation-entries-held'),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      '这台主机已经就绪。「对话」和「设备」在你点上面的「进入我的 Eidolon」'
+                      '之后出现 —— 这一步还在设置流程里。',
+                      style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ),
+                )
+              else ...[
+                if (widget.conversationBuilder case final builder?) ...[
+                  _ConversationCard(
+                    onOpen: () => Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (context) => builder(context, _controller),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                _DevicesSummaryCard(
+                  controller: _controller,
+                  onOpen: _openDevices,
+                  onOpenControllers: _openControllers,
                 ),
-                const SizedBox(height: 16),
               ],
-              _DevicesSummaryCard(
-                controller: _controller,
-                onOpen: _openDevices,
-                onOpenControllers: _openControllers,
-              ),
             ],
           ] else if (_controller.connectionError case final error?) ...[
             Card(

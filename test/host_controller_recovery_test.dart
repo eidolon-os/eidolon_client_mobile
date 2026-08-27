@@ -197,12 +197,42 @@ void main() {
     expect(notice.data, contains('物理'));
   });
 
-  test('the recovery wording describes one bounded act, not two commands', () {
-    // It used to name controller-reset only, which left an Owner in the state
-    // between revoking and reopening: nothing held the Host and nothing could
-    // claim it, and the way out was a second command nobody had mentioned.
+  test('each way back is one bounded act, and the lighter one comes first', () {
+    // Two separate properties, and they were conflated.
+    //
+    // The one this test was written for: naming `controller-reset` alone left
+    // an Owner in the state between revoking and reopening — nothing held the
+    // Host, nothing could claim it, and the way out was a second command
+    // nobody had mentioned. That property is what matters, and it still holds:
+    // each option below is self-contained.
+    //
+    // It was enforced by proxy, as `isNot(contains('commissioning-code'))`,
+    // and the proxy cost something real. This text appears when the Host is
+    // fine and *this* phone lost its authority, and for that case
+    // `controller-reset` is far more than is needed: the Host's own CLI help
+    // says it "revoke[s] every Controller Grant". Someone following the only
+    // instruction offered would have cut off every other phone in the house to
+    // get one back. `commissioning-code` mints the same one-time Setup code
+    // and revokes nothing — verified on a real Host, not read.
+    //
+    // So: both commands may be named, because they are alternatives rather
+    // than steps. What must never happen is one recovery split across two.
+    expect(controllerResetGuidance, contains('commissioning-code'));
     expect(controllerResetGuidance, contains('controller-reset'));
     expect(controllerResetGuidance, contains('Setup 码'));
-    expect(controllerResetGuidance, isNot(contains('commissioning-code')));
+
+    // The lighter path is offered first, because it is the one that fits the
+    // situation this text is shown in.
+    expect(
+      controllerResetGuidance.indexOf('commissioning-code'),
+      lessThan(controllerResetGuidance.indexOf('controller-reset')),
+    );
+
+    // And the heavier one says what it costs, so choosing it is a decision.
+    expect(controllerResetGuidance, contains('撤销全部授权'));
+
+    // Neither is presented as a step in the other: no "then", no "再执行".
+    expect(controllerResetGuidance, isNot(contains('然后执行')));
+    expect(controllerResetGuidance, isNot(contains('再执行')));
   });
 }
