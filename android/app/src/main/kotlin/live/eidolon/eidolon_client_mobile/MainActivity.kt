@@ -544,17 +544,6 @@ class MainActivity : FlutterActivity() {
                 @Suppress("DEPRECATION")
                 listOfNotNull(info.host)
             }
-            val mdnsHost = if (Build.VERSION.SDK_INT >= 36) {
-                info.hostname
-                    ?.trim()
-                    ?.trimEnd('.')
-                    ?.takeIf { it.isNotEmpty() }
-                    ?.let {
-                        if (it.endsWith(".local", ignoreCase = true)) it else "$it.local"
-                    }
-            } else {
-                null
-            }
             val ipv4Addresses = addresses
                 .filterIsInstance<Inet4Address>()
                 .mapNotNull { it.hostAddress }
@@ -562,12 +551,26 @@ class MainActivity : FlutterActivity() {
                 .filterNot { it is Inet4Address }
                 .mapNotNull { it.hostAddress }
                 .filterNot { it.contains('%') }
-            val fallbackAddress = ipv4Addresses.firstOrNull() ?: ipv6Addresses.firstOrNull()
+            // Addresses only. The service's own `.local` name used to be added
+            // here as one more candidate, on the reasoning that a name outlives
+            // a DHCP lease — but this announcement has *already* resolved to
+            // addresses, so that candidate carried no reachability the ones
+            // above do not, and it could not be dialled: requests go out
+            // through OkHttp, which resolves with getaddrinfo, and Android's
+            // getaddrinfo does not resolve `.local` at all.
+            //
+            // What it did instead was cost every connection a doomed attempt
+            // and put `Unable to resolve host "eidolon-pi5.local"` in front of
+            // people whose Host was up, pingable, and already answering the
+            // management screens on 192.168.3.206. Logcat from that phone shows
+            // both candidates emitted in the same millisecond from this one
+            // resolution, the name second — so it was always the last one
+            // tried, and its error was always the one that surfaced.
+            //
+            // The name is not lost: `instanceName` below carries the service
+            // name, which is what a name is for here.
             val candidates = buildList {
                 addAll(ipv4Addresses.map { it to it })
-                if (mdnsHost != null && fallbackAddress != null) {
-                    add(mdnsHost to fallbackAddress)
-                }
                 addAll(ipv6Addresses.map { "[$it]" to it })
             }.distinctBy { it.first }
             for ((host, ipAddress) in candidates) {
