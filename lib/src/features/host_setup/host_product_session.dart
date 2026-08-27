@@ -39,9 +39,22 @@ typedef ManagementOperation<T> = Future<T> Function(
 );
 
 class HostControllerAuthorizationException implements Exception {
-  const HostControllerAuthorizationException(this.message);
+  const HostControllerAuthorizationException(
+    this.message, {
+    this.reclaimRequired = false,
+  });
 
   final String message;
+
+  /// Whether reconnecting could ever succeed.
+  ///
+  /// A session that merely lapsed comes back on the next connect. A Grant the
+  /// Host has revoked does not: authenticating is exactly what fails, so the
+  /// only way back is to be claimed again. Saying which of the two this is has
+  /// to travel with the refusal, because by the time a screen has only a
+  /// message it can offer nothing but a retry — and a retry here is a promise
+  /// this Host cannot keep.
+  final bool reclaimRequired;
 
   @override
   String toString() => message;
@@ -359,6 +372,10 @@ class HostProductSession {
                 error.statusCode == 409
             ? '主机已重置或不再授权这台管理设备。$controllerResetGuidance'
             : '管理会话已失效，且暂时无法重新认证。请重新连接主机。',
+        reclaimRequired: error.statusCode == 401 ||
+            error.statusCode == 403 ||
+            error.statusCode == 404 ||
+            error.statusCode == 409,
       );
     } on SetupTrustException catch (error) {
       _clearConnection();
@@ -402,6 +419,7 @@ class HostProductSession {
           error.statusCode == 409) {
         throw const HostControllerAuthorizationException(
           '主机已重置或不再授权这台管理设备。$controllerResetGuidance',
+          reclaimRequired: true,
         );
       }
       rethrow;

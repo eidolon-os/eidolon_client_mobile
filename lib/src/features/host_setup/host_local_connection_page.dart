@@ -709,6 +709,28 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                 icon: const Icon(Icons.settings_backup_restore),
                 label: const Text('回到主机管理'),
               ),
+            ] else if (_controller.connectionRecovery ==
+                HostConnectionRecovery.reclaimRequired) ...[
+              // The Host is the right one; it has withdrawn this phone's
+              // authority. Connecting is exactly the thing that fails, so a
+              // retry here is the same empty promise as the one above — only
+              // the way back differs: be claimed again, which somebody at the
+              // Host has to open the window for first.
+              const Text(
+                '重新连接改变不了这件事：要连上就得先被授权，而授权正是被收回的那一样东西。'
+                '让身边能登进这台主机的人执行一次「重新认领」，他会拿到一个限时的 Setup 码；'
+                '然后在上一页用「设置新主机」把这台手机重新认领回来——主机上的数据不会丢。',
+                key: Key('local-connection-reclaim-required'),
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                key: const Key('open-host-reclaim'),
+                onPressed: Navigator.of(context).canPop()
+                    ? () => Navigator.of(context).pop()
+                    : null,
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('回到主机管理'),
+              ),
             ] else
               FilledButton.icon(
                 key: const Key('retry-local-connection'),

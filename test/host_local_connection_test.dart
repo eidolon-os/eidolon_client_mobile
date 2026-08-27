@@ -340,6 +340,9 @@ LocalApiClient _clientFor(
   int runtimeStatusCode = 200,
   bool withReadyDevice = false,
   PinnedHttpFailureKind? workspaceTransportFailure,
+  /// What the Host answers when this phone tries to authenticate as a
+  /// Controller. 401 is a Grant it has withdrawn.
+  int authenticationStatusCode = 200,
   // The Host is the authority on what anyone is called, and renaming now
   // happens over the management contract — so the name lives in a box both
   // fakes share, and a later read here answers with what that write was told.
@@ -365,6 +368,9 @@ LocalApiClient _clientFor(
         );
       }
       if (request.url.path == '/api/local/v1/auth/sessions') {
+        if (authenticationStatusCode != 200) {
+          return http.Response('', authenticationStatusCode);
+        }
         return http.Response(
           jsonEncode({
             'contract_version': '1',
@@ -530,6 +536,43 @@ void main() {
     // Both ways back are named, not just gestured at.
     expect(find.textContaining('不再管理这台主机'), findsOneWidget);
     expect(find.textContaining('手机丢失或重新认领'), findsOneWidget);
+  });
+
+  testWidgets('a revoked Grant is not offered a retry that cannot work',
+      (tester) async {
+    // Found on the Pi: after `controller-reset`, the saved Host answered with
+    // 401 and the screen's only control was 「重新连接」 — but connecting is
+    // precisely what a withdrawn Grant fails at. The way back is to be claimed
+    // again, and somebody at the Host has to open that window first.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(
+            _hostOverview(),
+            authenticationStatusCode: 401,
+          ),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('local-connection-error')), findsOneWidget);
+    expect(find.byKey(const Key('retry-local-connection')), findsNothing);
+    expect(
+      find.byKey(const Key('local-connection-reclaim-required')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('open-host-reclaim')), findsOneWidget);
+    // Both halves of the way back are named: who opens the window, and what
+    // this phone does afterwards.
+    expect(find.textContaining('重新认领'), findsWidgets);
+    expect(find.textContaining('设置新主机'), findsOneWidget);
   });
 
   testWidgets('an ordinary connection failure still offers a retry',

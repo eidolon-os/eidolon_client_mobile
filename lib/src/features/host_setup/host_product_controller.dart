@@ -43,6 +43,11 @@ enum HostConnectionRecovery {
   /// This is not the Host this phone remembers. The ways forward are to stop
   /// managing it, or to reclaim it through a window opened at the Host.
   identityChanged,
+
+  /// The Host is the right one and has revoked this phone's Grant. Connecting
+  /// is precisely what fails, so the way back is to be claimed again — which
+  /// somebody standing at the Host has to open the window for first.
+  reclaimRequired,
 }
 
 class HostProductController extends ChangeNotifier {
@@ -187,7 +192,7 @@ class HostProductController extends ChangeNotifier {
     } on CommissioningRequestException catch (error) {
       _failConnection(error.message);
     } on HostControllerAuthorizationException catch (error) {
-      _failConnection(error.message);
+      _failAuthorization(error);
     } on LocalApiRequestException catch (error) {
       _failConnection(error.message);
     } on PinnedHttpException catch (error) {
@@ -223,7 +228,7 @@ class HostProductController extends ChangeNotifier {
       await _loadProductState();
       _connection = _session.connection;
     } on HostControllerAuthorizationException catch (error) {
-      _failConnection(error.message);
+      _failAuthorization(error);
     } finally {
       _workspaceBusy = false;
       _notify();
@@ -264,7 +269,7 @@ class HostProductController extends ChangeNotifier {
       await _loadReadyWorkspaceResources(workspace);
       _connection = _session.connection;
     } on HostControllerAuthorizationException catch (error) {
-      _failConnection(error.message);
+      _failAuthorization(error);
     } on LocalApiRequestException catch (error) {
       _workspaceError = _workspaceFailure(error);
     } on PinnedHttpException catch (error) {
@@ -291,7 +296,7 @@ class HostProductController extends ChangeNotifier {
       await _loadDevices();
       _connection = _session.connection;
     } on HostControllerAuthorizationException catch (error) {
-      _failConnection(error.message);
+      _failAuthorization(error);
     } finally {
       _devicesBusy = false;
       _notify();
@@ -892,6 +897,18 @@ class HostProductController extends ChangeNotifier {
     _devices = null;
     _devicesError = null;
   }
+
+  /// A Grant refusal, told to the screen with what is actually left to do.
+  ///
+  /// Every path that can meet this refusal goes through here, because the
+  /// distinction it carries is worthless if three of the four callers drop it.
+  void _failAuthorization(HostControllerAuthorizationException error) =>
+      _failConnection(
+        error.message,
+        recovery: error.reclaimRequired
+            ? HostConnectionRecovery.reclaimRequired
+            : HostConnectionRecovery.retry,
+      );
 
   void _failConnection(
     String message, {
