@@ -637,9 +637,7 @@ class _ReadFailureStrip extends StatelessWidget {
         key: const Key('cockpit-read-failure'),
         accent: _partial ? Cockpit.yellow : Cockpit.magenta,
         borderOpacity: 0.7,
-        fill: (_partial
-                ? const Color(0xFF191203)
-                : const Color(0xFF1A0413))
+        fill: (_partial ? const Color(0xFF191203) : const Color(0xFF1A0413))
             .withValues(alpha: 0.95),
         padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
         child: Row(

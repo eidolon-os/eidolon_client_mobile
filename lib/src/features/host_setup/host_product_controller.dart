@@ -868,24 +868,37 @@ class HostProductController extends ChangeNotifier {
     }
   }
 
+  /// The Owner's bodies, read on the plane that actually serves them.
+  ///
+  /// This chain named `LocalApiRequestException` long after the read moved to
+  /// the management plane, where a refusal arrives as
+  /// `ManagementRequestException`. So every refusal the Host gave — a session
+  /// that expired, a Workspace that does not exist yet, a Host too old to
+  /// publish devices — fell through to the bare `catch` below and became
+  /// 「设备列表暂时不可用。」 with no reason in it. On the star map that showed
+  /// up as every Eidolon's 身体 moon reading 读不到, which is true and useless:
+  /// the one thing the reader needed was *why*.
   Future<void> _loadDevices() async {
     try {
       _devices = await _devicesRepository.fetchMountedDevices();
       _devicesError = null;
     } on HostControllerAuthorizationException {
       rethrow;
-    } on LocalApiRequestException catch (error) {
+    } on ManagementRequestException catch (error) {
       _devices = null;
-      _devicesError = _deviceFailure(error);
+      _devicesError = _managedDeviceFailure(error);
     } on PinnedHttpException catch (error) {
       _devices = null;
       _devicesError = _pinnedHttpFailure(error);
     } on FormatException {
       _devices = null;
       _devicesError = '主机返回了不兼容的设备列表。';
-    } catch (_) {
+    } catch (error) {
+      // Named, not swallowed. A failure this app has no word for is still a
+      // failure somebody has to act on, and a sentence that erases its cause is
+      // how 读不到 becomes the answer to every question.
       _devices = null;
-      _devicesError = '设备列表暂时不可用。';
+      _devicesError = '设备列表暂时不可用：$error';
     }
   }
 
@@ -955,12 +968,20 @@ class HostProductController extends ChangeNotifier {
         _ => '主机已安全接入，但 Workspace 服务暂时不可用。认领和 Wi-Fi 不会回滚。',
       };
 
-  String _deviceFailure(LocalApiRequestException error) =>
+  /// Why the bodies could not be read, in the words of the plane that refused.
+  ///
+  /// The refusal envelope is already carried on the exception, so this only has
+  /// to choose the sentence for the ones this app understands and hand the rest
+  /// the Host's own — ten screens each inventing wording is the shape of the bug
+  /// `ManagementRequestException` exists to end.
+  String _managedDeviceFailure(ManagementRequestException error) =>
       switch (error.statusCode) {
         401 => '本次管理会话已失效，请重新连接主机。',
-        409 => '主机尚未建立 Owner Workspace，不能读取设备。',
+        403 => '这台主机没有把设备清单交给这台手机。',
         404 => '当前主机版本尚未提供设备列表。',
-        _ => '主机已连接，但设备列表暂时不可用。',
+        409 => '主机尚未建立 Owner Workspace，不能读取设备。',
+        503 => '主机连着，但设备清单的上游没有回应：${error.message}',
+        _ => '读不到设备清单：${error.message}',
       };
 
   void _notify() {

@@ -94,8 +94,8 @@ class CockpitHeader extends StatelessWidget {
                           // Host's own word. Driven by the reading's own
                           // provenance — printed unconditionally, it did the
                           // opposite, and labelled a real Host as staged.
-                          if (snapshot.provenance == CockpitProvenance.staged)
-                            ...[
+                          if (snapshot.provenance ==
+                              CockpitProvenance.staged) ...[
                             const SizedBox(width: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(

@@ -15,11 +15,30 @@ CockpitEvent _event(int seq, {String milestone = 'brain_first_delta'}) =>
       summary: '一件事',
     );
 
+CockpitTurn _turn(
+  String turnId, {
+  String companionId = 'companion-a',
+  List<(String, String)> stages = const [],
+}) =>
+    CockpitTurn(
+      turnId: turnId,
+      companionId: companionId,
+      status: 'running',
+      trigger: 'voice',
+      memoryHits: 0,
+      stages: [
+        for (final (key, status) in stages)
+          CockpitTurnStage(key: key, label: key, status: status),
+      ],
+    );
+
 CockpitSnapshot _snapshot({
   bool memoryReadable = true,
   DateTime? at,
   List<CockpitEvent>? events,
   bool eventsReadable = true,
+  List<CockpitTurn>? turns,
+  List<CockpitActivity>? activities,
 }) =>
     CockpitSnapshot(
       provenance: CockpitProvenance.host,
@@ -37,6 +56,11 @@ CockpitSnapshot _snapshot({
       memoryLane: memoryReadable
           ? const CockpitLane<CockpitMemory?>.ok(CockpitMemory())
           : const CockpitLane<CockpitMemory?>.missing(null, '记忆服务没有回应'),
+      activitiesLane: CockpitLane<List<CockpitActivity>>.ok(
+        activities ?? const <CockpitActivity>[],
+      ),
+      turnsLane:
+          CockpitLane<List<CockpitTurn>>.ok(turns ?? const <CockpitTurn>[]),
       eventsLane: eventsReadable
           ? CockpitLane<List<CockpitEvent>>.ok(events ?? const <CockpitEvent>[])
           : const CockpitLane<List<CockpitEvent>>.missing(
@@ -342,6 +366,167 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(fired, isEmpty);
+    });
+  });
+
+  group('活的那张图:飞镖来自轮次阶段的跃迁', () {
+    test('第一次看见一条轮次,只画它正在跑的那一段', () async {
+      // 一条已经跑了一半才被看见的轮次,前面那些阶段是在没人看的时候完成的。
+      // 把它们现在画出来,就是在宣称它们正在发生 —— 和事件那条的第一次读取同一条纪律。
+      final feed = PolledCockpitFeed(
+        read: () async => _snapshot(
+          turns: [
+            _turn('turn-1', stages: const [
+              ('input', 'done'),
+              ('memory_recall', 'done'),
+              ('agent_turn', 'running'),
+            ]),
+          ],
+        ),
+      );
+      addTearDown(feed.dispose);
+      final fired = <CockpitPulse>[];
+      final sub = feed.pulses.listen(fired.add);
+      addTearDown(sub.cancel);
+
+      await feed.refresh();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(fired, hasLength(1));
+      expect(fired.single.leg, MoonKind.act);
+      expect(fired.single.direction, PulseDirection.outward);
+    });
+
+    test('开始跑=出去,完成=回来', () async {
+      var reads = 0;
+      final feed = PolledCockpitFeed(
+        read: () async {
+          reads += 1;
+          return _snapshot(
+            turns: [
+              _turn('turn-1', stages: [
+                ('memory_recall', reads == 1 ? 'running' : 'done'),
+              ]),
+            ],
+          );
+        },
+      );
+      addTearDown(feed.dispose);
+      final fired = <CockpitPulse>[];
+      final sub = feed.pulses.listen(fired.add);
+      addTearDown(sub.cancel);
+
+      await feed.refresh();
+      await feed.refresh();
+      await Future<void>.delayed(Duration.zero);
+
+      // 信号去找记忆,记忆答回来。一条规则,不需要逐阶段的方向表。
+      expect(fired.map((p) => (p.leg, p.direction)), [
+        (MoonKind.mem, PulseDirection.outward),
+        (MoonKind.mem, PulseDirection.inward),
+      ]);
+    });
+
+    test('没动的阶段不重放', () async {
+      final feed = PolledCockpitFeed(
+        read: () async => _snapshot(
+          turns: [
+            _turn('turn-1', stages: const [('agent_turn', 'running')]),
+          ],
+        ),
+      );
+      addTearDown(feed.dispose);
+      final fired = <CockpitPulse>[];
+      final sub = feed.pulses.listen(fired.add);
+      addTearDown(sub.cancel);
+
+      await feed.refresh();
+      await feed.refresh();
+      await feed.refresh();
+      await Future<void>.delayed(Duration.zero);
+
+      // 同一个阶段还在跑,不是又跑了一次。
+      expect(fired, hasLength(1));
+    });
+
+    test('停在 pending 的阶段既不是正在跑,也不发镖', () async {
+      // 真机上每条已结束的轮次都带 memory_write: pending。把 pending 当成正在跑,
+      // 那些轮次会永久读成「正在写记忆」,而且每次读取都发一支镖。
+      final feed = PolledCockpitFeed(
+        read: () async => _snapshot(
+          turns: [
+            _turn('turn-1', stages: const [
+              ('agent_turn', 'done'),
+              ('memory_write', 'pending'),
+            ]),
+          ],
+        ),
+      );
+      addTearDown(feed.dispose);
+      final fired = <CockpitPulse>[];
+      final sub = feed.pulses.listen(fired.add);
+      addTearDown(sub.cancel);
+
+      await feed.refresh();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(fired, isEmpty);
+      expect(stageIsRunning('pending'), isFalse);
+      expect(
+          currentStageKey(
+              _turn('t', stages: const [('memory_write', 'pending')])),
+          '');
+    });
+
+    test('有轮次在跑就读得更密,闲下来就退回慢速', () async {
+      // 一次语音轮次的阶段只有几百毫秒。六秒一次的读取只会采到一帧,主机忙着而
+      // 图是静的;而没有东西在动的时候快读只是耗电。
+      final busy = PolledCockpitFeed(
+        read: () async => _snapshot(
+          activities: [
+            const CockpitActivity(
+              activityId: 'a1',
+              kind: 'voice_turn',
+              companionId: 'companion-a',
+              status: 'running',
+              summary: '',
+              outcome: 'deferred',
+            ),
+          ],
+        ),
+        interval: const Duration(seconds: 6),
+        activeInterval: const Duration(milliseconds: 20),
+      );
+      addTearDown(busy.dispose);
+
+      var reads = 0;
+      final counting = PolledCockpitFeed(
+        read: () async {
+          reads += 1;
+          return _snapshot(
+            activities: [
+              const CockpitActivity(
+                activityId: 'a1',
+                kind: 'voice_turn',
+                companionId: 'companion-a',
+                status: 'running',
+                summary: '',
+                outcome: 'deferred',
+              ),
+            ],
+          );
+        },
+        interval: const Duration(seconds: 30),
+        activeInterval: const Duration(milliseconds: 20),
+      );
+      addTearDown(counting.dispose);
+
+      counting.start();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      counting.pause();
+
+      // 慢速是 30 秒;它读了不止一次,说明走的是活跃节奏。
+      expect(reads, greaterThan(2));
     });
   });
 }

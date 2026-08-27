@@ -55,6 +55,7 @@ class PolledCockpitFeed implements CockpitFeed {
   PolledCockpitFeed({
     required this.read,
     this.interval = const Duration(seconds: 6),
+    this.activeInterval = const Duration(milliseconds: 900),
     this.retryFloor = const Duration(seconds: 2),
     this.retryCeiling = const Duration(seconds: 45),
   });
@@ -64,8 +65,13 @@ class PolledCockpitFeed implements CockpitFeed {
   /// already holds those hands one in.
   final Future<CockpitSnapshot> Function() read;
 
-  /// How often to re-read while someone is looking.
+  /// How often to re-read while someone is looking and nothing is happening.
   final Duration interval;
+
+  /// How often to re-read while a turn is actually in flight. The map's motion
+  /// is the point of this screen, and motion cannot be drawn from samples taken
+  /// further apart than the thing that moves.
+  final Duration activeInterval;
 
   /// Bounded backoff after a failure. A cockpit that retries a dead Host every
   /// two seconds forever is a battery complaint with extra steps.
@@ -82,6 +88,13 @@ class PolledCockpitFeed implements CockpitFeed {
   /// first reading lands, which is what makes that reading a baseline rather
   /// than a hundred darts.
   int? _watermark;
+
+  /// The turns from the last reading, so a stage that moved between two of them
+  /// can be seen to have moved. The live map is drawn from these transitions —
+  /// heard, remembered, thought about, spoken — not from the events lane: that
+  /// one is the audit tail, which records what was decided rather than what a
+  /// signal is doing right now.
+  List<CockpitTurn> _turns = const <CockpitTurn>[];
   CockpitObservation _observation =
       const CockpitObservation(state: ObservationState.connecting);
   Timer? _timer;
@@ -138,6 +151,10 @@ class PolledCockpitFeed implements CockpitFeed {
       final fresh = snapshot.eventsLane.readable
           ? eventsAfter(_watermark, snapshot.events)
           : const <CockpitEvent>[];
+      final advanced = snapshot.turnsLane.readable
+          ? stagesAdvanced(_turns, snapshot.turns, at: snapshot.generatedAt)
+          : const <StageAdvance>[];
+      if (snapshot.turnsLane.readable) _turns = snapshot.turns;
       _watermark = snapshot.eventsLane.readable
           ? highestSequence(_watermark, snapshot.events)
           // An unreadable lane is not an empty one: keep the mark, so the gap
@@ -159,7 +176,16 @@ class PolledCockpitFeed implements CockpitFeed {
         final pulse = _pulseFor(event);
         if (pulse != null) _pulses.add(pulse);
       }
-      _schedule(interval);
+      for (final move in advanced) {
+        final pulse = _pulseForStage(move);
+        if (pulse != null) _pulses.add(pulse);
+      }
+      // Observe at the rate of the thing observed. A voice turn's stages last
+      // hundreds of milliseconds, so a six-second read samples one frame of a
+      // journey and the map looks still while the Host is busy. When nothing is
+      // running there is nothing to sample, and a fast poll would only spend a
+      // battery.
+      _schedule(snapshot.pipelineActive ? activeInterval : interval);
     } catch (error) {
       if (_disposed) return;
       _backoff = nextReadBackoff(
@@ -202,6 +228,23 @@ class PolledCockpitFeed implements CockpitFeed {
       // like it is happening as you watch.
       firedAt: event.ts,
       deviceId: event.deviceId,
+    );
+  }
+
+  /// One stage transition, as a dart. See [stageToPulse] for the rule; the
+  /// moment is the reading's, because a status carries no time of its own and
+  /// pretending otherwise would stamp a dart with an instant nobody observed.
+  CockpitPulse? _pulseForStage(StageAdvance move) {
+    final directed = stageToPulse(move.stageKey, move.status);
+    if (directed == null) return null;
+    return CockpitPulse(
+      id: '${move.turnId}:${move.stageKey}:${move.status}',
+      companionId: move.companionId,
+      leg: directed.leg,
+      direction: directed.direction,
+      tone: PulseTone.normal,
+      firedAt: move.at,
+      deviceId: '',
     );
   }
 

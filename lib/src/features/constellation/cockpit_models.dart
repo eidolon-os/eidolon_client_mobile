@@ -718,14 +718,27 @@ const Map<String, MoonKind> _stageMoon = <String, MoonKind>{
 
 MoonKind? stageMoon(String stageKey) => _stageMoon[stageKey];
 
-const List<String> _stageRunning = ['running', 'pending', 'active'];
-const List<String> _stageDone = ['done', 'ok', 'succeeded'];
+const List<String> _stageRunning = ['running', 'active', 'in_progress'];
+const List<String> _stageDone = ['done', 'ok', 'succeeded', 'skipped'];
+
+/// Whether a stage is happening now.
+///
+/// `pending` is deliberately **not** running. It used to be, and the live
+/// snapshot showed what that costs: every finished turn on that Host carried
+/// `memory_write: pending`, so a turn that ended minutes ago read as "currently
+/// writing memory" — forever, on every planet. `pending` means the Host has not
+/// started it and may never: a turn can end with a stage still pending.
+bool stageIsRunning(String status) =>
+    _stageRunning.contains(status.toLowerCase());
+
+/// Whether a stage has finished, one way or another.
+bool stageIsDone(String status) => _stageDone.contains(status.toLowerCase());
 
 /// The stage a turn is currently at, or '' when it has none.
 String currentStageKey(CockpitTurn? turn) {
   final stages = turn?.stages ?? const <CockpitTurnStage>[];
   for (final stage in stages) {
-    if (_stageRunning.contains(stage.status.toLowerCase())) return stage.key;
+    if (stageIsRunning(stage.status)) return stage.key;
   }
   for (final stage in stages.reversed) {
     if (_stageDone.contains(stage.status.toLowerCase())) return stage.key;
@@ -800,6 +813,32 @@ bool shouldFlow({
     return true;
   }
   return activeCount <= autoFlowMax;
+}
+
+/// The dart one observed stage transition travels.
+///
+/// One rule, uniform: **a stage that starts running goes out, a stage that
+/// finishes comes back.** The signal leaves the planet for the organ that does
+/// the work — the body that heard it, the memory being searched, the reasoning —
+/// and returns when that organ answers. Nothing here needs a per-stage table of
+/// directions, and the leg comes from [stageMoon], which the console uses for
+/// the same stages, so the map and the event list cannot point at different
+/// moments.
+///
+/// Null when this app has no leg for the stage. A stage it has never heard of is
+/// still a real stage — it stays in the turn's own list — but drawing it on a
+/// leg picked at random would put motion where none happened.
+DirectedPulse? stageToPulse(String stageKey, String status) {
+  final leg = stageMoon(stageKey);
+  if (leg == null) return null;
+  if (stageIsRunning(status)) {
+    return DirectedPulse(leg: leg, direction: PulseDirection.outward);
+  }
+  if (stageIsDone(status)) {
+    return DirectedPulse(leg: leg, direction: PulseDirection.inward);
+  }
+  // pending, failed, or a word this version does not know: not a journey.
+  return null;
 }
 
 /// A directed dart fired by one observed event.

@@ -411,3 +411,77 @@ int? highestSequence(int? previous, List<CockpitEvent> events) {
   }
   return top;
 }
+
+/// One stage of one turn, as it was seen to move.
+///
+/// The unit of the live map. A turn's stages are the journey a signal takes —
+/// heard, remembered, thought about, spoken — and a stage that was `pending` in
+/// the last reading and `running` in this one is a thing that happened in
+/// between. Same discipline as [eventsAfter]: reporting an observation, not
+/// inventing one from a difference in state.
+class StageAdvance {
+  const StageAdvance({
+    required this.turnId,
+    required this.companionId,
+    required this.stageKey,
+    required this.label,
+    required this.status,
+    required this.at,
+  });
+
+  final String turnId;
+  final String companionId;
+  final String stageKey;
+  final String label;
+
+  /// What the stage moved *to*.
+  final String status;
+
+  /// When this reading was taken. A stage transition has no timestamp of its
+  /// own — the Host reports a status, not a moment — so this is honest about
+  /// what it is: the instant it became visible, not the instant it occurred.
+  final DateTime at;
+}
+
+/// Stage transitions between two readings, oldest turn first.
+///
+/// A turn that is new to this reading contributes only its *running* stage, not
+/// its whole history: a turn that arrived already half-done did those stages
+/// before anyone was looking, and drawing them now would claim they are
+/// happening. Same rule as the first reading in [eventsAfter].
+List<StageAdvance> stagesAdvanced(
+  List<CockpitTurn> before,
+  List<CockpitTurn> after, {
+  required DateTime at,
+}) {
+  final previous = <String, Map<String, String>>{};
+  for (final turn in before) {
+    previous[turn.turnId] = {
+      for (final stage in turn.stages) stage.key: stage.status,
+    };
+  }
+  final moved = <StageAdvance>[];
+  for (final turn in after) {
+    final was = previous[turn.turnId];
+    for (final stage in turn.stages) {
+      final wasStatus = was?[stage.key];
+      if (was == null) {
+        // First sighting of this turn. Only what is happening now.
+        if (!stageIsRunning(stage.status)) continue;
+      } else if (wasStatus == stage.status) {
+        continue;
+      }
+      moved.add(
+        StageAdvance(
+          turnId: turn.turnId,
+          companionId: turn.companionId,
+          stageKey: stage.key,
+          label: stage.label,
+          status: stage.status,
+          at: at,
+        ),
+      );
+    }
+  }
+  return moved;
+}
