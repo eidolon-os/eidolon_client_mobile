@@ -41,11 +41,11 @@ enum DevelopmentLanRefusal {
   /// It proved it is a Host, and has no open development Setup session.
   noSetupSession,
 
-  /// It answered, and said this entrance does not exist on it. A Host with a
-  /// BLE commissioning listener never opens the LAN one — so this is a fact
-  /// about which door to use, not a fault. Kept apart from [silent] because
-  /// the two have opposite next steps: one says go knock somewhere else, the
-  /// other says nobody is home.
+  /// It answered, and said this entrance does not exist on it — a Host older
+  /// than the release that opened the LAN route on every Host. A fact about
+  /// which door to use, not a fault. Kept apart from [silent] because the two
+  /// have opposite next steps: one says go knock somewhere else, the other
+  /// says nobody is home.
   entranceUnavailable,
 
   /// It answered the endpoint probe with an error of its own. Not silence and
@@ -153,11 +153,10 @@ class DevelopmentLanDiscovery {
       final refused = closed.first;
       return CommissioningRequestException(
         'development_lan_entrance_absent',
-        'Host 在 ${refused.candidate.endpoint.baseUrl} 应答了，但它不开放局域网开发认领'
+        'Host 在 ${refused.candidate.endpoint.baseUrl} 应答了，但它没有局域网认领这条路'
             '（${refused.reason}）。这不是找不到 Host，也不是网络问题——'
-            '带蓝牙的开发 Host 首次设置走的是蓝牙那条路：'
-            '请退回上一步，用「查找附近 Eidolon 主机」。'
-            '局域网这条路只留给没有蓝牙的开发 Host（比如 macOS 工作站）。',
+            '这台 Host 的版本比这台 App 旧，它只认蓝牙首次设置：'
+            '请退回上一步用「查找附近 Eidolon 主机」，或者先把 Host 更新到同一版本。',
       );
     }
     final erroring = _refused(DevelopmentLanRefusal.endpointRefused);
@@ -384,7 +383,7 @@ class DevelopmentLanCommissioning {
       final base = LocalApiClient.parseBaseUri(host.localApi.baseUrl);
       final response = await client
           .put(
-            base.resolve('/api/local/v1/development/commissioning/claim'),
+            base.resolve('/api/local/v1/commissioning/claim'),
             headers: const {
               'accept': 'application/json',
               'content-type': 'application/json',
@@ -426,7 +425,7 @@ class DevelopmentLanCommissioning {
       final decoded = jsonDecode(utf8.decode(response.bodyBytes));
       if (decoded is! Map<String, dynamic> ||
           decoded['contract_version'] != '1' ||
-          decoded['operation'] != 'local.development-lan-commissioning-claim' ||
+          decoded['operation'] != 'local.lan-commissioning-claim' ||
           decoded['host_id'] != host.endpoint.hostId ||
           decoded['controller'] is! Map ||
           (decoded['controller'] as Map)['controller_id'] !=
@@ -468,7 +467,7 @@ Future<String> _fetchSignedEndpointForDevelopment(String baseUrl) async {
   DevelopmentLanCommissioning._requireDebugBuild();
   final base = LocalApiClient.parseBaseUri(baseUrl);
   final endpoint = base.resolve(
-    '/api/local/v1/development/commissioning/endpoint',
+    '/api/local/v1/commissioning/endpoint',
   );
   final client = HttpClient();
   client.findProxy = (_) => 'DIRECT';

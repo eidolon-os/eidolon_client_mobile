@@ -136,7 +136,7 @@ void main() {
           return http.Response(
             jsonEncode({
               'contract_version': '1',
-              'operation': 'local.development-lan-commissioning-claim',
+              'operation': 'local.lan-commissioning-claim',
               'host_id': validHostId,
               'controller': {'controller_id': _controllerId},
               'state': {
@@ -168,7 +168,7 @@ void main() {
     );
     expect(
       claimRequest?.url.path,
-      '/api/local/v1/development/commissioning/claim',
+      '/api/local/v1/commissioning/claim',
     );
     final payload = jsonDecode(claimRequest!.body) as Map<String, dynamic>;
     expect(payload['commissioning_id'], '123e4567-e89b-42d3-a456-426614174000');
@@ -359,10 +359,10 @@ void main() {
 
     test('a Host that does not carry this entrance says which door to use',
         () async {
-      // The Pi answers the LAN probe with 404: it commissions over BLE and
-      // never opens this route. Counting that as one more silent address is
-      // how "局域网里没有任何设备应答" came to be printed under two addresses
-      // the App had just resolved and talked to.
+      // A Host older than the release that opened this route on every Host
+      // answers 404. Counting that as one more silent address is how "局域网里
+      // 没有任何设备应答" came to be printed under two addresses the App had
+      // just resolved and talked to.
       final service = DevelopmentLanCommissioning(
         discovery: _Discovery(_announced(['192.168.3.206'])),
         endpointFetcher: (baseUrl) async => throw DevelopmentEndpointRefused(
@@ -384,6 +384,7 @@ void main() {
       expect(failure.message, contains('192.168.3.206'));
       expect(failure.message, contains('development LAN commissioning'));
       expect(failure.message, contains('查找附近 Eidolon 主机'));
+      expect(failure.message, contains('更新到同一版本'));
       // The old sentence was not merely unhelpful, it was false.
       expect(failure.message, isNot(contains('没有任何设备应答')));
     });
