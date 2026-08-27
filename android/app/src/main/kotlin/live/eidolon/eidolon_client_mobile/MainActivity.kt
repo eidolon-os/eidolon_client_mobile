@@ -25,7 +25,6 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.nio.charset.StandardCharsets
-import java.net.Inet4Address
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -544,36 +543,13 @@ class MainActivity : FlutterActivity() {
                 @Suppress("DEPRECATION")
                 listOfNotNull(info.host)
             }
-            val ipv4Addresses = addresses
-                .filterIsInstance<Inet4Address>()
-                .mapNotNull { it.hostAddress }
-            val ipv6Addresses = addresses
-                .filterNot { it is Inet4Address }
-                .mapNotNull { it.hostAddress }
-                .filterNot { it.contains('%') }
-            // Addresses only. The service's own `.local` name used to be added
-            // here as one more candidate, on the reasoning that a name outlives
-            // a DHCP lease — but this announcement has *already* resolved to
-            // addresses, so that candidate carried no reachability the ones
-            // above do not, and it could not be dialled: requests go out
-            // through OkHttp, which resolves with getaddrinfo, and Android's
-            // getaddrinfo does not resolve `.local` at all.
-            //
-            // What it did instead was cost every connection a doomed attempt
-            // and put `Unable to resolve host "eidolon-pi5.local"` in front of
-            // people whose Host was up, pingable, and already answering the
-            // management screens on 192.168.3.206. Logcat from that phone shows
-            // both candidates emitted in the same millisecond from this one
-            // resolution, the name second — so it was always the last one
-            // tried, and its error was always the one that surfaced.
-            //
-            // The name is not lost: `instanceName` below carries the service
-            // name, which is what a name is for here.
-            val candidates = buildList {
-                addAll(ipv4Addresses.map { it to it })
-                addAll(ipv6Addresses.map { "[$it]" to it })
-            }.distinctBy { it.first }
-            for ((host, ipAddress) in candidates) {
+            // Addresses only, and the rule for which ones lives in
+            // LocalApiAnnouncement.kt where it can be tested. The service's own
+            // `.local` name used to be added here as one more candidate; it was
+            // undialable on Android and carried no reachability the addresses
+            // did not already carry. The name is not lost — `instanceName`
+            // below is the service name, which is what a name is for here.
+            for ((host, ipAddress) in localApiCandidateHosts(addresses)) {
                 val baseUrl = "https://$host:${info.port}"
                 Log.d("EidolonLocalApi", "Resolved ${info.serviceName} to $baseUrl")
                 resolved[baseUrl] = mapOf(
