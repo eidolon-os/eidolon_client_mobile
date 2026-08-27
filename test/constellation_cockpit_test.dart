@@ -291,7 +291,7 @@ void main() {
     await _close(tester);
   });
 
-  testWidgets('脚本推进后出现进行中的链路，行星显示对话中', (tester) async {
+  testWidgets('脚本推进后出现进行中的链路，行星显示对话中和它走到哪一步', (tester) async {
     final feed = MockCockpitFeed(autoplay: false);
     addTearDown(feed.dispose);
     await _openCockpit(tester, feed);
@@ -301,7 +301,18 @@ void main() {
     await _settle(tester);
 
     expect(feed.snapshot?.pipelineActive, isTrue);
-    expect(find.text('对话中'), findsOneWidget);
+    // 「对话中」是状态，后半句是它当前走到的那一步 —— 会随轮次推进而变的正是
+    // 后半句。一轮进行中的对话没有总时延（要有个结尾才量得出来），所以徽章
+    // 只显示「对话中」时，屏幕上唯一真在发生的事反而不说话了。
+    final badge = find.textContaining('对话中 · ');
+    expect(badge, findsOneWidget);
+    final hop = currentActivityHop(
+      feed.snapshot!.activities.firstWhere(isActiveActivity),
+    );
+    expect(
+      (tester.widget<Text>(badge).data ?? ''),
+      '对话中 · ${hop!.label}',
+    );
     expect(find.textContaining('客厅音箱 加入语音房间'), findsOneWidget);
 
     await _close(tester);

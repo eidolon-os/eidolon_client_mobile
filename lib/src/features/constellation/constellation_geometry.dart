@@ -683,6 +683,16 @@ RuntimeBadge runtimeBadge(CompanionUnit unit) {
   final activity = unit.activeActivity;
   if (activity != null) {
     if (activity.kind == 'voice_turn') {
+      // The stage first, and for the same reason every other kind shows it: it
+      // is the half that moves. A turn still running has no total latency to
+      // report — the Host only knows one once there is an end to measure to —
+      // so this branch used to read 「对话中」 and nothing else for the whole
+      // length of a conversation, which is the one place on this screen where
+      // something is actually happening.
+      final hop = currentActivityHop(activity)?.label;
+      if (hop != null && hop.isNotEmpty) {
+        return RuntimeBadge(text: '对话中 · $hop', tone: CockpitTone.live);
+      }
       final latency = unit.activeVoiceTurn?.latencyMs;
       return RuntimeBadge(
         text: latency == null ? '对话中' : '对话中 · ${formatLatency(latency)}',
