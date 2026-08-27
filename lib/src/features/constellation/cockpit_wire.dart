@@ -449,6 +449,14 @@ class StageAdvance {
 /// its whole history: a turn that arrived already half-done did those stages
 /// before anyone was looking, and drawing them now would claim they are
 /// happening. Same rule as the first reading in [eventsAfter].
+///
+/// And a dart needs a departure. A stage that goes straight from `pending` to a
+/// settled status never ran — a turn that called no tools ends with its tool
+/// stage settling from "not started" to "over" — so nothing travelled and
+/// nothing comes back. Only a stage that *starts* running, or one that was
+/// running and is now finished, is a journey. This was unreachable while every
+/// turn arrived already complete; a turn watched across readings reaches it on
+/// every conversation.
 List<StageAdvance> stagesAdvanced(
   List<CockpitTurn> before,
   List<CockpitTurn> after, {
@@ -469,6 +477,10 @@ List<StageAdvance> stagesAdvanced(
         // First sighting of this turn. Only what is happening now.
         if (!stageIsRunning(stage.status)) continue;
       } else if (wasStatus == stage.status) {
+        continue;
+      } else if (!stageIsRunning(stage.status) &&
+          !stageIsRunning(wasStatus ?? '')) {
+        // Settled without ever having started: bookkeeping, not a journey.
         continue;
       }
       moved.add(

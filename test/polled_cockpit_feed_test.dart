@@ -478,6 +478,41 @@ void main() {
           '');
     });
 
+    test('从没跑过就结束的阶段，不画一趟归途', () async {
+      // 一轮不调工具的对话（最常见的一种）结束时，tools 会从 pending 直接落到
+      // done。状态确实变了，但什么都没出去过，所以也没有什么回得来 —— 画一支
+      // 归来的镖等于凭状态差编一次移动。轮次都是「已完成才第一次看见」的时候
+      // 这条路走不到；现在一条轮次会被跨读取地跟住，每轮对话都会走到。
+      var reading = 0;
+      final feed = PolledCockpitFeed(
+        read: () async {
+          reading += 1;
+          return _snapshot(
+            turns: [
+              _turn('turn-1', stages: [
+                ('agent_turn', reading == 1 ? 'running' : 'done'),
+                ('tools', reading == 1 ? 'pending' : 'done'),
+              ]),
+            ],
+          );
+        },
+      );
+      addTearDown(feed.dispose);
+      final fired = <CockpitPulse>[];
+      final sub = feed.pulses.listen(fired.add);
+      addTearDown(sub.cancel);
+
+      await feed.refresh();
+      await Future<void>.delayed(Duration.zero);
+      fired.clear();
+      await feed.refresh();
+      await Future<void>.delayed(Duration.zero);
+
+      // agent_turn 跑完了，回来一支；tools 没有。
+      expect(fired.length, 1);
+      expect(fired.single.id, 'turn-1:agent_turn:done');
+    });
+
     test('这一屏开着的时候，按图会动的节奏读 —— 不是"看到在动才加速"', () async {
       // 那个自适应版本抓不到任何东西：要切到快档，得先有一次读取看见轮次在跑，
       // 而证明它必要的那次对话（13:03:45 → 13:03:48，整轮三秒）必须先活过一个慢档。
