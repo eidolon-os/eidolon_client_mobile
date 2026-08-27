@@ -564,6 +564,12 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                 ),
               ).read,
             ),
+            // The map's own reading is a bounded now; this is the record behind
+            // it, paged by the Host. Passed in rather than reached for, so the
+            // cockpit stays a screen that reads what it is given.
+            readHistory: (cursor) async => activityPageFromJson(
+              await _controller.activityHistory(cursor: cursor),
+            ),
           ),
         ),
       );

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'activity_history_sheet.dart';
 import 'cockpit_deck.dart';
 import 'cockpit_details.dart';
 import 'cockpit_feed.dart';
@@ -24,7 +25,19 @@ import 'constellation_stage.dart';
 /// It reads one [CockpitFeed]. When the Owner-scoped projection lands, the
 /// adapter changes and this file does not.
 class ConstellationCockpitPage extends StatefulWidget {
-  const ConstellationCockpitPage({super.key, required this.openFeed});
+  const ConstellationCockpitPage({
+    super.key,
+    required this.openFeed,
+    this.readHistory,
+  });
+
+  /// How to read one page of everything that has happened here, if anything can.
+  ///
+  /// Optional and null by default, because the map's own reading is a bounded
+  /// now and a staged world has no Host to page. Where it is absent the way into
+  /// the history is simply not offered — rather than offered and then failing,
+  /// which teaches a reader that the screen lies.
+  final ActivityPageReader? readHistory;
 
   /// How to open the feed this screen observes — a factory, not an instance,
   /// because the observation's lifetime is exactly this screen's.
@@ -285,6 +298,12 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
                 Navigator.of(sheetContext).pop();
                 _openActivity(live, activity);
               },
+              onOpenHistory: widget.readHistory == null
+                  ? null
+                  : () {
+                      Navigator.of(sheetContext).pop();
+                      _openHistory(live);
+                    },
               onEventTap: (event) {
                 Navigator.of(sheetContext).pop();
                 _openEvent(live, event);
@@ -330,6 +349,23 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
       if (turn.turnId == activity.turnId) return turn;
     }
     return null;
+  }
+
+  void _openHistory(CockpitSnapshot snapshot) {
+    final read = widget.readHistory;
+    if (read == null) return;
+    showActivityHistory(
+      context,
+      read: read,
+      companionName: (companionId) => _companionName(snapshot, companionId),
+      onTap: (activity) {
+        Navigator.of(context).pop();
+        // Opened from the history, and the same sheet as from the map: the rows
+        // come from one projection on the Host, so they must not be read by two
+        // screens here.
+        _openActivity(snapshot, activity);
+      },
+    );
   }
 
   void _openActivity(CockpitSnapshot snapshot, CockpitActivity activity) {

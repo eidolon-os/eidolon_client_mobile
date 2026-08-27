@@ -235,6 +235,29 @@ class ManagementClient {
     return body;
   }
 
+  /// One page of what has happened here, newest first.
+  ///
+  /// Raw for the same reason the snapshot is: the rows are the SDK contract's
+  /// activity shape, and `cockpit_wire.dart` already reads that shape against
+  /// the same goldens.
+  ///
+  /// [cursor] is a value a previous page handed back as `next_cursor`, stored
+  /// and returned untouched. Reading it would make the Host's page boundary
+  /// part of this app — it is a timestamp today and does not have to stay one.
+  Future<Map<String, Object?>> fetchActivityHistory(
+    Uri baseUri, {
+    required String accessToken,
+    String? cursor,
+  }) async {
+    final path = ManagementV1.missionControlActivitiesPath;
+    final uri = baseUri.resolve(
+      cursor == null || cursor.isEmpty
+          ? path
+          : '$path?cursor=${Uri.encodeQueryComponent(cursor)}',
+    );
+    return _get(uri, accessToken: accessToken, what: '读取这里发生过的事');
+  }
+
   /// One page of this Owner's Eidolons.
   ///
   /// [cursor] is a value a previous page handed back. It is stored and returned

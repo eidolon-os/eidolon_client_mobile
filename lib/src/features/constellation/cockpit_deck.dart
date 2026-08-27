@@ -547,6 +547,7 @@ class CockpitDeckSheet extends StatefulWidget {
     required this.initialTab,
     required this.controller,
     required this.onActivityTap,
+    this.onOpenHistory,
     required this.onEventTap,
     required this.onServiceTap,
   });
@@ -562,6 +563,10 @@ class CockpitDeckSheet extends StatefulWidget {
   /// lets a drag on the content resize the sheet instead of fighting it.
   final ScrollController controller;
   final void Function(CockpitActivity activity) onActivityTap;
+
+  /// Opens the whole history. Null where nothing can read it — a demo feed has
+  /// no Host to page.
+  final VoidCallback? onOpenHistory;
   final void Function(CockpitEvent event) onEventTap;
   final void Function(CockpitService service) onServiceTap;
 
@@ -652,6 +657,7 @@ class _CockpitDeckSheetState extends State<CockpitDeckSheet> {
                     companionNames: _companionNames(snapshot),
                     controller: widget.controller,
                     onTap: widget.onActivityTap,
+                    onOpenHistory: widget.onOpenHistory,
                   ),
                 1 => _EventList(
                     events: snapshot.events,
@@ -685,26 +691,36 @@ class _ActivityList extends StatelessWidget {
     required this.companionNames,
     required this.controller,
     required this.onTap,
+    this.onOpenHistory,
   });
 
   final List<CockpitActivity> activities;
   final Map<String, String> companionNames;
   final ScrollController controller;
   final void Function(CockpitActivity activity) onTap;
+  final VoidCallback? onOpenHistory;
 
   @override
   Widget build(BuildContext context) {
     if (activities.isEmpty) {
-      return const _Empty(
+      return _Empty(
         text: '待命中 · 对话、守护、指令和后台任务都会在这里形成各自独立的链路',
+        action: onOpenHistory == null
+            ? null
+            : ('查看发生过的事', onOpenHistory!),
       );
     }
     return ListView.separated(
       controller: controller,
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-      itemCount: activities.length,
+      // One extra row: this list is what the Host is carrying now, and the way
+      // to the rest belongs at the end of it rather than hidden in a menu.
+      itemCount: activities.length + (onOpenHistory == null ? 0 : 1),
       separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
+        if (index == activities.length) {
+          return _MoreRow(onTap: onOpenHistory!);
+        }
         final activity = activities[index];
         final live = isActiveActivity(activity);
         final tone = live
@@ -1027,21 +1043,62 @@ class _ServiceList extends StatelessWidget {
 }
 
 class _Empty extends StatelessWidget {
-  const _Empty({required this.text});
+  const _Empty({required this.text, this.action});
 
   final String text;
+
+  /// Something to do about it, where there is something. An empty *now* is not
+  /// an empty history, so this is where the way to the rest of it goes.
+  final (String, VoidCallback)? action;
 
   @override
   Widget build(BuildContext context) => Container(
         alignment: Alignment.topLeft,
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 30),
-        child: Text(
-          text,
-          style: Cockpit.mono(
-            size: 10,
-            weight: FontWeight.w600,
-            color: Cockpit.inkDim,
-            height: 1.6,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              text,
+              style: Cockpit.mono(
+                size: 10,
+                weight: FontWeight.w600,
+                color: Cockpit.inkDim,
+                height: 1.6,
+              ),
+            ),
+            if (action case (final label, final onTap))
+              TextButton(
+                onPressed: onTap,
+                child: Text(label, style: Cockpit.mono(size: 10.5)),
+              ),
+          ],
+        ),
+      );
+}
+
+/// The way from what is happening now to everything that has.
+class _MoreRow extends StatelessWidget {
+  const _MoreRow({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: CockpitSlab(
+          accent: Cockpit.magenta,
+          padding: const EdgeInsets.all(11),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '查看发生过的事',
+                  style: Cockpit.sans(size: 12, color: Cockpit.ink),
+                ),
+              ),
+              Text('↗', style: Cockpit.mono(size: 12, color: Cockpit.magenta)),
+            ],
           ),
         ),
       );

@@ -440,6 +440,17 @@ class HostManagementRepository {
             .fetchMissionControlSnapshot(baseUri, accessToken: accessToken),
       );
 
+  /// One page of everything that has happened here. [cursor] is a value a
+  /// previous page handed back, forwarded as-is.
+  Future<Map<String, Object?>> activityHistory({String? cursor}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchActivityHistory(
+          baseUri,
+          accessToken: accessToken,
+          cursor: cursor,
+        ),
+      );
+
   Future<CompanionRosterView> roster({String? cursor}) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.fetchRoster(

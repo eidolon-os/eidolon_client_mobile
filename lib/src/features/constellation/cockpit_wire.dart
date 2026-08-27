@@ -224,6 +224,45 @@ CockpitDevice _device(Map<String, Object?> json) {
   );
 }
 
+/// One page of history, read with the same parser the map's lane uses.
+///
+/// The Host projects both from one function, so this reads both with one — an
+/// interaction opened from the history and the same interaction on the map
+/// cannot come out describing themselves differently.
+///
+/// [ActivityPage.detail] carries the Host's reason when the page is empty
+/// because something could not be read. Empty-because-nothing-happened and
+/// empty-because-unreadable are the same shape and must never read the same:
+/// an Owner whose Agent is away has not stopped having a history.
+class ActivityPage {
+  const ActivityPage({
+    required this.items,
+    required this.nextCursor,
+    required this.detail,
+  });
+
+  final List<CockpitActivity> items;
+  final String? nextCursor;
+  final String detail;
+
+  bool get readable => detail.isEmpty;
+  bool get hasMore => (nextCursor ?? '').isNotEmpty;
+}
+
+ActivityPage activityPageFromJson(Map<String, Object?> json) {
+  final detail = _stringOr(json['state']) == 'unavailable'
+      ? (_stringOr(json['detail']).isEmpty
+          ? '这台主机没能读到这段历史'
+          : _stringOr(json['detail']))
+      : '';
+  final cursor = _stringOr(json['next_cursor']);
+  return ActivityPage(
+    items: detail.isEmpty ? _items(json['items'], _activity) : const [],
+    nextCursor: cursor.isEmpty ? null : cursor,
+    detail: detail,
+  );
+}
+
 CockpitActivity _activity(Map<String, Object?> json) => CockpitActivity(
       activityId: _string(json['activity_id'], 'activity_id 缺失'),
       kind: _string(json['kind'], 'activity.kind 缺失'),

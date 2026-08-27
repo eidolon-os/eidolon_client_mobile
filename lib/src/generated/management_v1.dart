@@ -42,6 +42,7 @@ class ManagementV1 {
   static const String memoryForgetPreviewPath = '/api/management/v1/memory/forget/preview';
   static const String memoryLibraryPath = '/api/management/v1/memory/library';
   static const String memoryRecollectionsPath = '/api/management/v1/memory/recollections';
+  static const String missionControlActivitiesPath = '/api/management/v1/mission-control/activities';
   static const String missionControlSnapshotPath = '/api/management/v1/mission-control/snapshot';
   static const String ownerPath = '/api/management/v1/owner';
   static const String ownerActionsRevokeRuntimeSessionsPath = '/api/management/v1/owner/actions/revoke-runtime-sessions';

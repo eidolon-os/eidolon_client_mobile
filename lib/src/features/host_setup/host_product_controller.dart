@@ -418,6 +418,10 @@ class HostProductController extends ChangeNotifier {
   Future<Map<String, Object?>> missionControlSnapshot() =>
       _managementRepository.missionControlSnapshot();
 
+  /// One page of what has happened here, newest first.
+  Future<Map<String, Object?>> activityHistory({String? cursor}) =>
+      _managementRepository.activityHistory(cursor: cursor);
+
   /// One of them, opened.
   Future<CompanionDetailView> companion({required String companionId}) =>
       _managementRepository.companion(companionId: companionId);

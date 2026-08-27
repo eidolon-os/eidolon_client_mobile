@@ -10,11 +10,19 @@ import 'cockpit_theme.dart';
 /// the recurring trap — nothing in this system publishes a heartbeat for a
 /// companion, so no sheet here claims one is "online"; a body's presence is a
 /// body's, and it is labelled as such.
+/// The one sheet chrome every detail opens in.
+///
+/// [child] is for a sheet whose content fits in a scroll of its own making.
+/// [scrollingChild] is for one that scrolls *itself* — a list that loads more
+/// as it goes — and is handed the sheet's controller so the drag-to-expand
+/// gesture and the list's own scrolling stay one motion instead of fighting.
+/// Exactly one of the two.
 Future<void> showCockpitSheet(
   BuildContext context, {
   required String title,
   required String kicker,
-  required Widget child,
+  Widget? child,
+  Widget Function(ScrollController controller)? scrollingChild,
   Color accent = Cockpit.cyan,
 }) =>
     showModalBottomSheet<void>(
@@ -56,11 +64,13 @@ Future<void> showCockpitSheet(
                 ),
               ),
               Expanded(
-                child: ListView(
-                  controller: controller,
-                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 28),
-                  children: [child],
-                ),
+                child: scrollingChild != null
+                    ? scrollingChild(controller)
+                    : ListView(
+                        controller: controller,
+                        padding: const EdgeInsets.fromLTRB(14, 0, 14, 28),
+                        children: [child ?? const SizedBox.shrink()],
+                      ),
               ),
             ],
           ),
