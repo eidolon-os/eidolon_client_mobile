@@ -478,54 +478,26 @@ void main() {
           '');
     });
 
-    test('有轮次在跑就读得更密,闲下来就退回慢速', () async {
-      // 一次语音轮次的阶段只有几百毫秒。六秒一次的读取只会采到一帧,主机忙着而
-      // 图是静的;而没有东西在动的时候快读只是耗电。
-      final busy = PolledCockpitFeed(
-        read: () async => _snapshot(
-          activities: [
-            const CockpitActivity(
-              activityId: 'a1',
-              kind: 'voice_turn',
-              companionId: 'companion-a',
-              status: 'running',
-              summary: '',
-              outcome: 'deferred',
-            ),
-          ],
-        ),
-        interval: const Duration(seconds: 6),
-        activeInterval: const Duration(milliseconds: 20),
-      );
-      addTearDown(busy.dispose);
-
+    test('这一屏开着的时候，按图会动的节奏读 —— 不是"看到在动才加速"', () async {
+      // 那个自适应版本抓不到任何东西：要切到快档，得先有一次读取看见轮次在跑，
+      // 而证明它必要的那次对话（13:03:45 → 13:03:48，整轮三秒）必须先活过一个慢档。
+      // 两次六秒读取之间它开始并结束，两次都看到一台"什么都没发生"的主机。
       var reads = 0;
-      final counting = PolledCockpitFeed(
+      final feed = PolledCockpitFeed(
         read: () async {
           reads += 1;
-          return _snapshot(
-            activities: [
-              const CockpitActivity(
-                activityId: 'a1',
-                kind: 'voice_turn',
-                companionId: 'companion-a',
-                status: 'running',
-                summary: '',
-                outcome: 'deferred',
-              ),
-            ],
-          );
+          // 一台完全空闲的主机 —— 正是旧逻辑会退回慢档的情形。
+          return _snapshot();
         },
-        interval: const Duration(seconds: 30),
-        activeInterval: const Duration(milliseconds: 20),
+        interval: const Duration(milliseconds: 20),
       );
-      addTearDown(counting.dispose);
+      addTearDown(feed.dispose);
 
-      counting.start();
+      feed.start();
       await Future<void>.delayed(const Duration(milliseconds: 120));
-      counting.pause();
+      feed.pause();
 
-      // 慢速是 30 秒;它读了不止一次,说明走的是活跃节奏。
+      // 空闲也照常按这个节奏读，因为下一秒可能就有人说话。
       expect(reads, greaterThan(2));
     });
   });

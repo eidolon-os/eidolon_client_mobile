@@ -54,8 +54,7 @@ Duration nextReadBackoff(
 class PolledCockpitFeed implements CockpitFeed {
   PolledCockpitFeed({
     required this.read,
-    this.interval = const Duration(seconds: 6),
-    this.activeInterval = const Duration(milliseconds: 900),
+    this.interval = const Duration(milliseconds: 900),
     this.retryFloor = const Duration(seconds: 2),
     this.retryCeiling = const Duration(seconds: 45),
   });
@@ -65,13 +64,27 @@ class PolledCockpitFeed implements CockpitFeed {
   /// already holds those hands one in.
   final Future<CockpitSnapshot> Function() read;
 
-  /// How often to re-read while someone is looking and nothing is happening.
+  /// How often to re-read while someone is looking.
+  ///
+  /// Fast, and not conditionally fast. The first version of this sped up only
+  /// once a reading had *already shown* a turn in flight — which cannot work:
+  /// the turn that proved it was needed had to survive one slow interval first.
+  /// A real conversation on a real Host ran 13:03:45 → 13:03:48, three seconds
+  /// end to end; between two six-second reads it began and finished, and both
+  /// readings saw a Host with nothing happening. An adaptive sampler cannot
+  /// catch an event shorter than its slow rate, because deciding to go fast
+  /// requires having seen the thing already.
+  ///
+  /// So the rate is the map's, for as long as the map is open. That is
+  /// affordable precisely because it is bounded by attention: this screen is a
+  /// thing someone watches, the feed pauses the moment the app goes to the
+  /// background (see [pause]), and one snapshot is a single call on a LAN.
+  ///
+  /// It remains sampling, and says so: a stage shorter than this interval can
+  /// still pass unseen between two reads. What would fix *that* is a push feed
+  /// of turn milestones, which no authority on this Host publishes yet —
+  /// `data_store` was the operator console's source for it and is set nowhere.
   final Duration interval;
-
-  /// How often to re-read while a turn is actually in flight. The map's motion
-  /// is the point of this screen, and motion cannot be drawn from samples taken
-  /// further apart than the thing that moves.
-  final Duration activeInterval;
 
   /// Bounded backoff after a failure. A cockpit that retries a dead Host every
   /// two seconds forever is a battery complaint with extra steps.
@@ -180,12 +193,7 @@ class PolledCockpitFeed implements CockpitFeed {
         final pulse = _pulseForStage(move);
         if (pulse != null) _pulses.add(pulse);
       }
-      // Observe at the rate of the thing observed. A voice turn's stages last
-      // hundreds of milliseconds, so a six-second read samples one frame of a
-      // journey and the map looks still while the Host is busy. When nothing is
-      // running there is nothing to sample, and a fast poll would only spend a
-      // battery.
-      _schedule(snapshot.pipelineActive ? activeInterval : interval);
+      _schedule(interval);
     } catch (error) {
       if (_disposed) return;
       _backoff = nextReadBackoff(
