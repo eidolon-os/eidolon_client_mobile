@@ -144,7 +144,18 @@ class HostProductSession {
     // its way through the alternatives instead of stopping there. Nothing is
     // trusted for having been remembered or published: every candidate proves
     // it is this Host before a word is said to it.
-    Object? lastFailure;
+    // Two kinds of failure, kept apart because only one of them explains an
+    // outcome. A Host that answered and refused decided something; a candidate
+    // that nothing answered at has decided nothing and is only a lead removed.
+    //
+    // They used to share one variable that every failure overwrote, so what
+    // surfaced was whichever candidate happened to be tried last. On a phone
+    // where the Local API answered fine at 192.168.3.206, the sentence shown
+    // was `Unable to resolve host "eidolon-pi5.local"` — a candidate that had
+    // nothing to do with why the connection did not happen. The person, and
+    // the person reading the bug report, were handed an unrelated fact.
+    Object? decidedFailure;
+    Object? silentFailure;
     await for (final tier in _locator.locate(_host)) {
       // Whether anything at these addresses said anything at all. Something
       // that answered and was refused has told us where the Host is not, which
@@ -171,16 +182,24 @@ class HostProductSession {
           }
           return _host;
         } catch (error) {
-          lastFailure = error;
-          answered |=
-              !(error is PinnedHttpException && _hostDidNotAnswer(error));
+          final silence = error is PinnedHttpException &&
+              _hostDidNotAnswer(error);
+          if (silence) {
+            silentFailure = error;
+          } else {
+            decidedFailure ??= error;
+          }
+          answered |= !silence;
         } finally {
           client.close();
         }
       }
       if (answered) break;
     }
-    if (lastFailure != null) throw lastFailure;
+    // The refusal that decided this, if anything decided it. Only when
+    // nothing anywhere answered does silence become the answer.
+    final failure = decidedFailure ?? silentFailure;
+    if (failure != null) throw failure;
     throw const LocalApiRequestException(
       '局域网里没有任何设备应答这台主机的 Local API。'
       '已经试过 mDNS 服务浏览、主机名解析、本网段探测，以及上次连上的地址。'

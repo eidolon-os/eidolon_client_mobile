@@ -170,14 +170,29 @@ class HostnameLocalApiSource implements LocalApiCandidateSource {
     if (addresses.isEmpty) return null;
     final address = addresses.first;
     if (!await _probePort(address, port, attemptTimeout)) return null;
-    // Addressed by name rather than by what it resolved to today: the name is
-    // the part that survives a new DHCP lease. The pin makes the hostname
-    // irrelevant to trust, so nothing is weakened by using it.
+    // Dialled at the address this name just resolved to, and named after the
+    // name only for the record.
+    //
+    // It used to be dialled by name, on the reasoning that a name survives a
+    // new DHCP lease while an address does not. The reasoning was sound and the
+    // conclusion was still wrong, because the probe above and the request that
+    // follows do not use the same resolver: the probe resolves here in Dart,
+    // and the request goes out through the Android pinned transport, whose
+    // OkHttp client resolves with getaddrinfo — **which does not resolve
+    // `.local` at all**. So this source proved an address worked and then
+    // handed back an address the transport could not reach, on every Android
+    // phone, and the person was shown `Unable to resolve host
+    // "eidolon-pi5.local"` for a Host that was up, pingable and one probe away.
+    //
+    // Freshness across a lease is not lost: an address that stops answering is
+    // found again by locating the Host, which is what HostLocator is for. That
+    // is the mechanism for a perishable address — not embedding a name the
+    // transport cannot resolve and hoping.
     return LocalApiCandidate(
       origin: origin,
       endpoint: LocalApiEndpoint(
         instanceName: name,
-        baseUrl: 'https://$name:$port',
+        baseUrl: 'https://$address:$port',
         ipAddress: address,
         contractVersion: '1',
       ),

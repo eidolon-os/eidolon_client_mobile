@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -777,6 +778,26 @@ class ClientController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The host name a failure says could not be turned into an address.
+  ///
+  /// Read off the exception's own URI rather than its text, so it says nothing
+  /// when the host was already an address: 「到不了 192.168.3.206」 is a network
+  /// fact and belongs in the branch below, while 「解析不了 eidolon-pi5.local」 is
+  /// a statement about this phone's resolver.
+  static String? _unresolvableHost(Object exception) {
+    if (exception is! http.ClientException) return null;
+    final host = exception.uri?.host;
+    if (host == null || host.isEmpty) return null;
+    if (InternetAddress.tryParse(host) != null) return null;
+    final text = exception.toString().toLowerCase();
+    return text.contains('unable to resolve host') ||
+            text.contains('no address associated with hostname') ||
+            text.contains('unknownhost') ||
+            text.contains('failed host lookup')
+        ? host
+        : null;
+  }
+
   void _fail(Object exception) {
     failure = _classifyFailure(exception);
     _setPhase(ClientPhase.error);
@@ -819,6 +840,23 @@ class ClientController extends ChangeNotifier {
         message: authorization ? '请在管理端重新批准这台移动设备' : 'Hub 拒绝了本次请求，请查看详情或稍后重试',
         technicalDetails: details,
         retryable: !authorization,
+      );
+    }
+    // A name this phone cannot resolve is not a network the person should go
+    // check. Android resolves with getaddrinfo, which does not resolve `.local`
+    // at all, so this failure happens with the Host up, on the same Wi-Fi, and
+    // answering a ping — and 「请检查局域网连接」 sent people to look at a network
+    // that was working, with a retry that could not succeed.
+    final unresolvableHost = _unresolvableHost(exception);
+    if (unresolvableHost != null) {
+      return ClientFailure(
+        kind: ClientErrorKind.discovery,
+        title: '这台手机解析不了主机的名字',
+        message: '局域网可能是通的 —— 是这台手机没法把 $unresolvableHost 变成一个地址。'
+            'Android 的系统解析器不解析 .local 名字。'
+            '重试不会改变这一点，请改用主机的 IP 地址接入。',
+        technicalDetails: details,
+        retryable: false,
       );
     }
     if (exception is http.ClientException ||

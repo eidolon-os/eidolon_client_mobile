@@ -1,7 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import '../setup/host_registry.dart';
 import 'local_api_discovery.dart';
+
+/// Resolve a host name to addresses, or return nothing if it will not resolve.
+typedef HostAddressResolver = Future<List<String>> Function(String name);
 
 /// How a candidate address came to be known.
 ///
@@ -127,21 +131,71 @@ class AnnouncedAddressSource implements HostAddressSource {
 /// renewed, the phone itself moves — so the answer to "where is it" has to be
 /// obtainable again at any moment, from whichever means still works.
 class HostLocator {
-  const HostLocator(this.sources);
+  const HostLocator(this.sources, {HostAddressResolver? resolve})
+      : _resolve = resolve ?? _lookup;
 
   /// Ordered by how fresh the evidence a source offers is. Order decides what
   /// is tried first, never what is tried at all.
   factory HostLocator.standard(
     LocalApiDiscovery discovery, {
     Future<List<String>> Function(ManagedHost host)? readPublished,
+    HostAddressResolver? resolve,
   }) =>
-      HostLocator([
-        AnnouncedAddressSource(discovery),
-        const RememberedAddressSource(),
-        if (readPublished != null) PublishedAddressSource(readPublished),
-      ]);
+      HostLocator(
+        [
+          AnnouncedAddressSource(discovery),
+          const RememberedAddressSource(),
+          if (readPublished != null) PublishedAddressSource(readPublished),
+        ],
+        resolve: resolve,
+      );
 
   final List<HostAddressSource> sources;
+  final HostAddressResolver _resolve;
+
+  static Future<List<String>> _lookup(String name) async {
+    try {
+      final addresses = await InternetAddress.lookup(
+        name,
+        type: InternetAddressType.IPv4,
+      );
+      return addresses.map((address) => address.address).toList(growable: false);
+    } on Object {
+      return const [];
+    }
+  }
+
+  /// A candidate the transport can actually dial, or nothing.
+  ///
+  /// The invariant this enforces, in the one place every tier passes through:
+  /// **a name is a way to learn an address, never a way to address a Host.**
+  /// The request goes out through the Android pinned transport, which resolves
+  /// with getaddrinfo and therefore cannot resolve a `.local` name at all — so
+  /// a candidate addressed by name is a candidate that fails on every Android
+  /// phone regardless of whether the Host is up.
+  ///
+  /// Needed here and not only at the source that produced such names, because
+  /// one of them was already written down: a `.local` base URL that once
+  /// connected is persisted as `lastKnownBaseUrl` and offered again on every
+  /// reconnect. Fixing the source stops new ones; this reaches the ones
+  /// already on people's phones.
+  ///
+  /// A name that will not resolve yields nothing rather than an error. It is
+  /// one lead removed, which is precisely what this class is built to survive.
+  Future<LocalApiEndpoint?> _dialable(LocalApiEndpoint endpoint) async {
+    final uri = Uri.tryParse(endpoint.baseUrl);
+    if (uri == null || uri.host.isEmpty) return null;
+    if (InternetAddress.tryParse(uri.host) != null) return endpoint;
+    final resolved = await _resolve(uri.host);
+    if (resolved.isEmpty) return null;
+    final address = resolved.first;
+    return LocalApiEndpoint(
+      instanceName: endpoint.instanceName,
+      baseUrl: uri.replace(host: address).toString(),
+      ipAddress: address,
+      contractVersion: endpoint.contractVersion,
+    );
+  }
 
   /// Ask each means in turn, and stop asking as soon as one has something.
   ///
@@ -158,7 +212,9 @@ class HostLocator {
     for (final source in sources) {
       final tier = <HostAddressCandidate>[];
       try {
-        for (final endpoint in await source.locate(host)) {
+        for (final offered in await source.locate(host)) {
+          final endpoint = await _dialable(offered);
+          if (endpoint == null) continue;
           if (seen.add(endpoint.baseUrl)) {
             tier.add(
               HostAddressCandidate(

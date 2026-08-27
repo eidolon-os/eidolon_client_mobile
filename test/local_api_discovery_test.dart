@@ -195,9 +195,22 @@ void main() {
       final report = await source.probe(timeout: const Duration(seconds: 1));
 
       expect(probed, ['192.168.3.206:$localApiPort']);
+      // This used to assert `https://eidolon-pi5.local:$localApiPort` — the
+      // name — which is how the defect stayed green. The probe just above
+      // resolves in Dart, and the request that follows goes out through the
+      // Android pinned transport, whose OkHttp client resolves with
+      // getaddrinfo: Android does not resolve `.local` there at all. So the
+      // source proved an address worked and handed back one the transport
+      // could never dial, and a phone with the Host up, pingable, and its
+      // management screens live was told 「无法连接到 Hub / 请检查局域网连接」.
+      //
+      // What is probed is what must be dialled.
       expect(report.candidates.single.endpoint.baseUrl,
-          'https://eidolon-pi5.local:$localApiPort');
+          'https://192.168.3.206:$localApiPort');
       expect(report.candidates.single.endpoint.ipAddress, '192.168.3.206');
+      // The name is still what was attempted, and still names the instance.
+      expect(report.candidates.single.endpoint.instanceName,
+          'eidolon-pi5.local');
       expect(report.attempted, contains('eidolon-pi5.local'));
     });
 

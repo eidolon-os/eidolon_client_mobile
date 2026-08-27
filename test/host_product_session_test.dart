@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_product_session.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_client.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_discovery.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/pinned_http_client.dart';
 import 'package:eidolon_client_mobile/src/features/setup/commissioning_transport.dart';
 import 'package:eidolon_client_mobile/src/features/setup/controller_key_bridge.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
@@ -169,6 +170,85 @@ MockClient _workingClient({int overviewResetEpoch = 2}) =>
     });
 
 void main() {
+  test('reports the failure that decided the outcome, not the last one tried',
+      () async {
+    // A real report from a phone: 「无法连接到 Hub / 请检查局域网连接」 with
+    // `Unable to resolve host "eidolon-pi5.local"` in the technical details,
+    // while the Host was up and the management screens were talking to it. The
+    // resolution failure belonged to an unrelated candidate; it surfaced only
+    // because every failure overwrote the same variable and it happened to be
+    // tried last. Whoever read that bug report was sent after the wrong thing.
+    //
+    // A Host that answered and refused decided something. A candidate nothing
+    // answered at decided nothing.
+    var clients = 0;
+    final session = HostProductSession(
+      host: _host(),
+      transport: _NoopTransport(),
+      controllerKeys: _ControllerKeys(),
+      discovery: _Discovery([
+        _endpoint('192.168.1.20'),
+        _endpoint('192.168.1.26'),
+      ]),
+      clientFactory: (_) {
+        clients += 1;
+        return LocalApiClient(
+          httpClient: clients == 1
+              // Answered, and its identity was refused.
+              ? MockClient(
+                  (_) async => throw PinnedHttpException(
+                    kind: PinnedHttpFailureKind.secureChannel,
+                    message: 'pin mismatch',
+                  ),
+                )
+              // Silence, tried afterwards.
+              : MockClient(
+                  (_) async => throw PinnedHttpException(
+                    kind: PinnedHttpFailureKind.unreachable,
+                    message: 'Unable to resolve host "eidolon-pi5.local"',
+                  ),
+                ),
+        );
+      },
+    );
+    addTearDown(session.close);
+
+    await expectLater(
+      session.connect(),
+      throwsA(
+        isA<PinnedHttpException>().having(
+          (error) => error.kind,
+          'kind',
+          PinnedHttpFailureKind.secureChannel,
+        ),
+      ),
+    );
+    expect(clients, 2, reason: 'both candidates are still tried');
+  });
+
+  test('when nothing answered anywhere, silence is the answer', () async {
+    final session = HostProductSession(
+      host: _host(),
+      transport: _NoopTransport(),
+      controllerKeys: _ControllerKeys(),
+      discovery: _Discovery([_endpoint('192.168.1.20')]),
+      clientFactory: (_) => LocalApiClient(
+        httpClient: MockClient(
+          (_) async => throw PinnedHttpException(
+            kind: PinnedHttpFailureKind.unreachable,
+            message: 'no route',
+          ),
+        ),
+      ),
+    );
+    addTearDown(session.close);
+
+    await expectLater(
+      session.connect(),
+      throwsA(isA<PinnedHttpException>()),
+    );
+  });
+
   test('tries the next discovered endpoint without weakening Host validation',
       () async {
     var clients = 0;
