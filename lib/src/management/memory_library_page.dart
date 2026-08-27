@@ -27,6 +27,10 @@ class MemoryLibraryPage extends StatelessWidget {
     this.onForget,
     this.onOpenToday,
     this.onExport,
+    this.companions = const [],
+    this.selectedCompanionId,
+    this.onCompanionChanged,
+    this.onOpenGraph,
   });
 
   final MemoryLibraryView library;
@@ -48,6 +52,10 @@ class MemoryLibraryPage extends StatelessWidget {
   /// "what does it hold" but "can I have it" — and null while nothing is behind
   /// it, for the same reason as the rest.
   final VoidCallback? onExport;
+  final List<CompanionSummaryView> companions;
+  final String? selectedCompanionId;
+  final ValueChanged<String?>? onCompanionChanged;
+  final VoidCallback? onOpenGraph;
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +65,39 @@ class MemoryLibraryPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text('它记住的'),
         actions: [
+          if (onCompanionChanged != null && companions.isNotEmpty)
+            PopupMenuButton<String>(
+              key: const Key('memory-companion-selector'),
+              initialValue: selectedCompanionId,
+              tooltip: '切换 Eidolon',
+              onSelected: (value) => onCompanionChanged!(value),
+              itemBuilder: (_) => [
+                for (final companion in companions)
+                  PopupMenuItem(
+                    value: companion.companionId,
+                    child: Row(
+                      children: [
+                        if (companion.companionId == selectedCompanionId)
+                          const Padding(
+                            padding: EdgeInsets.only(right: 8),
+                            child: Icon(Icons.check, size: 18),
+                          ),
+                        Text((companion.displayName ?? '').isEmpty
+                            ? '未命名 Eidolon'
+                            : companion.displayName!),
+                      ],
+                    ),
+                  ),
+              ],
+              icon: const Icon(Icons.people_alt_outlined),
+            ),
+          if (onOpenGraph != null)
+            IconButton(
+              key: const Key('memory-library-graph'),
+              onPressed: onOpenGraph,
+              tooltip: '关系图谱',
+              icon: const Icon(Icons.hub_outlined),
+            ),
           if (onOpenToday != null)
             IconButton(
               key: const Key('memory-library-today'),
@@ -153,7 +194,8 @@ class _WingSection extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(name, style: Theme.of(context).textTheme.titleMedium),
+                  child: Text(name,
+                      style: Theme.of(context).textTheme.titleMedium),
                 ),
                 Text('${wing.entryCount}'),
               ],
@@ -167,7 +209,8 @@ class _WingSection extends StatelessWidget {
                 ),
               ),
             const SizedBox(height: 8),
-            for (final room in wing.rooms) _RoomRow(wing: wing, room: room, onOpen: onOpenRoom),
+            for (final room in wing.rooms)
+              _RoomRow(wing: wing, room: room, onOpen: onOpenRoom),
           ],
         ),
       ),
@@ -176,7 +219,8 @@ class _WingSection extends StatelessWidget {
 }
 
 class _RoomRow extends StatelessWidget {
-  const _RoomRow({required this.wing, required this.room, required this.onOpen});
+  const _RoomRow(
+      {required this.wing, required this.room, required this.onOpen});
 
   final MemoryWingView wing;
   final MemoryRoomView room;

@@ -4,6 +4,7 @@ import '../generated/management_v1.dart';
 import 'forget_sheet.dart';
 import 'memory_copy_screen.dart';
 import 'memory_day_screen.dart';
+import 'memory_graph_screen.dart';
 import 'management_client.dart';
 import 'refusal_notice.dart';
 import 'memory_library_page.dart';
@@ -21,6 +22,8 @@ class MemoryLibraryScreen extends StatefulWidget {
   const MemoryLibraryScreen({
     super.key,
     required this.load,
+    this.loadForCompanion,
+    this.loadGraph,
     this.loadContext,
     this.previewForget,
     this.confirmForget,
@@ -31,13 +34,17 @@ class MemoryLibraryScreen extends StatefulWidget {
   });
 
   final Future<MemoryLibraryView> Function() load;
+  final Future<MemoryLibraryView> Function(String? companionId)?
+      loadForCompanion;
+  final Future<MemoryGraphView> Function(String? companionId)? loadGraph;
 
   /// Read once, for the one thing this screen cannot infer: whether this Host
   /// can govern memory at all.
   final Future<ManagementContextView> Function()? loadContext;
 
   final Future<ForgetProposalView> Function(String target)? previewForget;
-  final Future<ForgetResultView> Function(String confirmationToken)? confirmForget;
+  final Future<ForgetResultView> Function(String confirmationToken)?
+      confirmForget;
 
   /// Reads a window of recent entries. Null hides the way in rather than
   /// opening a screen that cannot fill itself.
@@ -63,6 +70,8 @@ class MemoryLibraryScreen extends StatefulWidget {
 class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
   MemoryLibraryView? _library;
   ManagementContextView? _context;
+  List<CompanionSummaryView> _companions = const [];
+  String? _selectedCompanionId;
   Object? _error;
   bool _busy = true;
 
@@ -82,10 +91,25 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
       // would either hide an action it allows or offer one it does not.
       final context =
           widget.loadContext == null ? null : await widget.loadContext!();
-      final library = await widget.load();
+      var companions = const <CompanionSummaryView>[];
+      if (widget.loadCompanions != null) {
+        try {
+          companions = await widget.loadCompanions!();
+        } catch (_) {
+          // The selector is enrichment. A transient roster failure must not
+          // turn readable memory into an error page; the context's default
+          // Companion still provides the safe audience for this read.
+        }
+      }
+      final selected = _selectedCompanionId ?? context?.defaultCompanionId;
+      final library = widget.loadForCompanion == null
+          ? await widget.load()
+          : await widget.loadForCompanion!(selected);
       if (!mounted) return;
       setState(() {
         _context = context;
+        _companions = companions;
+        _selectedCompanionId = selected;
         _library = library;
         _busy = false;
       });
@@ -103,7 +127,8 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
       widget.confirmForget != null &&
       _canGovern;
 
-  bool get _canGovern => _context != null && hostCan(_context!, 'memory.govern');
+  bool get _canGovern =>
+      _context != null && hostCan(_context!, 'memory.govern');
 
   /// Opened as its own screen rather than a dialog: what is about to be removed
   /// has to be readable, and a list inside a dialog is where that gets cramped.
@@ -148,6 +173,39 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
         ),
       );
 
+  Future<void> _selectCompanion(String? companionId) async {
+    if (companionId == _selectedCompanionId) return;
+    setState(() {
+      _selectedCompanionId = companionId;
+      _busy = true;
+    });
+    try {
+      final library = widget.loadForCompanion == null
+          ? await widget.load()
+          : await widget.loadForCompanion!(companionId);
+      if (!mounted) return;
+      setState(() {
+        _library = library;
+        _busy = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error;
+        _library = null;
+        _busy = false;
+      });
+    }
+  }
+
+  Future<void> _openGraph() => Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => MemoryGraphScreen(
+            load: () => widget.loadGraph!(_selectedCompanionId),
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final library = _library;
@@ -157,6 +215,11 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
         onForget: _canForget ? _openForget : null,
         onOpenToday: widget.loadDay == null ? null : _openToday,
         onExport: widget.loadCopy == null ? null : _openCopy,
+        companions: _companions,
+        selectedCompanionId: _selectedCompanionId,
+        onCompanionChanged:
+            widget.loadForCompanion == null ? null : _selectCompanion,
+        onOpenGraph: widget.loadGraph == null ? null : _openGraph,
       );
     }
     return Scaffold(
@@ -164,7 +227,8 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
       appBar: AppBar(title: const Text('它记住的')),
       body: Center(
         child: _busy
-            ? const CircularProgressIndicator(key: Key('memory-library-loading'))
+            ? const CircularProgressIndicator(
+                key: Key('memory-library-loading'))
             : RefusalNotice(
                 key: const Key('memory-library-error'),
                 error: _error!,

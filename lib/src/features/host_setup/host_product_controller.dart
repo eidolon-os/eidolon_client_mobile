@@ -510,6 +510,9 @@ class HostProductController extends ChangeNotifier {
   Future<MemoryLibraryView> memoryLibrary({String? companionId}) =>
       _managementRepository.memoryLibrary(companionId: companionId);
 
+  Future<MemoryGraphView> memoryGraph({String? companionId}) =>
+      _managementRepository.memoryGraph(companionId: companionId);
+
   /// What it wrote down since [since].
   Future<MemoryDayView> memoryEntries({
     required DateTime since,

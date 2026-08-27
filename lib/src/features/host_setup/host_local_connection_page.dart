@@ -361,6 +361,10 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         MaterialPageRoute(
           builder: (_) => MemoryLibraryScreen(
             load: _controller.memoryLibrary,
+            loadForCompanion: (companionId) =>
+                _controller.memoryLibrary(companionId: companionId),
+            loadGraph: (companionId) =>
+                _controller.memoryGraph(companionId: companionId),
             loadContext: _controller.managementContext,
             previewForget: (target) =>
                 _controller.previewForget(target: target),

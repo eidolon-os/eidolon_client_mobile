@@ -88,6 +88,10 @@ class CockpitComposer {
                   displayName: row.displayName ?? '',
                   status: row.lifecycleState,
                   kind: row.kind,
+                  genomeId: row.genomeId ?? '',
+                  // Null is "the authority did not answer"; an empty string is
+                  // the distinct, authoritative answer "no realm configured".
+                  realmId: row.memoryRealmId,
                 ),
               )
               .toList(growable: false),

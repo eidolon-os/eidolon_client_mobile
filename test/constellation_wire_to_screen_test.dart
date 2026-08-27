@@ -61,6 +61,8 @@ Map<String, dynamic> _rosterWire() => {
           'kind': 'standard',
           'lifecycle_state': 'active',
           'revision': 2,
+          'genome_id': 'genome-companion-a',
+          'memory_realm_id': 'realm-owner-1',
           'created_at': '2026-08-26T09:30:00+00:00',
           'updated_at': '2026-08-26T09:30:00+00:00',
         },
@@ -70,6 +72,8 @@ Map<String, dynamic> _rosterWire() => {
           'kind': 'standard',
           'lifecycle_state': 'archived',
           'revision': 5,
+          'genome_id': 'genome-companion-b',
+          'memory_realm_id': 'realm-owner-1',
           'created_at': '2026-08-26T09:31:00+00:00',
           'updated_at': '2026-08-26T09:40:00+00:00',
         },
@@ -207,9 +211,10 @@ void main() {
     expect(find.byType(CompanionPlanet), findsNWidgets(2));
     expect(find.textContaining('读不到'), findsWidgets);
 
-    // 记忆域这个字段 roster 根本不带，所以这一屏欠一句「不知道」——
-    // 「无空间」/「未开通」是关于这位伙伴的断言，没人问过就不能下。
+    // roster 已经携带 Owner Realm；它不是每位伙伴各自建一个空间。
+    // 运行投影读不到只影响召回/runner 状态，不应抹掉这个配置事实。
     expect(find.text('无空间'), findsNothing);
+    expect(find.textContaining('已配置'), findsNWidgets(2));
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
@@ -283,11 +288,9 @@ void main() {
     expect(find.text('ONLINE'), findsOneWidget);
     expect(find.text('UNSTABLE'), findsNothing);
 
-    // 剩下的「读不到」正好是每位伙伴的记忆域，一颗卫星一条 —— 而这不是接线漏了：
-    // roster 是存在性与身份的权威，不带 realm；记忆服务今天只发布 recollections，
-    // 没有 per-companion 的 realm 名册（合成里 data.memory 那条 _unexposed 就是这句）。
-    // 所以它自称未知，而不是被别处的数字顶替。等上游发布了，这条断言应该改成 0。
-    expect(find.textContaining('读不到'), findsNWidgets(2));
+    // Identity、Owner Realm 与七条 runtime lane 都有生产者，旧版本残留的
+    // 每颗星「记忆读不到」必须归零。
+    expect(find.textContaining('读不到'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();

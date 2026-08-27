@@ -872,10 +872,10 @@ class ManagementClient {
 
   /// What this Owner's Eidolons remember, by category.
   ///
-  /// [companionId] names an *audience*, not a scope: the memory belongs to the
-  /// Owner and every one of their Eidolons reads it. Naming one adds what the
-  /// Owner told that one in particular; naming none asks for the shared layer,
-  /// which is the safe direction when this app does not know which to ask for.
+  /// The physical Realm belongs to the Owner; [companionId] selects the logical
+  /// audience inside it. Naming one reads that Companion's private memory plus
+  /// the automatically derived Owner facts. Naming none reads only that derived
+  /// shared layer and never guesses a Companion.
   Future<MemoryLibraryView> fetchMemoryLibrary(
     Uri baseUri, {
     required String accessToken,
@@ -892,6 +892,24 @@ class ManagementClient {
       what: '读取记忆库',
     );
     return MemoryLibraryView.fromJson(body);
+  }
+
+  Future<MemoryGraphView> fetchMemoryGraph(
+    Uri baseUri, {
+    required String accessToken,
+    String? companionId,
+  }) async {
+    var endpoint = baseUri.resolve(ManagementV1.memoryGraphPath);
+    if (companionId != null) {
+      endpoint =
+          endpoint.replace(queryParameters: {'companion_id': companionId});
+    }
+    final body = await _get(
+      endpoint,
+      accessToken: accessToken,
+      what: '读取记忆关系图',
+    );
+    return MemoryGraphView.fromJson(body);
   }
 
   /// What it wrote down since [since].

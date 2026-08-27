@@ -40,6 +40,7 @@ class ManagementV1 {
   static const String memoryExportPath = '/api/management/v1/memory/export';
   static const String memoryForgetConfirmPath = '/api/management/v1/memory/forget/confirm';
   static const String memoryForgetPreviewPath = '/api/management/v1/memory/forget/preview';
+  static const String memoryGraphPath = '/api/management/v1/memory/graph';
   static const String memoryLibraryPath = '/api/management/v1/memory/library';
   static const String memoryRecollectionsPath = '/api/management/v1/memory/recollections';
   static const String missionControlActivitiesPath = '/api/management/v1/mission-control/activities';
@@ -485,9 +486,11 @@ class CompanionSummaryView {
     required this.companionId,
     required this.createdAt,
     this.displayName,
+    this.genomeId,
     required this.kind,
     this.lastActiveAt,
     required this.lifecycleState,
+    this.memoryRealmId,
     required this.revision,
     this.running,
     required this.updatedAt,
@@ -499,11 +502,15 @@ class CompanionSummaryView {
 
   final String? displayName;
 
+  final String? genomeId;
+
   final String kind;
 
   final String? lastActiveAt;
 
   final String lifecycleState;
+
+  final String? memoryRealmId;
 
   final int revision;
 
@@ -516,9 +523,11 @@ class CompanionSummaryView {
       companionId: value['companion_id'] as String,
       createdAt: value['created_at'] as String,
       displayName: value['display_name'] as String?,
+      genomeId: value['genome_id'] as String?,
       kind: value['kind'] as String,
       lastActiveAt: value['last_active_at'] as String?,
       lifecycleState: value['lifecycle_state'] as String,
+      memoryRealmId: value['memory_realm_id'] as String?,
       revision: value['revision'] as int,
       running: value['running'] as bool?,
       updatedAt: value['updated_at'] as String,
@@ -530,9 +539,11 @@ class CompanionSummaryView {
       'companion_id': companionId,
       'created_at': createdAt,
       if (displayName != null) 'display_name': displayName,
+      if (genomeId != null) 'genome_id': genomeId,
       'kind': kind,
       if (lastActiveAt != null) 'last_active_at': lastActiveAt,
       'lifecycle_state': lifecycleState,
+      if (memoryRealmId != null) 'memory_realm_id': memoryRealmId,
       'revision': revision,
       if (running != null) 'running': running,
       'updated_at': updatedAt,
@@ -1776,6 +1787,116 @@ class MemoryExportRecordView {
       if (roomId != null) 'room_id': roomId,
       'value': value,
       if (wingId != null) 'wing_id': wingId,
+    };
+  }
+}
+
+class MemoryGraphEdgeView {
+  const MemoryGraphEdgeView({
+    required this.confidence,
+    required this.edgeId,
+    required this.object,
+    required this.predicate,
+    this.recordedAt,
+    required this.subject,
+  });
+
+  final double confidence;
+
+  final String edgeId;
+
+  final String object;
+
+  final String predicate;
+
+  final String? recordedAt;
+
+  final String subject;
+
+  factory MemoryGraphEdgeView.fromJson(Map<String, dynamic> value) {
+    return MemoryGraphEdgeView(
+      confidence: value['confidence'] as double,
+      edgeId: value['edge_id'] as String,
+      object: value['object'] as String,
+      predicate: value['predicate'] as String,
+      recordedAt: value['recorded_at'] as String?,
+      subject: value['subject'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'confidence': confidence,
+      'edge_id': edgeId,
+      'object': object,
+      'predicate': predicate,
+      if (recordedAt != null) 'recorded_at': recordedAt,
+      'subject': subject,
+    };
+  }
+}
+
+class MemoryGraphNodeView {
+  const MemoryGraphNodeView({
+    required this.degree,
+    required this.label,
+    required this.nodeId,
+  });
+
+  final int degree;
+
+  final String label;
+
+  final String nodeId;
+
+  factory MemoryGraphNodeView.fromJson(Map<String, dynamic> value) {
+    return MemoryGraphNodeView(
+      degree: value['degree'] as int,
+      label: value['label'] as String,
+      nodeId: value['node_id'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'degree': degree,
+      'label': label,
+      'node_id': nodeId,
+    };
+  }
+}
+
+class MemoryGraphView {
+  const MemoryGraphView({
+    this.contractVersion,
+    required this.edges,
+    required this.nodes,
+    required this.truncated,
+  });
+
+  final String? contractVersion;
+
+  final List<MemoryGraphEdgeView> edges;
+
+  final List<MemoryGraphNodeView> nodes;
+
+  final bool truncated;
+
+  factory MemoryGraphView.fromJson(Map<String, dynamic> value) {
+    return MemoryGraphView(
+      contractVersion: value['contract_version'] as String?,
+      edges: ((value['edges'] as List<dynamic>).map((entry) => MemoryGraphEdgeView.fromJson(entry as Map<String, dynamic>)).toList()),
+      nodes: ((value['nodes'] as List<dynamic>).map((entry) => MemoryGraphNodeView.fromJson(entry as Map<String, dynamic>)).toList()),
+      truncated: value['truncated'] as bool,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'edges': edges.map((entry) => entry.toJson()).toList(),
+      'nodes': nodes.map((entry) => entry.toJson()).toList(),
+      'truncated': truncated,
     };
   }
 }

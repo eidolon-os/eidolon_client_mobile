@@ -17,7 +17,8 @@ Map<String, dynamic> libraryWire({
   int withheld = 1,
   bool truncated = false,
   List<Map<String, dynamic>>? wings,
-}) => {
+}) =>
+    {
       'contract_version': '1',
       'wings': wings ??
           [
@@ -81,7 +82,7 @@ void main() {
     });
 
     test('names a Companion as an audience when asked to', () async {
-      // Not a scope: the memory is the Owner's and every Eidolon reads it.
+      // One physical Owner Realm, with a private logical audience per Eidolon.
       Uri? asked;
       final client = ManagementClient(
         httpClient: MockClient((request) async {
@@ -176,7 +177,12 @@ void main() {
                   'description': '',
                   'entry_count': 1,
                   'rooms': [
-                    {'room_id': '?', 'entry_count': 1, 'titles': [], 'more': false},
+                    {
+                      'room_id': '?',
+                      'entry_count': 1,
+                      'titles': [],
+                      'more': false
+                    },
                   ],
                 },
               ],
@@ -215,6 +221,63 @@ void main() {
           'capabilities': {'memory.read': true, 'memory.govern': canGovern},
           'limits': {'max_active_companions': null},
         });
+
+    List<CompanionSummaryView> companions() => [
+          CompanionSummaryView.fromJson({
+            'companion_id': 'companion-a',
+            'display_name': '小忆',
+            'kind': 'conversational',
+            'lifecycle_state': 'active',
+            'revision': 1,
+            'created_at': '2026-08-28T08:00:00Z',
+            'updated_at': '2026-08-28T08:00:00Z',
+            'genome_id': 'genome-a',
+            'memory_realm_id': 'realm-owner-1',
+            'running': true,
+            'last_active_at': '2026-08-28T08:00:00Z',
+          }),
+          CompanionSummaryView.fromJson({
+            'companion_id': 'companion-b',
+            'display_name': '阿力',
+            'kind': 'conversational',
+            'lifecycle_state': 'active',
+            'revision': 1,
+            'created_at': '2026-08-28T08:01:00Z',
+            'updated_at': '2026-08-28T08:01:00Z',
+            'genome_id': 'genome-b',
+            'memory_realm_id': 'realm-owner-1',
+            'running': true,
+            'last_active_at': '2026-08-28T08:01:00Z',
+          }),
+        ];
+
+    testWidgets(
+        'defaults to one Companion and switches the private memory read',
+        (tester) async {
+      final asked = <String?>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MemoryLibraryScreen(
+            load: () async => library(),
+            loadForCompanion: (companionId) async {
+              asked.add(companionId);
+              return library();
+            },
+            loadContext: () async => context(),
+            loadCompanions: () async => companions(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(asked, ['companion-a']);
+      await tester.tap(find.byKey(const Key('memory-companion-selector')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('阿力'));
+      await tester.pumpAndSettle();
+
+      expect(asked, ['companion-a', 'companion-b']);
+    });
 
     testWidgets('offers forgetting only where the Host says it can govern',
         (tester) async {
@@ -275,7 +338,8 @@ void main() {
       }
     });
 
-    testWidgets('offers the copy only when something can load it', (tester) async {
+    testWidgets('offers the copy only when something can load it',
+        (tester) async {
       // Same rule as the day page, and it matters more here: a way into an
       // export that cannot fill itself would offer someone a copy of nothing.
       for (final wired in [true, false]) {

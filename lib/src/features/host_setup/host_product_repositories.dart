@@ -218,6 +218,15 @@ class HostManagementRepository {
         ),
       );
 
+  Future<MemoryGraphView> memoryGraph({String? companionId}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchMemoryGraph(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+        ),
+      );
+
   /// What it wrote down since [since]. The window is the caller's.
   Future<MemoryDayView> memoryEntries({
     required DateTime since,
