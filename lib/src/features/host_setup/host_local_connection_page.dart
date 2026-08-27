@@ -12,6 +12,7 @@ import '../setup/commissioning_transport.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/host_registry.dart';
 import 'face_picker.dart';
+import 'failure_sentences.dart';
 import 'host_product_controller.dart';
 import '../../management/management_client.dart';
 import '../../management/companion_roster_screen.dart';
@@ -158,7 +159,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('改名没有完成：$error')),
+        SnackBar(content: Text('改名没有完成：${failureSentence(error)}')),
       );
     }
   }
@@ -184,7 +185,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('改名没有完成：$error')),
+        SnackBar(content: Text('改名没有完成：${failureSentence(error)}')),
       );
     }
   }
@@ -448,7 +449,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('没能打开相册:$error')),
+        SnackBar(content: Text('没能打开相册：${failureSentence(error)}')),
       );
       return;
     }
@@ -461,7 +462,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('这张照片没能用上:$error')),
+        SnackBar(content: Text('这张照片没能用上：${failureSentence(error)}')),
       );
     }
   }
@@ -474,7 +475,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('没能拿掉这张脸:$error')),
+        SnackBar(content: Text('没能拿掉这张脸：${failureSentence(error)}')),
       );
     }
   }
@@ -492,7 +493,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('读不到它是谁：$error')),
+        SnackBar(content: Text('读不到它是谁：${failureSentence(error)}')),
       );
       return;
     }
@@ -1418,7 +1419,7 @@ class _PersonaEditRouteState extends State<_PersonaEditRoute> {
           if (!mounted) return;
           setState(() {
             _busy = false;
-            _refusal = '没能保存：$error';
+            _refusal = '没能保存：${failureSentence(error)}';
           });
         }
       },

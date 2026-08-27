@@ -7,6 +7,7 @@ import 'device_setup_coordinator.dart';
 import 'device_setup_models.dart';
 import 'device_setup_ports.dart';
 import 'owner_domain_directory_verifier.dart';
+import '../host_setup/failure_sentences.dart';
 
 /// One setup act, in the order the device abstraction states it.
 ///
@@ -111,7 +112,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     } catch (error) {
       if (mounted) {
         setState(() {
-          _error = error.toString();
+          _error = failureSentence(error);
           _progress = null;
         });
       }
