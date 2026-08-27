@@ -37,13 +37,21 @@ const presenceStates = <String>{
   presenceUnknown,
 };
 
-/// Which authority answered for a presence. The Data authority is never one of
-/// them — a lifecycle status is not a presence.
+/// Which authority answered for a presence, in precedence order. The Data
+/// authority is never one of them — a lifecycle status is not a presence.
+///
+/// `channel` is the one that actually answers on a Host today, and it is
+/// narrower than "online" sounds: it means this body's own participant is on
+/// its channel right now. The two above it are silent — the blackboard's reader
+/// was withdrawn and Hub refuses liveness by contract — and they keep their
+/// precedence anyway, because precedence is standing rather than availability.
 const presenceSourceBlackboard = 'runtime_blackboard';
+const presenceSourceChannel = 'channel';
 const presenceSourceHub = 'hub';
 const presenceSourceNone = 'none';
 const presenceSources = <String>{
   presenceSourceBlackboard,
+  presenceSourceChannel,
   presenceSourceHub,
   presenceSourceNone,
 };
