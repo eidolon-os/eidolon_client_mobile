@@ -21,6 +21,13 @@ readonly MOBILE_DESCRIPTOR_GOLDEN="test/fixtures/device_foundation/owner-domain-
 # act on. Both ends now answer to this vector.
 readonly SDK_SETUP_DESCRIPTOR_GOLDEN="contracts/device_foundation/v1/golden/setup-descriptor.json"
 readonly MOBILE_SETUP_DESCRIPTOR_GOLDEN="test/fixtures/device_foundation/setup-descriptor.json"
+# How a device instance id is derived from an operational key. This app used to
+# invent `mobile-android-<hash of ANDROID_ID>`, which Hub answers 422 to, so no
+# enrollment for this phone could exist — and the phone's own read path compared
+# its invented id against Hub's derived one and never matched. The derivation is
+# held to these numbers rather than to review.
+readonly SDK_COMMISSIONING_IDENTITY_GOLDEN="contracts/device_foundation/v1/golden/development-commissioning-identity.json"
+readonly MOBILE_COMMISSIONING_IDENTITY_GOLDEN="test/fixtures/device_foundation/development-commissioning-identity.json"
 
 mode="${1:---check}"
 sdk_root="${EIDOLON_SDK_ROOT:-../eidolon_sdk}"
@@ -40,6 +47,7 @@ sdk_paths=(
   "$SDK_ADMISSION_GOLDEN"
   "$SDK_DESCRIPTOR_GOLDEN"
   "$SDK_SETUP_DESCRIPTOR_GOLDEN"
+  "$SDK_COMMISSIONING_IDENTITY_GOLDEN"
 )
 mobile_paths=(
   "$MOBILE_BINDING"
@@ -48,6 +56,7 @@ mobile_paths=(
   "$MOBILE_ADMISSION_GOLDEN"
   "$MOBILE_DESCRIPTOR_GOLDEN"
   "$MOBILE_SETUP_DESCRIPTOR_GOLDEN"
+  "$MOBILE_COMMISSIONING_IDENTITY_GOLDEN"
 )
 
 drifted=0

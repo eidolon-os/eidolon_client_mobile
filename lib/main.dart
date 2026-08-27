@@ -11,10 +11,12 @@ import 'src/avatar/avatar_stage.dart';
 import 'src/controller/client_controller.dart';
 import 'src/features/conversation/conversation_provisioner.dart';
 import 'src/features/conversation/mobile_conversation_provisioner.dart';
+import 'src/features/device_setup/device_admission_queue.dart';
 import 'src/features/device_setup/device_setup_ports.dart';
 import 'src/features/device_setup/host_controller_device_admission.dart';
 import 'src/features/setup/eidolon_app_shell.dart';
 import 'src/features/setup/host_registry.dart';
+import 'src/platform/platform_bridge.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,6 +54,8 @@ class EidolonMobileApp extends StatelessWidget {
             loadTarget: controller.fetchDeviceOnboardingTarget,
             admission: HostControllerDeviceAdmission(controller),
           ),
+          onApproveThisPhone: (context) =>
+              openDeviceAdmissionQueue(context, controller),
         ),
       ),
     );
@@ -59,9 +63,27 @@ class EidolonMobileApp extends StatelessWidget {
 }
 
 class ClientPage extends StatefulWidget {
-  const ClientPage({super.key, this.provisioner});
+  const ClientPage({
+    super.key,
+    this.provisioner,
+    this.onApproveThisPhone,
+    this.platform,
+  });
 
   final ConversationProvisioner? provisioner;
+
+  /// Injectable so a test can drive this screen with a phone identity, the way
+  /// the setup pages take their transports. Every fake in this app used to sit
+  /// below the controller, which is how the screen's own words went unread.
+  final PlatformBridge? platform;
+
+  /// Take the Owner to the approval queue for this phone's own proposal.
+  ///
+  /// Present because the phone waiting for approval is the Controller that may
+  /// give it. It used to poll for that approval every five seconds and offer
+  /// 「立即检查状态」 — a refresh button in front of a decision the person
+  /// holding the phone was already authorised to make.
+  final Future<void> Function(BuildContext context)? onApproveThisPhone;
 
   @override
   State<ClientPage> createState() => _ClientPageState();
@@ -76,6 +98,7 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     controller = ClientController(
       conversationProvisioner: widget.provisioner,
+      platform: widget.platform,
     )..addListener(_refresh);
   }
 
@@ -143,6 +166,7 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
           key: const Key('compact-actions'),
           child: _Actions(
             controller: controller,
+            onApproveThisPhone: widget.onApproveThisPhone,
           ),
         ),
         const SizedBox(height: 16),
@@ -187,6 +211,7 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
                   key: const Key('tablet-actions'),
                   child: _Actions(
                     controller: controller,
+                    onApproveThisPhone: widget.onApproveThisPhone,
                   ),
                 ),
               ],
@@ -223,6 +248,7 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
             key: const Key('compact-actions'),
             child: _Actions(
               controller: controller,
+              onApproveThisPhone: widget.onApproveThisPhone,
             ),
           ),
         ],
@@ -743,7 +769,12 @@ class _StatusCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    identity.deviceId,
+                    // This phone's identity in the Owner Domain, derived from
+                    // its own operational key. What used to be printed here —
+                    // and copied, and quoted in bug reports — was
+                    // `mobile-android-<hash of ANDROID_ID>`, a string Hub has
+                    // no record of and would refuse.
+                    identity.deviceInstanceId,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -757,7 +788,7 @@ class _StatusCard extends StatelessWidget {
                   tooltip: '复制设备 ID',
                   onPressed: () async {
                     await Clipboard.setData(
-                      ClipboardData(text: identity.deviceId),
+                      ClipboardData(text: identity.deviceInstanceId),
                     );
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -962,8 +993,9 @@ class _FailureCard extends StatelessWidget {
 }
 
 class _Actions extends StatelessWidget {
-  const _Actions({required this.controller});
+  const _Actions({required this.controller, this.onApproveThisPhone});
   final ClientController controller;
+  final Future<void> Function(BuildContext context)? onApproveThisPhone;
 
   @override
   Widget build(BuildContext context) {
@@ -978,6 +1010,24 @@ class _Actions extends StatelessWidget {
             label: const Padding(
               padding: EdgeInsets.symmetric(vertical: 14),
               child: Text('开始全双工对话'),
+            ),
+          ),
+        ),
+      // Nothing to offer. The screen has already said what is missing and
+      // that waiting will not supply it; a button here would be the fifth
+      // 「再试一次」 standing in front of something that cannot happen.
+      ClientPhase.bodyBlocked => const SizedBox.shrink(),
+      ClientPhase.awaitingApproval when controller.awaitsThisControllersApproval
+              && onApproveThisPhone != null =>
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed:
+                state.busy ? null : () => onApproveThisPhone!(context),
+            icon: const Icon(Icons.verified_user_rounded),
+            label: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 13),
+              child: Text('去批准这台手机'),
             ),
           ),
         ),
@@ -1197,6 +1247,8 @@ class _ConnectionBadge extends StatelessWidget {
       ClientPhase.awaitingApproval ||
       ClientPhase.awaitingBinding =>
         const Color(0xFFFFC96B),
+      // Not amber. Amber is "in progress", and this state is stopped.
+      ClientPhase.bodyBlocked => Colors.white38,
       ClientPhase.error => const Color(0xFFFF8D8D),
       ClientPhase.idle => Colors.white38,
       _ => const Color(0xFF9B92FF),

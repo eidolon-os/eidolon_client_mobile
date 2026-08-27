@@ -55,9 +55,19 @@ Conversation 功能存在，不参与默认启动，也不在 Host Control 阶�
 
 1. 从已认证 Local API 取得 Owner bundle，并只接受其中与当前 Owner
    Domain trust anchor 和签名目录一致的逻辑 Authority endpoint。
-2. 生成并持久化 P-256 设备身份，按 ESP32 相同的 canonical request 规则签名注册请求。
-3. 处理 `pending_approval`、`waiting_binding`、`active`、`revoked`、`unregistered` 状态。
-4. Active 后进入稳定的 LiveKit control room；手动或收到 `room.join` 后刷新 token 并进入 voice room。
+2. 在 AndroidKeyStore 里持有一把 P-256 operational key，并从它的 SPKI 派生这台设备的
+   `device-instance-<sha256>` —— 与 ESP32 同一条规则（`device_instance_identity.dart`）。
+   **这台手机还不会用它去提出 Enrollment**：`POST /api/admission/v1/enrollments` 在移动端
+   尚未实现，`hub_client.dart` 里那条签名注册路径（`X-Device-ID` 等头）在 Hub 上已无对端
+   （命中数 0），产品配置下不再被调用。缺什么、为什么、怎么补，见
+   `docs/跨系统/纯软件Body准入身份裁决.md`。
+3. 读 Admission 的 recovery 投影，把这台手机的处境报成 `MobileBodyStanding` 的七段之一
+   （`mobile_body_standing.dart`），每段说清发生了什么、缺什么、谁能动。不能自行前进的几段
+   停止轮询，并指名缺口而不是给一个「再试一次」。
+4. Active 之后是**一条**长期持有的 LiveKit 通道，客户端在其上声明要不要说话；不再是
+   control room + voice room 两个房间（`eidolon_session.dart` 的首段注释记着为什么）。
+   **ClaimActive 到通道之间这条边在移动端还没有实现**（`configuration:pull` 无 Dart 客户端），
+   所以 `HubConfigStatus.active` 在移动端产品路径上目前不可达。
 5. 发布麦克风音轨时明确启用 WebRTC AEC、NS、AGC，支持全双工对话。
 6. 接收 LiveKit data topics（UI state、session control、control command），并为控制命令返回 ack/result。
 7. 订阅并渲染远端视频轨，给后续数字人留出直接对接点；首版默认仅请求音频会话。
@@ -68,8 +78,10 @@ Conversation 功能存在，不参与默认启动，也不在 Host Control 阶�
 Flutter UI / ClientController
     |-- HubDiscovery ------ Android NsdManager (mDNS)
     |-- DeviceIdentity ---- Android Keystore (P-256 / ECDSA)
-    |-- HubClient --------- signed POST /api/device/register
-    |-- EidolonSession ---- LiveKit control room + voice room
+    |                       Kotlin 只导出 SPKI；instance id 由 Dart 按契约派生
+    |-- Admission --------- GET  /api/admission/v1/enrollments（只读，经 Host Local API）
+    |                       POST ...                       ← 未实现，见准入身份裁决
+    |-- EidolonSession ---- 一条长期 LiveKit 通道
     `-- VadProcessor ------ 可替换接口，首版 NoOp
 ```
 

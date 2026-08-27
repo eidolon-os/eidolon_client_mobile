@@ -67,8 +67,17 @@ void main() {
     );
 
     expect(approval.connectionLabel, '待批准');
-    expect(approval.supportingText, contains('自动向前推进'));
     expect(binding.connectionLabel, '待绑定');
-    expect(binding.headline, contains('Companion'));
+    // These two sentences used to be asserted here verbatim: 「认领请求会自动向
+    // 前推进，无需手动填写设备 ID」 and 「正在关联 Companion」. Neither was true of
+    // any phone. Nothing was claiming Mobile, nothing advanced on its own, and
+    // the second stood in for three different Admission stages including the
+    // one where this version stops. The words a phone sees now come from its
+    // standing — see mobile_body_standing_test.dart — and these two are only
+    // the fallback for the legacy register path, which has no standing.
+    expect(approval.supportingText, isNot(contains('自动向前推进')));
+    expect(binding.headline, isNot(contains('正在关联 Companion')));
+    expect(approval.supportingText, isNotEmpty);
+    expect(binding.headline, isNotEmpty);
   });
 }

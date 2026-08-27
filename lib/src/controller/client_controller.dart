@@ -98,6 +98,8 @@ class ClientController extends ChangeNotifier {
         attentionSequence: attentionSequence,
         failure: failure,
         notice: notice,
+        bodyStanding: config?.bodyStanding,
+        deviceFingerprint: config?.deviceFingerprint ?? '',
       );
 
   String get statusText => uiState.headline;
@@ -141,9 +143,20 @@ class ClientController extends ChangeNotifier {
     };
   }
 
+  /// Whether something this screen is waiting on can still arrive.
+  ///
+  /// The polling predicate, and the one thing today's screen had wrong: it
+  /// polled every five seconds for an Enrollment that only this phone may
+  /// create and that this version cannot create, so 「待批准」 was permanent by
+  /// construction. A standing that cannot advance is not waiting.
   bool get isWaiting =>
-      phase == ClientPhase.awaitingApproval ||
-      phase == ClientPhase.awaitingBinding;
+      (phase == ClientPhase.awaitingApproval ||
+          phase == ClientPhase.awaitingBinding) &&
+      (config?.bodyStanding?.advances ?? true);
+
+  /// The Owner holding this phone can approve it from here.
+  bool get awaitsThisControllersApproval =>
+      config?.bodyStanding?.awaitsThisControllersApproval ?? false;
 
   Future<void> start() async {
     if (_busy) return;
@@ -184,6 +197,16 @@ class ClientController extends ChangeNotifier {
     final next = await _provisionConfig(sessionIntent: sessionIntent);
     config = next;
     failure = null;
+    // A standing is Admission's own answer about this one device, and it says
+    // more than the five status values can carry. When there is one it decides
+    // the phase, so that a stage which cannot advance is drawn as stopped
+    // rather than as 「待批准」 with a retry button in front of it.
+    final standing = next.bodyStanding;
+    if (standing != null && !standing.advances) {
+      _activationTimer?.cancel();
+      _setPhase(ClientPhase.bodyBlocked);
+      return;
+    }
     switch (next.status) {
       case HubConfigStatus.pendingApproval:
         _setPhase(ClientPhase.awaitingApproval);
@@ -587,7 +610,10 @@ class ClientController extends ChangeNotifier {
     await _session.publishControl(
       buildControlAck(
         command: command,
-        deviceId: identity?.deviceId ?? '',
+        // What Hub knows this device by, which is what a control ack has to
+        // name. It used to name the ANDROID_ID-derived install id, a string no
+        // party on the other end has a record of.
+        deviceId: identity?.deviceInstanceId ?? '',
         status: status,
         code: code,
         message: message,
@@ -646,7 +672,12 @@ class ClientController extends ChangeNotifier {
       final identityValue =
           (root['participant_identity'] ?? root['identity'])?.toString() ?? '';
       final source = (root['source'] ?? root['role'])?.toString() ?? '';
-      final speaker = source == 'user' || identityValue == identity?.deviceId
+      // A participant identity is the Channel's, from the session binding —
+      // not a device id, and certainly not the ANDROID_ID-derived install id
+      // this used to compare against, which LiveKit never sees.
+      final sessionIdentity = config?.session.identity ?? '';
+      final speaker = source == 'user' ||
+              (sessionIdentity.isNotEmpty && identityValue == sessionIdentity)
           ? '你'
           : 'Eidolon';
       final isFinal = root['final'] == true || root['is_final'] == true;

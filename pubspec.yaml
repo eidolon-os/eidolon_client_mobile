@@ -17,6 +17,11 @@ dependencies:
   # livekit's major so the two cannot ask for different copies.
   connectivity_plus: ^7.0.0
   cryptography: ^2.9.0
+  # Deriving this device's own instance identity from its operational key.
+  # Hub answers 422 to any candidate id that is not sha256 of the key's SPKI,
+  # so the rule has to be computable on this side rather than invented: the
+  # phone used to send an ANDROID_ID-derived name and could never be enrolled.
+  crypto: ^3.0.0
   flutter:
     sdk: flutter
   http: ^1.6.0
@@ -35,9 +40,6 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  # Tests derive device instance ids the way Hub does, so they name a
-  # device without inventing an identity it cannot have.
-  crypto: ^3.0.0
 
 flutter:
   uses-material-design: true

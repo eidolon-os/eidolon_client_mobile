@@ -1,3 +1,6 @@
+import '../features/conversation/mobile_body_standing.dart';
+import '../features/device_setup/device_instance_identity.dart';
+
 enum HubConfigStatus {
   pendingApproval,
   waitingBinding,
@@ -78,6 +81,7 @@ class HubConfig {
     this.deviceFingerprint = '',
     this.sampleRate = 16000,
     this.channels = 1,
+    this.bodyStanding,
   });
 
   final HubConfigStatus status;
@@ -86,6 +90,15 @@ class HubConfig {
   final String deviceFingerprint;
   final int sampleRate;
   final int channels;
+
+  /// Where this phone stands as a Body, when the answer came from Admission.
+  ///
+  /// Null on the legacy Hub register path, which never knew this. The five
+  /// [HubConfigStatus] values cannot carry it: three distinct Admission stages
+  /// map onto `waitingBinding` alone, and "this phone has no Enrollment at all"
+  /// mapped onto `pendingApproval` — which is how the screen came to announce
+  /// that the Host was claiming a device it had never heard of.
+  final MobileBodyStanding? bodyStanding;
 
   factory HubConfig.fromJson(Map<String, dynamic> json) {
     if (json['success'] != true || json['config'] is! Map<String, dynamic>) {
@@ -106,13 +119,32 @@ class HubConfig {
 }
 
 class DeviceIdentity {
-  const DeviceIdentity({required this.deviceId, required this.fingerprint});
+  const DeviceIdentity({
+    required this.installId,
+    required this.operationalPublicKey,
+    required this.fingerprint,
+  });
 
-  final String deviceId;
+  /// What ANDROID_ID can name: this installation on this Android user.
+  ///
+  /// Not this device's identity to Hub, and deliberately no longer called
+  /// `deviceId`. It named nothing Hub had ever heard of — Hub derives a device
+  /// instance id from the operational key and answers 422 to anything else —
+  /// while every screen and every comparison in this app read it as the
+  /// device's identity.
+  final String installId;
+
+  /// The operational key as it appears on the wire, `p256-spki:<base64url>`.
+  final String operationalPublicKey;
+
   final String fingerprint;
 
+  /// This device's identity in the Owner Domain, derived from its own key.
+  String get deviceInstanceId => deriveDeviceInstanceId(operationalPublicKey);
+
   factory DeviceIdentity.fromMap(Map<Object?, Object?> map) => DeviceIdentity(
-        deviceId: map['deviceId'] as String? ?? '',
+        installId: map['installId'] as String? ?? '',
+        operationalPublicKey: map['operationalPublicKey'] as String? ?? '',
         fingerprint: map['fingerprint'] as String? ?? '',
       );
 }

@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../device_setup/device_setup_models.dart';
 import '../device_setup/device_setup_checkpoint_store.dart';
 import '../device_setup/device_setup_ports.dart';
-import '../device_setup/device_admission_page.dart';
+import '../device_setup/device_admission_queue.dart';
 import '../device_setup/device_setup_page.dart';
 import '../device_setup/host_controller_device_admission.dart';
 import '../device_setup/platform_device_provisioning.dart';
@@ -88,29 +88,7 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
   }
 
   Future<void> _openAdmission() async {
-    final target = await widget.controller.fetchDeviceOnboardingTarget();
-    final owner = widget.controller.workspace?.owner;
-    final connection = widget.controller.connection;
-    if (!mounted || owner == null || connection == null) return;
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => DeviceAdmissionPage(
-          ownerDomainId: target.ownerDomainId,
-          ownerDomainGeneration:
-              target.ownerDomainDescriptor.ownerDomainGeneration,
-          businessOwnerId: owner.ownerId,
-          controllerId: connection.controllerId,
-          loadRecovery: widget.controller.listEnrollmentRecovery,
-          onDecide: ({required requestId, required projection}) =>
-              widget.controller.decideEnrollment(
-            requestId: requestId,
-            projection: projection,
-            initialCompanionId:
-                widget.controller.workspace?.workspace?.primaryCompanionId,
-          ),
-        ),
-      ),
-    );
+    await openDeviceAdmissionQueue(context, widget.controller);
     if (mounted) await widget.controller.refreshDevices();
   }
 

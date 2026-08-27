@@ -1,9 +1,20 @@
+import '../features/conversation/mobile_body_standing.dart';
+
 enum ClientPhase {
   idle,
   discovering,
   registering,
   awaitingApproval,
   awaitingBinding,
+
+  /// This phone cannot become a Body from here, and no retry changes that.
+  ///
+  /// Distinct from [error] because nothing failed, and distinct from the two
+  /// awaiting phases because there is nothing to await. It exists so a stopped
+  /// state can be drawn as stopped: the phone spent today showing 「待批准」 and
+  /// a 「立即检查状态」 button while polling for an Enrollment that no party in
+  /// the system was creating.
+  bodyBlocked,
   activating,
   ready,
   joining,
@@ -72,6 +83,8 @@ class ClientUiState {
     this.attentionSequence = 0,
     this.failure,
     this.notice,
+    this.bodyStanding,
+    this.deviceFingerprint = '',
   });
 
   final ClientPhase phase;
@@ -86,6 +99,21 @@ class ClientUiState {
   final ClientFailure? failure;
   final String? notice;
 
+  /// Where this phone stands as a Body, when Admission is what answered.
+  final MobileBodyStanding? bodyStanding;
+
+  final String deviceFingerprint;
+
+  /// The one sentence that owns the admission copy, when there is a standing.
+  ///
+  /// Every admission phase defers to it rather than carrying its own line: the
+  /// phases are three and the standings are seven, and the three-way fold is
+  /// exactly what said 「正在关联 Companion」 to a phone that was in fact
+  /// finished, and 「主机正在认领 Mobile」 to one that had never asked.
+  MobileBodySentence? get bodySentence => bodyStanding == null
+      ? null
+      : mobileBodySentence(bodyStanding!, fingerprint: deviceFingerprint);
+
   bool get hubOnline =>
       controlConnection == ChannelConnectionState.connected ||
       controlConnection == ChannelConnectionState.reconnecting;
@@ -99,12 +127,17 @@ class ClientUiState {
 
   String get headline {
     if (phase == ClientPhase.error && failure != null) return failure!.title;
+    if (_admissionPhase) {
+      final sentence = bodySentence;
+      if (sentence != null) return sentence.headline;
+    }
     return switch (phase) {
       ClientPhase.idle => '连接我的 Eidolon',
       ClientPhase.discovering => '正在验证主机与 Hub…',
       ClientPhase.registering => '正在安全接入 Mobile…',
-      ClientPhase.awaitingApproval => '主机正在认领 Mobile',
-      ClientPhase.awaitingBinding => '正在关联 Companion',
+      ClientPhase.awaitingApproval => '等你批准这台手机',
+      ClientPhase.awaitingBinding => '正在完成这台手机的归属',
+      ClientPhase.bodyBlocked => '这台手机还不能对话',
       ClientPhase.activating => '正在接入通道…',
       ClientPhase.ready =>
         controlConnection == ChannelConnectionState.reconnecting
@@ -131,13 +164,28 @@ class ClientUiState {
     };
   }
 
-  String get supportingText => switch (phase) {
+  /// The phases whose copy is a statement about this phone's admission.
+  bool get _admissionPhase =>
+      phase == ClientPhase.awaitingApproval ||
+      phase == ClientPhase.awaitingBinding ||
+      phase == ClientPhase.bodyBlocked;
+
+  String get supportingText {
+    if (_admissionPhase) {
+      final sentence = bodySentence;
+      if (sentence != null) return sentence.detail;
+    }
+    return _phaseSupportingText;
+  }
+
+  String get _phaseSupportingText => switch (phase) {
         ClientPhase.idle => '通过已认证主机接入 Hub 与当前 Companion',
         ClientPhase.discovering => '验证 Host 会话提供的 Hub 身份和 TLS 绑定',
         ClientPhase.registering =>
           '使用 Android Keystore 身份完成 Enrollment 与 Owner 认领',
-        ClientPhase.awaitingApproval => '认领请求会自动向前推进，无需手动填写设备 ID',
-        ClientPhase.awaitingBinding => 'Hub 已批准，主机正在完成 Owner 挂载和 Companion 关联',
+        ClientPhase.awaitingApproval => '登记已经提出，主机在等一个批准',
+        ClientPhase.awaitingBinding => '归属还没有落定，这一步在这台手机上跑',
+        ClientPhase.bodyBlocked => '这台手机在这个 Owner 域里还没有可以对话的身份',
         ClientPhase.activating => '授权已完成，正在接入这台主机的通道',
         ClientPhase.ready => '通道保持在线，点击下方按钮开始对话',
         ClientPhase.joining => '正在刷新会话凭据并启用 WebRTC AEC',
@@ -158,11 +206,20 @@ class ClientUiState {
     };
   }
 
-  String get connectionLabel => switch (phase) {
+  String get connectionLabel {
+    if (_admissionPhase) {
+      final sentence = bodySentence;
+      if (sentence != null) return sentence.connectionLabel;
+    }
+    return _phaseConnectionLabel;
+  }
+
+  String get _phaseConnectionLabel => switch (phase) {
         ClientPhase.idle => '未连接',
         ClientPhase.discovering || ClientPhase.registering => '连接中',
         ClientPhase.awaitingApproval => '待批准',
         ClientPhase.awaitingBinding => '待绑定',
+        ClientPhase.bodyBlocked => '不能对话',
         ClientPhase.activating || ClientPhase.joining => '正在连接',
         ClientPhase.ready =>
           controlConnection == ChannelConnectionState.reconnecting

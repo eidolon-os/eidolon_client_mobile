@@ -1,62 +1,127 @@
+import 'package:eidolon_client_mobile/src/features/conversation/mobile_body_standing.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/mobile_conversation_provisioner.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_ports.dart';
 import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:eidolon_client_mobile/src/models/hub_models.dart';
-import 'package:eidolon_client_mobile/src/platform/platform_bridge.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/admission_fixtures.dart';
 import 'support/owner_domain_fixtures.dart';
+import 'support/phone_identity_fixtures.dart';
 
 void main() {
   test('network/pending review never implies approval or active Channel',
       () async {
     final admission = _Admission([
-      _projection(
-        state: 'pending_review',
-        deviceId: namedDeviceInstanceId('mobile-android-test'),
-      ),
+      _projection(state: 'pending_review', deviceId: phoneDeviceInstanceId),
     ]);
     final config = await _provisioner(admission).provision();
 
     expect(config.status, HubConfigStatus.pendingApproval);
+    expect(config.bodyStanding, MobileBodyStanding.pendingReview);
     expect(config.session.usable, isFalse);
     expect(admission.decisions, 0);
   });
 
-  test('approved, GrantDelivered and ClaimActive remain honestly visible',
+  test('this phone finds its own record by the id derived from its own key',
       () async {
-    final cases = <EnrollmentRecoveryProjectionV1>[
+    // The comparison used to be against an ANDROID_ID-derived
+    // `mobile-android-<hash>`, while the field it was compared to is one Hub
+    // only ever writes as `device-instance-<sha256(spki)>`. It was false by
+    // construction, so this phone could not have recognised its own record
+    // even once one existed.
+    final admission = _Admission([
+      _projection(state: 'pending_review', deviceId: phoneDeviceInstanceId),
+    ]);
+
+    final config = await _provisioner(admission).provision();
+
+    expect(config.bodyStanding, MobileBodyStanding.pendingReview);
+  });
+
+  test('a record under this phone\'s old invented id is not this phone',
+      () async {
+    final admission = _Admission([
       _projection(
+        state: 'pending_review',
+        deviceId: namedDeviceInstanceId(phoneInstallId),
+      ),
+    ]);
+
+    final config = await _provisioner(admission).provision();
+
+    expect(config.bodyStanding, MobileBodyStanding.notEnrolled);
+  });
+
+  test('the three stages after approval are three answers, not one', () async {
+    // They were folded into one `waitingBinding` that said 「正在关联 Companion」.
+    // Two of them are a few seconds of work this phone is doing; the third is
+    // where this version stops. Saying all three the same way used progress to
+    // cover an unimplemented edge.
+    final cases = <MobileBodyStanding, EnrollmentRecoveryProjectionV1>{
+      MobileBodyStanding.approvedAwaitingHandoff: _projection(
         state: 'approved_awaiting_handoff',
-        deviceId: namedDeviceInstanceId('mobile-android-test'),
+        deviceId: phoneDeviceInstanceId,
         withDecision: true,
       ),
-      _projection(
+      MobileBodyStanding.grantDelivered: _projection(
         state: 'grant_delivered',
-        deviceId: namedDeviceInstanceId('mobile-android-test'),
+        deviceId: phoneDeviceInstanceId,
         withDecision: true,
         withDelivery: true,
       ),
-      _projection(
+      MobileBodyStanding.claimActiveWithoutChannel: _projection(
         state: 'grant_acknowledged',
-        deviceId: namedDeviceInstanceId('mobile-android-test'),
+        deviceId: phoneDeviceInstanceId,
         withDecision: true,
         withDelivery: true,
         claimState: 'active',
       ),
-    ];
+    };
 
-    for (final projection in cases) {
-      final config = await _provisioner(_Admission([projection])).provision();
+    for (final entry in cases.entries) {
+      final config =
+          await _provisioner(_Admission([entry.value])).provision();
       expect(config.status, HubConfigStatus.waitingBinding);
+      expect(config.bodyStanding, entry.key);
       expect(config.session.usable, isFalse);
     }
   });
 
-  test('empty recovery does not mean ClaimActive', () async {
+  test('no Enrollment is not a claim in progress', () async {
+    // The whole bug in one assertion. An empty recovery list used to be
+    // reported as `pendingApproval`, which the screen rendered as 「主机正在认领
+    // Mobile / 认领请求会自动向前推进」 — a claim no party was making, could
+    // make, or would ever make, since only a device may propose itself and this
+    // app cannot yet do it.
     final config = await _provisioner(_Admission(const [])).provision();
-    expect(config.status, HubConfigStatus.pendingApproval);
+
+    expect(config.bodyStanding, MobileBodyStanding.notEnrolled);
+    expect(config.status, isNot(HubConfigStatus.pendingApproval));
+    expect(config.bodyStanding!.advances, isFalse);
+  });
+
+  test('a revoked Claim and an ended Enrollment are told apart', () async {
+    final revoked = await _provisioner(
+      _Admission([
+        _projection(
+          state: 'grant_acknowledged',
+          deviceId: phoneDeviceInstanceId,
+          withDecision: true,
+          withDelivery: true,
+          claimState: 'revoked',
+        ),
+      ]),
+    ).provision();
+    expect(revoked.bodyStanding, MobileBodyStanding.claimRevoked);
+    expect(revoked.status, HubConfigStatus.revoked);
+
+    final ended = await _provisioner(
+      _Admission([
+        _projection(state: 'rejected', deviceId: phoneDeviceInstanceId),
+      ]),
+    ).provision();
+    expect(ended.bodyStanding, MobileBodyStanding.admissionEnded);
   });
 
   test('Owner Domain mismatch is rejected instead of cross-domain adoption',
@@ -64,7 +129,7 @@ void main() {
     final admission = _Admission([
       _projection(
         ownerDomainId: 'owner-domain_other',
-        deviceId: namedDeviceInstanceId('mobile-android-test'),
+        deviceId: phoneDeviceInstanceId,
       ),
     ]);
     await expectLater(
@@ -87,10 +152,7 @@ void main() {
         deviceId: namedDeviceInstanceId('someone-else'),
         ownerDomainId: 'owner-domain_99',
       ),
-      _projection(
-        state: 'pending_review',
-        deviceId: namedDeviceInstanceId('mobile-android-test'),
-      ),
+      _projection(state: 'pending_review', deviceId: phoneDeviceInstanceId),
     ]);
 
     final config = await _provisioner(admission).provision();
@@ -105,7 +167,7 @@ void main() {
     final admission = _Admission([
       _projection(
         state: 'pending_review',
-        deviceId: namedDeviceInstanceId('mobile-android-test'),
+        deviceId: phoneDeviceInstanceId,
         ownerDomainId: 'owner-domain_99',
       ),
     ]);
@@ -121,7 +183,7 @@ MobileConversationProvisioner _provisioner(DeviceAdmissionPort admission) =>
     MobileConversationProvisioner(
       loadTarget: () async => deviceOnboardingTargetFixture(),
       admission: admission,
-      platform: _Platform(),
+      platform: FakePhonePlatform(),
     );
 
 EnrollmentRecoveryProjectionV1 _projection({
@@ -141,14 +203,6 @@ EnrollmentRecoveryProjectionV1 _projection({
       claimState: claimState,
       claimOwnerDomainGeneration: 1,
     );
-
-class _Platform extends PlatformBridge {
-  @override
-  Future<DeviceIdentity> getDeviceIdentity() async => DeviceIdentity(
-        deviceId: namedDeviceInstanceId('mobile-android-test'),
-        fingerprint: 'p256:mobile-test',
-      );
-}
 
 class _Admission implements DeviceAdmissionPort {
   _Admission(this.items);

@@ -51,6 +51,51 @@ void main() {
     final orphaned = handled.difference(called).toList()..sort();
     expect(orphaned, isEmpty);
   });
+
+  test('getDeviceIdentity answers with every key DeviceIdentity reads', () {
+    // The same mistake one level down: the method existed on both sides while
+    // the map it returned and the map Dart read had drifted. Dart read
+    // `deviceId` and treated it as this device's identity in the Owner Domain;
+    // Android answered with an ANDROID_ID-derived install name, which Hub has
+    // no record of and answers 422 to. Every unit test passed, against a fake
+    // that returned a canonical id no build of this app has ever produced.
+    final kotlin = File(
+      'android/app/src/main/kotlin/live/eidolon/eidolon_client_mobile/'
+      'MainActivity.kt',
+    ).readAsStringSync();
+    final body = kotlin.substring(
+      kotlin.indexOf('private fun deviceIdentity()'),
+    );
+    final answered = RegExp('"([a-zA-Z]+)" to')
+        .allMatches(body.substring(0, body.indexOf('\n    }')))
+        .map((match) => match.group(1)!)
+        .toSet();
+
+    final dart = File('lib/src/models/hub_models.dart').readAsStringSync();
+    final fromMap = dart.indexOf('DeviceIdentity.fromMap');
+    final read = RegExp(r"map\['([a-zA-Z]+)'\]")
+        .allMatches(
+          dart.substring(fromMap, dart.indexOf('\n}', fromMap)),
+        )
+        .map((match) => match.group(1)!)
+        .toSet();
+
+    expect(read, isNotEmpty, reason: 'the reader is not reading Dart');
+    expect(answered, isNotEmpty, reason: 'the reader is not reading Kotlin');
+    expect(
+      read.difference(answered).toList()..sort(),
+      isEmpty,
+      reason: 'Dart reads these out of getDeviceIdentity and Android sends none '
+          'of them, so the phone gets empty strings for its own identity',
+    );
+    expect(
+      answered,
+      contains('operationalPublicKey'),
+      reason: 'a device instance id is derived from the operational key, so '
+          'the key itself has to cross the channel — deriving it in Kotlin '
+          'would be a second implementation of the rule',
+    );
+  });
 }
 
 Set<String> _methodsInvokedFromDart() {

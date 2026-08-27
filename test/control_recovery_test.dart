@@ -3,10 +3,10 @@ import 'dart:async';
 import 'package:eidolon_client_mobile/src/controller/client_controller.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/conversation_provisioner.dart';
 import 'package:eidolon_client_mobile/src/models/hub_models.dart';
-import 'package:eidolon_client_mobile/src/platform/platform_bridge.dart';
 import 'package:eidolon_client_mobile/src/services/eidolon_session.dart';
 import 'package:eidolon_client_mobile/src/services/hub_client.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'support/phone_identity_fixtures.dart';
 
 void main() {
   const room = RoomConfig(
@@ -133,13 +133,7 @@ class _FakeProvisioner implements ConversationProvisioner {
   }
 }
 
-class _FakePlatform extends PlatformBridge {
-  @override
-  Future<DeviceIdentity> getDeviceIdentity() async => const DeviceIdentity(
-        deviceId: 'mobile-test',
-        fingerprint: 'p256:test',
-      );
-}
+class _FakePlatform extends FakePhonePlatform {}
 
 class _FakeSession extends EidolonSession {
   final _states = StreamController<SessionState>.broadcast();

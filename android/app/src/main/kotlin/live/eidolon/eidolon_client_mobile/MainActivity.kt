@@ -197,7 +197,17 @@ class MainActivity : FlutterActivity() {
     private fun deviceIdentity(): Map<String, String> {
         val publicDer = ensureKeyEntry().certificate.publicKey.encoded
         return mapOf(
-            "deviceId" to deviceId(),
+            // Kept, and no longer offered as this device's identity to anything
+            // that talks to Hub. It names the install, which is all ANDROID_ID
+            // can name: it is the keystore alias namespace for this Android
+            // user, and the id the legacy signRequest header path still sends.
+            "installId" to deviceId(),
+            // The operational key as it appears on the wire. The device
+            // instance id is derived from these bytes and nowhere else — this
+            // half deliberately does not derive it, because a second
+            // implementation of that rule is how a phone came to call itself
+            // mobile-android-<hash> and compare unequal to Hub forever.
+            "operationalPublicKey" to "p256-spki:${base64Url(publicDer)}",
             "fingerprint" to "p256:${hex(sha256(publicDer))}",
         )
     }
