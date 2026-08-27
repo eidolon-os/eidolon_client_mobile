@@ -251,10 +251,14 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         _refused = false;
       } else {
         _step = _Step.working;
-        // `rejected` is the Host's final word on this Enrollment. Everything
-        // else here is still moving, including `failed`, which says out loud
-        // that retrying is safe.
-        _refused = checkpoint.admissionState == DeviceAdmissionState.rejected;
+        // Two ways this setup is over. `rejected` is the Host's final word on
+        // the Enrollment. A failure the coordinator graded un-retryable is the
+        // other — a Host that answers 404 for this Enrollment will answer 404
+        // forever — and it used to render as "in progress" with a retry the
+        // Host had already ruled out.
+        final failure = checkpoint.failure;
+        _refused = checkpoint.admissionState == DeviceAdmissionState.rejected ||
+            (failure != null && !failure.retryable);
         _progress = _refused ? null : _admissionProgress(checkpoint.admissionState);
         _error = checkpoint.failure?.message;
       }
@@ -483,7 +487,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   Widget _refusedSetup() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('这次接入已终止', style: Theme.of(context).textTheme.titleLarge),
+          Text('这次接入进行不下去了', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 12),
           const Text('主机不会再为这次 Enrollment 交付 Grant。设备本身没有被改动，'
               '重新设置一次即可——包括同一台设备。'),

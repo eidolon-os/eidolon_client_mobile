@@ -1,6 +1,8 @@
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_page.dart';
+import 'package:eidolon_client_mobile/src/features/device_setup/host_controller_device_admission.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_ports.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/local_api_client.dart';
 import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +19,7 @@ import 'support/owner_domain_fixtures.dart';
 /// re-adopted it, and the screen it drew offered only "从主机恢复状态", which
 /// can never move a terminal Enrollment.
 void main() {
+  _adapterGrading();
   testWidgets('a refused setup offers a way out instead of only a retry',
       (tester) async {
     final store = InMemoryDeviceSetupCheckpointStore();
@@ -26,7 +29,7 @@ void main() {
     await tester.pumpWidget(_page(store, admission));
     await _pumpUntil(tester, () => admission.recoverCalls == 1);
 
-    expect(find.text('这次接入已终止'), findsOneWidget);
+    expect(find.text('这次接入进行不下去了'), findsOneWidget);
     expect(find.byKey(const Key('restart-device-setup')), findsOneWidget);
     expect(find.byKey(const Key('resume-device-admission')), findsNothing);
   });
@@ -68,6 +71,23 @@ void main() {
 
     expect(find.byKey(const Key('resume-device-admission')), findsOneWidget);
     expect(find.byKey(const Key('restart-device-setup')), findsNothing);
+  });
+
+  testWidgets('a Host that no longer has this Enrollment is a dead end too',
+      (tester) async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    await store.save(_checkpoint());
+    final admission = _GoneAdmission();
+
+    await tester.pumpWidget(_page(store, admission));
+    await _pumpUntil(tester, () => admission.recoverCalls == 1);
+
+    // The Host's own sentence, and no retry above it.
+    expect(find.text('这次接入进行不下去了'), findsOneWidget);
+    expect(find.byKey(const Key('restart-device-setup')), findsOneWidget);
+    expect(find.byKey(const Key('resume-device-admission')), findsNothing);
+    expect(find.textContaining('主机上已经没有这台设备了'), findsOneWidget);
+    expect(find.textContaining('可安全重试'), findsNothing);
   });
 }
 
@@ -165,4 +185,60 @@ class _Transport implements DeviceProvisioningTransport {
 
   @override
   Future<bool> requestPermission() async => true;
+}
+
+
+/// A Host that answers 404 for this Enrollment, as one does after a reinstall.
+class _GoneAdmission implements DeviceAdmissionPort {
+  int recoverCalls = 0;
+
+  @override
+  Future<EnrollmentProposalPageV1> listRecovery({
+    AdmissionListCursorV1? after,
+  }) async =>
+      canonicalRecoveryPage(const [], ownerDomainId: ownerDomainIdFixture);
+
+  @override
+  Future<EnrollmentRecoveryProjectionV1> recover({
+    required String enrollmentId,
+  }) async {
+    recoverCalls += 1;
+    throw enrollmentRecoveryRefusal(
+      const LocalApiRequestException(
+        'Enrollment recovery 返回 HTTP 404',
+        statusCode: 404,
+        reason: '主机上已经没有这台设备了。',
+      ),
+    )!;
+  }
+
+  @override
+  Future<EnrollmentRecoveryProjectionV1> decide({
+    required String requestId,
+    required EnrollmentRecoveryProjectionV1 projection,
+    String? initialCompanionId,
+  }) =>
+      throw UnimplementedError();
+}
+
+
+void _adapterGrading() {
+  test('only a 404 is graded terminal', () {
+    final gone = enrollmentRecoveryRefusal(
+      const LocalApiRequestException('x', statusCode: 404, reason: 'y'),
+    );
+    expect(gone, isNotNull);
+    expect(gone!.code, 'enrollment_gone');
+    expect(gone.retryable, isFalse);
+    expect(
+      enrollmentRecoveryRefusal(
+        const LocalApiRequestException('x', statusCode: 503),
+      ),
+      isNull,
+    );
+    expect(
+      enrollmentRecoveryRefusal(const LocalApiRequestException('x')),
+      isNull,
+    );
+  });
 }

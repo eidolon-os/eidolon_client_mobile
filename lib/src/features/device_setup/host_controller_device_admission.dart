@@ -1,5 +1,7 @@
 import '../host_setup/host_product_controller.dart';
+import '../host_setup/local_api_client.dart';
 import '../../generated/device_foundation_v1.dart';
+import 'device_setup_coordinator.dart';
 import 'device_setup_ports.dart';
 
 /// The admission half of device setup, as this Controller performs it.
@@ -24,8 +26,13 @@ class HostControllerDeviceAdmission implements DeviceAdmissionPort {
   @override
   Future<EnrollmentRecoveryProjectionV1> recover({
     required String enrollmentId,
-  }) =>
-      _controller.recoverEnrollment(enrollmentId: enrollmentId);
+  }) async {
+    try {
+      return await _controller.recoverEnrollment(enrollmentId: enrollmentId);
+    } on LocalApiRequestException catch (error) {
+      throw enrollmentRecoveryRefusal(error) ?? error;
+    }
+  }
 
   @override
   Future<EnrollmentRecoveryProjectionV1> decide({
@@ -38,4 +45,24 @@ class HostControllerDeviceAdmission implements DeviceAdmissionPort {
         projection: projection,
         initialCompanionId: initialCompanionId,
       );
+}
+
+
+/// Grade a refused Enrollment recovery, or return null to let it through.
+///
+/// 404 here is not an outage. The Host is answering that this Enrollment is not
+/// one of its own — the usual causes being that the Host was reinstalled, or
+/// the Enrollment removed — and asking again will return 404 forever. Left
+/// ungraded it reached the coordinator's catch-all as
+/// `admission_unavailable, retryable: true`, so the screen printed
+/// 「可安全重试」 directly above the Host's own 「主机上已经没有这台设备了」.
+///
+/// Everything else stays ungraded on purpose: a 503 or a dropped connection is
+/// exactly the transient the retry exists for.
+DeviceSetupException? enrollmentRecoveryRefusal(LocalApiRequestException error) {
+  if (error.statusCode != 404) return null;
+  return DeviceSetupException(
+    code: 'enrollment_gone',
+    message: error.toString(),
+  );
 }
