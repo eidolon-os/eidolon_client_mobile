@@ -434,7 +434,10 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       MaterialPageRoute(
         builder: (_) => RecollectionsPage(
           companionName: name.isNotEmpty ? name : '它',
-          onSearch: (query) => _controller.recollections(query: query),
+          onSearch: (query) => _controller.recollections(
+            companionId: companion.companionId,
+            query: query,
+          ),
         ),
       ),
     );

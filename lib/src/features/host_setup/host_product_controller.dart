@@ -403,8 +403,14 @@ class HostProductController extends ChangeNotifier {
   /// Not held on this controller: unlike the face or the name, an answer here
   /// belongs to one question someone just asked, and keeping the last one
   /// would show it again beside the next question.
-  Future<RecollectionsView> recollections({required String query}) =>
-      _managementRepository.recollections(query: query);
+  Future<RecollectionsView> recollections({
+    required String companionId,
+    required String query,
+  }) =>
+      _managementRepository.recollections(
+        query: query,
+        companionId: companionId,
+      );
 
   /// Every Eidolon this Owner has.
   ///
