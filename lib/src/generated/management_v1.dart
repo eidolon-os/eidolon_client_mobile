@@ -716,7 +716,6 @@ class ConversationView {
     required this.conversationId,
     this.endedAt,
     this.startedAt,
-    this.title,
     this.updatedAt,
   });
 
@@ -726,8 +725,6 @@ class ConversationView {
 
   final String? startedAt;
 
-  final String? title;
-
   final String? updatedAt;
 
   factory ConversationView.fromJson(Map<String, dynamic> value) {
@@ -735,7 +732,6 @@ class ConversationView {
       conversationId: value['conversation_id'] as String,
       endedAt: value['ended_at'] as String?,
       startedAt: value['started_at'] as String?,
-      title: value['title'] as String?,
       updatedAt: value['updated_at'] as String?,
     );
   }
@@ -745,7 +741,6 @@ class ConversationView {
       'conversation_id': conversationId,
       if (endedAt != null) 'ended_at': endedAt,
       if (startedAt != null) 'started_at': startedAt,
-      if (title != null) 'title': title,
       if (updatedAt != null) 'updated_at': updatedAt,
     };
   }

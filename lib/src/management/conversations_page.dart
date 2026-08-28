@@ -4,9 +4,9 @@ import '../generated/management_v1.dart';
 
 /// 对话历史 — when this Eidolon and I talked.
 ///
-/// A list of occasions, not a search and not a feed. Each row is a time and, if
-/// anything named it, a title — the words are behind it, one conversation at a
-/// time, because a page of transcripts is every word anyone ever said to a Host.
+/// A list of occasions, not a search and not a feed. Each row is identified by
+/// when it began; the words are behind it, one conversation at a time, because
+/// a page of transcripts is every word anyone ever said to a Host.
 ///
 /// What the page must not do is imply it holds the conversation. A row with a
 /// timestamp and nothing else reads like a broken transcript; a row that says
@@ -65,15 +65,8 @@ class ConversationsPage extends StatelessWidget {
                 final conversation = conversations[index];
                 return ListTile(
                   key: Key('conversation-${conversation.conversationId}'),
-                  title: Text(
-                    (conversation.title ?? '').isEmpty
-                        // Nothing named it, and this page does not name it
-                        // either: a title invented here would be a screen
-                        // summarising someone's conversation for them.
-                        ? '没有标题的一次'
-                        : conversation.title!,
-                  ),
-                  subtitle: Text(_when(conversation)),
+                  title: Text(conversationTimeLabel(conversation)),
+                  subtitle: Text(_conversationState(conversation)),
                   trailing: onOpen == null
                       ? null
                       : const Icon(Icons.chevron_right),
@@ -85,26 +78,24 @@ class ConversationsPage extends StatelessWidget {
   }
 }
 
-/// When it happened, and whether it is over.
+/// The one stable label every conversation already owns.
 ///
-/// An open conversation says so rather than showing its last-updated time as if
-/// it were an ending — "还在继续" is the difference between a record and a thing
-/// that is still happening.
-String _when(ConversationView conversation) {
+/// A generated title would need a producer, policy and lifecycle. Until such a
+/// capability exists, the start time is the honest identity of an occasion.
+String conversationTimeLabel(ConversationView conversation) {
   final started = _moment(conversation.startedAt);
-  final ended = _moment(conversation.endedAt);
-  final label = started == null
-      ? (conversation.startedAt ?? '')
-      : _stamp(started);
-  return ended == null ? '$label · 还在继续' : label;
+  return started == null ? '一次对话' : _stamp(started);
 }
+
+String _conversationState(ConversationView conversation) =>
+    (conversation.endedAt ?? '').isEmpty ? '还在继续' : '已结束';
 
 DateTime? _moment(String? value) =>
     value == null || value.isEmpty ? null : DateTime.tryParse(value);
 
 String _stamp(DateTime moment) {
   final local = moment.toLocal();
-  return '${local.year}-${_two(local.month)}-${_two(local.day)} '
+  return '${local.year}年${local.month}月${local.day}日 '
       '${_two(local.hour)}:${_two(local.minute)}';
 }
 

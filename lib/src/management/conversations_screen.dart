@@ -68,7 +68,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         MaterialPageRoute(
           builder: (_) => _TranscriptScreen(
             conversationId: conversation.conversationId,
-            title: conversation.title ?? '',
+            heading: conversationTimeLabel(conversation),
             load: widget.loadTranscript!,
           ),
         ),
@@ -106,12 +106,12 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 class _TranscriptScreen extends StatefulWidget {
   const _TranscriptScreen({
     required this.conversationId,
-    required this.title,
+    required this.heading,
     required this.load,
   });
 
   final String conversationId;
-  final String title;
+  final String heading;
   final Future<TranscriptView> Function(String conversationId, String? cursor)
   load;
 
@@ -161,7 +161,7 @@ class _TranscriptScreenState extends State<_TranscriptScreen> {
     if (_turns.isNotEmpty || (!_busy && _error == null)) {
       return TranscriptPage(
         turns: _turns,
-        title: widget.title,
+        title: widget.heading,
         busy: _busy,
         onLoadEarlier: _cursor == null ? null : () => _read(cursor: _cursor),
       );

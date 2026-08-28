@@ -20,12 +20,10 @@ import 'package:http/testing.dart';
 
 ConversationView _conversation({
   String id = 'conv-1',
-  String? title = '周末计划',
   String started = '2026-08-24T09:00:00Z',
   String? ended = '2026-08-24T09:20:00Z',
 }) => ConversationView.fromJson({
   'conversation_id': id,
-  'title': title,
   'started_at': started,
   'updated_at': started,
   'ended_at': ended,
@@ -121,7 +119,7 @@ void main() {
   });
 
   group('the conversations list', () {
-    testWidgets('says when, and that a row opens', (tester) async {
+    testWidgets('uses when it began as the row identity', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: ConversationsPage(
@@ -132,9 +130,10 @@ void main() {
       );
 
       expect(find.text('对话历史'), findsOneWidget);
-      expect(find.text('周末计划'), findsOneWidget);
-      expect(find.textContaining('2026-08-24 '), findsOneWidget);
+      expect(find.textContaining('2026年8月24日'), findsOneWidget);
+      expect(find.text('已结束'), findsOneWidget);
       expect(find.byIcon(Icons.chevron_right), findsOneWidget);
+      expect(find.text('没有标题的一次'), findsNothing);
     });
 
     testWidgets(
@@ -152,16 +151,17 @@ void main() {
       },
     );
 
-    testWidgets('an unnamed conversation is not named by this screen', (
+    testWidgets('a missing start is an occasion, not a missing title', (
       tester,
     ) async {
       await tester.pumpWidget(
         MaterialApp(
-          home: ConversationsPage(conversations: [_conversation(title: '')]),
+          home: ConversationsPage(conversations: [_conversation(started: '')]),
         ),
       );
 
-      expect(find.text('没有标题的一次'), findsOneWidget);
+      expect(find.text('一次对话'), findsOneWidget);
+      expect(find.textContaining('没有标题'), findsNothing);
     });
 
     testWidgets('rows do not open when nothing is behind them', (tester) async {
@@ -235,6 +235,7 @@ void main() {
 
       expect(find.byKey(const Key('transcript-page')), findsOneWidget);
       expect(find.text('周末去哪'), findsOneWidget);
+      expect(find.textContaining('2026年8月24日'), findsOneWidget);
     });
 
     testWidgets('earlier turns arrive above the ones already read', (
