@@ -329,6 +329,8 @@ void main() {
       // Worded once, in refusalText, rather than per screen: ten screens each
       // wording a refusal is how 被拒绝 became this app's answer to everything.
       expect(find.text('这台主机上没有这次对话'), findsOneWidget);
+      expect(find.textContaining('2026年8月24日'), findsOneWidget);
+      expect(find.text('那次说了什么'), findsNothing);
     });
   });
 }

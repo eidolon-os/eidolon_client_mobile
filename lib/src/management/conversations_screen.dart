@@ -168,7 +168,10 @@ class _TranscriptScreenState extends State<_TranscriptScreen> {
     }
     return Scaffold(
       key: const Key('transcript-screen'),
-      appBar: AppBar(title: const Text('那次说了什么')),
+      // Loading, content and refusal are three states of the same occasion;
+      // changing its heading when a read fails would make the error look like
+      // a different destination.
+      appBar: AppBar(title: Text(widget.heading)),
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(key: Key('transcript-loading'))
