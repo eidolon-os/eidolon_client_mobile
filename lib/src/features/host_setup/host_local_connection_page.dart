@@ -23,7 +23,7 @@ import '../../generated/management_v1.dart';
 import 'companion_page.dart';
 import 'managed_controllers_page.dart';
 import 'home_models.dart';
-import '../../management/conversations_screen.dart';
+import '../../management/conversation_history_screen.dart';
 import '../../management/tasks_screen.dart';
 import 'host_product_session.dart';
 import 'host_runtime_status_page.dart';
@@ -403,8 +403,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     final companionId = companion.companionId;
     return Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => ConversationsScreen(
-          load: (cursor) => _controller.conversations(
+        builder: (_) => ConversationHistoryScreen(
+          loadConversations: (cursor) => _controller.conversations(
             companionId: companionId,
             cursor: cursor,
           ),

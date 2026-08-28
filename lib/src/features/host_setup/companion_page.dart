@@ -186,8 +186,8 @@ class CompanionPage extends StatelessWidget {
             _FeatureRow(
               tileKey: const Key('companion-open-conversations'),
               icon: Icons.forum_outlined,
-              title: '对话历史',
-              subtitle: '查看你们何时聊过，以及当时说了什么',
+              title: '对话记录',
+              subtitle: '直接查看你们说过的话',
               onOpen: onOpenConversations,
               hold: _hold('conversation.read'),
             ),
