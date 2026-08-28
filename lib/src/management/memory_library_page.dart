@@ -162,8 +162,10 @@ class _MemoryOverview extends StatelessWidget {
                     color: colors.primary.withValues(alpha: .12),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child:
-                      Icon(Icons.auto_stories_outlined, color: colors.primary),
+                  child: Icon(
+                    Icons.auto_stories_outlined,
+                    color: colors.primary,
+                  ),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -171,7 +173,7 @@ class _MemoryOverview extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '$selectedCompanionName 的视角',
+                        '$selectedCompanionName的视角',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: 4),
@@ -191,8 +193,10 @@ class _MemoryOverview extends StatelessWidget {
                   labelText: '正在查看',
                   prefixIcon: Icon(Icons.face_retouching_natural_outlined),
                   border: OutlineInputBorder(),
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                 ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
@@ -220,8 +224,10 @@ class _MemoryOverview extends StatelessWidget {
                 const Spacer(),
                 Icon(Icons.shield_outlined, size: 18, color: colors.primary),
                 const SizedBox(width: 5),
-                Text('仅保存在你的主机',
-                    style: Theme.of(context).textTheme.labelMedium),
+                Text(
+                  '仅保存在你的主机',
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
               ],
             ),
           ],
@@ -244,12 +250,12 @@ class _Metric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(value, style: Theme.of(context).textTheme.titleLarge),
-          Text(label, style: Theme.of(context).textTheme.labelSmall),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(value, style: Theme.of(context).textTheme.titleLarge),
+      Text(label, style: Theme.of(context).textTheme.labelSmall),
+    ],
+  );
 }
 
 class _ReadNotice extends StatelessWidget {
@@ -301,13 +307,13 @@ class _SectionHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 3),
-          Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(title, style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 3),
+      Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+    ],
+  );
 }
 
 class _ActionGrid extends StatelessWidget {
@@ -433,22 +439,22 @@ class _EmptyMemory extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        key: const Key('memory-library-empty'),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Column(
-          children: [
-            Icon(Icons.book_outlined, size: 34),
-            SizedBox(height: 10),
-            Text('还没有记下什么'),
-            SizedBox(height: 4),
-            Text('和它聊聊，或者直接说“请记住……”。'),
-          ],
-        ),
-      );
+    key: const Key('memory-library-empty'),
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: const Column(
+      children: [
+        Icon(Icons.book_outlined, size: 34),
+        SizedBox(height: 10),
+        Text('还没有记下什么'),
+        SizedBox(height: 4),
+        Text('和它聊聊，或者直接说“请记住……”。'),
+      ],
+    ),
+  );
 }
 
 class _WingSection extends StatelessWidget {
@@ -487,8 +493,10 @@ class _WingSection extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(name,
-                          style: Theme.of(context).textTheme.titleMedium),
+                      Text(
+                        name,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
                       if (_wingDescription(wing).isNotEmpty)
                         Text(
                           _wingDescription(wing),
@@ -500,8 +508,10 @@ class _WingSection extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: colors.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(99),
@@ -594,8 +604,10 @@ class _RoomRow extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('${room.entryCount}',
-              style: Theme.of(context).textTheme.bodySmall),
+          Text(
+            '${room.entryCount}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
           if (onOpen != null) const Icon(Icons.chevron_right),
         ],
       ),

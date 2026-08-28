@@ -17,45 +17,44 @@ Map<String, dynamic> libraryWire({
   int withheld = 1,
   bool truncated = false,
   List<Map<String, dynamic>>? wings,
-}) =>
-    {
-      'contract_version': '1',
-      'wings': wings ??
-          [
+}) => {
+  'contract_version': '1',
+  'wings':
+      wings ??
+      [
+        {
+          'wing_id': 'Wing_Life',
+          'display_name': '生活',
+          'description': '日常起居与习惯',
+          'entry_count': 3,
+          'rooms': [
             {
-              'wing_id': 'Wing_Life',
-              'display_name': '生活',
-              'description': '日常起居与习惯',
+              'room_id': '饮食',
               'entry_count': 3,
-              'rooms': [
-                {
-                  'room_id': '饮食',
-                  'entry_count': 3,
-                  'titles': ['乌龙茶', '不吃香菜'],
-                  'more': true,
-                },
-              ],
+              'titles': ['乌龙茶', '不吃香菜'],
+              'more': true,
             },
           ],
-      'entry_count': 3,
-      'withheld_count': withheld,
-      'truncated': truncated,
-    };
+        },
+      ],
+  'entry_count': 3,
+  'withheld_count': withheld,
+  'truncated': truncated,
+};
 
 MemoryLibraryView library({
   int withheld = 1,
   bool truncated = false,
   List<Map<String, dynamic>>? wings,
-}) =>
-    MemoryLibraryView.fromJson(
-      libraryWire(withheld: withheld, truncated: truncated, wings: wings),
-    );
+}) => MemoryLibraryView.fromJson(
+  libraryWire(withheld: withheld, truncated: truncated, wings: wings),
+);
 
 http.Response _hostAnswer(Map<String, dynamic> body) => http.Response.bytes(
-      utf8.encode(jsonEncode(body)),
-      200,
-      headers: const {'content-type': 'application/json'},
-    );
+  utf8.encode(jsonEncode(body)),
+  200,
+  headers: const {'content-type': 'application/json'},
+);
 
 void main() {
   group('the memory library client', () {
@@ -120,8 +119,9 @@ void main() {
   });
 
   group('the memory library page', () {
-    testWidgets('says how much was withheld rather than hiding it',
-        (tester) async {
+    testWidgets('says how much was withheld rather than hiding it', (
+      tester,
+    ) async {
       // The total and the listed entries differ on purpose. A screen that
       // dropped the difference would look like a bug in the person's memory.
       await tester.pumpWidget(
@@ -134,8 +134,9 @@ void main() {
       expect(find.text('它们可能属于其他 Eidolon，或已被设为不再提及。'), findsOneWidget);
     });
 
-    testWidgets('says nothing about withholding when nothing was withheld',
-        (tester) async {
+    testWidgets('says nothing about withholding when nothing was withheld', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(home: MemoryLibraryPage(library: library(withheld: 0))),
       );
@@ -143,8 +144,9 @@ void main() {
       expect(find.textContaining('没有在这个视角展开'), findsNothing);
     });
 
-    testWidgets('refuses to present a partial read as the whole memory',
-        (tester) async {
+    testWidgets('refuses to present a partial read as the whole memory', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(home: MemoryLibraryPage(library: library(truncated: true))),
       );
@@ -152,8 +154,9 @@ void main() {
       expect(find.text('这次只读了一部分，下面不是全部'), findsOneWidget);
     });
 
-    testWidgets('shows a shelf is deeper than the titles it lists',
-        (tester) async {
+    testWidgets('shows a shelf is deeper than the titles it lists', (
+      tester,
+    ) async {
       // The Host sends a few titles, not the contents; "等" is how a person
       // knows there is more behind them.
       await tester.pumpWidget(
@@ -164,8 +167,9 @@ void main() {
       expect(find.text('饮食'), findsOneWidget);
     });
 
-    testWidgets('uses its own word for a category the Host cannot name',
-        (tester) async {
+    testWidgets('uses its own word for a category the Host cannot name', (
+      tester,
+    ) async {
       // display_name is empty when this Host has never heard of the wing.
       // Nobody ever called a memory "Wing_FromALaterRelease".
       await tester.pumpWidget(
@@ -183,7 +187,7 @@ void main() {
                       'room_id': '?',
                       'entry_count': 1,
                       'titles': [],
-                      'more': false
+                      'more': false,
                     },
                   ],
                 },
@@ -197,8 +201,9 @@ void main() {
       expect(find.text('Wing_FromALaterRelease'), findsNothing);
     });
 
-    testWidgets('an Eidolon that has not remembered anything says so plainly',
-        (tester) async {
+    testWidgets('an Eidolon that has not remembered anything says so plainly', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: MemoryLibraryPage(library: library(withheld: 0, wings: [])),
@@ -212,36 +217,38 @@ void main() {
       expect(find.text('和它聊聊，或者直接说“请记住……”。'), findsOneWidget);
     });
 
-    testWidgets('puts named exploration in the page, not icon-only app actions',
-        (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryLibraryPage(
-            library: library(),
-            onSearch: () {},
-            onOpenToday: () {},
-            onOpenGraph: () {},
-            onExport: () {},
-            onForget: () {},
+    testWidgets(
+      'puts named exploration in the page, not icon-only app actions',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MemoryLibraryPage(
+              library: library(),
+              onSearch: () {},
+              onOpenToday: () {},
+              onOpenGraph: () {},
+              onExport: () {},
+              onForget: () {},
+            ),
           ),
-        ),
-      );
+        );
 
-      expect(find.text('你的记忆'), findsOneWidget);
-      expect(find.text('浏览和理解'), findsOneWidget);
-      expect(find.text('搜索记忆'), findsOneWidget);
-      expect(find.text('最近记下'), findsOneWidget);
-      expect(find.text('关系图谱'), findsOneWidget);
-      expect(find.text('完整副本'), findsOneWidget);
-      expect(find.byType(IconButton), findsNothing);
+        expect(find.text('你的记忆'), findsOneWidget);
+        expect(find.text('浏览和理解'), findsOneWidget);
+        expect(find.text('搜索记忆'), findsOneWidget);
+        expect(find.text('最近记下'), findsOneWidget);
+        expect(find.text('关系图谱'), findsOneWidget);
+        expect(find.text('完整副本'), findsOneWidget);
+        expect(find.byType(IconButton), findsNothing);
 
-      await tester.scrollUntilVisible(
-        find.byKey(const Key('memory-library-forget')),
-        200,
-      );
-      expect(find.text('纠正或忘记'), findsOneWidget);
-      expect(find.text('先预览会影响哪些记忆，再由你确认处理。'), findsOneWidget);
-    });
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('memory-library-forget')),
+          200,
+        );
+        expect(find.text('纠正或忘记'), findsOneWidget);
+        expect(find.text('先预览会影响哪些记忆，再由你确认处理。'), findsOneWidget);
+      },
+    );
 
     testWidgets('never exposes a machine-generated room id', (tester) async {
       await tester.pumpWidget(
@@ -291,65 +298,93 @@ void main() {
         });
 
     List<CompanionSummaryView> companions() => [
-          CompanionSummaryView.fromJson({
-            'companion_id': 'companion-a',
-            'display_name': '小忆',
-            'kind': 'conversational',
-            'lifecycle_state': 'active',
-            'revision': 1,
-            'created_at': '2026-08-28T08:00:00Z',
-            'updated_at': '2026-08-28T08:00:00Z',
-            'genome_id': 'genome-a',
-            'memory_realm_id': 'realm-owner-1',
-            'running': true,
-            'last_active_at': '2026-08-28T08:00:00Z',
-          }),
-          CompanionSummaryView.fromJson({
-            'companion_id': 'companion-b',
-            'display_name': '阿力',
-            'kind': 'conversational',
-            'lifecycle_state': 'active',
-            'revision': 1,
-            'created_at': '2026-08-28T08:01:00Z',
-            'updated_at': '2026-08-28T08:01:00Z',
-            'genome_id': 'genome-b',
-            'memory_realm_id': 'realm-owner-1',
-            'running': true,
-            'last_active_at': '2026-08-28T08:01:00Z',
-          }),
-        ];
+      CompanionSummaryView.fromJson({
+        'companion_id': 'companion-a',
+        'display_name': '小忆',
+        'kind': 'conversational',
+        'lifecycle_state': 'active',
+        'revision': 1,
+        'created_at': '2026-08-28T08:00:00Z',
+        'updated_at': '2026-08-28T08:00:00Z',
+        'genome_id': 'genome-a',
+        'memory_realm_id': 'realm-owner-1',
+        'running': true,
+        'last_active_at': '2026-08-28T08:00:00Z',
+      }),
+      CompanionSummaryView.fromJson({
+        'companion_id': 'companion-b',
+        'display_name': '阿力',
+        'kind': 'conversational',
+        'lifecycle_state': 'active',
+        'revision': 1,
+        'created_at': '2026-08-28T08:01:00Z',
+        'updated_at': '2026-08-28T08:01:00Z',
+        'genome_id': 'genome-b',
+        'memory_realm_id': 'realm-owner-1',
+        'running': true,
+        'last_active_at': '2026-08-28T08:01:00Z',
+      }),
+    ];
 
     testWidgets(
-        'defaults to one Companion and switches the private memory read',
-        (tester) async {
-      final asked = <String?>[];
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryLibraryScreen(
-            load: () async => library(),
-            loadForCompanion: (companionId) async {
-              asked.add(companionId);
-              return library();
-            },
-            loadContext: () async => context(),
-            loadCompanions: () async => companions(),
+      'defaults to one Companion and switches the private memory read',
+      (tester) async {
+        final asked = <String?>[];
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MemoryLibraryScreen(
+              load: () async => library(),
+              loadForCompanion: (companionId) async {
+                asked.add(companionId);
+                return library();
+              },
+              loadContext: () async => context(),
+              loadCompanions: () async => companions(),
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(asked, ['companion-a']);
-      await tester.tap(find.byKey(const Key('memory-companion-selector')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('阿力'));
-      await tester.pumpAndSettle();
+        expect(asked, ['companion-a']);
+        await tester.tap(find.byKey(const Key('memory-companion-selector')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('阿力'));
+        await tester.pumpAndSettle();
 
-      expect(asked, ['companion-a', 'companion-b']);
-      expect(find.text('阿力 的视角'), findsOneWidget);
-    });
+        expect(asked, ['companion-a', 'companion-b']);
+        expect(find.text('阿力的视角'), findsOneWidget);
+      },
+    );
 
-    testWidgets('opens scoped search from the overall memory front door',
-        (tester) async {
+    testWidgets(
+      'a Companion route opens the shared library in that perspective',
+      (tester) async {
+        final asked = <String?>[];
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MemoryLibraryScreen(
+              initialCompanionId: 'companion-b',
+              load: () async => library(),
+              loadForCompanion: (companionId) async {
+                asked.add(companionId);
+                return library();
+              },
+              loadContext: () async => context(),
+              loadCompanions: () async => companions(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(asked, ['companion-b']);
+        expect(find.text('阿力的视角'), findsOneWidget);
+        expect(find.text('你的记忆'), findsOneWidget);
+      },
+    );
+
+    testWidgets('opens scoped search from the overall memory front door', (
+      tester,
+    ) async {
       String? askedCompanion;
       String? askedQuery;
       await tester.pumpWidget(
@@ -364,9 +399,7 @@ void main() {
               askedQuery = query;
               return RecollectionsView(
                 query: query,
-                recollections: const [
-                  RecollectionView(text: '你喜欢在雨天读纸质书'),
-                ],
+                recollections: const [RecollectionView(text: '你喜欢在雨天读纸质书')],
               );
             },
           ),
@@ -392,58 +425,60 @@ void main() {
     });
 
     testWidgets(
-        'recent entries and the full copy keep the selected perspective',
-        (tester) async {
-      String? dayCompanion;
-      String? copyCompanion;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryLibraryScreen(
-            load: () async => library(),
-            loadForCompanion: (_) async => library(),
-            loadContext: () async => context(),
-            loadCompanions: () async => companions(),
-            loadDay: (_, companionId) async {
-              dayCompanion = companionId;
-              return MemoryDayView.fromJson({
-                'contract_version': '1',
-                'since': '2026-08-28T00:00:00+08:00',
-                'entries': [],
-                'entry_count': 0,
-                'more_in_window': false,
-                'undated_count': 0,
-                'truncated': false,
-              });
-            },
-            loadCopy: (companionId) async {
-              copyCompanion = companionId;
-              return MemoryCopyView.fromJson({
-                'contract_version': '1',
-                'taken_at': '2026-08-28T12:31:00+08:00',
-                'records': [],
-                'record_count': 0,
-                'undated_count': 0,
-                'truncated': false,
-              });
-            },
+      'recent entries and the full copy keep the selected perspective',
+      (tester) async {
+        String? dayCompanion;
+        String? copyCompanion;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MemoryLibraryScreen(
+              load: () async => library(),
+              loadForCompanion: (_) async => library(),
+              loadContext: () async => context(),
+              loadCompanions: () async => companions(),
+              loadDay: (_, companionId) async {
+                dayCompanion = companionId;
+                return MemoryDayView.fromJson({
+                  'contract_version': '1',
+                  'since': '2026-08-28T00:00:00+08:00',
+                  'entries': [],
+                  'entry_count': 0,
+                  'more_in_window': false,
+                  'undated_count': 0,
+                  'truncated': false,
+                });
+              },
+              loadCopy: (companionId) async {
+                copyCompanion = companionId;
+                return MemoryCopyView.fromJson({
+                  'contract_version': '1',
+                  'taken_at': '2026-08-28T12:31:00+08:00',
+                  'records': [],
+                  'record_count': 0,
+                  'undated_count': 0,
+                  'truncated': false,
+                });
+              },
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('memory-library-today')));
-      await tester.pumpAndSettle();
-      expect(dayCompanion, 'companion-a');
+        await tester.tap(find.byKey(const Key('memory-library-today')));
+        await tester.pumpAndSettle();
+        expect(dayCompanion, 'companion-a');
 
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('memory-library-export')));
-      await tester.pumpAndSettle();
-      expect(copyCompanion, 'companion-a');
-    });
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('memory-library-export')));
+        await tester.pumpAndSettle();
+        expect(copyCompanion, 'companion-a');
+      },
+    );
 
-    testWidgets('offers forgetting only where the Host says it can govern',
-        (tester) async {
+    testWidgets('offers forgetting only where the Host says it can govern', (
+      tester,
+    ) async {
       // A visible dead control is a promise the Host has not made.
       for (final allowed in [true, false]) {
         await tester.pumpWidget(const SizedBox.shrink());
@@ -480,14 +515,14 @@ void main() {
               loadContext: () async => context(),
               loadDay: wired
                   ? (_, __) async => MemoryDayView.fromJson({
-                        'contract_version': '1',
-                        'since': '2026-08-24T00:00:00.000',
-                        'entries': [],
-                        'entry_count': 0,
-                        'more_in_window': false,
-                        'undated_count': 0,
-                        'truncated': false,
-                      })
+                      'contract_version': '1',
+                      'since': '2026-08-24T00:00:00.000',
+                      'entries': [],
+                      'entry_count': 0,
+                      'more_in_window': false,
+                      'undated_count': 0,
+                      'truncated': false,
+                    })
                   : null,
             ),
           ),
@@ -501,8 +536,9 @@ void main() {
       }
     });
 
-    testWidgets('offers the copy only when something can load it',
-        (tester) async {
+    testWidgets('offers the copy only when something can load it', (
+      tester,
+    ) async {
       // Same rule as the day page, and it matters more here: a way into an
       // export that cannot fill itself would offer someone a copy of nothing.
       for (final wired in [true, false]) {
@@ -515,13 +551,13 @@ void main() {
               loadContext: () async => context(),
               loadCopy: wired
                   ? (_) async => MemoryCopyView.fromJson({
-                        'contract_version': '1',
-                        'taken_at': '2026-08-24T12:31:00+00:00',
-                        'records': [],
-                        'record_count': 0,
-                        'undated_count': 0,
-                        'truncated': false,
-                      })
+                      'contract_version': '1',
+                      'taken_at': '2026-08-24T12:31:00+00:00',
+                      'records': [],
+                      'record_count': 0,
+                      'undated_count': 0,
+                      'truncated': false,
+                    })
                   : null,
             ),
           ),
@@ -573,8 +609,9 @@ void main() {
       expect(find.text('他喜欢喝乌龙茶'), findsOneWidget);
     });
 
-    testWidgets('re-reads the library after something is forgotten',
-        (tester) async {
+    testWidgets('re-reads the library after something is forgotten', (
+      tester,
+    ) async {
       // A stale library after a deletion is the moment a person stops trusting
       // this screen, so the Host is asked again rather than the list patched.
       var reads = 0;
@@ -620,33 +657,35 @@ void main() {
       expect(reads, 2);
     });
 
-    testWidgets('a memory that could not be read is not shown as an empty one',
-        (tester) async {
-      // "它还没记下什么" and "我读不到" are different sentences, and only one of
-      // them is about the person.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryLibraryScreen(
-            load: () => Future.error(
-              const ManagementRequestException(
-                '读取失败',
-                statusCode: 503,
-                refusal: Refusal(
-                  kind: 'not_running',
-                  reason: 'memory is unavailable',
-                  retryable: true,
+    testWidgets(
+      'a memory that could not be read is not shown as an empty one',
+      (tester) async {
+        // "它还没记下什么" and "我读不到" are different sentences, and only one of
+        // them is about the person.
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MemoryLibraryScreen(
+              load: () => Future.error(
+                const ManagementRequestException(
+                  '读取失败',
+                  statusCode: 503,
+                  refusal: Refusal(
+                    kind: 'not_running',
+                    reason: 'memory is unavailable',
+                    retryable: true,
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('memory-library-error')), findsOneWidget);
-      expect(find.byKey(const Key('memory-library-empty')), findsNothing);
-      expect(find.textContaining('memory is unavailable'), findsOneWidget);
-    });
+        expect(find.byKey(const Key('memory-library-error')), findsOneWidget);
+        expect(find.byKey(const Key('memory-library-empty')), findsNothing);
+        expect(find.textContaining('memory is unavailable'), findsOneWidget);
+      },
+    );
 
     testWidgets('retrying after a refusal asks again', (tester) async {
       var attempts = 0;

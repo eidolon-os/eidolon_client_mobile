@@ -10,7 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// 说过的话 / 那次说了什么 — the occasions, and one of them opened.
+/// 对话历史 / 那次说了什么 — the occasions, and one of them opened.
 ///
 /// The list is not a transcript and must not read like one: a row with a
 /// timestamp and no words looks broken, so the row says it can be opened. The
@@ -23,31 +23,30 @@ ConversationView _conversation({
   String? title = '周末计划',
   String started = '2026-08-24T09:00:00Z',
   String? ended = '2026-08-24T09:20:00Z',
-}) =>
-    ConversationView.fromJson({
-      'conversation_id': id,
-      'title': title,
-      'started_at': started,
-      'updated_at': started,
-      'ended_at': ended,
-    });
+}) => ConversationView.fromJson({
+  'conversation_id': id,
+  'title': title,
+  'started_at': started,
+  'updated_at': started,
+  'ended_at': ended,
+});
 
 TranscriptTurnView _turn({
   String id = 't-1',
   String? finished = '2026-08-24T09:00:09Z',
   List<Map<String, dynamic>>? messages,
-}) =>
-    TranscriptTurnView.fromJson({
-      'turn_id': id,
-      'started_at': '2026-08-24T09:00:00Z',
-      'finished_at': finished,
-      'status': 'ok',
-      'messages': messages ??
-          [
-            {'role': 'user', 'text': '周末去哪'},
-            {'role': 'assistant', 'text': '去公园吧'},
-          ],
-    });
+}) => TranscriptTurnView.fromJson({
+  'turn_id': id,
+  'started_at': '2026-08-24T09:00:00Z',
+  'finished_at': finished,
+  'status': 'ok',
+  'messages':
+      messages ??
+      [
+        {'role': 'user', 'text': '周末去哪'},
+        {'role': 'assistant', 'text': '去公园吧'},
+      ],
+});
 
 TranscriptView _transcript({List<TranscriptTurnView>? turns, String? cursor}) =>
     TranscriptView(
@@ -57,41 +56,44 @@ TranscriptView _transcript({List<TranscriptTurnView>? turns, String? cursor}) =>
     );
 
 http.Response _hostAnswer(Map<String, dynamic> body) => http.Response.bytes(
-      utf8.encode(jsonEncode(body)),
-      200,
-      headers: const {'content-type': 'application/json'},
-    );
+  utf8.encode(jsonEncode(body)),
+  200,
+  headers: const {'content-type': 'application/json'},
+);
 
 void main() {
   group('the transcript client', () {
-    test('asks the conversation route and sends only what it was given', () async {
-      Uri? asked;
-      final client = ManagementClient(
-        httpClient: MockClient((request) async {
-          asked = request.url;
-          return _hostAnswer({
-            'contract_version': '1',
-            'conversation_id': 'conv-1',
-            'turns': const [],
-            'next_cursor': null,
-          });
-        }),
-      );
+    test(
+      'asks the conversation route and sends only what it was given',
+      () async {
+        Uri? asked;
+        final client = ManagementClient(
+          httpClient: MockClient((request) async {
+            asked = request.url;
+            return _hostAnswer({
+              'contract_version': '1',
+              'conversation_id': 'conv-1',
+              'turns': const [],
+              'next_cursor': null,
+            });
+          }),
+        );
 
-      await client.fetchTranscript(
-        Uri.parse('https://192.168.1.26:9002'),
-        accessToken: 'session-token',
-        companionId: 'companion-a',
-        conversationId: 'conv-1',
-        cursor: '2026-08-24T09:00:00Z',
-      );
+        await client.fetchTranscript(
+          Uri.parse('https://192.168.1.26:9002'),
+          accessToken: 'session-token',
+          companionId: 'companion-a',
+          conversationId: 'conv-1',
+          cursor: '2026-08-24T09:00:00Z',
+        );
 
-      expect(
-        asked?.path,
-        '/api/management/v1/companions/companion-a/conversations/conv-1/turns',
-      );
-      expect(asked?.queryParameters, {'cursor': '2026-08-24T09:00:00Z'});
-    });
+        expect(
+          asked?.path,
+          '/api/management/v1/companions/companion-a/conversations/conv-1/turns',
+        );
+        expect(asked?.queryParameters, {'cursor': '2026-08-24T09:00:00Z'});
+      },
+    );
 
     test('escapes both ids into the path', () async {
       Uri? asked;
@@ -129,24 +131,30 @@ void main() {
         ),
       );
 
+      expect(find.text('对话历史'), findsOneWidget);
       expect(find.text('周末计划'), findsOneWidget);
       expect(find.textContaining('2026-08-24 '), findsOneWidget);
       expect(find.byIcon(Icons.chevron_right), findsOneWidget);
     });
 
-    testWidgets('an open conversation says so rather than showing a false end',
-        (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: ConversationsPage(conversations: [_conversation(ended: null)]),
-        ),
-      );
+    testWidgets(
+      'an open conversation says so rather than showing a false end',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ConversationsPage(
+              conversations: [_conversation(ended: null)],
+            ),
+          ),
+        );
 
-      expect(find.textContaining('还在继续'), findsOneWidget);
-    });
+        expect(find.textContaining('还在继续'), findsOneWidget);
+      },
+    );
 
-    testWidgets('an unnamed conversation is not named by this screen',
-        (tester) async {
+    testWidgets('an unnamed conversation is not named by this screen', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: ConversationsPage(conversations: [_conversation(title: '')]),
@@ -170,13 +178,17 @@ void main() {
       );
 
       expect(find.byKey(const Key('conversations-empty')), findsOneWidget);
+      expect(find.text('对话历史'), findsOneWidget);
     });
   });
 
   group('the transcript', () {
-    testWidgets('reads forward, mine on one side and its on the other',
-        (tester) async {
-      await tester.pumpWidget(MaterialApp(home: TranscriptPage(turns: [_turn()])));
+    testWidgets('reads forward, mine on one side and its on the other', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(home: TranscriptPage(turns: [_turn()])),
+      );
 
       expect(find.text('周末去哪'), findsOneWidget);
       expect(find.text('去公园吧'), findsOneWidget);
@@ -192,9 +204,12 @@ void main() {
       expect(find.text('这一轮没有说完'), findsOneWidget);
     });
 
-    testWidgets('a conversation with nothing said is not an error',
-        (tester) async {
-      await tester.pumpWidget(const MaterialApp(home: TranscriptPage(turns: [])));
+    testWidgets('a conversation with nothing said is not an error', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: TranscriptPage(turns: [])),
+      );
 
       expect(find.byKey(const Key('transcript-empty')), findsOneWidget);
     });
@@ -222,12 +237,16 @@ void main() {
       expect(find.text('周末去哪'), findsOneWidget);
     });
 
-    testWidgets('earlier turns arrive above the ones already read',
-        (tester) async {
+    testWidgets('earlier turns arrive above the ones already read', (
+      tester,
+    ) async {
       // The Host answers newest first; a conversation reads forward. Getting
       // this backwards would put yesterday's words after today's.
       final pages = <TranscriptView>[
-        _transcript(turns: [_turn(id: 't-2')], cursor: 'earlier'),
+        _transcript(
+          turns: [_turn(id: 't-2')],
+          cursor: 'earlier',
+        ),
         _transcript(turns: [_turn(id: 't-1')]),
       ];
       var asked = 0;
@@ -249,9 +268,10 @@ void main() {
       await tester.tap(find.byKey(const Key('transcript-load-earlier')));
       await tester.pumpAndSettle();
 
-      final list = tester.widget<ListView>(find.byKey(const Key('transcript-list')));
-      final keys = (list.childrenDelegate as SliverChildListDelegate)
-          .children
+      final list = tester.widget<ListView>(
+        find.byKey(const Key('transcript-list')),
+      );
+      final keys = (list.childrenDelegate as SliverChildListDelegate).children
           .map((child) => child.key)
           .whereType<Key>()
           .map((key) => key.toString())
@@ -265,8 +285,9 @@ void main() {
       );
     });
 
-    testWidgets('a history it could not read is not an empty history',
-        (tester) async {
+    testWidgets('a history it could not read is not an empty history', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: ConversationsScreen(

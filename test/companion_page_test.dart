@@ -66,25 +66,25 @@ HostCompanion _companion({
   String id = _companionId,
   bool? running = true,
   String lifecycleState = 'active',
-}) =>
-    HostCompanion.fromView(
-      CompanionSummaryView.fromJson({
-        'companion_id': id,
-        'display_name': name,
-        'kind': 'conversational',
-        'lifecycle_state': lifecycleState,
-        'revision': 4,
-        'created_at': '2026-08-01T00:00:00+00:00',
-        'updated_at': '2026-08-01T00:00:00+00:00',
-        'running': running,
-        'last_active_at': running == true ? '2026-08-26T09:30:00+00:00' : '',
-      }),
-    );
+}) => HostCompanion.fromView(
+  CompanionSummaryView.fromJson({
+    'companion_id': id,
+    'display_name': name,
+    'kind': 'conversational',
+    'lifecycle_state': lifecycleState,
+    'revision': 4,
+    'created_at': '2026-08-01T00:00:00+00:00',
+    'updated_at': '2026-08-01T00:00:00+00:00',
+    'running': running,
+    'last_active_at': running == true ? '2026-08-26T09:30:00+00:00' : '',
+  }),
+);
 
 void main() {
   _withheldRowTests();
-  testWidgets('the page is the Eidolon, not the machine it runs on',
-      (tester) async {
+  testWidgets('the page is the Eidolon, not the machine it runs on', (
+    tester,
+  ) async {
     await _open(tester);
 
     expect(find.text('小忆'), findsWidgets);
@@ -105,8 +105,9 @@ void main() {
     expect(find.byKey(const Key('companion-open-persona')), findsOneWidget);
   });
 
-  testWidgets('shows only the devices attached to this Eidolon',
-      (tester) async {
+  testWidgets('shows only the devices attached to this Eidolon', (
+    tester,
+  ) async {
     // The Host answers with everything it has mounted. Which of them belong to
     // this Eidolon is decided here rather than asked for again.
     await _open(
@@ -119,23 +120,26 @@ void main() {
     expect(find.byKey(const Key('companion-device-device-2')), findsNothing);
   });
 
-  testWidgets('says what a device is to it, not what state a mount is in',
-      (tester) async {
+  testWidgets('says what a device is to it, not what state a mount is in', (
+    tester,
+  ) async {
     await _open(tester, devices: _devices([_companionId]));
 
     expect(find.text('可以通过它和你说话'), findsOneWidget);
     expect(find.textContaining('revision'), findsNothing);
   });
 
-  testWidgets('an Eidolon nothing is connected to says so plainly',
-      (tester) async {
+  testWidgets('an Eidolon nothing is connected to says so plainly', (
+    tester,
+  ) async {
     await _open(tester, devices: _devices([null]));
 
     expect(find.byKey(const Key('companion-devices-empty')), findsOneWidget);
   });
 
-  testWidgets('a Host that cannot say what is connected does not claim none',
-      (tester) async {
+  testWidgets('a Host that cannot say what is connected does not claim none', (
+    tester,
+  ) async {
     // devices is null when the inventory has not been read, which is not the
     // same as an Eidolon with nothing attached — but the honest fallback here
     // is the empty state, and it says "not yet" rather than "never".
@@ -145,8 +149,9 @@ void main() {
     expect(find.textContaining('还没有设备连到它'), findsOneWidget);
   });
 
-  testWidgets('an unnamed Eidolon is not called by its identifier',
-      (tester) async {
+  testWidgets('an unnamed Eidolon is not called by its identifier', (
+    tester,
+  ) async {
     await _open(tester, companion: _companion(name: ''));
 
     expect(find.textContaining(_companionId), findsNothing);
@@ -158,17 +163,16 @@ void main() {
 ManagementContextView _context({
   required Map<String, bool> capabilities,
   Map<String, String> unavailable = const {},
-}) =>
-    ManagementContextView(
-      owner: const OwnerContextView(
-        ownerId: 'owner-1',
-        displayName: 'Manson',
-        revision: 4,
-      ),
-      capabilities: capabilities,
-      unavailable: unavailable,
-      limits: const {'max_active_companions': null},
-    );
+}) => ManagementContextView(
+  owner: const OwnerContextView(
+    ownerId: 'owner-1',
+    displayName: 'Manson',
+    revision: 4,
+  ),
+  capabilities: capabilities,
+  unavailable: unavailable,
+  limits: const {'max_active_companions': null},
+);
 
 Future<void> _pumpWithContext(
   WidgetTester tester,
@@ -181,7 +185,7 @@ Future<void> _pumpWithContext(
         devices: null,
         onRename: () {},
         onOpenPersona: () {},
-        onOpenRecollections: () {},
+        onOpenMemory: () {},
         onOpenTasks: () {},
         onOpenConversations: () {},
         hostContext: context,
@@ -214,15 +218,15 @@ void _withheldRowTests() {
         ),
       );
 
-      expect(find.text('伙伴记忆'), findsOneWidget);
-      expect(find.text('只查看这位伙伴范围内的记忆，内容留在这台主机上'), findsOneWidget);
+      expect(find.text('与小忆相关的记忆'), findsOneWidget);
+      expect(find.text('以小忆的视角查看它能回忆起的内容'), findsOneWidget);
       expect(find.text('主机未配置'), findsOneWidget);
       expect(find.text('尚未开放'), findsOneWidget);
 
       // Held back means not openable: tapping must do nothing rather than
       // navigate to a page that cannot load.
       final row = tester.widget<ListTile>(
-        find.byKey(const Key('companion-open-recollections')),
+        find.byKey(const Key('companion-open-memory')),
       );
       expect(row.enabled, isFalse);
       expect(row.onTap, isNull);
@@ -242,7 +246,7 @@ void _withheldRowTests() {
       );
 
       final row = tester.widget<ListTile>(
-        find.byKey(const Key('companion-open-recollections')),
+        find.byKey(const Key('companion-open-memory')),
       );
       expect(row.enabled, isTrue);
       expect(row.onTap, isNotNull);
@@ -250,14 +254,15 @@ void _withheldRowTests() {
       expect(find.text('尚未开放'), findsNothing);
     });
 
-    testWidgets('a Host that has not answered yet withdraws nothing',
-        (tester) async {
+    testWidgets('a Host that has not answered yet withdraws nothing', (
+      tester,
+    ) async {
       // Null is "not read", not "refused". A page that treated silence as a no
       // would show every feature withdrawn for the moment after connecting.
       await _pumpWithContext(tester, null);
 
       for (final key in const [
-        'companion-open-recollections',
+        'companion-open-memory',
         'companion-open-tasks',
         'companion-open-conversations',
         'companion-open-persona',
@@ -267,8 +272,9 @@ void _withheldRowTests() {
       }
     });
 
-    testWidgets('a reason this build has not heard of still reads',
-        (tester) async {
+    testWidgets('a reason this build has not heard of still reads', (
+      tester,
+    ) async {
       // The Host may be newer than the phone. An unknown reason degrades to a
       // neutral label rather than being dropped, which would silently restore
       // the "row opens onto a failing page" behaviour.
@@ -288,8 +294,9 @@ void _withheldRowTests() {
       expect(find.text('暂不可用'), findsOneWidget);
     });
 
-    testWidgets('a capability this Host has never heard of is held back too',
-        (tester) async {
+    testWidgets('a capability this Host has never heard of is held back too', (
+      tester,
+    ) async {
       // The other direction of skew: this app is newer than the Host, so the
       // name is simply absent from the map. Absent and false mean the same
       // thing to a person — the Host is not offering it — and the row says so

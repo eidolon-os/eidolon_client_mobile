@@ -18,12 +18,7 @@ import 'tasks_page.dart';
 /// the memory pages do: what a person is looking at should be what the Host says,
 /// and one action can move more than one field.
 class TasksScreen extends StatefulWidget {
-  const TasksScreen({
-    super.key,
-    required this.load,
-    this.cancel,
-    this.retry,
-  });
+  const TasksScreen({super.key, required this.load, this.cancel, this.retry});
 
   final Future<TaskPageView> Function(String? cursor) load;
 
@@ -104,16 +99,16 @@ class _TasksScreenState extends State<TasksScreen> {
         page: page,
         notice: _notice,
         busyTaskId: _actingOn,
-        onCancel: _canAct
-            ? (task) => _act(task, widget.cancel!)
-            : null,
+        onCancel: _canAct ? (task) => _act(task, widget.cancel!) : null,
         onRetry: _canAct ? (task) => _act(task, widget.retry!) : null,
-        onLoadMore: _busy || _cursor == null ? null : () => _read(cursor: _cursor),
+        onLoadMore: _busy || _cursor == null
+            ? null
+            : () => _read(cursor: _cursor),
       );
     }
     return Scaffold(
       key: const Key('tasks-screen'),
-      appBar: AppBar(title: const Text('交给它的事')),
+      appBar: AppBar(title: const Text('任务与进度')),
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(key: Key('tasks-loading'))

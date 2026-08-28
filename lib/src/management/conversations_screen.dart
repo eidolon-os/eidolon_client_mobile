@@ -22,7 +22,7 @@ class ConversationsScreen extends StatefulWidget {
 
   /// Null leaves rows unopenable rather than opening an empty transcript.
   final Future<TranscriptView> Function(String conversationId, String? cursor)?
-      loadTranscript;
+  loadTranscript;
 
   @override
   State<ConversationsScreen> createState() => _ConversationsScreenState();
@@ -63,7 +63,8 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     }
   }
 
-  Future<void> _open(ConversationView conversation) => Navigator.of(context).push<void>(
+  Future<void> _open(ConversationView conversation) =>
+      Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => _TranscriptScreen(
             conversationId: conversation.conversationId,
@@ -79,13 +80,14 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       return ConversationsPage(
         conversations: _conversations,
         onOpen: widget.loadTranscript == null ? null : _open,
-        onLoadMore:
-            _busy || _cursor == null ? null : () => _read(cursor: _cursor),
+        onLoadMore: _busy || _cursor == null
+            ? null
+            : () => _read(cursor: _cursor),
       );
     }
     return Scaffold(
       key: const Key('conversations-screen'),
-      appBar: AppBar(title: const Text('说过的话')),
+      appBar: AppBar(title: const Text('对话历史')),
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(key: Key('conversations-loading'))
@@ -110,7 +112,8 @@ class _TranscriptScreen extends StatefulWidget {
 
   final String conversationId;
   final String title;
-  final Future<TranscriptView> Function(String conversationId, String? cursor) load;
+  final Future<TranscriptView> Function(String conversationId, String? cursor)
+  load;
 
   @override
   State<_TranscriptScreen> createState() => _TranscriptScreenState();

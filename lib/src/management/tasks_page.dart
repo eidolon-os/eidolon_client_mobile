@@ -50,7 +50,7 @@ class TasksPage extends StatelessWidget {
     final tasks = page.tasks;
     return Scaffold(
       key: const Key('tasks-page'),
-      appBar: AppBar(title: const Text('交给它的事')),
+      appBar: AppBar(title: const Text('任务与进度')),
       body: tasks.isEmpty
           ? const Center(
               key: Key('tasks-empty'),
@@ -58,13 +58,16 @@ class TasksPage extends StatelessWidget {
                 padding: EdgeInsets.all(24),
                 // A quiet answer, not a fault: most days nobody delegates
                 // anything.
-                child: Text('还没有交给它长期做的事'),
+                child: Text('还没有长期任务'),
               ),
             )
           : ListView.separated(
               key: const Key('tasks-list'),
               padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: tasks.length + (onLoadMore == null ? 0 : 1) + (notice == null ? 0 : 1),
+              itemCount:
+                  tasks.length +
+                  (onLoadMore == null ? 0 : 1) +
+                  (notice == null ? 0 : 1),
               separatorBuilder: (_, index) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 if (notice != null && index == 0) {
@@ -146,7 +149,11 @@ class _TaskRow extends StatelessWidget {
           else if (progress.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text(progress, maxLines: 2, overflow: TextOverflow.ellipsis),
+              child: Text(
+                progress,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           if (error.isNotEmpty)
             Padding(
@@ -167,20 +174,20 @@ class _TaskRow extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : onCancel != null
-              ? IconButton(
-                  key: Key('task-cancel-${task.taskId}'),
-                  tooltip: '别做了',
-                  onPressed: onCancel,
-                  icon: const Icon(Icons.stop_circle_outlined),
-                )
-              : onRetry != null
-                  ? IconButton(
-                      key: Key('task-retry-${task.taskId}'),
-                      tooltip: '再试一次',
-                      onPressed: onRetry,
-                      icon: const Icon(Icons.refresh),
-                    )
-                  : null,
+          ? IconButton(
+              key: Key('task-cancel-${task.taskId}'),
+              tooltip: '别做了',
+              onPressed: onCancel,
+              icon: const Icon(Icons.stop_circle_outlined),
+            )
+          : onRetry != null
+          ? IconButton(
+              key: Key('task-retry-${task.taskId}'),
+              tooltip: '再试一次',
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+            )
+          : null,
     );
   }
 }
@@ -190,20 +197,13 @@ class _TaskRow extends StatelessWidget {
 /// The list is the Host's, and anything unrecognised counts as still going: a
 /// task in a state this release has not heard of is running somewhere, and
 /// treating it as finished would offer 再试一次 for work already in progress.
-bool _isOver(String status) => const {
-      'succeeded',
-      'failed',
-      'cancelled',
-      'timed_out',
-    }.contains(status);
+bool _isOver(String status) =>
+    const {'succeeded', 'failed', 'cancelled', 'timed_out'}.contains(status);
 
 /// Stopped without doing the job. Not `succeeded`: asking for finished work
 /// again is a new task, and the Host refuses it anyway.
-bool _isRetryable(String status) => const {
-      'failed',
-      'cancelled',
-      'timed_out',
-    }.contains(status);
+bool _isRetryable(String status) =>
+    const {'failed', 'cancelled', 'timed_out'}.contains(status);
 
 String _stateSentence(TaskView task) {
   switch (task.status) {

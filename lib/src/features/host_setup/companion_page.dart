@@ -30,7 +30,7 @@ class CompanionPage extends StatelessWidget {
     required this.devices,
     required this.onRename,
     required this.onOpenPersona,
-    this.onOpenRecollections,
+    this.onOpenMemory,
     this.onOpenTasks,
     this.onOpenConversations,
     this.face,
@@ -70,7 +70,7 @@ class CompanionPage extends StatelessWidget {
   final VoidCallback onOpenPersona;
 
   /// Null on a Host too old to be asked what it remembers.
-  final VoidCallback? onOpenRecollections;
+  final VoidCallback? onOpenMemory;
 
   /// Null while nothing is behind it. The long tasks this Eidolon was given —
   /// the one place a person can stop something it is doing.
@@ -113,8 +113,9 @@ class CompanionPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name =
-        companion.displayName.isNotEmpty ? companion.displayName : '这个 Eidolon';
+    final name = companion.displayName.isNotEmpty
+        ? companion.displayName
+        : '这个 Eidolon';
     final bound = _itsDevices;
     return Scaffold(
       key: const Key('companion-page'),
@@ -175,26 +176,26 @@ class CompanionPage extends StatelessWidget {
             Text('伙伴动态', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             _FeatureRow(
-              tileKey: const Key('companion-open-recollections'),
+              tileKey: const Key('companion-open-memory'),
               icon: Icons.menu_book_outlined,
-              title: '伙伴记忆',
-              subtitle: '只查看这位伙伴范围内的记忆，内容留在这台主机上',
-              onOpen: onOpenRecollections,
+              title: '与$name相关的记忆',
+              subtitle: '以$name的视角查看它能回忆起的内容',
+              onOpen: onOpenMemory,
               hold: _hold('memory.read'),
             ),
             _FeatureRow(
               tileKey: const Key('companion-open-conversations'),
               icon: Icons.forum_outlined,
-              title: '说过的话',
-              subtitle: '哪天聊过，以及那次说了什么',
+              title: '对话历史',
+              subtitle: '查看你们何时聊过，以及当时说了什么',
               onOpen: onOpenConversations,
               hold: _hold('conversation.read'),
             ),
             _FeatureRow(
               tileKey: const Key('companion-open-tasks'),
               icon: Icons.checklist_outlined,
-              title: '交给它的事',
-              subtitle: '看它做到哪了，也可以让它别做了',
+              title: '任务与进度',
+              subtitle: '查看长期任务的进度、结果，或停止任务',
               onOpen: onOpenTasks,
               hold: _hold('task.read'),
             ),

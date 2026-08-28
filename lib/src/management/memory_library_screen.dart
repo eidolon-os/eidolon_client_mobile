@@ -23,6 +23,7 @@ class MemoryLibraryScreen extends StatefulWidget {
   const MemoryLibraryScreen({
     super.key,
     required this.load,
+    this.initialCompanionId,
     this.loadForCompanion,
     this.loadGraph,
     this.loadContext,
@@ -36,8 +37,16 @@ class MemoryLibraryScreen extends StatefulWidget {
   });
 
   final Future<MemoryLibraryView> Function() load;
+
+  /// The perspective named by the route that opened this screen.
+  ///
+  /// A Companion detail page already knows which Eidolon it is about. Passing
+  /// that fact in is different from maintaining a second Companion-memory
+  /// page: this remains the Owner's one memory experience, initially filtered
+  /// to the audience the person chose.
+  final String? initialCompanionId;
   final Future<MemoryLibraryView> Function(String? companionId)?
-      loadForCompanion;
+  loadForCompanion;
   final Future<MemoryGraphView> Function(String? companionId)? loadGraph;
 
   /// Read once, for the one thing this screen cannot infer: whether this Host
@@ -46,14 +55,12 @@ class MemoryLibraryScreen extends StatefulWidget {
 
   final Future<ForgetProposalView> Function(String target)? previewForget;
   final Future<ForgetResultView> Function(String confirmationToken)?
-      confirmForget;
+  confirmForget;
 
   /// Reads a window of recent entries. Null hides the way in rather than
   /// opening a screen that cannot fill itself.
-  final Future<MemoryDayView> Function(
-    DateTime since,
-    String? companionId,
-  )? loadDay;
+  final Future<MemoryDayView> Function(DateTime since, String? companionId)?
+  loadDay;
 
   /// Reads the whole visible memory, for the copy a person keeps. Null hides
   /// the way in rather than opening a screen that cannot fill itself.
@@ -66,15 +73,14 @@ class MemoryLibraryScreen extends StatefulWidget {
   final Future<MemoryAudienceView> Function(
     String entryId,
     String? companionId,
-  )? assignAudience;
+  )?
+  assignAudience;
 
   /// Searches the memory visible to one Companion. Search belongs here as a
   /// way to explore the same library, even though the answer keeps its own
   /// focused screen.
-  final Future<RecollectionsView> Function(
-    String companionId,
-    String query,
-  )? searchRecollections;
+  final Future<RecollectionsView> Function(String companionId, String query)?
+  searchRecollections;
 
   @override
   State<MemoryLibraryScreen> createState() => _MemoryLibraryScreenState();
@@ -91,6 +97,7 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedCompanionId = widget.initialCompanionId;
     _read();
   }
 
@@ -102,8 +109,9 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     try {
       // Asked for together: a library drawn before the Host said what it can do
       // would either hide an action it allows or offer one it does not.
-      final context =
-          widget.loadContext == null ? null : await widget.loadContext!();
+      final context = widget.loadContext == null
+          ? null
+          : await widget.loadContext!();
       var companions = const <CompanionSummaryView>[];
       if (widget.loadCompanions != null) {
         try {
@@ -164,29 +172,28 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
   /// Its own screen: "what happened today" and "what is held overall" are two
   /// questions, and answering both on one page makes each harder to read.
   Future<void> _openToday() => Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => MemoryDayScreen(
-            load: (since) => widget.loadDay!(since, _selectedCompanionId),
-            // Gated on the same capability as forgetting, because it is the same
-            // promise: this Host can publish a change to what is remembered. A
-            // control offered without it would open a sheet whose every choice
-            // fails.
-            loadCompanions: _canGovern ? widget.loadCompanions : null,
-            assignAudience: _canGovern ? widget.assignAudience : null,
-          ),
-        ),
-      );
+    MaterialPageRoute(
+      builder: (_) => MemoryDayScreen(
+        load: (since) => widget.loadDay!(since, _selectedCompanionId),
+        // Gated on the same capability as forgetting, because it is the same
+        // promise: this Host can publish a change to what is remembered. A
+        // control offered without it would open a sheet whose every choice
+        // fails.
+        loadCompanions: _canGovern ? widget.loadCompanions : null,
+        assignAudience: _canGovern ? widget.assignAudience : null,
+      ),
+    ),
+  );
 
   /// Its own screen as well, and for a sharper reason than the day page: this
   /// one must not shorten anything, and a page that shares room with a roll-up
   /// is a page under pressure to.
   Future<void> _openCopy() => Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => MemoryCopyScreen(
-            load: () => widget.loadCopy!(_selectedCompanionId),
-          ),
-        ),
-      );
+    MaterialPageRoute(
+      builder: (_) =>
+          MemoryCopyScreen(load: () => widget.loadCopy!(_selectedCompanionId)),
+    ),
+  );
 
   Future<void> _selectCompanion(String? companionId) async {
     if (companionId == _selectedCompanionId) return;
@@ -214,12 +221,12 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
   }
 
   Future<void> _openGraph() => Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => MemoryGraphScreen(
-            load: () => widget.loadGraph!(_selectedCompanionId),
-          ),
-        ),
-      );
+    MaterialPageRoute(
+      builder: (_) => MemoryGraphScreen(
+        load: () => widget.loadGraph!(_selectedCompanionId),
+      ),
+    ),
+  );
 
   String get _selectedCompanionName {
     for (final companion in _companions) {
@@ -256,13 +263,14 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
         onExport: widget.loadCopy == null ? null : _openCopy,
         companions: _companions,
         selectedCompanionId: _selectedCompanionId,
-        onCompanionChanged:
-            widget.loadForCompanion == null ? null : _selectCompanion,
+        onCompanionChanged: widget.loadForCompanion == null
+            ? null
+            : _selectCompanion,
         onOpenGraph: widget.loadGraph == null ? null : _openGraph,
         onSearch:
             _selectedCompanionId == null || widget.searchRecollections == null
-                ? null
-                : _openSearch,
+            ? null
+            : _openSearch,
         onRefresh: _read,
       );
     }
@@ -272,7 +280,8 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(
-                key: Key('memory-library-loading'))
+                key: Key('memory-library-loading'),
+              )
             : RefusalNotice(
                 key: const Key('memory-library-error'),
                 error: _error!,

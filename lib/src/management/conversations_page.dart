@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
 
-/// 说过的话 — when this Eidolon and I talked.
+/// 对话历史 — when this Eidolon and I talked.
 ///
 /// A list of occasions, not a search and not a feed. Each row is a time and, if
 /// anything named it, a title — the words are behind it, one conversation at a
@@ -37,7 +37,7 @@ class ConversationsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       key: const Key('conversations-page'),
-      appBar: AppBar(title: const Text('说过的话')),
+      appBar: AppBar(title: const Text('对话历史')),
       body: conversations.isEmpty
           ? const Center(
               key: Key('conversations-empty'),
@@ -74,7 +74,9 @@ class ConversationsPage extends StatelessWidget {
                         : conversation.title!,
                   ),
                   subtitle: Text(_when(conversation)),
-                  trailing: onOpen == null ? null : const Icon(Icons.chevron_right),
+                  trailing: onOpen == null
+                      ? null
+                      : const Icon(Icons.chevron_right),
                   onTap: onOpen == null ? null : () => onOpen!(conversation),
                 );
               },
@@ -91,7 +93,9 @@ class ConversationsPage extends StatelessWidget {
 String _when(ConversationView conversation) {
   final started = _moment(conversation.startedAt);
   final ended = _moment(conversation.endedAt);
-  final label = started == null ? (conversation.startedAt ?? '') : _stamp(started);
+  final label = started == null
+      ? (conversation.startedAt ?? '')
+      : _stamp(started);
   return ended == null ? '$label · 还在继续' : label;
 }
 

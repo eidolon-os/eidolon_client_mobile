@@ -9,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// 交给它的事 — what I asked it to do, and whether it did.
+/// 任务与进度 — what I asked it to do, and whether it did.
 ///
 /// The task state machine lives on the Host, so what this app must not do is
 /// hold an opinion about it. The tests are mostly about that: an unfamiliar
@@ -25,20 +25,20 @@ Map<String, dynamic> taskWire({
   String result = '',
   String errorMessage = '',
 }) => {
-      'task_id': taskId,
-      'status': status,
-      'asked': asked,
-      'kind': 'research',
-      'urgency': 'normal',
-      'expected_output': '一句话',
-      'progress': progress,
-      'result': result,
-      'error_code': errorMessage.isEmpty ? '' : 'worker_error',
-      'error_message': errorMessage,
-      'created_at': '2026-08-24T09:00:00+00:00',
-      'updated_at': '2026-08-24T09:05:00+00:00',
-      'completed_at': null,
-    };
+  'task_id': taskId,
+  'status': status,
+  'asked': asked,
+  'kind': 'research',
+  'urgency': 'normal',
+  'expected_output': '一句话',
+  'progress': progress,
+  'result': result,
+  'error_code': errorMessage.isEmpty ? '' : 'worker_error',
+  'error_message': errorMessage,
+  'created_at': '2026-08-24T09:00:00+00:00',
+  'updated_at': '2026-08-24T09:05:00+00:00',
+  'completed_at': null,
+};
 
 TaskPageView page({List<Map<String, dynamic>>? tasks, String? cursor}) =>
     TaskPageView.fromJson({
@@ -141,12 +141,14 @@ void main() {
     testWidgets('says where a task is, in words', (tester) async {
       await tester.pumpWidget(MaterialApp(home: TasksPage(page: page())));
 
+      expect(find.text('任务与进度'), findsOneWidget);
       expect(find.text('帮我查一下周末的天气'), findsOneWidget);
       expect(find.text('正在做'), findsOneWidget);
     });
 
-    testWidgets('shows a state it has never heard of rather than hiding it',
-        (tester) async {
+    testWidgets('shows a state it has never heard of rather than hiding it', (
+      tester,
+    ) async {
       // A task in an unfamiliar state is running somewhere. Dropping the row
       // would make it vanish while it worked.
       await tester.pumpWidget(
@@ -166,8 +168,9 @@ void main() {
       expect(find.byKey(const Key('task-retry-j-1')), findsNothing);
     });
 
-    testWidgets('offers stopping while it runs and retrying once it failed',
-        (tester) async {
+    testWidgets('offers stopping while it runs and retrying once it failed', (
+      tester,
+    ) async {
       for (final (status, cancel, retry) in [
         ('running', true, false),
         ('failed', false, true),
@@ -198,43 +201,49 @@ void main() {
       }
     });
 
-    testWidgets('offers nothing to press when the Host promised nothing',
-        (tester) async {
+    testWidgets('offers nothing to press when the Host promised nothing', (
+      tester,
+    ) async {
       await tester.pumpWidget(MaterialApp(home: TasksPage(page: page())));
 
       expect(find.byKey(const Key('task-cancel-j-1')), findsNothing);
       expect(find.byKey(const Key('task-retry-j-1')), findsNothing);
     });
 
-    testWidgets('shows the answer when there is one, and the reason when it broke',
-        (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: TasksPage(
-            page: page(
-              tasks: [
-                taskWire(status: 'succeeded', result: '周末多云，21 度'),
-                taskWire(
-                  taskId: 'j-2',
-                  status: 'failed',
-                  errorMessage: '天气服务没有回应',
-                ),
-              ],
+    testWidgets(
+      'shows the answer when there is one, and the reason when it broke',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TasksPage(
+              page: page(
+                tasks: [
+                  taskWire(status: 'succeeded', result: '周末多云，21 度'),
+                  taskWire(
+                    taskId: 'j-2',
+                    status: 'failed',
+                    errorMessage: '天气服务没有回应',
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      );
+        );
 
-      expect(find.text('周末多云，21 度'), findsOneWidget);
-      expect(find.text('天气服务没有回应'), findsOneWidget);
-    });
+        expect(find.text('周末多云，21 度'), findsOneWidget);
+        expect(find.text('天气服务没有回应'), findsOneWidget);
+      },
+    );
 
     testWidgets('a quiet list is said plainly', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(home: TasksPage(page: page(tasks: []))),
+        MaterialApp(
+          home: TasksPage(page: page(tasks: [])),
+        ),
       );
 
       expect(find.byKey(const Key('tasks-empty')), findsOneWidget);
+      expect(find.text('还没有长期任务'), findsOneWidget);
     });
   });
 
@@ -244,7 +253,8 @@ void main() {
         MaterialApp(
           home: TasksScreen(
             load: (_) async => page(),
-            cancel: (_) async => TaskView.fromJson(taskWire(status: 'cancelled')),
+            cancel: (_) async =>
+                TaskView.fromJson(taskWire(status: 'cancelled')),
             retry: (_) async => TaskView.fromJson(taskWire(status: 'accepted')),
           ),
         ),
@@ -284,8 +294,9 @@ void main() {
       expect(find.textContaining('already finished'), findsOneWidget);
     });
 
-    testWidgets('re-reads after an action rather than patching the row',
-        (tester) async {
+    testWidgets('re-reads after an action rather than patching the row', (
+      tester,
+    ) async {
       var reads = 0;
       await tester.pumpWidget(
         MaterialApp(
@@ -294,7 +305,8 @@ void main() {
               reads++;
               return page();
             },
-            cancel: (_) async => TaskView.fromJson(taskWire(status: 'cancelled')),
+            cancel: (_) async =>
+                TaskView.fromJson(taskWire(status: 'cancelled')),
             retry: (_) async => TaskView.fromJson(taskWire(status: 'accepted')),
           ),
         ),
@@ -308,7 +320,9 @@ void main() {
       expect(reads, 2);
     });
 
-    testWidgets('a list it could not read is not an empty list', (tester) async {
+    testWidgets('a list it could not read is not an empty list', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: TasksScreen(
@@ -324,12 +338,15 @@ void main() {
       expect(find.byKey(const Key('tasks-empty')), findsNothing);
     });
 
-    testWidgets('offers no action when only half of it is wired', (tester) async {
+    testWidgets('offers no action when only half of it is wired', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: TasksScreen(
             load: (_) async => page(),
-            cancel: (_) async => TaskView.fromJson(taskWire(status: 'cancelled')),
+            cancel: (_) async =>
+                TaskView.fromJson(taskWire(status: 'cancelled')),
           ),
         ),
       );

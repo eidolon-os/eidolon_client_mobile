@@ -25,7 +25,6 @@ import 'managed_controllers_page.dart';
 import 'home_models.dart';
 import '../../management/conversations_screen.dart';
 import '../../management/tasks_screen.dart';
-import '../../management/recollections_page.dart';
 import 'host_product_session.dart';
 import 'host_runtime_status_page.dart';
 import 'local_api_discovery.dart';
@@ -39,10 +38,8 @@ import 'host_models.dart';
 
 export 'host_product_controller.dart' show ManagedHostUpdater;
 
-typedef HostConversationBuilder = Widget Function(
-  BuildContext context,
-  HostProductController controller,
-);
+typedef HostConversationBuilder =
+    Widget Function(BuildContext context, HostProductController controller);
 
 class HostLocalConnectionPage extends StatefulWidget {
   const HostLocalConnectionPage({
@@ -263,7 +260,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             // Re-read from the live home so the page follows a rename or a
             // state change, and falls back to what the row said if this Eidolon
             // has since left the first page of the list.
-            final current = _controller.home?.companions.firstWhere(
+            final current =
+                _controller.home?.companions.firstWhere(
                   (row) => row.companionId == companion.companionId,
                   orElse: () => companion,
                 ) ??
@@ -285,7 +283,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                   : null,
               onRename: () => _renameCompanion(current),
               onOpenPersona: () => _openPersonaEdit(current),
-              onOpenRecollections: () => _openRecollections(current),
+              onOpenMemory: () => _openCompanionMemory(current),
               onOpenTasks: () => _openTasks(current),
               onOpenConversations: () => _openConversations(current),
               face: _controller.companionFace,
@@ -305,28 +303,28 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   /// The workspace card above can only ever show one, because the runtime it
   /// reads answers with one. This is the read that can show the rest.
   Future<void> _openRoster() => Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => CompanionRosterScreen(
-            load: ({String? cursor}) => _controller.roster(cursor: cursor),
-            // The same page the home rows open. One Eidolon, one page,
-            // wherever it was tapped from.
-            openCompanion: (row) => _openCompanion(HostCompanion.fromView(row)),
-            loadContext: _controller.managementContext,
-            setDefaultCompanion: (companionId, expectedRevision) =>
-                _controller.setDefaultCompanion(
+    MaterialPageRoute(
+      builder: (_) => CompanionRosterScreen(
+        load: ({String? cursor}) => _controller.roster(cursor: cursor),
+        // The same page the home rows open. One Eidolon, one page,
+        // wherever it was tapped from.
+        openCompanion: (row) => _openCompanion(HostCompanion.fromView(row)),
+        loadContext: _controller.managementContext,
+        setDefaultCompanion: (companionId, expectedRevision) =>
+            _controller.setDefaultCompanion(
               companionId: companionId,
               expectedRevision: expectedRevision,
             ),
-            createCompanion: (operationId, displayName, persona) =>
-                _controller.createCompanion(
+        createCompanion: (operationId, displayName, persona) =>
+            _controller.createCompanion(
               operationId: operationId,
               displayName: displayName,
               persona: persona,
             ),
-            loadPersonaTemplate: _controller.personaAuthoringTemplate,
-          ),
-        ),
-      );
+        loadPersonaTemplate: _controller.personaAuthoringTemplate,
+      ),
+    ),
+  );
 
   /// Everything it has filed, not just what a search turns up.
   ///
@@ -343,37 +341,39 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     return context == null ? null : capabilityHold(context, capability);
   }
 
-  Future<void> _openMemoryLibrary() => Navigator.of(context).push<void>(
+  MemoryLibraryScreen _memoryLibrary({String? initialCompanionId}) =>
+      MemoryLibraryScreen(
+        initialCompanionId: initialCompanionId,
+        load: _controller.memoryLibrary,
+        loadForCompanion: (companionId) =>
+            _controller.memoryLibrary(companionId: companionId),
+        loadGraph: (companionId) =>
+            _controller.memoryGraph(companionId: companionId),
+        loadContext: _controller.managementContext,
+        previewForget: (target) => _controller.previewForget(target: target),
+        confirmForget: (token) =>
+            _controller.confirmForget(confirmationToken: token),
+        loadDay: (since, companionId) =>
+            _controller.memoryEntries(since: since, companionId: companionId),
+        loadCopy: (companionId) =>
+            _controller.memoryCopy(companionId: companionId),
+        loadCompanions: () async => (await _controller.roster()).companions,
+        assignAudience: (entryId, companionId) => _controller
+            .assignMemoryAudience(entryId: entryId, companionId: companionId),
+        searchRecollections: (companionId, query) =>
+            _controller.recollections(companionId: companionId, query: query),
+      );
+
+  Future<void> _openMemoryLibrary() => Navigator.of(
+    context,
+  ).push<void>(MaterialPageRoute(builder: (_) => _memoryLibrary()));
+
+  /// The same Owner-memory experience, opened in this Companion's scope.
+  Future<void> _openCompanionMemory(HostCompanion companion) =>
+      Navigator.of(context).push<void>(
         MaterialPageRoute(
-          builder: (_) => MemoryLibraryScreen(
-            load: _controller.memoryLibrary,
-            loadForCompanion: (companionId) =>
-                _controller.memoryLibrary(companionId: companionId),
-            loadGraph: (companionId) =>
-                _controller.memoryGraph(companionId: companionId),
-            loadContext: _controller.managementContext,
-            previewForget: (target) =>
-                _controller.previewForget(target: target),
-            confirmForget: (token) =>
-                _controller.confirmForget(confirmationToken: token),
-            loadDay: (since, companionId) => _controller.memoryEntries(
-              since: since,
-              companionId: companionId,
-            ),
-            loadCopy: (companionId) =>
-                _controller.memoryCopy(companionId: companionId),
-            loadCompanions: () async => (await _controller.roster()).companions,
-            assignAudience: (entryId, companionId) =>
-                _controller.assignMemoryAudience(
-              entryId: entryId,
-              companionId: companionId,
-            ),
-            searchRecollections: (companionId, query) =>
-                _controller.recollections(
-              companionId: companionId,
-              query: query,
-            ),
-          ),
+          builder: (_) =>
+              _memoryLibrary(initialCompanionId: companion.companionId),
         ),
       );
 
@@ -389,14 +389,10 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         builder: (_) => TasksScreen(
           load: (cursor) =>
               _controller.tasks(companionId: companionId, cursor: cursor),
-          cancel: (taskId) => _controller.cancelTask(
-            companionId: companionId,
-            taskId: taskId,
-          ),
-          retry: (taskId) => _controller.retryTask(
-            companionId: companionId,
-            taskId: taskId,
-          ),
+          cancel: (taskId) =>
+              _controller.cancelTask(companionId: companionId, taskId: taskId),
+          retry: (taskId) =>
+              _controller.retryTask(companionId: companionId, taskId: taskId),
         ),
       ),
     );
@@ -416,22 +412,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             companionId: companionId,
             conversationId: conversationId,
             cursor: cursor,
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Ask this Eidolon what it remembers.
-  Future<void> _openRecollections(HostCompanion companion) {
-    final name = companion.displayName;
-    return Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => RecollectionsPage(
-          companionName: name.isNotEmpty ? name : '它',
-          onSearch: (query) => _controller.recollections(
-            companionId: companion.companionId,
-            query: query,
           ),
         ),
       ),
@@ -471,9 +451,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
 
   Future<void> _clearCompanionFace(HostCompanion companion) async {
     try {
-      await _controller.clearCompanionFace(
-        companionId: companion.companionId,
-      );
+      await _controller.clearCompanionFace(companionId: companion.companionId);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -519,15 +497,15 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   }
 
   Future<void> _openControllers() => Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => ManagedControllersPage(
-            loadControllers: _controller.listControllers,
-            invite: _controller.inviteController,
-            revoke: (controllerId) =>
-                _controller.revokeController(controllerId: controllerId),
-          ),
-        ),
-      );
+    MaterialPageRoute(
+      builder: (_) => ManagedControllersPage(
+        loadControllers: _controller.listControllers,
+        invite: _controller.inviteController,
+        revoke: (controllerId) =>
+            _controller.revokeController(controllerId: controllerId),
+      ),
+    ),
+  );
 
   /// The sovereign domain of this Host, on one screen.
   ///
@@ -549,41 +527,41 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   /// answer, and trading those for a mostly-unreadable map would be a
   /// regression dressed as progress.
   Future<void> _openConstellation() => Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => ConstellationCockpitPage(
-            // A factory: the page owns the poll for exactly as long as it is on
-            // screen, and starting and stopping it are its job, not this one's.
-            openFeed: () => PolledCockpitFeed(
-              read: CockpitComposer(
-                readContext: _controller.managementContext,
-                readRoster: _controller.roster,
-                // Three authorities, one screen: /context owns the Owner, the
-                // roster owns which Eidolons exist, and Mission Control owns
-                // only what was observed of them. A runtime read that fails
-                // costs its lanes and nothing else.
-                readRuntime: () async => parseMissionControlRuntime(
-                  await _controller.missionControlSnapshot(),
-                ),
-              ).read,
+    MaterialPageRoute(
+      builder: (_) => ConstellationCockpitPage(
+        // A factory: the page owns the poll for exactly as long as it is on
+        // screen, and starting and stopping it are its job, not this one's.
+        openFeed: () => PolledCockpitFeed(
+          read: CockpitComposer(
+            readContext: _controller.managementContext,
+            readRoster: _controller.roster,
+            // Three authorities, one screen: /context owns the Owner, the
+            // roster owns which Eidolons exist, and Mission Control owns
+            // only what was observed of them. A runtime read that fails
+            // costs its lanes and nothing else.
+            readRuntime: () async => parseMissionControlRuntime(
+              await _controller.missionControlSnapshot(),
             ),
-            // The map's own reading is a bounded now; this is the record behind
-            // it, paged by the Host. Passed in rather than reached for, so the
-            // cockpit stays a screen that reads what it is given.
-            readHistory: (cursor) async => activityPageFromJson(
-              await _controller.activityHistory(cursor: cursor),
-            ),
-          ),
+          ).read,
         ),
-      );
+        // The map's own reading is a bounded now; this is the record behind
+        // it, paged by the Host. Passed in rather than reached for, so the
+        // cockpit stays a screen that reads what it is given.
+        readHistory: (cursor) async => activityPageFromJson(
+          await _controller.activityHistory(cursor: cursor),
+        ),
+      ),
+    ),
+  );
 
   Future<void> _openDevices() => Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => MountedDevicesPage(
-            controller: _controller,
-            deviceProvisioning: widget.deviceProvisioning,
-          ),
-        ),
-      );
+    MaterialPageRoute(
+      builder: (_) => MountedDevicesPage(
+        controller: _controller,
+        deviceProvisioning: widget.deviceProvisioning,
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -626,8 +604,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               // be about the same fact it needs.
               onOpenConstellation:
                   connection.overview.state.claim == HostClaimState.claimed
-                      ? _openConstellation
-                      : null,
+                  ? _openConstellation
+                  : null,
               onOpenSystem: () => Navigator.of(context).push<void>(
                 MaterialPageRoute(
                   builder: (_) => HostRuntimeStatusPage(
@@ -788,42 +766,40 @@ class _ConversationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Card(
-        key: const Key('conversation-card'),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    key: const Key('conversation-card'),
+    child: Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.graphic_eq,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      '对话',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                  ),
-                ],
+              Icon(
+                Icons.graphic_eq,
+                color: Theme.of(context).colorScheme.primary,
               ),
-              const SizedBox(height: 8),
-              const Text(
-                '这台移动设备使用独立 Device 身份连接 Hub。首次使用需要完成设备批准和 Companion 绑定。',
-              ),
-              const SizedBox(height: 14),
-              FilledButton.icon(
-                key: const Key('open-conversation'),
-                onPressed: onOpen,
-                icon: const Icon(Icons.chat_bubble_outline),
-                label: const Text('打开对话'),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '对话',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
               ),
             ],
           ),
-        ),
-      );
+          const SizedBox(height: 8),
+          const Text('这台移动设备使用独立 Device 身份连接 Hub。首次使用需要完成设备批准和 Companion 绑定。'),
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            key: const Key('open-conversation'),
+            onPressed: onOpen,
+            icon: const Icon(Icons.chat_bubble_outline),
+            label: const Text('打开对话'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _ConnectedHostCard extends StatelessWidget {
@@ -844,62 +820,62 @@ class _ConnectedHostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Card(
-        key: const Key('local-connection-complete'),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    key: const Key('local-connection-complete'),
+    child: Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.verified_user,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      '已安全连接',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                  ),
-                  Text(networkLabel(connection.overview.state.network)),
-                ],
+              Icon(
+                Icons.verified_user,
+                color: Theme.of(context).colorScheme.primary,
               ),
-              const SizedBox(height: 16),
-              // How the Host was located is not shown. It was the mDNS
-              // instance name here, which was already developer detail, and
-              // once locating gained other means it started printing their
-              // internal labels — 服务：remembered — at a person. Where it
-              // answered is a fact about their Host; which mechanism found it
-              // is a fact about this App.
-              Text('Host IP：${connection.endpoint.ipAddress}'),
-              Text('Controller：${connection.controllerId}'),
-              Text('本次管理会话有效至 ${_localTime(connection.sessionExpiresAt)}'),
-              const SizedBox(height: 12),
-              // Two entries, and the split is the one §3.2 argued for: the
-              // sovereign domain (who, and what is happening for them) is a
-              // picture; this machine (how it is, and what can be done about
-              // it) is text. Four buttons read three of the same sources.
-              if (onOpenConstellation case final open?) ...[
-                FilledButton.icon(
-                  key: const Key('open-constellation'),
-                  onPressed: open,
-                  icon: const Icon(Icons.hub_outlined),
-                  label: const Text('驾驶舱'),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '已安全连接',
+                  style: Theme.of(context).textTheme.titleLarge,
                 ),
-                const SizedBox(height: 8),
-              ],
-              OutlinedButton.icon(
-                key: const Key('open-host-runtime-status'),
-                onPressed: onOpenSystem,
-                icon: const Icon(Icons.monitor_heart_outlined),
-                label: const Text('主机运行状态'),
               ),
+              Text(networkLabel(connection.overview.state.network)),
             ],
           ),
-        ),
-      );
+          const SizedBox(height: 16),
+          // How the Host was located is not shown. It was the mDNS
+          // instance name here, which was already developer detail, and
+          // once locating gained other means it started printing their
+          // internal labels — 服务：remembered — at a person. Where it
+          // answered is a fact about their Host; which mechanism found it
+          // is a fact about this App.
+          Text('Host IP：${connection.endpoint.ipAddress}'),
+          Text('Controller：${connection.controllerId}'),
+          Text('本次管理会话有效至 ${_localTime(connection.sessionExpiresAt)}'),
+          const SizedBox(height: 12),
+          // Two entries, and the split is the one §3.2 argued for: the
+          // sovereign domain (who, and what is happening for them) is a
+          // picture; this machine (how it is, and what can be done about
+          // it) is text. Four buttons read three of the same sources.
+          if (onOpenConstellation case final open?) ...[
+            FilledButton.icon(
+              key: const Key('open-constellation'),
+              onPressed: open,
+              icon: const Icon(Icons.hub_outlined),
+              label: const Text('驾驶舱'),
+            ),
+            const SizedBox(height: 8),
+          ],
+          OutlinedButton.icon(
+            key: const Key('open-host-runtime-status'),
+            onPressed: onOpenSystem,
+            icon: const Icon(Icons.monitor_heart_outlined),
+            label: const Text('主机运行状态'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _WorkspaceCard extends StatelessWidget {
@@ -1008,8 +984,9 @@ class _WorkspaceCard extends StatelessWidget {
             const SizedBox(height: 8),
             TextButton.icon(
               key: const Key('retry-workspace-status'),
-              onPressed:
-                  controller.workspaceBusy ? null : controller.refreshWorkspace,
+              onPressed: controller.workspaceBusy
+                  ? null
+                  : controller.refreshWorkspace,
               icon: const Icon(Icons.refresh),
               label: const Text('检查已有进度'),
             ),
@@ -1020,50 +997,50 @@ class _WorkspaceCard extends StatelessWidget {
   }
 
   Widget _buildUnavailable(BuildContext context) => Card(
-        key: const Key('workspace-unavailable'),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    key: const Key('workspace-unavailable'),
+    child: Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.cloud_off_outlined,
-                    color: Theme.of(context).colorScheme.tertiary,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Workspace 状态暂不可用',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                  ),
-                ],
+              Icon(
+                Icons.cloud_off_outlined,
+                color: Theme.of(context).colorScheme.tertiary,
               ),
-              const SizedBox(height: 12),
-              Text(
-                controller.workspaceError!,
-                key: const Key('workspace-setup-error'),
-              ),
-              const SizedBox(height: 12),
-              FilledButton.tonalIcon(
-                key: const Key('retry-workspace-status'),
-                onPressed: controller.workspaceBusy
-                    ? null
-                    : controller.refreshWorkspace,
-                icon: const Icon(Icons.refresh),
-                label: const Text('重新加载 Workspace'),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Workspace 状态暂不可用',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
               ),
             ],
           ),
-        ),
-      );
+          const SizedBox(height: 12),
+          Text(
+            controller.workspaceError!,
+            key: const Key('workspace-setup-error'),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.tonalIcon(
+            key: const Key('retry-workspace-status'),
+            onPressed: controller.workspaceBusy
+                ? null
+                : controller.refreshWorkspace,
+            icon: const Icon(Icons.refresh),
+            label: const Text('重新加载 Workspace'),
+          ),
+        ],
+      ),
+    ),
+  );
 
   void _initialize() => controller.initializeWorkspace(
-        ownerDisplayName: ownerName.text,
-        companionDisplayName: companionName.text,
-      );
+    ownerDisplayName: ownerName.text,
+    companionDisplayName: companionName.text,
+  );
 
   String _companionSummary(HostHome? home) {
     if (home == null) return '查看、新建和管理你的伙伴';
@@ -1087,9 +1064,9 @@ class _WorkspaceCard extends StatelessWidget {
     } else if (home.runtimeUnavailable.isNotEmpty) {
       parts.add('运行状态暂不可用');
     } else {
-      final stopped = home.companions.where(
-        (row) => !row.isPutAway && row.running == false,
-      ).length;
+      final stopped = home.companions
+          .where((row) => !row.isPutAway && row.running == false)
+          .length;
       if (stopped > 0) parts.add('$stopped 位没有运行');
     }
     return parts.join(' · ');
@@ -1122,9 +1099,7 @@ class _WorkspaceCard extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(
-                  child: Text('你好，${workspace.owner!.displayName}。'),
-                ),
+                Expanded(child: Text('你好，${workspace.owner!.displayName}。')),
                 if (onRenameOwner != null)
                   IconButton(
                     key: const Key('rename-owner'),
@@ -1142,8 +1117,9 @@ class _WorkspaceCard extends StatelessWidget {
               openTooltip: '打开你的伙伴',
               icon: Icons.groups_2_outlined,
               label: '你的伙伴',
-              statusLabel:
-                  home == null ? '可查看' : '${home.companionCounts.total} 位',
+              statusLabel: home == null
+                  ? '可查看'
+                  : '${home.companionCounts.total} 位',
               detail: _companionSummary(home),
             ),
             _WorkspaceResourceStatus(
@@ -1182,10 +1158,7 @@ class _WorkspaceCard extends StatelessWidget {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
-                  child: Text(
-                    error,
-                    key: const Key('home-error'),
-                  ),
+                  child: Text(error, key: const Key('home-error')),
                 ),
               ),
               const SizedBox(height: 4),
@@ -1259,8 +1232,10 @@ class _DevicesSummaryCard extends StatelessWidget {
                 const Icon(Icons.devices_other_outlined),
                 const SizedBox(width: 10),
                 Expanded(
-                  child:
-                      Text('设备', style: Theme.of(context).textTheme.titleLarge),
+                  child: Text(
+                    '设备',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                 ),
                 if (count != null) Chip(label: Text('$count')),
               ],
@@ -1336,39 +1311,39 @@ class _WorkspaceResourceStatus extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(
-          children: [
-            Icon(icon, size: 20),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label),
-                  Text(detail, style: Theme.of(context).textTheme.bodySmall),
-                ],
-              ),
-            ),
-            if (hold != null)
-              Chip(label: Text(hold!))
-            else if (onOpen != null)
-              IconButton(
-                key: openKey,
-                onPressed: onOpen,
-                tooltip: openTooltip,
-                icon: const Icon(Icons.chevron_right),
-              ),
-            Icon(
-              Icons.check_circle_outline,
-              size: 18,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(width: 4),
-            Text(statusLabel),
-          ],
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label),
+              Text(detail, style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
         ),
-      );
+        if (hold != null)
+          Chip(label: Text(hold!))
+        else if (onOpen != null)
+          IconButton(
+            key: openKey,
+            onPressed: onOpen,
+            tooltip: openTooltip,
+            icon: const Icon(Icons.chevron_right),
+          ),
+        Icon(
+          Icons.check_circle_outline,
+          size: 18,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        const SizedBox(width: 4),
+        Text(statusLabel),
+      ],
+    ),
+  );
 }
 
 String _localTime(DateTime value) {
