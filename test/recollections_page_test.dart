@@ -1,5 +1,5 @@
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
-import 'package:eidolon_client_mobile/src/features/host_setup/recollections_page.dart';
+import 'package:eidolon_client_mobile/src/management/recollections_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

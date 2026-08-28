@@ -129,7 +129,9 @@ void main() {
       );
 
       expect(find.text('共 3 条'), findsOneWidget);
-      expect(find.text('另有 2 条你说过别提，它记着但不会翻出来'), findsOneWidget);
+      expect(find.text('可见记忆'), findsOneWidget);
+      expect(find.text('另有 2 条没有在这个视角展开'), findsOneWidget);
+      expect(find.text('它们可能属于其他 Eidolon，或已被设为不再提及。'), findsOneWidget);
     });
 
     testWidgets('says nothing about withholding when nothing was withheld',
@@ -138,7 +140,7 @@ void main() {
         MaterialApp(home: MemoryLibraryPage(library: library(withheld: 0))),
       );
 
-      expect(find.textContaining('别提'), findsNothing);
+      expect(find.textContaining('没有在这个视角展开'), findsNothing);
     });
 
     testWidgets('refuses to present a partial read as the whole memory',
@@ -204,7 +206,73 @@ void main() {
       );
 
       expect(find.byKey(const Key('memory-library-empty')), findsOneWidget);
-      expect(find.byKey(const Key('memory-library-list')), findsNothing);
+      // The front door remains useful while empty: it still explains the
+      // model, lets the Owner switch Eidolons and offers the ways to explore.
+      expect(find.byKey(const Key('memory-library-list')), findsOneWidget);
+      expect(find.text('和它聊聊，或者直接说“请记住……”。'), findsOneWidget);
+    });
+
+    testWidgets('puts named exploration in the page, not icon-only app actions',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MemoryLibraryPage(
+            library: library(),
+            onSearch: () {},
+            onOpenToday: () {},
+            onOpenGraph: () {},
+            onExport: () {},
+            onForget: () {},
+          ),
+        ),
+      );
+
+      expect(find.text('你的记忆'), findsOneWidget);
+      expect(find.text('浏览和理解'), findsOneWidget);
+      expect(find.text('搜索记忆'), findsOneWidget);
+      expect(find.text('最近记下'), findsOneWidget);
+      expect(find.text('关系图谱'), findsOneWidget);
+      expect(find.text('完整副本'), findsOneWidget);
+      expect(find.byType(IconButton), findsNothing);
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('memory-library-forget')),
+        200,
+      );
+      expect(find.text('纠正或忘记'), findsOneWidget);
+      expect(find.text('先预览会影响哪些记忆，再由你确认处理。'), findsOneWidget);
+    });
+
+    testWidgets('never exposes a machine-generated room id', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MemoryLibraryPage(
+            library: library(
+              wings: [
+                {
+                  'wing_id': 'Wing_Profile',
+                  'display_name': '个人画像与价值观',
+                  'description': '关于你的稳定信息',
+                  'entry_count': 1,
+                  'rooms': [
+                    {
+                      'room_id': 'userconfirm:a7e75e91b75e38c9',
+                      'entry_count': 1,
+                      'titles': ['我喜欢在雨天读纸质书'],
+                      'more': false,
+                    },
+                  ],
+                },
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('你明确让它记住的'), findsOneWidget);
+      expect(find.text('userconfirm:a7e75e91b75e38c9'), findsNothing);
+      expect(find.text('关于你的背景、身份和重要价值观'), findsOneWidget);
+      expect(find.textContaining('MBTI'), findsNothing);
     });
   });
 
@@ -277,6 +345,101 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(asked, ['companion-a', 'companion-b']);
+      expect(find.text('阿力 的视角'), findsOneWidget);
+    });
+
+    testWidgets('opens scoped search from the overall memory front door',
+        (tester) async {
+      String? askedCompanion;
+      String? askedQuery;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MemoryLibraryScreen(
+            load: () async => library(),
+            loadForCompanion: (_) async => library(),
+            loadContext: () async => context(),
+            loadCompanions: () async => companions(),
+            searchRecollections: (companionId, query) async {
+              askedCompanion = companionId;
+              askedQuery = query;
+              return RecollectionsView(
+                query: query,
+                recollections: const [
+                  RecollectionView(text: '你喜欢在雨天读纸质书'),
+                ],
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('memory-library-search')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('recollections-page')), findsOneWidget);
+      expect(find.text('搜索 小忆 的记忆'), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const Key('recollection-question')),
+        '雨天读书',
+      );
+      await tester.tap(find.byKey(const Key('ask-recollections')));
+      await tester.pumpAndSettle();
+
+      expect(askedCompanion, 'companion-a');
+      expect(askedQuery, '雨天读书');
+      expect(find.text('你喜欢在雨天读纸质书'), findsOneWidget);
+    });
+
+    testWidgets(
+        'recent entries and the full copy keep the selected perspective',
+        (tester) async {
+      String? dayCompanion;
+      String? copyCompanion;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MemoryLibraryScreen(
+            load: () async => library(),
+            loadForCompanion: (_) async => library(),
+            loadContext: () async => context(),
+            loadCompanions: () async => companions(),
+            loadDay: (_, companionId) async {
+              dayCompanion = companionId;
+              return MemoryDayView.fromJson({
+                'contract_version': '1',
+                'since': '2026-08-28T00:00:00+08:00',
+                'entries': [],
+                'entry_count': 0,
+                'more_in_window': false,
+                'undated_count': 0,
+                'truncated': false,
+              });
+            },
+            loadCopy: (companionId) async {
+              copyCompanion = companionId;
+              return MemoryCopyView.fromJson({
+                'contract_version': '1',
+                'taken_at': '2026-08-28T12:31:00+08:00',
+                'records': [],
+                'record_count': 0,
+                'undated_count': 0,
+                'truncated': false,
+              });
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('memory-library-today')));
+      await tester.pumpAndSettle();
+      expect(dayCompanion, 'companion-a');
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('memory-library-export')));
+      await tester.pumpAndSettle();
+      expect(copyCompanion, 'companion-a');
     });
 
     testWidgets('offers forgetting only where the Host says it can govern',
@@ -316,7 +479,7 @@ void main() {
               load: () async => library(),
               loadContext: () async => context(),
               loadDay: wired
-                  ? (_) async => MemoryDayView.fromJson({
+                  ? (_, __) async => MemoryDayView.fromJson({
                         'contract_version': '1',
                         'since': '2026-08-24T00:00:00.000',
                         'entries': [],
@@ -351,7 +514,7 @@ void main() {
               load: () async => library(),
               loadContext: () async => context(),
               loadCopy: wired
-                  ? () async => MemoryCopyView.fromJson({
+                  ? (_) async => MemoryCopyView.fromJson({
                         'contract_version': '1',
                         'taken_at': '2026-08-24T12:31:00+00:00',
                         'records': [],
@@ -381,7 +544,7 @@ void main() {
           home: MemoryLibraryScreen(
             load: () async => library(),
             loadContext: () async => context(),
-            loadCopy: () async => MemoryCopyView.fromJson({
+            loadCopy: (_) async => MemoryCopyView.fromJson({
               'contract_version': '1',
               'taken_at': '2026-08-24T12:31:00+00:00',
               'records': [

@@ -25,7 +25,7 @@ import 'managed_controllers_page.dart';
 import 'home_models.dart';
 import '../../management/conversations_screen.dart';
 import '../../management/tasks_screen.dart';
-import 'recollections_page.dart';
+import '../../management/recollections_page.dart';
 import 'host_product_session.dart';
 import 'host_runtime_status_page.dart';
 import 'local_api_discovery.dart';
@@ -370,13 +370,22 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                 _controller.previewForget(target: target),
             confirmForget: (token) =>
                 _controller.confirmForget(confirmationToken: token),
-            loadDay: (since) => _controller.memoryEntries(since: since),
-            loadCopy: _controller.memoryCopy,
+            loadDay: (since, companionId) => _controller.memoryEntries(
+              since: since,
+              companionId: companionId,
+            ),
+            loadCopy: (companionId) =>
+                _controller.memoryCopy(companionId: companionId),
             loadCompanions: () async => (await _controller.roster()).companions,
             assignAudience: (entryId, companionId) =>
                 _controller.assignMemoryAudience(
               entryId: entryId,
               companionId: companionId,
+            ),
+            searchRecollections: (companionId, query) =>
+                _controller.recollections(
+              companionId: companionId,
+              query: query,
             ),
           ),
         ),

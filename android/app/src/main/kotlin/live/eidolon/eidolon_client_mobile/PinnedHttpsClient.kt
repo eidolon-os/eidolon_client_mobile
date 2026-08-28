@@ -9,7 +9,6 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
-import java.net.URI
 import java.net.URL
 import java.security.SecureRandom
 import java.security.KeyStore
@@ -151,15 +150,8 @@ internal class PinnedHttpsClient(private val mainHandler: Handler) {
             emptyList()
         }
         val ipv4 = addresses.firstOrNull { it is Inet4Address } ?: return url
-        return URI(
-            url.protocol,
-            null,
-            ipv4.hostAddress,
-            url.port,
-            url.path,
-            url.query,
-            null,
-        ).toURL()
+        val address = ipv4.hostAddress ?: return url
+        return replacePinnedHttpsHost(url, address)
     }
 
     private fun readBounded(stream: java.io.InputStream): ByteArray {

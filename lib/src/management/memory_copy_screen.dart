@@ -75,7 +75,7 @@ class _MemoryCopyScreenState extends State<MemoryCopyScreen> {
     }
     return Scaffold(
       key: const Key('memory-copy-screen'),
-      appBar: AppBar(title: const Text('导出记忆')),
+      appBar: AppBar(title: const Text('完整副本')),
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(key: Key('memory-copy-loading'))

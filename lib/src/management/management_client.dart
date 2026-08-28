@@ -6,6 +6,16 @@ import 'package:http/http.dart' as http;
 
 import '../generated/management_v1.dart';
 
+String _iso8601WithOffset(DateTime value) {
+  if (value.isUtc) return value.toIso8601String();
+  final offsetMinutes = value.timeZoneOffset.inMinutes;
+  final absoluteMinutes = offsetMinutes.abs();
+  final hours = (absoluteMinutes ~/ 60).toString().padLeft(2, '0');
+  final minutes = (absoluteMinutes % 60).toString().padLeft(2, '0');
+  final sign = offsetMinutes < 0 ? '-' : '+';
+  return '${value.toIso8601String()}$sign$hours:$minutes';
+}
+
 /// What the Host said when it would not answer, in the words it said it in.
 ///
 /// The Host now answers every refusal on this surface with one envelope — see
@@ -930,7 +940,7 @@ class ManagementClient {
           // Local time with its offset, not UTC: "today" is the person's day,
           // and the offset is what lets the Host place the instant without
           // knowing where they are.
-          'since': since.toIso8601String(),
+          'since': _iso8601WithOffset(since),
           if (limit != null) 'limit': '$limit',
           if (companionId != null) 'companion_id': companionId,
         },

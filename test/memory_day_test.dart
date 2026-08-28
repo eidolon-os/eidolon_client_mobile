@@ -21,7 +21,8 @@ Map<String, dynamic> dayWire({
   bool moreInWindow = false,
   bool truncated = false,
   List<Map<String, dynamic>>? entries,
-}) => {
+}) =>
+    {
       'contract_version': '1',
       'since': since,
       'entries': entries ??
@@ -86,6 +87,7 @@ void main() {
       expect(asked?.path, '/api/management/v1/memory/entries');
       final since = asked!.queryParameters['since']!;
       expect(since.startsWith('2026-08-24T00:00:00'), isTrue);
+      expect(since, matches(RegExp(r'(Z|[+-]\d{2}:\d{2})$')));
       expect(asked?.queryParameters.containsKey('owner_id'), isFalse);
     });
 
@@ -204,10 +206,36 @@ void main() {
         ),
       );
 
-      expect(find.byKey(const Key('memory-day-entry-drawer_1')), findsOneWidget);
+      expect(
+          find.byKey(const Key('memory-day-entry-drawer_1')), findsOneWidget);
       expect(find.text('他早上喝了乌龙茶'), findsOneWidget);
       // The room is context, not a category id.
       expect(find.textContaining('饮食'), findsOneWidget);
+    });
+
+    testWidgets('does not expose an ingestion room identifier', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MemoryDayPage(
+            day: day(
+              entries: [
+                {
+                  'entry_id': 'drawer_confirmed',
+                  'recorded_at': '2026-08-24T09:05:00+08:00',
+                  'recorded_at_source': 'occurred_at',
+                  'wing_id': 'Wing_Life',
+                  'room_id': 'userconfirm:eview-20260828-1',
+                  'preview': '我喜欢在雨天读书',
+                },
+              ],
+            ),
+            dayStartedAt: DateTime(2026, 8, 24),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('你明确让它记住的'), findsOneWidget);
+      expect(find.textContaining('userconfirm:'), findsNothing);
     });
 
     testWidgets('an unparseable time is shown rather than invented',
@@ -233,7 +261,8 @@ void main() {
         ),
       );
 
-      expect(find.byKey(const Key('memory-day-entry-drawer_odd')), findsOneWidget);
+      expect(
+          find.byKey(const Key('memory-day-entry-drawer_odd')), findsOneWidget);
       expect(find.textContaining('sometime'), findsOneWidget);
     });
   });
@@ -388,12 +417,14 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(attempts, 2);
-      expect(find.byKey(const Key('memory-day-entry-drawer_1')), findsOneWidget);
+      expect(
+          find.byKey(const Key('memory-day-entry-drawer_1')), findsOneWidget);
     });
   });
 
   group('the day screen and who remembers', () {
-    testWidgets('re-reads the day after the choice, because the entry may have left it',
+    testWidgets(
+        're-reads the day after the choice, because the entry may have left it',
         (tester) async {
       // A memory given to one Companion is no longer in the Owner layer this
       // page reads. A list that still showed it would be the moment a person
@@ -437,7 +468,8 @@ void main() {
 
       await tester.tap(find.byKey(const Key('audience-companion-c-a')));
       await tester.pumpAndSettle();
-      Navigator.of(tester.element(find.byKey(const Key('audience-sheet')))).pop();
+      Navigator.of(tester.element(find.byKey(const Key('audience-sheet'))))
+          .pop();
       await tester.pumpAndSettle();
 
       expect(reads, 2);
@@ -483,7 +515,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('memory-day-audience-drawer_1')), findsNothing);
+      expect(
+          find.byKey(const Key('memory-day-audience-drawer_1')), findsNothing);
     });
   });
 }

@@ -22,7 +22,8 @@ Map<String, dynamic> copyWire({
   int undated = 0,
   bool truncated = false,
   List<Map<String, dynamic>>? records,
-}) => {
+}) =>
+    {
       'contract_version': '1',
       'taken_at': '2026-08-24T12:31:00+00:00',
       'records': records ??
@@ -78,7 +79,8 @@ void main() {
       expect(answer.records.single.value, long);
     });
 
-    test('can ask for one companion\'s audience, as the library does', () async {
+    test('can ask for one companion\'s audience, as the library does',
+        () async {
       Uri? asked;
       final client = ManagementClient(
         httpClient: MockClient((request) async {
@@ -122,13 +124,41 @@ void main() {
       expect(find.textContaining('取自 2026-08-24'), findsOneWidget);
     });
 
-    testWidgets('shows a memory whole rather than as a preview', (tester) async {
+    testWidgets('shows a memory whole rather than as a preview',
+        (tester) async {
       // The failure mode of this page: a preview here is data loss that looks
       // like a working read.
       await tester.pumpWidget(MaterialApp(home: MemoryCopyPage(copy: copy())));
 
       expect(find.text(long), findsOneWidget);
       expect(find.textContaining('…'), findsNothing);
+      expect(find.textContaining('饮食 · 偏好'), findsOneWidget);
+    });
+
+    testWidgets('does not expose backend room or type tokens', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MemoryCopyPage(
+            copy: copy(
+              records: [
+                {
+                  'entry_id': 'drawer_confirmed',
+                  'recorded_at': '2026-08-24T09:05:00+08:00',
+                  'recorded_at_source': 'occurred_at',
+                  'wing_id': 'Wing_Interaction',
+                  'room_id': 'userconfirm:eview-20260828-2',
+                  'memory_type': 'interaction',
+                  'value': '请先帮我梳理选项',
+                },
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('你明确让它记住的 · 相处方式'), findsOneWidget);
+      expect(find.textContaining('userconfirm:'), findsNothing);
+      expect(find.textContaining('interaction'), findsNothing);
     });
 
     testWidgets('says out loud when the copy is not all of it', (tester) async {

@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../generated/management_v1.dart';
+import '../generated/management_v1.dart';
 
-/// Ask an Eidolon what it remembers.
+/// Ask one Eidolon what it remembers.
 ///
-/// A question and what came back, and nothing else. The screen begins empty on
-/// purpose: there is no "everything it remembers" to list, and a page that
-/// opened with a sample of someone's life would be choosing what to show them
-/// about themselves.
+/// Search is a focused way into the same Owner-governed memory surface. It is
+/// kept in management so both the overall Memory front door and a Companion
+/// detail page can open it without either feature depending on the other.
 class RecollectionsPage extends StatefulWidget {
   const RecollectionsPage({
     super.key,
@@ -45,8 +44,7 @@ class _RecollectionsPageState extends State<RecollectionsPage> {
       final answer = await widget.onSearch(query);
       if (mounted) setState(() => _answer = answer);
     } catch (error) {
-      // Never an empty result on failure: "it does not remember that" and "it
-      // could not be asked" are different things to be told about yourself.
+      // A failed read is not an empty memory.
       if (mounted) setState(() => _failure = '没能问到：$error');
     } finally {
       if (mounted) setState(() => _asking = false);
@@ -58,7 +56,7 @@ class _RecollectionsPageState extends State<RecollectionsPage> {
     final answer = _answer;
     return Scaffold(
       key: const Key('recollections-page'),
-      appBar: AppBar(title: Text('${widget.companionName}记得什么')),
+      appBar: AppBar(title: Text('搜索 ${widget.companionName} 的记忆')),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -100,7 +98,7 @@ class _RecollectionsPageState extends State<RecollectionsPage> {
               child: Padding(
                 padding: EdgeInsets.all(18),
                 child: Text(
-                  '问点什么,看看它记得。它记住的东西一直留在这台主机上。',
+                  '输入一件事，看看它是否记得。记忆内容只从你的主机读取。',
                   key: Key('recollections-idle'),
                 ),
               ),
@@ -110,7 +108,7 @@ class _RecollectionsPageState extends State<RecollectionsPage> {
               child: Padding(
                 padding: const EdgeInsets.all(18),
                 child: Text(
-                  '关于「${answer.query}」,它还没有记住什么。',
+                  '关于「${answer.query}」，它还没有记住什么。',
                   key: const Key('recollections-empty'),
                 ),
               ),
@@ -132,13 +130,6 @@ class _RecollectionsPageState extends State<RecollectionsPage> {
     );
   }
 
-  /// The day it was remembered, in this phone's own time.
-  ///
-  /// Null when the Host recorded no time, or one this phone cannot read. The
-  /// subtitle is then absent rather than showing the raw string: here the time is
-  /// context for a sentence, and an unreadable one adds nothing a person can use.
-  /// (今日 shows its raw value instead, because there the time is what places the
-  /// entry in the list.)
   String? _day(String? value) {
     if (value == null || value.isEmpty) return null;
     final parsed = DateTime.tryParse(value);

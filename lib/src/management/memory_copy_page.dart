@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../generated/management_v1.dart';
+import 'memory_labels.dart';
 
 /// 导出：a copy of what my Eidolon remembers, that I can take with me.
 ///
@@ -50,7 +51,7 @@ class MemoryCopyPage extends StatelessWidget {
     final records = copy.records;
     return Scaffold(
       key: const Key('memory-copy-page'),
-      appBar: AppBar(title: const Text('导出记忆')),
+      appBar: AppBar(title: const Text('完整副本')),
       body: ListView.separated(
         key: const Key('memory-copy-list'),
         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -117,8 +118,7 @@ class _Preamble extends StatelessWidget {
       // Unparseable rather than absent: showing the raw string beats inventing
       // a time for the copy itself.
       taken == null ? '取自 ${copy.takenAt}' : '取自 ${_stamp(taken)}',
-      if (copy.undatedCount > 0)
-        '其中 ${copy.undatedCount} 条没有可用的时间，排在最后',
+      if (copy.undatedCount > 0) '其中 ${copy.undatedCount} 条没有可用的时间，排在最后',
       // Said on its own line and in its own words. This is the one thing on
       // this page that means "what you are about to keep is not all of it".
       if (copy.truncated) '这次没有读完全部记忆，这份副本不完整',
@@ -164,8 +164,9 @@ class _RecordRow extends StatelessWidget {
     // record does not say — and the row says so rather than filling one in.
     final when = DateTime.tryParse(record.recordedAt ?? '')?.toLocal();
     final where = [
-      if ((record.roomId ?? '').isNotEmpty) record.roomId!,
-      if ((record.memoryType ?? '').isNotEmpty) record.memoryType!,
+      if ((record.roomId ?? '').isNotEmpty) memoryRoomLabel(record.roomId!),
+      if ((record.memoryType ?? '').isNotEmpty)
+        memoryTypeLabel(record.memoryType!),
     ].join(' · ');
     return ListTile(
       key: Key('memory-copy-record-${record.entryId}'),

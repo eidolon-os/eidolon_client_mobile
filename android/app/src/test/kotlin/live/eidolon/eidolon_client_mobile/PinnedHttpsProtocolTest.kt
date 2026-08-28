@@ -2,6 +2,7 @@ package live.eidolon.eidolon_client_mobile
 
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.net.URL
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -31,6 +32,22 @@ class PinnedHttpsProtocolTest {
         assertFailsWith<IllegalArgumentException> {
             validatePinnedHttpHeaders(mapOf("X-Eidolon" to "safe\r\ninjected: true"))
         }
+    }
+
+    @Test
+    fun `dialing by address preserves an encoded query exactly once`() {
+        val original = URL(
+            "https://eidolon.local:9002/api/management/v1/memory/entries" +
+                "?since=2026-08-28T00%3A00%3A00.000%2B08%3A00&companion_id=cp_1",
+        )
+
+        val addressed = replacePinnedHttpsHost(original, "192.168.3.206")
+
+        assertEquals(
+            "https://192.168.3.206:9002/api/management/v1/memory/entries" +
+                "?since=2026-08-28T00%3A00%3A00.000%2B08%3A00&companion_id=cp_1",
+            addressed.toExternalForm(),
+        )
     }
 
     @Test

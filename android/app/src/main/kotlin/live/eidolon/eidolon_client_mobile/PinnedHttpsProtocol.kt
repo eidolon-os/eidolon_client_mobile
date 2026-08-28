@@ -5,6 +5,7 @@ import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.net.URL
 import java.util.Locale
 import javax.net.ssl.SSLException
 
@@ -35,6 +36,17 @@ internal fun validatePinnedHttpHeaders(headers: Map<String, String>) {
         require('\r' !in value && '\n' !in value) { "HTTP header value is invalid" }
     }
 }
+
+/**
+ * Dials a discovered address without changing the already-encoded request target.
+ *
+ * Rebuilding a [URL] through the multi-component `URI` constructor treats `%`
+ * in its query as plain text and escapes it again. A query containing an ISO
+ * timestamp would therefore arrive as `%253A` instead of `%3A`. The four-arg
+ * [URL] constructor accepts the original `file` (path plus query) verbatim.
+ */
+internal fun replacePinnedHttpsHost(url: URL, host: String): URL =
+    URL(url.protocol, host, url.port, url.file)
 
 internal fun pinnedHttpsErrorCode(error: Exception): String = when (error) {
     is IllegalArgumentException -> "PINNED_HTTPS_INVALID_REQUEST"

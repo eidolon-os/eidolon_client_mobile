@@ -8,6 +8,7 @@ import 'memory_graph_screen.dart';
 import 'management_client.dart';
 import 'refusal_notice.dart';
 import 'memory_library_page.dart';
+import 'recollections_page.dart';
 
 /// Loads the library and shows one of three honest answers.
 ///
@@ -31,6 +32,7 @@ class MemoryLibraryScreen extends StatefulWidget {
     this.loadCopy,
     this.loadCompanions,
     this.assignAudience,
+    this.searchRecollections,
   });
 
   final Future<MemoryLibraryView> Function() load;
@@ -48,11 +50,14 @@ class MemoryLibraryScreen extends StatefulWidget {
 
   /// Reads a window of recent entries. Null hides the way in rather than
   /// opening a screen that cannot fill itself.
-  final Future<MemoryDayView> Function(DateTime since)? loadDay;
+  final Future<MemoryDayView> Function(
+    DateTime since,
+    String? companionId,
+  )? loadDay;
 
   /// Reads the whole visible memory, for the copy a person keeps. Null hides
   /// the way in rather than opening a screen that cannot fill itself.
-  final Future<MemoryCopyView> Function()? loadCopy;
+  final Future<MemoryCopyView> Function(String? companionId)? loadCopy;
 
   /// The two halves of 只让它记得, handed on to the day page where the entries
   /// are. Passed through this screen rather than wired there directly because
@@ -62,6 +67,14 @@ class MemoryLibraryScreen extends StatefulWidget {
     String entryId,
     String? companionId,
   )? assignAudience;
+
+  /// Searches the memory visible to one Companion. Search belongs here as a
+  /// way to explore the same library, even though the answer keeps its own
+  /// focused screen.
+  final Future<RecollectionsView> Function(
+    String companionId,
+    String query,
+  )? searchRecollections;
 
   @override
   State<MemoryLibraryScreen> createState() => _MemoryLibraryScreenState();
@@ -153,7 +166,7 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
   Future<void> _openToday() => Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => MemoryDayScreen(
-            load: widget.loadDay!,
+            load: (since) => widget.loadDay!(since, _selectedCompanionId),
             // Gated on the same capability as forgetting, because it is the same
             // promise: this Host can publish a change to what is remembered. A
             // control offered without it would open a sheet whose every choice
@@ -169,7 +182,9 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
   /// is a page under pressure to.
   Future<void> _openCopy() => Navigator.of(context).push<void>(
         MaterialPageRoute(
-          builder: (_) => MemoryCopyScreen(load: widget.loadCopy!),
+          builder: (_) => MemoryCopyScreen(
+            load: () => widget.loadCopy!(_selectedCompanionId),
+          ),
         ),
       );
 
@@ -206,6 +221,30 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
         ),
       );
 
+  String get _selectedCompanionName {
+    for (final companion in _companions) {
+      if (companion.companionId != _selectedCompanionId) continue;
+      final name = (companion.displayName ?? '').trim();
+      return name.isEmpty ? '当前 Eidolon' : name;
+    }
+    return '当前 Eidolon';
+  }
+
+  Future<void> _openSearch() {
+    final companionId = _selectedCompanionId;
+    if (companionId == null || widget.searchRecollections == null) {
+      return Future.value();
+    }
+    return Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => RecollectionsPage(
+          companionName: _selectedCompanionName,
+          onSearch: (query) => widget.searchRecollections!(companionId, query),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final library = _library;
@@ -220,11 +259,16 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
         onCompanionChanged:
             widget.loadForCompanion == null ? null : _selectCompanion,
         onOpenGraph: widget.loadGraph == null ? null : _openGraph,
+        onSearch:
+            _selectedCompanionId == null || widget.searchRecollections == null
+                ? null
+                : _openSearch,
+        onRefresh: _read,
       );
     }
     return Scaffold(
       key: const Key('memory-library-screen'),
-      appBar: AppBar(title: const Text('它记住的')),
+      appBar: AppBar(title: const Text('你的记忆')),
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(

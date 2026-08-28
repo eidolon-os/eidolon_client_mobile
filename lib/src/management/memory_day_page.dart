@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
+import 'memory_labels.dart';
 
 /// 今日：what it wrote down today, newest first.
 ///
@@ -73,8 +74,9 @@ class MemoryDayPage extends StatelessWidget {
               key: const Key('memory-day-list'),
               padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: entries.length + 1 + (onLoadMore == null ? 0 : 1),
-              separatorBuilder: (_, index) =>
-                  index == 0 ? const SizedBox.shrink() : const Divider(height: 1),
+              separatorBuilder: (_, index) => index == 0
+                  ? const SizedBox.shrink()
+                  : const Divider(height: 1),
               itemBuilder: (context, index) {
                 if (index == 0) {
                   return _Preamble(day: day, dayStartedAt: dayStartedAt);
@@ -146,13 +148,14 @@ class _EntryRow extends StatelessWidget {
     final when = DateTime.tryParse(entry.recordedAt)?.toLocal();
     return ListTile(
       key: Key('memory-day-entry-${entry.entryId}'),
-      title: Text(entry.preview ?? '', maxLines: 3, overflow: TextOverflow.ellipsis),
+      title: Text(entry.preview ?? '',
+          maxLines: 3, overflow: TextOverflow.ellipsis),
       subtitle: Text(
         [
           // Unparseable rather than absent: showing the raw string beats
           // inventing a time, and beats hiding the entry.
           if (when != null) _clock(when) else entry.recordedAt,
-          if ((entry.roomId ?? '').isNotEmpty) entry.roomId!,
+          if ((entry.roomId ?? '').isNotEmpty) memoryRoomLabel(entry.roomId!),
         ].join(' · '),
       ),
       trailing: onChooseAudience == null
@@ -167,9 +170,7 @@ class _EntryRow extends StatelessWidget {
   }
 }
 
-String _clock(DateTime moment) =>
-    '${moment.hour.toString().padLeft(2, '0')}:'
+String _clock(DateTime moment) => '${moment.hour.toString().padLeft(2, '0')}:'
     '${moment.minute.toString().padLeft(2, '0')}';
 
-String _undatedSentence(int count) =>
-    '另有 $count 条没有可用的时间，不在任何一天的清单里';
+String _undatedSentence(int count) => '另有 $count 条没有可用的时间，不在任何一天的清单里';
