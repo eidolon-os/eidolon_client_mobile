@@ -245,8 +245,11 @@ void main() {
           find.byKey(const Key('memory-library-forget')),
           200,
         );
-        expect(find.text('纠正或忘记'), findsOneWidget);
-        expect(find.text('先预览会影响哪些记忆，再由你确认处理。'), findsOneWidget);
+        expect(find.text('记忆纠错与隐私'), findsOneWidget);
+        expect(
+          find.text('仅在内容不准确或涉及隐私时使用；日常记忆由伙伴自动整理。'),
+          findsOneWidget,
+        );
       },
     );
 

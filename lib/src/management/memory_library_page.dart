@@ -7,9 +7,9 @@ import 'memory_labels.dart';
 ///
 /// This page deliberately separates three questions that used to be mixed in
 /// the app bar: whose point of view is being shown, how the Owner wants to
-/// explore it, and whether they want to govern it. Destructive governance is
-/// last and named; ordinary exploration is visible in the page rather than
-/// encoded as a row of unexplained icons.
+/// explore it, and whether they need the correction fallback. Ordinary
+/// exploration is visible in the page rather than encoded as a row of
+/// unexplained icons; manual deletion is not part of the normal workflow.
 class MemoryLibraryPage extends StatelessWidget {
   const MemoryLibraryPage({
     super.key,
@@ -97,7 +97,7 @@ class MemoryLibraryPage extends StatelessWidget {
           ],
         if (onForget != null) ...[
           const SizedBox(height: 18),
-          _GovernanceCard(onForget: onForget!),
+          _MemoryCorrectionFallback(onForget: onForget!),
         ],
       ],
     );
@@ -616,25 +616,22 @@ class _RoomRow extends StatelessWidget {
   }
 }
 
-class _GovernanceCard extends StatelessWidget {
-  const _GovernanceCard({required this.onForget});
+class _MemoryCorrectionFallback extends StatelessWidget {
+  const _MemoryCorrectionFallback({required this.onForget});
 
   final VoidCallback onForget;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Card(
+    return Container(
       key: const Key('memory-library-governance'),
-      margin: EdgeInsets.zero,
-      color: colors.errorContainer.withValues(alpha: .38),
-      clipBehavior: Clip.antiAlias,
       child: ListTile(
         key: const Key('memory-library-forget'),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
         onTap: onForget,
-        leading: Icon(Icons.delete_sweep_outlined, color: colors.error),
-        title: const Text('纠正或忘记'),
-        subtitle: const Text('先预览会影响哪些记忆，再由你确认处理。'),
+        leading: const Icon(Icons.shield_outlined),
+        title: const Text('记忆纠错与隐私'),
+        subtitle: const Text('仅在内容不准确或涉及隐私时使用；日常记忆由伙伴自动整理。'),
         trailing: const Icon(Icons.chevron_right),
       ),
     );
