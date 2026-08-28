@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 const _companionId = 'c_683f963f54885e86892416894c9d92d1';
 
-
 MountedDeviceInventory _devices(List<String?> attachedTo) =>
     MountedDeviceInventory.fromView(
       DevicesView.fromJson({
@@ -37,7 +36,6 @@ MountedDeviceInventory _devices(List<String?> attachedTo) =>
         ],
       }),
     );
-
 
 Future<void> _open(
   WidgetTester tester, {
@@ -99,6 +97,12 @@ void main() {
     expect(find.textContaining('Host IP'), findsNothing);
     expect(find.textContaining('genome'), findsNothing);
     expect(find.textContaining('realm'), findsNothing);
+
+    // Browsing is the first layer; edits live under a named settings section.
+    expect(find.text('伙伴动态'), findsOneWidget);
+    expect(find.text('伙伴设置'), findsOneWidget);
+    expect(find.byKey(const Key('companion-rename')), findsOneWidget);
+    expect(find.byKey(const Key('companion-open-persona')), findsOneWidget);
   });
 
   testWidgets('shows only the devices attached to this Eidolon',
@@ -210,7 +214,8 @@ void _withheldRowTests() {
         ),
       );
 
-      expect(find.text('它记得什么'), findsOneWidget);
+      expect(find.text('伙伴记忆'), findsOneWidget);
+      expect(find.text('只查看这位伙伴范围内的记忆，内容留在这台主机上'), findsOneWidget);
       expect(find.text('主机未配置'), findsOneWidget);
       expect(find.text('尚未开放'), findsOneWidget);
 

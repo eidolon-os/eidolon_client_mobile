@@ -1021,23 +1021,21 @@ void main() {
     await tester.tap(find.byKey(const Key('retry-home')));
     await tester.pumpAndSettle();
 
-    // One row per Eidolon, each by its own name. Not one promoted with the rest
-    // reduced to a count: this is the Owner's screen, and it is about their
-    // Eidolons.
-    expect(find.text('小忆'), findsOneWidget);
-    expect(find.text('阿力'), findsOneWidget);
+    // Home is a summary, not a second roster. The two partner rows and the old
+    // "all Eidolons" row are now one clear entry.
+    expect(find.text('你的伙伴'), findsOneWidget);
+    expect(find.text('2 位'), findsOneWidget);
+    expect(find.textContaining('默认应答：小忆'), findsOneWidget);
+    expect(find.text('阿力'), findsNothing);
     expect(
       find.byKey(const Key('home-companion-companion_primary')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const Key('home-companion-companion_second')),
-      findsOneWidget,
+      findsNothing,
     );
-    // **Both are running**, which the old shape could not say — and the one
-    // that replies unaddressed is marked rather than promoted.
-    expect(find.text('在运行'), findsNWidgets(2));
-    expect(find.textContaining('没指名时由它回答'), findsOneWidget);
+    expect(find.byKey(const Key('companion-roster-row')), findsOneWidget);
     // What each Eidolon has been through is on its own page, not here: on this
     // card it could only ever describe whichever one answered.
     expect(find.textContaining('第 1 章'), findsNothing);

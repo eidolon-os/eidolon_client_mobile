@@ -79,9 +79,12 @@ void main() {
       onClearFace: () => cleared += 1,
     );
 
-    expect(find.text('换一张脸'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('companion-face')));
+    expect(find.text('更换伙伴头像'), findsOneWidget);
+    // The avatar is now a preview. Editing is a labelled action in settings.
+    await tester.ensureVisible(find.byKey(const Key('companion-change-face')));
+    await tester.tap(find.byKey(const Key('companion-change-face')));
     expect(changed, 1);
+    await tester.ensureVisible(find.byKey(const Key('companion-clear-face')));
     await tester.tap(find.byKey(const Key('companion-clear-face')));
     expect(cleared, 1);
   });

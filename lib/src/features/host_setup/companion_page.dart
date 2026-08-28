@@ -59,6 +59,7 @@ class CompanionPage extends StatelessWidget {
   /// decided here rather than asked for separately: the Host already answered.
   final MountedDeviceInventory? devices;
   final VoidCallback onRename;
+
   /// Open who it is, to change it.
   ///
   /// Where 「它的变化」 used to be. The record of what this Eidolon has been is
@@ -106,8 +107,7 @@ class CompanionPage extends StatelessWidget {
   List<MountedDevice> get _itsDevices =>
       (devices?.devices ?? const <MountedDevice>[])
           .where(
-            (device) =>
-                device.attachedCompanionId == companion.companionId,
+            (device) => device.attachedCompanionId == companion.companionId,
           )
           .toList(growable: false);
 
@@ -119,160 +119,172 @@ class CompanionPage extends StatelessWidget {
     return Scaffold(
       key: const Key('companion-page'),
       appBar: AppBar(title: Text(name)),
-      body: ListView(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    key: const Key('companion-face'),
-                    onTap: onChangeFace,
-                    child: CircleAvatar(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      key: const Key('companion-face'),
                       radius: 26,
                       foregroundImage: face == null ? null : MemoryImage(face!),
                       child: face == null
                           ? const Icon(Icons.face_retouching_natural)
                           : null,
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name,
-                          style: Theme.of(context).textTheme.headlineSmall,
-                        ),
-                        const SizedBox(height: 4),
-                        // What state *this Eidolon* is in. It used to greet the
-                        // Owner here — 「你好，Manson」 under the Eidolon's name,
-                        // with a pencil beside it — which made the card read as
-                        // the person's own profile and the pencil look like it
-                        // renamed them. It renames the Eidolon.
-                        Text(
-                          _stateLine(companion),
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        if (isDefault) ...[
-                          const SizedBox(height: 6),
-                          const Chip(
-                            key: Key('companion-default-badge'),
-                            label: Text('没指名时由它回答'),
-                            visualDensity: VisualDensity.compact,
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: Theme.of(context).textTheme.headlineSmall,
                           ),
+                          const SizedBox(height: 4),
+                          // What state *this Eidolon* is in. It used to greet the
+                          // Owner here — 「你好，Manson」 under the Eidolon's name,
+                          // with a pencil beside it — which made the card read as
+                          // the person's own profile and the pencil look like it
+                          // renamed them. It renames the Eidolon.
+                          Text(
+                            _stateLine(companion),
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          if (isDefault) ...[
+                            const SizedBox(height: 6),
+                            const Chip(
+                              key: Key('companion-default-badge'),
+                              label: Text('默认应答伙伴'),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    key: const Key('companion-rename'),
-                    onPressed: onRename,
-                    tooltip: '改名',
-                    icon: const Icon(Icons.edit_outlined),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          if (onChangeFace != null)
+            const SizedBox(height: 16),
+            Text('伙伴动态', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            _FeatureRow(
+              tileKey: const Key('companion-open-recollections'),
+              icon: Icons.menu_book_outlined,
+              title: '伙伴记忆',
+              subtitle: '只查看这位伙伴范围内的记忆，内容留在这台主机上',
+              onOpen: onOpenRecollections,
+              hold: _hold('memory.read'),
+            ),
+            _FeatureRow(
+              tileKey: const Key('companion-open-conversations'),
+              icon: Icons.forum_outlined,
+              title: '说过的话',
+              subtitle: '哪天聊过，以及那次说了什么',
+              onOpen: onOpenConversations,
+              hold: _hold('conversation.read'),
+            ),
+            _FeatureRow(
+              tileKey: const Key('companion-open-tasks'),
+              icon: Icons.checklist_outlined,
+              title: '交给它的事',
+              subtitle: '看它做到哪了，也可以让它别做了',
+              onOpen: onOpenTasks,
+              hold: _hold('task.read'),
+            ),
+            const SizedBox(height: 16),
+            Text('它的设备', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            if (bound.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(18),
+                  child: Text(
+                    '还没有设备连到它。设备添加好之后会出现在这里。',
+                    key: Key('companion-devices-empty'),
+                  ),
+                ),
+              )
+            else
+              ...bound.map(
+                (device) => Card(
+                  child: ListTile(
+                    key: Key('companion-device-${device.deviceId}'),
+                    leading: const Icon(Icons.developer_board_outlined),
+                    title: Text(device.label),
+                    // What it is to this Eidolon, not what state a mount is in:
+                    // a device attached to it is somewhere it can be spoken to.
+                    subtitle: const Text('可以通过它和你说话'),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 24),
+            Text('伙伴设置', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
             Card(
               child: Column(
                 children: [
                   ListTile(
-                    key: const Key('companion-change-face'),
-                    leading: const Icon(Icons.image_outlined),
-                    title: Text(face == null ? '给它一张脸' : '换一张脸'),
-                    subtitle: const Text('从相册里选一张照片,它会用这张脸出现'),
+                    key: const Key('companion-rename'),
+                    leading: const Icon(Icons.badge_outlined),
+                    title: const Text('伙伴名称'),
+                    subtitle: Text('当前名称：$name'),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: onChangeFace,
+                    onTap: onRename,
                   ),
+                  if (onChangeFace != null)
+                    ListTile(
+                      key: const Key('companion-change-face'),
+                      leading: const Icon(Icons.image_outlined),
+                      title: Text(face == null ? '给它一张脸' : '更换伙伴头像'),
+                      subtitle: const Text('从相册选择，只会改变这位伙伴的形象'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: onChangeFace,
+                    ),
                   if (face != null && onClearFace != null)
                     ListTile(
                       key: const Key('companion-clear-face'),
                       leading: const Icon(Icons.hide_image_outlined),
-                      title: const Text('不要这张脸'),
-                      subtitle: const Text('它会回到没有脸的样子'),
+                      title: const Text('移除伙伴头像'),
+                      subtitle: const Text('伙伴会恢复为默认形象'),
                       onTap: onClearFace,
                     ),
                 ],
               ),
             ),
-          const SizedBox(height: 16),
-          _FeatureRow(
-            tileKey: const Key('companion-open-recollections'),
-            icon: Icons.menu_book_outlined,
-            title: '它记得什么',
-            subtitle: '问问看,它记住的东西留在这台主机上',
-            onOpen: onOpenRecollections,
-            hold: _hold('memory.read'),
-          ),
-          _FeatureRow(
-            tileKey: const Key('companion-open-tasks'),
-            icon: Icons.checklist_outlined,
-            title: '交给它的事',
-            subtitle: '看它做到哪了，也可以让它别做了',
-            onOpen: onOpenTasks,
-            hold: _hold('task.read'),
-          ),
-          _FeatureRow(
-            tileKey: const Key('companion-open-conversations'),
-            icon: Icons.forum_outlined,
-            title: '说过的话',
-            subtitle: '哪天聊过，以及那次说了什么',
-            onOpen: onOpenConversations,
-            hold: _hold('conversation.read'),
-          ),
-          _FeatureRow(
-            tileKey: const Key('companion-open-persona'),
-            icon: Icons.auto_awesome_outlined,
-            title: '它是谁',
-            subtitle: '它怎么看自己、在乎什么、不会做什么、怎么说话',
-            onOpen: onOpenPersona,
-            hold: _hold('persona.author'),
-          ),
-          if (onChangeLifecycle != null) ...[
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton(
-                key: const Key('companion-lifecycle'),
-                onPressed: onChangeLifecycle,
-                child: Text(companion.isPutAway ? '让它回来' : '收起来'),
-              ),
+            _FeatureRow(
+              tileKey: const Key('companion-open-persona'),
+              icon: Icons.auto_awesome_outlined,
+              title: '性格与表达',
+              subtitle: '编辑它怎么看自己、在乎什么、不会做什么和怎么说话',
+              onOpen: onOpenPersona,
+              hold: _hold('persona.author'),
             ),
-          ],
-          const SizedBox(height: 16),
-          Text('它的设备', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          if (bound.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(18),
-                child: Text(
-                  '还没有设备连到它。设备添加好之后会出现在这里。',
-                  key: Key('companion-devices-empty'),
-                ),
-              ),
-            )
-          else
-            ...bound.map(
-              (device) => Card(
+            if (onChangeLifecycle != null)
+              Card(
                 child: ListTile(
-                  key: Key('companion-device-${device.deviceId}'),
-                  leading: const Icon(Icons.developer_board_outlined),
-                  title: Text(device.label),
-                  // What it is to this Eidolon, not what state a mount is in:
-                  // a device attached to it is somewhere it can be spoken to.
-                  subtitle: const Text('可以通过它和你说话'),
+                  key: const Key('companion-lifecycle'),
+                  leading: Icon(
+                    companion.isPutAway
+                        ? Icons.unarchive_outlined
+                        : Icons.archive_outlined,
+                  ),
+                  title: Text(companion.isPutAway ? '让伙伴回来' : '收起伙伴'),
+                  subtitle: Text(
+                    companion.isPutAway ? '恢复后可以再次开始新对话' : '停止新对话；它的记忆仍会保留',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: onChangeLifecycle,
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -330,7 +342,6 @@ class _FeatureRow extends StatelessWidget {
     );
   }
 }
-
 
 /// What state this Eidolon is in, for the line under its name.
 ///

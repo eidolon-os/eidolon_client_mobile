@@ -25,6 +25,7 @@ Map<String, dynamic> rosterWire({
               'display_name': '小忆',
               'kind': 'standard',
               'lifecycle_state': 'active',
+              'running': true,
               'revision': 2,
               'created_at': '2026-08-24T09:30:00+00:00',
               'updated_at': '2026-08-24T09:30:00+00:00',
@@ -377,7 +378,22 @@ void main() {
       );
 
       expect(find.text('你已归档，记忆还留着'), findsOneWidget);
-      expect(find.text('在这台 Host 上运行'), findsOneWidget);
+      expect(find.text('现在可以应答'), findsOneWidget);
+    });
+
+    testWidgets('uses a labelled add action and summarizes default and state',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterPage(roster: roster(), onAdd: () {}),
+        ),
+      );
+
+      expect(find.text('你的伙伴'), findsOneWidget);
+      expect(find.text('新建伙伴'), findsOneWidget);
+      expect(find.text('默认应答：小忆'), findsOneWidget);
+      expect(find.text('当前没有需要关注的运行状态'), findsOneWidget);
+      expect(find.byType(IconButton), findsNothing);
     });
 
     testWidgets('an unnamed Eidolon is not called by its identifier',
@@ -1090,7 +1106,7 @@ void detailTests() {
           home: CompanionRosterScreen(
             load: ({String? cursor}) async =>
                 CompanionRosterView.fromJson(rosterWire()),
-            openCompanion: (companion) => opened = companion,
+            openCompanion: (companion) async => opened = companion,
           ),
         ),
       );

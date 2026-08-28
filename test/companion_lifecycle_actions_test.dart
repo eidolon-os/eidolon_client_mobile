@@ -325,14 +325,14 @@ void main() {
 
     testWidgets('the action says which direction it goes', (tester) async {
       await open(tester, onChangeLifecycle: () {});
-      expect(find.text('收起来'), findsOneWidget);
+      expect(find.text('收起伙伴'), findsOneWidget);
 
       await open(
         tester,
         lifecycleState: 'archived',
         onChangeLifecycle: () {},
       );
-      expect(find.text('让它回来'), findsOneWidget);
+      expect(find.text('让伙伴回来'), findsOneWidget);
     });
 
     testWidgets('being put away outranks whatever the runtime says',
@@ -350,7 +350,7 @@ void main() {
       await open(tester, isDefault: true);
 
       expect(find.byKey(const Key('companion-default-badge')), findsOneWidget);
-      expect(find.text('没指名时由它回答'), findsOneWidget);
+      expect(find.text('默认应答伙伴'), findsOneWidget);
       // And it is still just this Eidolon's page: no greeting to the Owner,
       // which used to sit under the name and make the card read as a profile.
       expect(find.textContaining('你好'), findsNothing);

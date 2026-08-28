@@ -28,9 +28,6 @@ class CompanionRosterScreen extends StatefulWidget {
     this.openCompanion,
     this.loadContext,
     this.setDefaultCompanion,
-    this.setCompanionLifecycle,
-    this.loadCompanionFace,
-    this.renameCompanion,
     this.createCompanion,
     this.loadPersonaTemplate,
     this.newOperationId,
@@ -50,7 +47,7 @@ class CompanionRosterScreen extends StatefulWidget {
   /// card, and only for the Eidolon that answers when nobody was named. So
   /// "open one of my Eidolons" led to two different pages depending on where
   /// you tapped, and only one of them let you change who it is.
-  final void Function(CompanionSummaryView companion)? openCompanion;
+  final Future<void> Function(CompanionSummaryView companion)? openCompanion;
 
   /// Read once when this screen opens, for two things it cannot infer:
   /// whether this Host can change the default at all, and which Owner revision
@@ -64,24 +61,6 @@ class CompanionRosterScreen extends StatefulWidget {
     String companionId,
     int expectedRevision,
   )? setDefaultCompanion;
-
-  /// Puts one away, or brings it back. Passed through to the detail screen,
-  /// which is where a person is looking at the single Eidolon they mean. Null
-  /// on a Host that cannot do it yet, and the button is then absent rather than
-  /// disabled.
-  final Future<CompanionLifecycleView> Function(
-    String companionId,
-    String lifecycleState,
-    String? replacementCompanionId,
-  )? setCompanionLifecycle;
-
-  /// What one of them looks like, read when its own screen opens.
-  final Future<CompanionFacePicture> Function(String companionId)?
-      loadCompanionFace;
-
-  /// Calls one of them something else.
-  final Future<String> Function(String companionId, String displayName)?
-      renameCompanion;
 
   /// Adds one. Given an operation id this screen holds, not one per attempt.
   ///
@@ -154,6 +133,8 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
                 defaultCompanionId: page.defaultCompanionId,
                 companions: [..._roster!.companions, ...page.companions],
                 nextCursor: page.nextCursor,
+                runtimeUnavailable:
+                    page.runtimeUnavailable ?? _roster!.runtimeUnavailable,
               );
         _busy = false;
       });
@@ -196,6 +177,13 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
         await _read();
       }
     }
+  }
+
+  Future<void> _openCompanion(CompanionSummaryView companion) async {
+    final open = widget.openCompanion;
+    if (open == null) return;
+    await open(companion);
+    if (mounted) await _read();
   }
 
   /// Keyed on the status, which is contract — not on the Host's own sentence,
@@ -297,7 +285,7 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
         children: [
           CompanionRosterPage(
             roster: roster,
-            onOpen: widget.openCompanion,
+            onOpen: widget.openCompanion == null ? null : _openCompanion,
             onLoadMore: roster.nextCursor == null
                 ? null
                 : () => _read(cursor: roster.nextCursor),
@@ -327,14 +315,14 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
     }
     return Scaffold(
       key: const Key('companion-roster-screen'),
-      appBar: AppBar(title: const Text('你的 Eidolon')),
+      appBar: AppBar(title: const Text('你的伙伴')),
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(key: Key('roster-loading'))
             : RefusalNotice(
                 key: const Key('roster-error'),
                 error: _error!,
-                subject: '你的 Eidolon',
+                subject: '你的伙伴',
                 onRetry: () => _read(),
                 retryKey: const Key('roster-retry'),
               ),

@@ -3,12 +3,10 @@ import 'package:flutter/material.dart';
 import '../generated/management_v1.dart';
 import '../protocol/companion_contract.dart';
 
-/// Everything this Owner has, on one screen.
+/// Every partner this Owner has, on one screen.
 ///
-/// Until now the app could show exactly one Eidolon: the workspace runtime
-/// answered with "the primary Companion" and the page was built around that
-/// single thing. A person with two of them had no way to see the second, and no
-/// way to tell which one the Host would use.
+/// This is the collection and management surface. Home only summarizes the
+/// collection, while opening a row goes to the one place about that partner.
 ///
 /// Three things this page deliberately does not do:
 ///
@@ -72,18 +70,7 @@ class CompanionRosterPage extends StatelessWidget {
     final refusalText = refusal;
     return Scaffold(
       key: const Key('companion-roster-page'),
-      appBar: AppBar(
-        title: const Text('你的 Eidolon'),
-        actions: [
-          if (onAdd != null)
-            IconButton(
-              key: const Key('roster-add'),
-              onPressed: onAdd,
-              tooltip: '再要一个',
-              icon: const Icon(Icons.add),
-            ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('你的伙伴')),
       body: Column(
         children: [
           if (refusalText != null)
@@ -98,6 +85,7 @@ class CompanionRosterPage extends StatelessWidget {
               content: Text(notice!),
               actions: const [SizedBox.shrink()],
             ),
+          _RosterSummary(roster: roster, onAdd: onAdd),
           Expanded(child: _list(rows)),
         ],
       ),
@@ -106,18 +94,30 @@ class CompanionRosterPage extends StatelessWidget {
 
   Widget _list(List<CompanionSummaryView> rows) {
     return rows.isEmpty
-        ? const Center(
+        ? Center(
             key: Key('roster-empty'),
             // Said plainly rather than as an error. An Owner with none is a
             // real state, and it is not the same as a Host that could not
             // answer — that case never reaches this widget.
-            child: Text('这里还没有 Eidolon'),
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.group_add_outlined, size: 40),
+                  SizedBox(height: 12),
+                  Text('这里还没有伙伴'),
+                  SizedBox(height: 6),
+                  Text('新建后，你可以在这里查看状态和选择默认应答伙伴。'),
+                ],
+              ),
+            ),
           )
         : ListView.separated(
             key: const Key('roster-list'),
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
             itemCount: rows.length + (onLoadMore == null ? 0 : 1),
-            separatorBuilder: (_, __) => const Divider(height: 1),
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
               if (index == rows.length) {
                 return Padding(
@@ -136,10 +136,80 @@ class CompanionRosterPage extends StatelessWidget {
                 onOpen: onOpen,
                 onMakeDefault: onMakeDefault,
                 busy: busyCompanionId == companion.companionId,
+                runtimeUnavailable: roster.runtimeUnavailable,
               );
             },
           );
   }
+}
+
+class _RosterSummary extends StatelessWidget {
+  const _RosterSummary({required this.roster, required this.onAdd});
+
+  final CompanionRosterView roster;
+  final VoidCallback? onAdd;
+
+  String get _defaultLine {
+    final defaultId = roster.defaultCompanionId;
+    if (defaultId == null) return '还没有设置默认应答伙伴';
+    for (final companion in roster.companions) {
+      if (companion.companionId != defaultId) continue;
+      final name = (companion.displayName ?? '').trim();
+      return '默认应答：${name.isEmpty ? '未命名伙伴' : name}';
+    }
+    return '默认应答伙伴在尚未加载的列表中';
+  }
+
+  String get _attentionLine {
+    final unavailable = roster.runtimeUnavailable ?? '';
+    if (unavailable.isNotEmpty) return '运行状态暂时无法读取';
+    final attention = roster.companions
+        .where(
+          (row) => isCompanionActive(row.lifecycleState) && row.running != true,
+        )
+        .length;
+    if (attention == 0) return '当前没有需要关注的运行状态';
+    return '$attention 位伙伴需要关注运行状态';
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  roster.nextCursor == null
+                      ? '共 ${roster.companions.length} 位伙伴'
+                      : '已显示 ${roster.companions.length} 位伙伴',
+                  key: const Key('roster-count'),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 6),
+                Text(_defaultLine, key: const Key('roster-default-summary')),
+                const SizedBox(height: 2),
+                Text(
+                  _attentionLine,
+                  key: const Key('roster-attention-summary'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                if (onAdd != null) ...[
+                  const SizedBox(height: 14),
+                  FilledButton.icon(
+                    key: const Key('roster-add'),
+                    onPressed: onAdd,
+                    icon: const Icon(Icons.person_add_alt_1_outlined),
+                    label: const Text('新建伙伴'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
 }
 
 class _RosterRow extends StatelessWidget {
@@ -149,6 +219,7 @@ class _RosterRow extends StatelessWidget {
     required this.onOpen,
     required this.onMakeDefault,
     required this.busy,
+    required this.runtimeUnavailable,
   });
 
   final CompanionSummaryView companion;
@@ -156,6 +227,7 @@ class _RosterRow extends StatelessWidget {
   final void Function(CompanionSummaryView companion)? onOpen;
   final void Function(CompanionSummaryView companion)? onMakeDefault;
   final bool busy;
+  final String? runtimeUnavailable;
 
   /// Offered on a row that is not already the default and is not on its way
   /// out. Whether it is *allowed* stays the Host's answer — a guard is refused
@@ -171,27 +243,62 @@ class _RosterRow extends StatelessWidget {
     final name = (companion.displayName ?? '').isNotEmpty
         ? companion.displayName!
         : '还没有名字的 Eidolon';
-    return ListTile(
-      key: Key('roster-row-${companion.companionId}'),
-      leading: const CircleAvatar(child: Icon(Icons.face_retouching_natural)),
-      title: Row(
-        children: [
-          Flexible(child: Text(name, overflow: TextOverflow.ellipsis)),
-          if (isDefault)
-            const Padding(
-              padding: EdgeInsets.only(left: 8),
-              child: Chip(
-                key: Key('roster-default-badge'),
-                label: Text('默认'),
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ListTile(
+        key: Key('roster-row-${companion.companionId}'),
+        contentPadding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+        leading: const CircleAvatar(child: Icon(Icons.face_retouching_natural)),
+        title: Text(name, overflow: TextOverflow.ellipsis),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (isDefault)
+                const Chip(
+                  key: Key('roster-default-badge'),
+                  label: Text('默认应答'),
+                  visualDensity: VisualDensity.compact,
+                ),
+              Chip(
+                key: Key('roster-state-${companion.companionId}'),
+                label: Text(_stateLabel),
                 visualDensity: VisualDensity.compact,
               ),
-            ),
-        ],
+              Text(_stateSentence),
+            ],
+          ),
+        ),
+        trailing: _trailing(),
+        onTap: onOpen == null ? null : () => onOpen!(companion),
       ),
-      subtitle: Text(companionLifecycleSentence(companion.lifecycleState)),
-      trailing: _trailing(),
-      onTap: onOpen == null ? null : () => onOpen!(companion),
     );
+  }
+
+  String get _stateLabel {
+    if (!isCompanionActive(companion.lifecycleState)) {
+      return companionLifecycleLabel(companion.lifecycleState);
+    }
+    return switch (companion.running) {
+      true => '运行中',
+      false => '未运行',
+      null => '状态未知',
+    };
+  }
+
+  String get _stateSentence {
+    if (!isCompanionActive(companion.lifecycleState)) {
+      return companionLifecycleSentence(companion.lifecycleState);
+    }
+    return switch (companion.running) {
+      true => '现在可以应答',
+      false => '当前没有运行',
+      null when (runtimeUnavailable ?? '').isNotEmpty => '运行状态暂时无法读取',
+      null => '还没有读到运行状态',
+    };
   }
 
   Widget? _trailing() {

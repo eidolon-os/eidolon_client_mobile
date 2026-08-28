@@ -317,20 +317,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               companionId: companionId,
               expectedRevision: expectedRevision,
             ),
-            loadCompanionFace: (companionId) =>
-                _controller.companionFacePicture(companionId: companionId),
-            renameCompanion: (companionId, displayName) =>
-                _controller.renameOneCompanion(
-              companionId: companionId,
-              displayName: displayName,
-            ),
-            setCompanionLifecycle:
-                (companionId, lifecycleState, replacementCompanionId) =>
-                    _controller.setCompanionLifecycle(
-              companionId: companionId,
-              lifecycleState: lifecycleState,
-              replacementCompanionId: replacementCompanionId,
-            ),
             createCompanion: (operationId, displayName, persona) =>
                 _controller.createCompanion(
               operationId: operationId,
@@ -670,7 +656,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               setupContinuation: widget.setupContinuation,
               onSetupComplete: widget.onSetupComplete,
               onReconnect: _controller.connect,
-              onOpenCompanion: _openCompanion,
               onOpenRoster: _openRoster,
               onOpenMemoryLibrary: _openMemoryLibrary,
               // Read once when the Host connected. A Host that never got its
@@ -926,7 +911,6 @@ class _WorkspaceCard extends StatelessWidget {
     required this.onSetupComplete,
     required this.onReconnect,
     required this.onChangeNetwork,
-    required this.onOpenCompanion,
     required this.onOpenRoster,
     required this.onOpenMemoryLibrary,
     this.memoryHold,
@@ -940,7 +924,6 @@ class _WorkspaceCard extends StatelessWidget {
   final VoidCallback? onSetupComplete;
   final Future<void> Function() onReconnect;
   final Future<void> Function() onChangeNetwork;
-  final void Function(HostCompanion companion) onOpenCompanion;
 
   /// Reachable whether or not the runtime answered: "what do I have" is a
   /// question the management contract answers on its own, and a Host that
@@ -1082,79 +1065,33 @@ class _WorkspaceCard extends StatelessWidget {
         companionDisplayName: companionName.text,
       );
 
-  /// One row per Eidolon this person has.
-  ///
-  /// The default one is *marked*, not promoted: 「默认应答」 is a setting on one
-  /// row, where it used to be the identity of the whole card. Running state
-  /// comes from the Host and has three values — a runtime it could not ask
-  /// about says so rather than reading as "stopped".
-  List<Widget> _companionRows(BuildContext context, HostHome? home) {
-    if (home == null) return const [];
-    if (home.companions.isEmpty) {
-      return [
-        _WorkspaceResourceStatus(
-          key: const Key('no-companions-row'),
-          icon: Icons.face_retouching_natural,
-          label: '还没有 Eidolon',
-          statusLabel: '可新建',
-          detail: '在「你所有的 Eidolon」里建第一个',
-          onOpen: onOpenRoster,
-          openKey: const Key('open-roster-empty'),
-          openTooltip: '新建',
-        ),
-      ];
-    }
-    return [
-      for (final companion in home.companions)
-        _WorkspaceResourceStatus(
-          key: Key('home-companion-${companion.companionId}'),
-          onOpen: () => onOpenCompanion(companion),
-          openKey: Key('open-companion-${companion.companionId}'),
-          openTooltip: '打开它',
-          icon: Icons.face_retouching_natural,
-          // The name its Owner gave it. The identifier is what remains when the
-          // Host cannot say — never shown as if it were a name.
-          label: companion.displayName.isNotEmpty
-              ? companion.displayName
-              : '未命名的 Eidolon',
-          statusLabel: _companionStatus(companion, home),
-          detail: _companionDetail(companion, home),
-        ),
-    ];
-  }
+  String _companionSummary(HostHome? home) {
+    if (home == null) return '查看、新建和管理你的伙伴';
+    if (home.companionCounts.total == 0) return '还没有伙伴，去新建第一位';
 
-  /// What state this Eidolon is in, in three words or fewer.
-  ///
-  /// Life comes first: an Eidolon somebody put away is put away whatever the
-  /// runtime says, and showing 运行中 over 已收起 would describe the machine
-  /// instead of the person's decision.
-  String _companionStatus(HostCompanion companion, HostHome home) {
-    if (companion.isPutAway) return '已收起';
-    switch (companion.running) {
-      case true:
-        return '在运行';
-      case false:
-        return '没在运行';
-      default:
-        return '状态未知';
-    }
-  }
-
-  String _companionDetail(HostCompanion companion, HostHome home) {
     final parts = <String>[];
-    if (companion.companionId == home.defaultCompanionId) {
-      parts.add('没指名时由它回答');
+    final answering = home.answering;
+    if (answering != null) {
+      final name = answering.displayName.isEmpty
+          ? '未命名伙伴'
+          : answering.displayName;
+      parts.add('默认应答：$name');
+    } else if (home.defaultCompanionId == null) {
+      parts.add('尚未设置默认应答伙伴');
+    } else {
+      parts.add('已设置默认应答伙伴');
     }
-    if (companion.running == null && home.runtimeUnavailable.isNotEmpty) {
-      // Why it is unknown, not merely that it is: 「主机的运行服务在启动」 and
-      // 「这台主机没有运行服务」 send a person to different places.
-      parts.add(switch (home.runtimeUnavailable) {
-        'runtime_starting' => '运行服务正在启动，稍后再看',
-        'runtime_not_configured' => '这台主机没有配置运行服务',
-        _ => '暂时问不到运行服务',
-      });
+
+    if (home.companionCounts.waiting > 0) {
+      parts.add('${home.companionCounts.waiting} 位正在准备');
+    } else if (home.runtimeUnavailable.isNotEmpty) {
+      parts.add('运行状态暂不可用');
+    } else {
+      final stopped = home.companions.where(
+        (row) => !row.isPutAway && row.running == false,
+      ).length;
+      if (stopped > 0) parts.add('$stopped 位没有运行');
     }
-    if (parts.isEmpty) parts.add('打开它：它是谁、它记得什么、连着哪些设备');
     return parts.join(' · ');
   }
 
@@ -1198,22 +1135,16 @@ class _WorkspaceCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            // Every Eidolon this person has, one row each. Not one promoted to
-            // the top of the card with the rest reduced to a number: the Owner's
-            // own screen is about their Eidolons, and which of them replies when
-            // nobody was named is a setting on the set rather than the shape of
-            // it. Two of them can be running at once, and this can say so.
-            ..._companionRows(context, home),
             _WorkspaceResourceStatus(
               key: const Key('companion-roster-row'),
               onOpen: onOpenRoster,
               openKey: const Key('open-companion-roster'),
-              openTooltip: '看全部',
+              openTooltip: '打开你的伙伴',
               icon: Icons.groups_2_outlined,
-              label: '你所有的 Eidolon',
+              label: '你的伙伴',
               statusLabel:
-                  home == null ? '可查看' : '${home.companionCounts.total} 个',
-              detail: '新建一个，或者改由谁来应答',
+                  home == null ? '可查看' : '${home.companionCounts.total} 位',
+              detail: _companionSummary(home),
             ),
             _WorkspaceResourceStatus(
               key: const Key('memory-library-row'),
