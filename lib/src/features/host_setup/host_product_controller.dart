@@ -60,17 +60,17 @@ class HostProductController extends ChangeNotifier {
     LocalApiClientFactory? localApiClientFactory,
     ManagementClientFactory? managementClientFactory,
     NetworkChanges? networkChanges,
-  })  : _host = host,
-        _onHostUpdated = onHostUpdated,
-        _networkChanges = networkChanges ?? PlatformNetworkChanges(),
-        _session = HostProductSession(
-          host: host,
-          transport: transport,
-          controllerKeys: controllerKeys,
-          discovery: discovery,
-          clientFactory: localApiClientFactory,
-          managementClientFactory: managementClientFactory,
-        ) {
+  }) : _host = host,
+       _onHostUpdated = onHostUpdated,
+       _networkChanges = networkChanges ?? PlatformNetworkChanges(),
+       _session = HostProductSession(
+         host: host,
+         transport: transport,
+         controllerKeys: controllerKeys,
+         discovery: discovery,
+         clientFactory: localApiClientFactory,
+         managementClientFactory: managementClientFactory,
+       ) {
     _workspaceRepository = HostWorkspaceRepository(_session);
     _devicesRepository = HostDevicesRepository(_session);
     _deviceAdmissionRepository = HostDeviceAdmissionRepository(_session);
@@ -84,8 +84,9 @@ class HostProductController extends ChangeNotifier {
     // Where the Host was is only true for as long as this phone is on the
     // network it learned it from. Watching for that keeps the recovery the
     // session already does from costing a timeout first.
-    _networkSubscription =
-        _networkChanges.changes.listen((_) => _session.invalidateLocation());
+    _networkSubscription = _networkChanges.changes.listen(
+      (_) => _session.invalidateLocation(),
+    );
   }
 
   ManagedHost _host;
@@ -273,10 +274,7 @@ class HostProductController extends ChangeNotifier {
     } on LocalApiRequestException catch (error) {
       _workspaceError = _workspaceFailure(error);
     } on PinnedHttpException catch (error) {
-      _workspaceError = _pinnedHttpFailure(
-        error,
-        workspaceIsOptional: true,
-      );
+      _workspaceError = _pinnedHttpFailure(error, workspaceIsOptional: true);
     } on FormatException {
       _workspaceError = '主机没有返回完整的 Workspace 结果，请重试。';
     } catch (_) {
@@ -406,11 +404,10 @@ class HostProductController extends ChangeNotifier {
   Future<RecollectionsView> recollections({
     required String companionId,
     required String query,
-  }) =>
-      _managementRepository.recollections(
-        query: query,
-        companionId: companionId,
-      );
+  }) => _managementRepository.recollections(
+    query: query,
+    companionId: companionId,
+  );
 
   /// Every Eidolon this Owner has.
   ///
@@ -441,12 +438,11 @@ class HostProductController extends ChangeNotifier {
     required String operationId,
     required String displayName,
     PersonaAuthoring? persona,
-  }) =>
-      _managementRepository.createCompanion(
-        operationId: operationId,
-        displayName: displayName,
-        persona: persona,
-      );
+  }) => _managementRepository.createCompanion(
+    operationId: operationId,
+    displayName: displayName,
+    persona: persona,
+  );
 
   /// Who this Eidolon is now, in the words somebody wrote.
   Future<PersonaAuthoring> persona({required String companionId}) =>
@@ -456,11 +452,10 @@ class HostProductController extends ChangeNotifier {
   Future<PersonaAuthoring> setPersona({
     required String companionId,
     required PersonaAuthoring persona,
-  }) =>
-      _managementRepository.setPersona(
-        companionId: companionId,
-        persona: persona,
-      );
+  }) => _managementRepository.setPersona(
+    companionId: companionId,
+    persona: persona,
+  );
 
   /// Who a new Eidolon would be if nobody said anything.
   Future<PersonaAuthoring> personaAuthoringTemplate() =>
@@ -474,23 +469,21 @@ class HostProductController extends ChangeNotifier {
   Future<CompanionDetailOutcome> setDefaultCompanion({
     required String companionId,
     required int expectedRevision,
-  }) =>
-      _managementRepository.setDefaultCompanion(
-        companionId: companionId,
-        expectedRevision: expectedRevision,
-      );
+  }) => _managementRepository.setDefaultCompanion(
+    companionId: companionId,
+    expectedRevision: expectedRevision,
+  );
 
   /// Put one of them away, or bring it back.
   Future<CompanionLifecycleView> setCompanionLifecycle({
     required String companionId,
     required String lifecycleState,
     String? replacementCompanionId,
-  }) =>
-      _managementRepository.setCompanionLifecycle(
-        companionId: companionId,
-        lifecycleState: lifecycleState,
-        replacementCompanionId: replacementCompanionId,
-      );
+  }) => _managementRepository.setCompanionLifecycle(
+    companionId: companionId,
+    lifecycleState: lifecycleState,
+    replacementCompanionId: replacementCompanionId,
+  );
 
   /// What one of this Owner's Eidolons looks like.
   ///
@@ -499,18 +492,16 @@ class HostProductController extends ChangeNotifier {
   /// would make the connection page show whichever was opened last.
   Future<CompanionFacePicture> companionFacePicture({
     required String companionId,
-  }) =>
-      _companionRepository.face(companionId: companionId);
+  }) => _companionRepository.face(companionId: companionId);
 
   /// Call one of them something else, and answer with what the Host accepted.
   Future<String> renameOneCompanion({
     required String companionId,
     required String displayName,
-  }) =>
-      _companionRepository.rename(
-        companionId: companionId,
-        displayName: displayName,
-      );
+  }) => _companionRepository.rename(
+    companionId: companionId,
+    displayName: displayName,
+  );
 
   /// What is remembered, by category.
   Future<MemoryLibraryView> memoryLibrary({String? companionId}) =>
@@ -524,33 +515,21 @@ class HostProductController extends ChangeNotifier {
     required DateTime since,
     int? limit,
     String? companionId,
-  }) =>
-      _managementRepository.memoryEntries(
-        since: since,
-        limit: limit,
-        companionId: companionId,
-      );
+  }) => _managementRepository.memoryEntries(
+    since: since,
+    limit: limit,
+    companionId: companionId,
+  );
 
   /// A copy of everything remembered that this Owner can see.
   Future<MemoryCopyView> memoryCopy({String? companionId}) =>
       _managementRepository.memoryCopy(companionId: companionId);
 
-  /// Keep one memory between me and one of my Eidolons, or give it back.
-  Future<MemoryAudienceView> assignMemoryAudience({
-    required String entryId,
-    String? companionId,
-  }) =>
-      _managementRepository.assignMemoryAudience(
-        entryId: entryId,
-        companionId: companionId,
-      );
-
   /// What forgetting [target] would remove. Nothing changes.
   Future<ForgetProposalView> previewForget({
     required String target,
     String? action,
-  }) =>
-      _managementRepository.previewForget(target: target, action: action);
+  }) => _managementRepository.previewForget(target: target, action: action);
 
   /// Forget exactly what a preview showed.
   Future<ForgetResultView> confirmForget({required String confirmationToken}) =>
@@ -568,23 +547,21 @@ class HostProductController extends ChangeNotifier {
   Future<ConversationPageView> conversations({
     required String companionId,
     String? cursor,
-  }) =>
-      _managementRepository.conversations(
-        companionId: companionId,
-        cursor: cursor,
-      );
+  }) => _managementRepository.conversations(
+    companionId: companionId,
+    cursor: cursor,
+  );
 
   /// What was said in one conversation.
   Future<TranscriptView> transcript({
     required String companionId,
     required String conversationId,
     String? cursor,
-  }) =>
-      _managementRepository.transcript(
-        companionId: companionId,
-        conversationId: conversationId,
-        cursor: cursor,
-      );
+  }) => _managementRepository.transcript(
+    companionId: companionId,
+    conversationId: conversationId,
+    cursor: cursor,
+  );
 
   /// What it was asked to do, and how far it has got.
   Future<TaskPageView> tasks({required String companionId, String? cursor}) =>
@@ -594,9 +571,10 @@ class HostProductController extends ChangeNotifier {
   Future<TaskView> cancelTask({
     required String companionId,
     required String taskId,
-  }) =>
-      _managementRepository.cancelTask(
-          companionId: companionId, taskId: taskId);
+  }) => _managementRepository.cancelTask(
+    companionId: companionId,
+    taskId: taskId,
+  );
 
   Future<TaskView> retryTask({
     required String companionId,
@@ -614,8 +592,7 @@ class HostProductController extends ChangeNotifier {
   /// deciding on its own who may join.
   Future<ControllerInvitationView> inviteController({
     Duration ttl = const Duration(minutes: 10),
-  }) =>
-      _controllerGrantRepository.invite(ttl: ttl);
+  }) => _controllerGrantRepository.invite(ttl: ttl);
 
   /// Withdraw one phone's authority over this Host.
   Future<void> revokeController({required String controllerId}) =>
@@ -630,12 +607,11 @@ class HostProductController extends ChangeNotifier {
     required String serviceId,
     required String operation,
     required int expectedRevision,
-  }) =>
-      _hostServicesRepository.change(
-        serviceId: serviceId,
-        operation: operation,
-        expectedRevision: expectedRevision,
-      );
+  }) => _hostServicesRepository.change(
+    serviceId: serviceId,
+    operation: operation,
+    expectedRevision: expectedRevision,
+  );
 
   Future<DeviceOnboardingTarget> fetchDeviceOnboardingTarget() {
     if (!(_workspace?.isReady ?? false)) {
@@ -781,10 +757,7 @@ class HostProductController extends ChangeNotifier {
       throw const HostControllerAuthorizationException('请先安全连接主机，再移除设备');
     }
     final progress = DeviceRemovalProgress.fromView(
-      await _devicesRepository.remove(
-        requestId: requestId,
-        deviceId: deviceId,
-      ),
+      await _devicesRepository.remove(requestId: requestId, deviceId: deviceId),
     );
     await refreshDevices();
     return progress;
@@ -800,10 +773,7 @@ class HostProductController extends ChangeNotifier {
       _workspaceError = _workspaceFailure(error);
       return;
     } on PinnedHttpException catch (error) {
-      _workspaceError = _pinnedHttpFailure(
-        error,
-        workspaceIsOptional: true,
-      );
+      _workspaceError = _pinnedHttpFailure(error, workspaceIsOptional: true);
       return;
     } on FormatException {
       _workspaceError = '主机已安全连接，但 Workspace 返回了不兼容的数据。';
@@ -948,12 +918,12 @@ class HostProductController extends ChangeNotifier {
   }
 
   String _platformError(PlatformException error) => switch (error.code) {
-        'NOT_FOUND' => '局域网中没有发现主机。请确认当前设备和主机连接同一 Wi-Fi。',
-        'DISCOVERY_FAILED' => 'Android 无法启动局域网发现，请稍后重试。',
-        'BLUETOOTH_OFF' => '请先打开蓝牙，以确认已保存主机的本地连接身份。',
-        'PERMISSION_DENIED' => '需要“附近设备”权限来确认主机身份。',
-        _ => error.message ?? '当前设备无法完成本地主机连接',
-      };
+    'NOT_FOUND' => '局域网中没有发现主机。请确认当前设备和主机连接同一 Wi-Fi。',
+    'DISCOVERY_FAILED' => 'Android 无法启动局域网发现，请稍后重试。',
+    'BLUETOOTH_OFF' => '请先打开蓝牙，以确认已保存主机的本地连接身份。',
+    'PERMISSION_DENIED' => '需要“附近设备”权限来确认主机身份。',
+    _ => error.message ?? '当前设备无法完成本地主机连接',
+  };
 
   String _pinnedHttpFailure(
     PinnedHttpException error, {

@@ -21,47 +21,46 @@ Map<String, dynamic> dayWire({
   bool moreInWindow = false,
   bool truncated = false,
   List<Map<String, dynamic>>? entries,
-}) =>
-    {
-      'contract_version': '1',
-      'since': since,
-      'entries': entries ??
-          [
-            {
-              'entry_id': 'drawer_1',
-              'recorded_at': '2026-08-24T09:05:00+00:00',
-              'recorded_at_source': 'occurred_at',
-              'wing_id': 'Wing_Life',
-              'room_id': '饮食',
-              'preview': '他早上喝了乌龙茶',
-            },
-          ],
-      'entry_count': entries?.length ?? 1,
-      'more_in_window': moreInWindow,
-      'undated_count': undated,
-      'truncated': truncated,
-    };
+}) => {
+  'contract_version': '1',
+  'since': since,
+  'entries':
+      entries ??
+      [
+        {
+          'entry_id': 'drawer_1',
+          'recorded_at': '2026-08-24T09:05:00+00:00',
+          'recorded_at_source': 'occurred_at',
+          'wing_id': 'Wing_Life',
+          'room_id': '饮食',
+          'preview': '他早上喝了乌龙茶',
+        },
+      ],
+  'entry_count': entries?.length ?? 1,
+  'more_in_window': moreInWindow,
+  'undated_count': undated,
+  'truncated': truncated,
+};
 
 MemoryDayView day({
   int undated = 0,
   bool moreInWindow = false,
   bool truncated = false,
   List<Map<String, dynamic>>? entries,
-}) =>
-    MemoryDayView.fromJson(
-      dayWire(
-        undated: undated,
-        moreInWindow: moreInWindow,
-        truncated: truncated,
-        entries: entries,
-      ),
-    );
+}) => MemoryDayView.fromJson(
+  dayWire(
+    undated: undated,
+    moreInWindow: moreInWindow,
+    truncated: truncated,
+    entries: entries,
+  ),
+);
 
 http.Response _hostAnswer(Map<String, dynamic> body) => http.Response.bytes(
-      utf8.encode(jsonEncode(body)),
-      200,
-      headers: const {'content-type': 'application/json'},
-    );
+  utf8.encode(jsonEncode(body)),
+  200,
+  headers: const {'content-type': 'application/json'},
+);
 
 final DateTime _noon = DateTime(2026, 8, 24, 12, 30);
 
@@ -139,8 +138,9 @@ void main() {
       expect(find.byKey(const Key('memory-day-load-more')), findsNothing);
     });
 
-    testWidgets('offers more only when the page ended inside the window',
-        (tester) async {
+    testWidgets('offers more only when the page ended inside the window', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: MemoryDayPage(
@@ -169,8 +169,9 @@ void main() {
       expect(find.text('另有 2 条没有可用的时间，不在任何一天的清单里'), findsOneWidget);
     });
 
-    testWidgets('a quiet day is said plainly, not drawn as a failure',
-        (tester) async {
+    testWidgets('a quiet day is said plainly, not drawn as a failure', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: MemoryDayPage(
@@ -198,8 +199,9 @@ void main() {
       expect(find.textContaining('另有 2 条'), findsOneWidget);
     });
 
-    testWidgets('shows an entry at the time it is about, in local terms',
-        (tester) async {
+    testWidgets('shows an entry at the time it is about, in local terms', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: MemoryDayPage(day: day(), dayStartedAt: DateTime(2026, 8, 24)),
@@ -207,7 +209,9 @@ void main() {
       );
 
       expect(
-          find.byKey(const Key('memory-day-entry-drawer_1')), findsOneWidget);
+        find.byKey(const Key('memory-day-entry-drawer_1')),
+        findsOneWidget,
+      );
       expect(find.text('他早上喝了乌龙茶'), findsOneWidget);
       // The room is context, not a category id.
       expect(find.textContaining('饮食'), findsOneWidget);
@@ -238,8 +242,9 @@ void main() {
       expect(find.textContaining('userconfirm:'), findsNothing);
     });
 
-    testWidgets('an unparseable time is shown rather than invented',
-        (tester) async {
+    testWidgets('an unparseable time is shown rather than invented', (
+      tester,
+    ) async {
       // Hiding the entry would lose it; inventing a time would file it wrongly.
       await tester.pumpWidget(
         MaterialApp(
@@ -262,57 +267,17 @@ void main() {
       );
 
       expect(
-          find.byKey(const Key('memory-day-entry-drawer_odd')), findsOneWidget);
+        find.byKey(const Key('memory-day-entry-drawer_odd')),
+        findsOneWidget,
+      );
       expect(find.textContaining('sometime'), findsOneWidget);
     });
   });
 
-  group('the day page and who remembers', () {
-    testWidgets('offers the choice per entry, only when something is behind it',
-        (tester) async {
-      // Null hides the control rather than disabling it: a Host that cannot
-      // publish memory writes has not promised this.
-      for (final wired in [true, false]) {
-        await tester.pumpWidget(const SizedBox.shrink());
-        await tester.pumpWidget(
-          MaterialApp(
-            home: MemoryDayPage(
-              key: ValueKey(wired),
-              day: day(),
-              dayStartedAt: DateTime(2026, 8, 24),
-              onChooseAudience: wired ? (_) {} : null,
-            ),
-          ),
-        );
-        expect(
-          find.byKey(const Key('memory-day-audience-drawer_1')),
-          wired ? findsOneWidget : findsNothing,
-          reason: 'onChooseAudience wired: $wired',
-        );
-      }
-    });
-
-    testWidgets('names the entry it was tapped on', (tester) async {
-      String? chosen;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryDayPage(
-            day: day(),
-            dayStartedAt: DateTime(2026, 8, 24),
-            onChooseAudience: (entry) => chosen = entry.entryId,
-          ),
-        ),
-      );
-      await tester.tap(find.byKey(const Key('memory-day-audience-drawer_1')));
-      await tester.pumpAndSettle();
-
-      expect(chosen, 'drawer_1');
-    });
-  });
-
   group('the day screen', () {
-    testWidgets('asks from local midnight, which the Host cannot compute',
-        (tester) async {
+    testWidgets('asks from local midnight, which the Host cannot compute', (
+      tester,
+    ) async {
       // A day computed on the Host would be wrong by up to a day and would not
       // say so; this is the one piece of judgement the client owns.
       DateTime? asked;
@@ -333,8 +298,9 @@ void main() {
       expect(asked!.isUtc, isFalse);
     });
 
-    testWidgets('looking further back widens the window by a day',
-        (tester) async {
+    testWidgets('looking further back widens the window by a day', (
+      tester,
+    ) async {
       // Not an opaque cursor: someone asking for more of today wants the
       // morning, and then yesterday.
       final windows = <DateTime>[];
@@ -356,8 +322,9 @@ void main() {
       expect(windows, [DateTime(2026, 8, 24), DateTime(2026, 8, 23)]);
     });
 
-    testWidgets('does not offer to widen when the page held the window',
-        (tester) async {
+    testWidgets('does not offer to widen when the page held the window', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: MemoryDayScreen(now: () => _noon, load: (_) async => day()),
@@ -368,8 +335,9 @@ void main() {
       expect(find.byKey(const Key('memory-day-load-more')), findsNothing);
     });
 
-    testWidgets('a memory that could not be read is not a quiet day',
-        (tester) async {
+    testWidgets('a memory that could not be read is not a quiet day', (
+      tester,
+    ) async {
       // The two are indistinguishable to a person, and only one is a reason to
       // worry.
       await tester.pumpWidget(
@@ -418,105 +386,9 @@ void main() {
 
       expect(attempts, 2);
       expect(
-          find.byKey(const Key('memory-day-entry-drawer_1')), findsOneWidget);
-    });
-  });
-
-  group('the day screen and who remembers', () {
-    testWidgets(
-        're-reads the day after the choice, because the entry may have left it',
-        (tester) async {
-      // A memory given to one Companion is no longer in the Owner layer this
-      // page reads. A list that still showed it would be the moment a person
-      // stops believing the change happened.
-      var reads = 0;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryDayScreen(
-            now: () => _noon,
-            load: (_) async {
-              reads++;
-              return day();
-            },
-            loadCompanions: () async => [
-              CompanionSummaryView.fromJson({
-                'companion_id': 'c-a',
-                'display_name': '小忆',
-                'kind': 'standard',
-                'lifecycle_state': 'active',
-                'revision': 1,
-                'created_at': '2026-08-01T00:00:00+00:00',
-                'updated_at': '2026-08-01T00:00:00+00:00',
-              }),
-            ],
-            assignAudience: (entryId, companionId) async =>
-                MemoryAudienceView.fromJson({
-              'contract_version': '1',
-              'entry_id': entryId,
-              'companion_id': companionId ?? '',
-              'status': 'applied',
-            }),
-          ),
-        ),
+        find.byKey(const Key('memory-day-entry-drawer_1')),
+        findsOneWidget,
       );
-      await tester.pumpAndSettle();
-      expect(reads, 1);
-
-      await tester.tap(find.byKey(const Key('memory-day-audience-drawer_1')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('audience-sheet')), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('audience-companion-c-a')));
-      await tester.pumpAndSettle();
-      Navigator.of(tester.element(find.byKey(const Key('audience-sheet'))))
-          .pop();
-      await tester.pumpAndSettle();
-
-      expect(reads, 2);
-    });
-
-    testWidgets('a roster it cannot read does not open an empty sheet',
-        (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryDayScreen(
-            now: () => _noon,
-            load: (_) async => day(),
-            loadCompanions: () => Future.error(
-              const ManagementRequestException('读取失败', statusCode: 503),
-            ),
-            assignAudience: (_, __) async => MemoryAudienceView.fromJson({
-              'contract_version': '1',
-              'entry_id': 'drawer_1',
-              'companion_id': 'c-a',
-              'status': 'applied',
-            }),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('memory-day-audience-drawer_1')));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('audience-sheet')), findsNothing);
-      expect(find.textContaining('没能读到伙伴名单'), findsOneWidget);
-    });
-
-    testWidgets('offers nothing when only half of it is wired', (tester) async {
-      // Half would be a control that opens a sheet with nothing in it.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryDayScreen(
-            now: () => _noon,
-            load: (_) async => day(),
-            loadCompanions: () async => const [],
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-          find.byKey(const Key('memory-day-audience-drawer_1')), findsNothing);
     });
   });
 }

@@ -24,7 +24,6 @@ class MemoryDayPage extends StatelessWidget {
     required this.day,
     required this.dayStartedAt,
     this.onLoadMore,
-    this.onChooseAudience,
   });
 
   final MemoryDayView day;
@@ -35,11 +34,6 @@ class MemoryDayPage extends StatelessWidget {
 
   /// Non-null only when the Host said the page ended inside the window.
   final VoidCallback? onLoadMore;
-
-  /// Offered per entry: keep this one between me and a single Eidolon. Null
-  /// hides the control rather than disabling it — a Host that cannot publish
-  /// memory writes has not promised this.
-  final void Function(MemoryEntryView entry)? onChooseAudience;
 
   @override
   Widget build(BuildContext context) {
@@ -92,12 +86,7 @@ class MemoryDayPage extends StatelessWidget {
                   );
                 }
                 final entry = entries[index - 1];
-                return _EntryRow(
-                  entry: entry,
-                  onChooseAudience: onChooseAudience == null
-                      ? null
-                      : () => onChooseAudience!(entry),
-                );
+                return _EntryRow(entry: entry);
               },
             ),
     );
@@ -138,18 +127,20 @@ class _Preamble extends StatelessWidget {
 }
 
 class _EntryRow extends StatelessWidget {
-  const _EntryRow({required this.entry, this.onChooseAudience});
+  const _EntryRow({required this.entry});
 
   final MemoryEntryView entry;
-  final VoidCallback? onChooseAudience;
 
   @override
   Widget build(BuildContext context) {
     final when = DateTime.tryParse(entry.recordedAt)?.toLocal();
     return ListTile(
       key: Key('memory-day-entry-${entry.entryId}'),
-      title: Text(entry.preview ?? '',
-          maxLines: 3, overflow: TextOverflow.ellipsis),
+      title: Text(
+        entry.preview ?? '',
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+      ),
       subtitle: Text(
         [
           // Unparseable rather than absent: showing the raw string beats
@@ -158,19 +149,12 @@ class _EntryRow extends StatelessWidget {
           if ((entry.roomId ?? '').isNotEmpty) memoryRoomLabel(entry.roomId!),
         ].join(' · '),
       ),
-      trailing: onChooseAudience == null
-          ? null
-          : IconButton(
-              key: Key('memory-day-audience-${entry.entryId}'),
-              onPressed: onChooseAudience,
-              tooltip: '谁记得这条',
-              icon: const Icon(Icons.people_outline),
-            ),
     );
   }
 }
 
-String _clock(DateTime moment) => '${moment.hour.toString().padLeft(2, '0')}:'
+String _clock(DateTime moment) =>
+    '${moment.hour.toString().padLeft(2, '0')}:'
     '${moment.minute.toString().padLeft(2, '0')}';
 
 String _undatedSentence(int count) => '另有 $count 条没有可用的时间，不在任何一天的清单里';

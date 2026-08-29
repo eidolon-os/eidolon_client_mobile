@@ -148,7 +148,7 @@ class _MemoryOverview extends StatelessWidget {
       margin: EdgeInsets.zero,
       color: colors.primaryContainer.withValues(alpha: .42),
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -178,7 +178,9 @@ class _MemoryOverview extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '每位 Eidolon 都有独立的相处记忆；稳定的个人事实会在需要时共同使用。',
+                        key: const Key('memory-materialization-status'),
+                        '${_materializationLabel(library)} · ${library.audienceScope}\n'
+                        'Realm ${library.memoryRealmId}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -240,6 +242,16 @@ class _MemoryOverview extends StatelessWidget {
     final name = (companion.displayName ?? '').trim();
     return name.isEmpty ? '未命名 Eidolon' : name;
   }
+
+  static String _materializationLabel(MemoryLibraryView library) {
+    final status = library.materialization;
+    return switch (status.materializationState) {
+      'ready' => '记忆已可读取',
+      'materializing' => '记忆正在整理 · ${status.projectionPending} 项待同步',
+      'degraded' => '部分记忆暂不可用',
+      _ => '记忆数据暂不可读',
+    };
+  }
 }
 
 class _Metric extends StatelessWidget {
@@ -250,12 +262,12 @@ class _Metric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(value, style: Theme.of(context).textTheme.titleLarge),
-      Text(label, style: Theme.of(context).textTheme.labelSmall),
-    ],
-  );
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(value, style: Theme.of(context).textTheme.titleLarge),
+          Text(label, style: Theme.of(context).textTheme.labelSmall),
+        ],
+      );
 }
 
 class _ReadNotice extends StatelessWidget {
@@ -307,13 +319,13 @@ class _SectionHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(title, style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(height: 3),
-      Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-    ],
-  );
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 3),
+          Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      );
 }
 
 class _ActionGrid extends StatelessWidget {
@@ -439,22 +451,22 @@ class _EmptyMemory extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    key: const Key('memory-library-empty'),
-    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: const Column(
-      children: [
-        Icon(Icons.book_outlined, size: 34),
-        SizedBox(height: 10),
-        Text('还没有记下什么'),
-        SizedBox(height: 4),
-        Text('和它聊聊，或者直接说“请记住……”。'),
-      ],
-    ),
-  );
+        key: const Key('memory-library-empty'),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Column(
+          children: [
+            Icon(Icons.book_outlined, size: 34),
+            SizedBox(height: 10),
+            Text('还没有记下什么'),
+            SizedBox(height: 4),
+            Text('和它聊聊，或者直接说“请记住……”。'),
+          ],
+        ),
+      );
 }
 
 class _WingSection extends StatelessWidget {

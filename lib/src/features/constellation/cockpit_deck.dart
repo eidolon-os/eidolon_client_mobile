@@ -53,8 +53,9 @@ class KernelDeck extends StatelessWidget {
         color: Cockpit.panel,
         border: Border(
           top: BorderSide(
-            color: (live ? Cockpit.cyan : Cockpit.hair)
-                .withValues(alpha: live ? 0.5 : 0.16),
+            color: (live ? Cockpit.cyan : Cockpit.hair).withValues(
+              alpha: live ? 0.5 : 0.16,
+            ),
           ),
         ),
       ),
@@ -64,14 +65,15 @@ class KernelDeck extends StatelessWidget {
             onTap: onExpand,
             behavior: HitTestBehavior.opaque,
             child: Padding(
-              padding:
-                  const EdgeInsets.only(left: 12, right: 10, top: 7, bottom: 5),
+              padding: const EdgeInsets.only(
+                left: 12,
+                right: 10,
+                top: 7,
+                bottom: 5,
+              ),
               child: Row(
                 children: [
-                  CockpitLed(
-                    color: live ? Cockpit.ok : Cockpit.idle,
-                    size: 7,
-                  ),
+                  CockpitLed(color: live ? Cockpit.ok : Cockpit.idle, size: 7),
                   const SizedBox(width: 7),
                   Text(
                     'LIVE KERNEL',
@@ -97,8 +99,9 @@ class KernelDeck extends StatelessWidget {
                     'CORE $online/${services.length}',
                     style: Cockpit.mono(
                       size: 9.5,
-                      color:
-                          online == services.length ? Cockpit.ok : Cockpit.warn,
+                      color: online == services.length
+                          ? Cockpit.ok
+                          : Cockpit.warn,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -213,8 +216,9 @@ class CockpitRail extends StatelessWidget {
         color: Cockpit.panel,
         border: Border(
           left: BorderSide(
-            color: (live ? Cockpit.cyan : Cockpit.hair)
-                .withValues(alpha: live ? 0.5 : 0.16),
+            color: (live ? Cockpit.cyan : Cockpit.hair).withValues(
+              alpha: live ? 0.5 : 0.16,
+            ),
           ),
         ),
       ),
@@ -242,7 +246,8 @@ class CockpitRail extends StatelessWidget {
                     glyph: '⚡',
                     color: Cockpit.magenta,
                     label: '活动链路',
-                    value: '${snapshot.activities.where(isActiveActivity).length}',
+                    value:
+                        '${snapshot.activities.where(isActiveActivity).length}',
                   ),
                   _RailRow(
                     glyph: '◉',
@@ -259,8 +264,8 @@ class CockpitRail extends StatelessWidget {
                   _RailRow(
                     glyph: '⟐',
                     color: Cockpit.yellow,
-                    label: '记忆召回',
-                    value: '${snapshot.memory.lastRecallHits}',
+                    label: '待同步',
+                    value: '${snapshot.memory.projectionPending}',
                   ),
                   _RailRow(
                     glyph: '✦',
@@ -362,38 +367,38 @@ class _RailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          children: [
-            Text(
-              glyph,
-              style: TextStyle(
-                fontSize: 15,
-                height: 1,
-                color: color,
-                shadows: <Shadow>[
-                  Shadow(color: color.withValues(alpha: 0.7), blurRadius: 9),
-                ],
-              ),
-            ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Cockpit.mono(
-                  size: 9.5,
-                  weight: FontWeight.w600,
-                  color: Cockpit.inkDim,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(value, style: Cockpit.mono(size: 14, weight: FontWeight.w900)),
-          ],
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      children: [
+        Text(
+          glyph,
+          style: TextStyle(
+            fontSize: 15,
+            height: 1,
+            color: color,
+            shadows: <Shadow>[
+              Shadow(color: color.withValues(alpha: 0.7), blurRadius: 9),
+            ],
+          ),
         ),
-      );
+        const SizedBox(width: 9),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Cockpit.mono(
+              size: 9.5,
+              weight: FontWeight.w600,
+              color: Cockpit.inkDim,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(value, style: Cockpit.mono(size: 14, weight: FontWeight.w900)),
+      ],
+    ),
+  );
 }
 
 class _ServiceChip extends StatelessWidget {
@@ -453,8 +458,11 @@ class _ServiceChip extends StatelessWidget {
 }
 
 class _EventLine extends StatelessWidget {
-  const _EventLine(
-      {required this.event, this.dense = false, this.stacked = false});
+  const _EventLine({
+    required this.event,
+    this.dense = false,
+    this.stacked = false,
+  });
 
   final CockpitEvent event;
   final bool dense;
@@ -585,11 +593,7 @@ class _CockpitDeckSheetState extends State<CockpitDeckSheet> {
     // through the lane's own `truncated` — so a number beside them is a claim
     // about history that neither list is making. Services is every service this
     // Host declares, so its count is the whole of it.
-    final tabs = <String>[
-      '活动',
-      '事件',
-      '底座 ${snapshot.services.length}',
-    ];
+    final tabs = <String>['活动', '事件', '底座 ${snapshot.services.length}'];
     return DecoratedBox(
       decoration: BoxDecoration(
         color: const Color(0xFF07030F).withValues(alpha: 0.97),
@@ -633,8 +637,9 @@ class _CockpitDeckSheetState extends State<CockpitDeckSheet> {
                             tabs[index],
                             style: Cockpit.mono(
                               size: 10,
-                              color:
-                                  _tab == index ? Cockpit.cyan : Cockpit.inkDim,
+                              color: _tab == index
+                                  ? Cockpit.cyan
+                                  : Cockpit.inkDim,
                             ),
                           ),
                         ),
@@ -653,23 +658,23 @@ class _CockpitDeckSheetState extends State<CockpitDeckSheet> {
             Expanded(
               child: switch (_tab) {
                 0 => _ActivityList(
-                    activities: snapshot.activities,
-                    companionNames: _companionNames(snapshot),
-                    controller: widget.controller,
-                    onTap: widget.onActivityTap,
-                    onOpenHistory: widget.onOpenHistory,
-                  ),
+                  activities: snapshot.activities,
+                  companionNames: _companionNames(snapshot),
+                  controller: widget.controller,
+                  onTap: widget.onActivityTap,
+                  onOpenHistory: widget.onOpenHistory,
+                ),
                 1 => _EventList(
-                    events: snapshot.events,
-                    controller: widget.controller,
-                    onTap: widget.onEventTap,
-                  ),
+                  events: snapshot.events,
+                  controller: widget.controller,
+                  onTap: widget.onEventTap,
+                ),
                 _ => _ServiceList(
-                    services: snapshot.services,
-                    degraded: snapshot.unreadableLanes,
-                    controller: widget.controller,
-                    onTap: widget.onServiceTap,
-                  ),
+                  services: snapshot.services,
+                  degraded: snapshot.unreadableLanes,
+                  controller: widget.controller,
+                  onTap: widget.onServiceTap,
+                ),
               },
             ),
           ],
@@ -705,9 +710,7 @@ class _ActivityList extends StatelessWidget {
     if (activities.isEmpty) {
       return _Empty(
         text: '待命中 · 对话、守护、指令和后台任务都会在这里形成各自独立的链路',
-        action: onOpenHistory == null
-            ? null
-            : ('查看发生过的事', onOpenHistory!),
+        action: onOpenHistory == null ? null : ('查看发生过的事', onOpenHistory!),
       );
     }
     return ListView.separated(
@@ -729,8 +732,8 @@ class _ActivityList extends StatelessWidget {
                 activity.outcome == 'failure'
                     ? CockpitTone.bad
                     : activity.outcome == 'denied'
-                        ? CockpitTone.warn
-                        : CockpitTone.ok,
+                    ? CockpitTone.warn
+                    : CockpitTone.ok,
               );
         return GestureDetector(
           onTap: () => onTap(activity),
@@ -888,10 +891,8 @@ class _EventList extends StatelessWidget {
       controller: controller,
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
       itemCount: events.length,
-      separatorBuilder: (context, index) => Divider(
-        height: 1,
-        color: Cockpit.hair,
-      ),
+      separatorBuilder: (context, index) =>
+          Divider(height: 1, color: Cockpit.hair),
       itemBuilder: (context, index) => GestureDetector(
         onTap: () => onTap(events[index]),
         child: Container(
@@ -919,127 +920,120 @@ class _ServiceList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListView(
-        controller: controller,
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-        children: [
-          for (final tier in ServiceTier.values) ...[
-            Padding(
-              padding: const EdgeInsets.only(top: 4, bottom: 7),
-              child: Text(
-                switch (tier) {
-                  ServiceTier.service => '子项目服务',
-                  ServiceTier.middleware => '共享基础设施',
-                  ServiceTier.external => '外挂扩展（非核心链路）',
-                },
-                style: Cockpit.mono(size: 9.5, color: Cockpit.inkDim),
-              ),
-            ),
-            for (final service in services.where((item) => item.tier == tier))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: GestureDetector(
-                  onTap: () => onTap(service),
-                  child: CockpitSlab(
-                    accent: toneColor(service.tone),
-                    padding: const EdgeInsets.all(11),
-                    child: Row(
-                      children: [
-                        Text(
-                          service.glyph,
-                          style: TextStyle(
-                            fontSize: 17,
-                            height: 1,
-                            color: Cockpit.source[service.serviceId] ??
-                                Cockpit.cyan,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+    controller: controller,
+    padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+    children: [
+      for (final tier in ServiceTier.values) ...[
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 7),
+          child: Text(switch (tier) {
+            ServiceTier.service => '子项目服务',
+            ServiceTier.middleware => '共享基础设施',
+            ServiceTier.external => '外挂扩展（非核心链路）',
+          }, style: Cockpit.mono(size: 9.5, color: Cockpit.inkDim)),
+        ),
+        for (final service in services.where((item) => item.tier == tier))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: GestureDetector(
+              onTap: () => onTap(service),
+              child: CockpitSlab(
+                accent: toneColor(service.tone),
+                padding: const EdgeInsets.all(11),
+                child: Row(
+                  children: [
+                    Text(
+                      service.glyph,
+                      style: TextStyle(
+                        fontSize: 17,
+                        height: 1,
+                        color:
+                            Cockpit.source[service.serviceId] ?? Cockpit.cyan,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
                             children: [
-                              Row(
-                                children: [
-                                  Text(service.name,
-                                      style: Cockpit.sans(size: 12.5)),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    service.mode,
-                                    style: Cockpit.mono(
-                                      size: 8.5,
-                                      color: Cockpit.inkDim,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 3),
                               Text(
-                                service.detail.isEmpty
-                                    ? service.code
-                                    : service.detail,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                                service.name,
+                                style: Cockpit.sans(size: 12.5),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                service.mode,
                                 style: Cockpit.mono(
-                                  size: 9.5,
-                                  weight: FontWeight.w600,
+                                  size: 8.5,
                                   color: Cockpit.inkDim,
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Row(
-                              children: [
-                                CockpitLed(
-                                  color: toneColor(service.tone),
-                                  size: 6,
-                                ),
-                                const SizedBox(width: 5),
-                                Text(
-                                  service.stateLabel,
-                                  style: Cockpit.mono(
-                                    size: 9.5,
-                                    color: toneColor(service.tone),
-                                  ),
-                                ),
-                              ],
+                          const SizedBox(height: 3),
+                          Text(
+                            service.detail.isEmpty
+                                ? service.code
+                                : service.detail,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Cockpit.mono(
+                              size: 9.5,
+                              weight: FontWeight.w600,
+                              color: Cockpit.inkDim,
                             ),
-                            const SizedBox(height: 3),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Row(
+                          children: [
+                            CockpitLed(color: toneColor(service.tone), size: 6),
+                            const SizedBox(width: 5),
                             Text(
-                              formatLatency(service.latencyMs),
+                              service.stateLabel,
                               style: Cockpit.mono(
-                                size: 9,
-                                color: Cockpit.inkDim,
+                                size: 9.5,
+                                color: toneColor(service.tone),
                               ),
                             ),
                           ],
                         ),
+                        const SizedBox(height: 3),
+                        Text(
+                          formatLatency(service.latencyMs),
+                          style: Cockpit.mono(size: 9, color: Cockpit.inkDim),
+                        ),
                       ],
                     ),
-                  ),
-                ),
-              ),
-          ],
-          if (degraded.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                // Said out loud rather than folded into a healthy-looking whole.
-                '这一屏读不到：${degraded.join('、')}。它们的状态是未知，不是正常。',
-                style: Cockpit.mono(
-                  size: 9.5,
-                  weight: FontWeight.w600,
-                  color: Cockpit.warn,
-                  height: 1.5,
+                  ],
                 ),
               ),
             ),
-        ],
-      );
+          ),
+      ],
+      if (degraded.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            // Said out loud rather than folded into a healthy-looking whole.
+            '这一屏读不到：${degraded.join('、')}。它们的状态是未知，不是正常。',
+            style: Cockpit.mono(
+              size: 9.5,
+              weight: FontWeight.w600,
+              color: Cockpit.warn,
+              height: 1.5,
+            ),
+          ),
+        ),
+    ],
+  );
 }
 
 class _Empty extends StatelessWidget {
@@ -1053,28 +1047,28 @@ class _Empty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        alignment: Alignment.topLeft,
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 30),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              text,
-              style: Cockpit.mono(
-                size: 10,
-                weight: FontWeight.w600,
-                color: Cockpit.inkDim,
-                height: 1.6,
-              ),
-            ),
-            if (action case (final label, final onTap))
-              TextButton(
-                onPressed: onTap,
-                child: Text(label, style: Cockpit.mono(size: 10.5)),
-              ),
-          ],
+    alignment: Alignment.topLeft,
+    padding: const EdgeInsets.fromLTRB(16, 10, 16, 30),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          text,
+          style: Cockpit.mono(
+            size: 10,
+            weight: FontWeight.w600,
+            color: Cockpit.inkDim,
+            height: 1.6,
+          ),
         ),
-      );
+        if (action case (final label, final onTap))
+          TextButton(
+            onPressed: onTap,
+            child: Text(label, style: Cockpit.mono(size: 10.5)),
+          ),
+      ],
+    ),
+  );
 }
 
 /// The way from what is happening now to everything that has.
@@ -1085,21 +1079,21 @@ class _MoreRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: CockpitSlab(
-          accent: Cockpit.magenta,
-          padding: const EdgeInsets.all(11),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '查看发生过的事',
-                  style: Cockpit.sans(size: 12, color: Cockpit.ink),
-                ),
-              ),
-              Text('↗', style: Cockpit.mono(size: 12, color: Cockpit.magenta)),
-            ],
+    onTap: onTap,
+    child: CockpitSlab(
+      accent: Cockpit.magenta,
+      padding: const EdgeInsets.all(11),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '查看发生过的事',
+              style: Cockpit.sans(size: 12, color: Cockpit.ink),
+            ),
           ),
-        ),
-      );
+          Text('↗', style: Cockpit.mono(size: 12, color: Cockpit.magenta)),
+        ],
+      ),
+    ),
+  );
 }

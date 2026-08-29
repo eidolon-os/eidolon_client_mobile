@@ -110,7 +110,9 @@ class CockpitHeader extends StatelessWidget {
                               child: Text(
                                 'MOCK',
                                 style: Cockpit.mono(
-                                    size: 7.5, color: Cockpit.yellow),
+                                  size: 7.5,
+                                  color: Cockpit.yellow,
+                                ),
                               ),
                             ),
                           ],
@@ -181,7 +183,7 @@ class CockpitHeader extends StatelessWidget {
                   colors: <Color>[
                     Colors.white,
                     Colors.white,
-                    Colors.transparent
+                    Colors.transparent,
                   ],
                   stops: <double>[0, 0.88, 1],
                 ).createShader(bounds),
@@ -234,10 +236,10 @@ class CockpitHeader extends StatelessWidget {
                     _Meter(
                       glyph: '⟐',
                       glyphColor: Cockpit.yellow,
-                      value: snapshot.turnsLane.readable
-                          ? '${snapshot.memory.lastRecallHits}'
+                      value: snapshot.memoryLane.readable
+                          ? '${snapshot.memory.projectionPending}'
                           : '—',
-                      label: '记忆召回',
+                      label: '待同步',
                     ),
                     _Meter(
                       glyph: '✦',
@@ -308,87 +310,86 @@ class _Meter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11),
-        decoration: BoxDecoration(
-          border: Border(
-            left: BorderSide(color: Cockpit.cyan.withValues(alpha: 0.14)),
+    padding: const EdgeInsets.symmetric(horizontal: 11),
+    decoration: BoxDecoration(
+      border: Border(
+        left: BorderSide(color: Cockpit.cyan.withValues(alpha: 0.14)),
+      ),
+    ),
+    child: Row(
+      children: [
+        Text(
+          glyph,
+          style: TextStyle(
+            fontSize: 18,
+            height: 1,
+            color: glyphColor,
+            shadows: <Shadow>[
+              Shadow(color: glyphColor.withValues(alpha: 0.7), blurRadius: 10),
+            ],
           ),
         ),
-        child: Row(
+        const SizedBox(width: 7),
+        Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              glyph,
-              style: TextStyle(
-                fontSize: 18,
-                height: 1,
-                color: glyphColor,
-                shadows: <Shadow>[
-                  Shadow(
-                      color: glyphColor.withValues(alpha: 0.7), blurRadius: 10),
-                ],
-              ),
-            ),
-            const SizedBox(width: 7),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      value,
-                      style: Cockpit.mono(size: 18, weight: FontWeight.w900),
-                    ),
-                    if (suffix case final tail?)
-                      Text(
-                        tail,
-                        style: Cockpit.mono(size: 11, color: Cockpit.inkDim),
-                      ),
-                  ],
+                Text(
+                  value,
+                  style: Cockpit.mono(size: 18, weight: FontWeight.w900),
                 ),
-                const SizedBox(height: 2),
-                if (ratio case final fraction?) ...[
-                  SizedBox(
-                    width: 44,
-                    height: 3,
+                if (suffix case final tail?)
+                  Text(
+                    tail,
+                    style: Cockpit.mono(size: 11, color: Cockpit.inkDim),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            if (ratio case final fraction?) ...[
+              SizedBox(
+                width: 44,
+                height: 3,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Cockpit.cyan.withValues(alpha: 0.14),
+                  ),
+                  child: FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: fraction.clamp(0.0, 1.0),
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: Cockpit.cyan.withValues(alpha: 0.14),
-                      ),
-                      child: FractionallySizedBox(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: fraction.clamp(0.0, 1.0),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: Cockpit.cyan,
-                            boxShadow: <BoxShadow>[
-                              BoxShadow(
-                                color: Cockpit.cyan.withValues(alpha: 0.7),
-                                blurRadius: 6,
-                              ),
-                            ],
+                        color: Cockpit.cyan,
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: Cockpit.cyan.withValues(alpha: 0.7),
+                            blurRadius: 6,
                           ),
-                        ),
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 2),
-                ],
-                Text(
-                  label,
-                  style: Cockpit.mono(
-                    size: 9,
-                    weight: FontWeight.w600,
-                    color: Cockpit.inkDim,
-                  ),
                 ),
-              ],
+              ),
+              const SizedBox(height: 2),
+            ],
+            Text(
+              label,
+              style: Cockpit.mono(
+                size: 9,
+                weight: FontWeight.w600,
+                color: Cockpit.inkDim,
+              ),
             ),
           ],
         ),
-      );
+      ],
+    ),
+  );
 }
 
 class _ServiceMeter extends StatelessWidget {
@@ -404,50 +405,46 @@ class _ServiceMeter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11),
-        decoration: BoxDecoration(
-          border: Border(
-            left: BorderSide(color: Cockpit.cyan.withValues(alpha: 0.14)),
-          ),
+    padding: const EdgeInsets.symmetric(horizontal: 11),
+    decoration: BoxDecoration(
+      border: Border(
+        left: BorderSide(color: Cockpit.cyan.withValues(alpha: 0.14)),
+      ),
+    ),
+    child: Row(
+      children: [
+        Text(
+          '▦',
+          style: const TextStyle(fontSize: 18, height: 1, color: Cockpit.ink),
         ),
-        child: Row(
+        const SizedBox(width: 7),
+        Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '▦',
-              style:
-                  const TextStyle(fontSize: 18, height: 1, color: Cockpit.ink),
-            ),
-            const SizedBox(width: 7),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Row(
               children: [
-                Row(
-                  children: [
-                    for (final service in services)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: CockpitLed(
-                          color: toneColor(service.tone),
-                          size: 7,
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  readable ? '底座 $online/${services.length}' : '底座 —',
-                  style: Cockpit.mono(
-                    size: 9,
-                    weight: FontWeight.w600,
-                    color: Cockpit.inkDim,
+                for (final service in services)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: CockpitLed(color: toneColor(service.tone), size: 7),
                   ),
-                ),
               ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              readable ? '底座 $online/${services.length}' : '底座 —',
+              style: Cockpit.mono(
+                size: 9,
+                weight: FontWeight.w600,
+                color: Cockpit.inkDim,
+              ),
             ),
           ],
         ),
-      );
+      ],
+    ),
+  );
 }
 
 class _IconButton extends StatelessWidget {

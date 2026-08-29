@@ -32,7 +32,6 @@ class MemoryLibraryScreen extends StatefulWidget {
     this.loadDay,
     this.loadCopy,
     this.loadCompanions,
-    this.assignAudience,
     this.searchRecollections,
   });
 
@@ -66,15 +65,8 @@ class MemoryLibraryScreen extends StatefulWidget {
   /// the way in rather than opening a screen that cannot fill itself.
   final Future<MemoryCopyView> Function(String? companionId)? loadCopy;
 
-  /// The two halves of 只让它记得, handed on to the day page where the entries
-  /// are. Passed through this screen rather than wired there directly because
-  /// this is where the Host's answer about governing memory is already read.
+  /// Reads names for selecting the Companion-private view of this Owner Realm.
   final Future<List<CompanionSummaryView>> Function()? loadCompanions;
-  final Future<MemoryAudienceView> Function(
-    String entryId,
-    String? companionId,
-  )?
-  assignAudience;
 
   /// Searches the memory visible to one Companion. Search belongs here as a
   /// way to explore the same library, even though the answer keeps its own
@@ -175,12 +167,6 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     MaterialPageRoute(
       builder: (_) => MemoryDayScreen(
         load: (since) => widget.loadDay!(since, _selectedCompanionId),
-        // Gated on the same capability as forgetting, because it is the same
-        // promise: this Host can publish a change to what is remembered. A
-        // control offered without it would open a sheet whose every choice
-        // fails.
-        loadCompanions: _canGovern ? widget.loadCompanions : null,
-        assignAudience: _canGovern ? widget.assignAudience : null,
       ),
     ),
   );
