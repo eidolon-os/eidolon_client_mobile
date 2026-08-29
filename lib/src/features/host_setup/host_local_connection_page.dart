@@ -358,8 +358,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         loadCopy: (companionId) =>
             _controller.memoryCopy(companionId: companionId),
         loadCompanions: () async => (await _controller.roster()).companions,
-        assignAudience: (entryId, companionId) => _controller
-            .assignMemoryAudience(entryId: entryId, companionId: companionId),
         searchRecollections: (companionId, query) =>
             _controller.recollections(companionId: companionId, query: query),
       );

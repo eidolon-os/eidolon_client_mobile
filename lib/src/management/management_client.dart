@@ -181,9 +181,7 @@ bool canRetry(Object error) {
 class CompanionFacePicture {
   const CompanionFacePicture({required this.bytes, this.sha256});
 
-  const CompanionFacePicture.none()
-      : bytes = null,
-        sha256 = null;
+  const CompanionFacePicture.none() : bytes = null, sha256 = null;
 
   final Uint8List? bytes;
   final String? sha256;
@@ -206,8 +204,8 @@ class ManagementClient {
   ManagementClient({
     http.Client? httpClient,
     this.timeout = const Duration(seconds: 8),
-  })  : _httpClient = httpClient ?? http.Client(),
-        _ownsHttpClient = httpClient == null;
+  }) : _httpClient = httpClient ?? http.Client(),
+       _ownsHttpClient = httpClient == null;
 
   final http.Client _httpClient;
   final bool _ownsHttpClient;
@@ -334,9 +332,7 @@ class ManagementClient {
       },
     );
     final view = DefaultCompanionView.fromJson(body);
-    return CompanionDetailOutcome(
-      defaultCompanionId: view.defaultCompanionId,
-    );
+    return CompanionDetailOutcome(defaultCompanionId: view.defaultCompanionId);
   }
 
   /// What has been done to this Owner's things lately.
@@ -356,9 +352,9 @@ class ManagementClient {
     };
     final body = await _send(
       'GET',
-      baseUri.resolve(ManagementV1.activityPath).replace(
-            queryParameters: query.isEmpty ? null : query,
-          ),
+      baseUri
+          .resolve(ManagementV1.activityPath)
+          .replace(queryParameters: query.isEmpty ? null : query),
       accessToken: accessToken,
       what: '读取主机动态',
     );
@@ -430,10 +426,7 @@ class ManagementClient {
   /// what is waiting, and which parts the Host could not read. Composed on that
   /// side because the answer needs five sources, and a phone composing it badly
   /// is four round trips and a screen drawn in pieces.
-  Future<HomeView> fetchHome(
-    Uri baseUri, {
-    required String accessToken,
-  }) async {
+  Future<HomeView> fetchHome(Uri baseUri, {required String accessToken}) async {
     final body = await _send(
       'GET',
       baseUri.resolve(ManagementV1.homePath),
@@ -558,9 +551,7 @@ class ManagementClient {
   }) async {
     final body = await _send(
       'DELETE',
-      baseUri.resolve(
-        ManagementV1.controllersByControllerIdPath(controllerId),
-      ),
+      baseUri.resolve(ManagementV1.controllersByControllerIdPath(controllerId)),
       accessToken: accessToken,
       what: '收回这台手机的管理权',
     );
@@ -825,7 +816,8 @@ class ManagementClient {
     final body = await _send(
       'GET',
       baseUri.resolve(
-          ManagementV1.companionsByCompanionIdPersonaPath(companionId)),
+        ManagementV1.companionsByCompanionIdPersonaPath(companionId),
+      ),
       accessToken: accessToken,
       what: '读取它是谁',
     );
@@ -842,7 +834,8 @@ class ManagementClient {
     final body = await _send(
       'PUT',
       baseUri.resolve(
-          ManagementV1.companionsByCompanionIdPersonaPath(companionId)),
+        ManagementV1.companionsByCompanionIdPersonaPath(companionId),
+      ),
       accessToken: accessToken,
       what: '改它是谁',
       body: persona.toJson(),
@@ -893,14 +886,11 @@ class ManagementClient {
   }) async {
     var endpoint = baseUri.resolve(ManagementV1.memoryLibraryPath);
     if (companionId != null) {
-      endpoint =
-          endpoint.replace(queryParameters: {'companion_id': companionId});
+      endpoint = endpoint.replace(
+        queryParameters: {'companion_id': companionId},
+      );
     }
-    final body = await _get(
-      endpoint,
-      accessToken: accessToken,
-      what: '读取记忆库',
-    );
+    final body = await _get(endpoint, accessToken: accessToken, what: '读取记忆库');
     return MemoryLibraryView.fromJson(body);
   }
 
@@ -911,8 +901,9 @@ class ManagementClient {
   }) async {
     var endpoint = baseUri.resolve(ManagementV1.memoryGraphPath);
     if (companionId != null) {
-      endpoint =
-          endpoint.replace(queryParameters: {'companion_id': companionId});
+      endpoint = endpoint.replace(
+        queryParameters: {'companion_id': companionId},
+      );
     }
     final body = await _get(
       endpoint,
@@ -935,16 +926,18 @@ class ManagementClient {
     String? companionId,
   }) async {
     final body = await _get(
-      baseUri.resolve(ManagementV1.memoryEntriesPath).replace(
-        queryParameters: {
-          // Local time with its offset, not UTC: "today" is the person's day,
-          // and the offset is what lets the Host place the instant without
-          // knowing where they are.
-          'since': _iso8601WithOffset(since),
-          if (limit != null) 'limit': '$limit',
-          if (companionId != null) 'companion_id': companionId,
-        },
-      ),
+      baseUri
+          .resolve(ManagementV1.memoryEntriesPath)
+          .replace(
+            queryParameters: {
+              // Local time with its offset, not UTC: "today" is the person's day,
+              // and the offset is what lets the Host place the instant without
+              // knowing where they are.
+              'since': _iso8601WithOffset(since),
+              if (limit != null) 'limit': '$limit',
+              if (companionId != null) 'companion_id': companionId,
+            },
+          ),
       accessToken: accessToken,
       what: '读取今天记下的',
     );
@@ -1018,8 +1011,7 @@ class ManagementClient {
     final body = await _get(
       _withQuery(
         baseUri.resolve(
-          ManagementV1
-              .companionsByCompanionIdConversationsByConversationIdTurnsPath(
+          ManagementV1.companionsByCompanionIdConversationsByConversationIdTurnsPath(
             companionId,
             conversationId,
           ),
@@ -1072,17 +1064,16 @@ class ManagementClient {
     required String accessToken,
     required String companionId,
     required String taskId,
-  }) =>
-      _taskAction(
-        baseUri.resolve(
-          ManagementV1.companionsByCompanionIdTasksByTaskIdCancelPath(
-            companionId,
-            taskId,
-          ),
-        ),
-        accessToken: accessToken,
-        what: '取消任务',
-      );
+  }) => _taskAction(
+    baseUri.resolve(
+      ManagementV1.companionsByCompanionIdTasksByTaskIdCancelPath(
+        companionId,
+        taskId,
+      ),
+    ),
+    accessToken: accessToken,
+    what: '取消任务',
+  );
 
   /// 再试一次 — ask for it again. The Host decides whether it can.
   Future<TaskView> retryTask(
@@ -1090,25 +1081,28 @@ class ManagementClient {
     required String accessToken,
     required String companionId,
     required String taskId,
-  }) =>
-      _taskAction(
-        baseUri.resolve(
-          ManagementV1.companionsByCompanionIdTasksByTaskIdRetryPath(
-            companionId,
-            taskId,
-          ),
-        ),
-        accessToken: accessToken,
-        what: '重试任务',
-      );
+  }) => _taskAction(
+    baseUri.resolve(
+      ManagementV1.companionsByCompanionIdTasksByTaskIdRetryPath(
+        companionId,
+        taskId,
+      ),
+    ),
+    accessToken: accessToken,
+    what: '重试任务',
+  );
 
   Future<TaskView> _taskAction(
     Uri endpoint, {
     required String accessToken,
     required String what,
   }) async {
-    final body =
-        await _send('POST', endpoint, accessToken: accessToken, what: what);
+    final body = await _send(
+      'POST',
+      endpoint,
+      accessToken: accessToken,
+      what: what,
+    );
     return TaskView.fromJson(body);
   }
 
@@ -1135,13 +1129,15 @@ class ManagementClient {
     String? companionId,
   }) async {
     final body = await _get(
-      baseUri.resolve(ManagementV1.memoryRecollectionsPath).replace(
-        queryParameters: {
-          'q': query,
-          'limit': '$limit',
-          if (companionId != null) 'companion_id': companionId,
-        },
-      ),
+      baseUri
+          .resolve(ManagementV1.memoryRecollectionsPath)
+          .replace(
+            queryParameters: {
+              'q': query,
+              'limit': '$limit',
+              if (companionId != null) 'companion_id': companionId,
+            },
+          ),
       accessToken: accessToken,
       what: '问它记得什么',
     );
@@ -1214,41 +1210,11 @@ class ManagementClient {
     return ForgetResultView.fromJson(body);
   }
 
-  /// 只让它记得 — keep this memory between me and one of my Eidolons.
-  ///
-  /// One call, not two. Forgetting needs a preview because words have to be
-  /// resolved into a set; here I am looking at the memory when I name it. And
-  /// nothing becomes unrecallable: the Eidolon I gave it to still remembers it,
-  /// and sending this again with [companionId] null gives it back to all of them.
-  ///
-  /// A `PUT`, so a retry after a connection I never saw the answer to changes
-  /// nothing twice.
-  Future<MemoryAudienceView> assignMemoryAudience(
-    Uri baseUri, {
-    required String accessToken,
-    required String entryId,
-    String? companionId,
-  }) async {
-    final body = await _send(
-      'PUT',
-      baseUri.resolve(
-        ManagementV1.memoryEntriesByEntryIdAudiencePath(entryId),
-      ),
-      accessToken: accessToken,
-      what: '设置这条记忆的归属',
-      // An empty string rather than a word for "everyone": the Host decides what
-      // an audience is, and absence is how this app says all of them.
-      body: {'companion_id': companionId ?? ''},
-    );
-    return MemoryAudienceView.fromJson(body);
-  }
-
   Future<Map<String, dynamic>> _get(
     Uri endpoint, {
     required String accessToken,
     required String what,
-  }) =>
-      _send('GET', endpoint, accessToken: accessToken, what: what);
+  }) => _send('GET', endpoint, accessToken: accessToken, what: what);
 
   /// One place that talks to the Host, whatever the verb.
   ///

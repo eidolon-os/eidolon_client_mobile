@@ -36,8 +36,9 @@ class MockCockpitFeed implements CockpitFeed {
   late _MockWorld _world;
   var _started = false;
   CockpitSnapshot? _snapshot;
-  CockpitObservation _observation =
-      const CockpitObservation(state: ObservationState.connecting);
+  CockpitObservation _observation = const CockpitObservation(
+    state: ObservationState.connecting,
+  );
   final _updates = StreamController<CockpitSnapshot>.broadcast();
   final _pulses = StreamController<CockpitPulse>.broadcast();
   final _observations = StreamController<CockpitObservation>.broadcast();
@@ -187,8 +188,14 @@ final List<_Beat> _script = <_Beat>[
       companionId: _master,
       deviceId: _living,
     );
-    emit(world.pulse(_master, MoonKind.body, PulseDirection.inward,
-        deviceId: _living));
+    emit(
+      world.pulse(
+        _master,
+        MoonKind.body,
+        PulseDirection.inward,
+        deviceId: _living,
+      ),
+    );
   }),
   _Beat(const Duration(milliseconds: 1100), (world, emit) {
     world.advanceVoiceStage('input', 'done', latencyMs: 42);
@@ -200,8 +207,14 @@ final List<_Beat> _script = <_Beat>[
       deviceId: _living,
       milestone: 'eot',
     );
-    emit(world.pulse(_master, MoonKind.body, PulseDirection.inward,
-        deviceId: _living));
+    emit(
+      world.pulse(
+        _master,
+        MoonKind.body,
+        PulseDirection.inward,
+        deviceId: _living,
+      ),
+    );
   }),
   _Beat(const Duration(milliseconds: 900), (world, emit) {
     world.advanceVoiceStage('memory_recall', 'running');
@@ -258,8 +271,14 @@ final List<_Beat> _script = <_Beat>[
       deviceId: _living,
       milestone: 'first_audio',
     );
-    emit(world.pulse(_master, MoonKind.body, PulseDirection.outward,
-        deviceId: _living));
+    emit(
+      world.pulse(
+        _master,
+        MoonKind.body,
+        PulseDirection.outward,
+        deviceId: _living,
+      ),
+    );
   }),
   _Beat(const Duration(milliseconds: 1400), (world, emit) {
     world.advanceVoiceStage('tts', 'done', latencyMs: 240);
@@ -284,8 +303,14 @@ final List<_Beat> _script = <_Beat>[
       deviceId: _living,
       milestone: 'playback_done',
     );
-    emit(world.pulse(_master, MoonKind.body, PulseDirection.outward,
-        deviceId: _living));
+    emit(
+      world.pulse(
+        _master,
+        MoonKind.body,
+        PulseDirection.outward,
+        deviceId: _living,
+      ),
+    );
   }),
   // A quiet stretch: the resting cockpit is a state worth seeing too.
   _Beat(const Duration(milliseconds: 2600), (world, emit) {
@@ -333,8 +358,14 @@ final List<_Beat> _script = <_Beat>[
       severity: 'warn',
       outcome: 'denied',
     );
-    emit(world.pulse(_third, MoonKind.body, PulseDirection.inward,
-        tone: PulseTone.warn));
+    emit(
+      world.pulse(
+        _third,
+        MoonKind.body,
+        PulseDirection.inward,
+        tone: PulseTone.warn,
+      ),
+    );
   }),
   _Beat(const Duration(milliseconds: 1700), (world, emit) {
     world.failDeviceCommand(_second, _car);
@@ -347,8 +378,15 @@ final List<_Beat> _script = <_Beat>[
       severity: 'error',
       outcome: 'failure',
     );
-    emit(world.pulse(_second, MoonKind.body, PulseDirection.outward,
-        deviceId: _car, tone: PulseTone.bad));
+    emit(
+      world.pulse(
+        _second,
+        MoonKind.body,
+        PulseDirection.outward,
+        deviceId: _car,
+        tone: PulseTone.bad,
+      ),
+    );
   }),
   _Beat(const Duration(milliseconds: 2200), (world, emit) {
     world.finishBackgroundJob(_second);
@@ -369,8 +407,14 @@ final List<_Beat> _script = <_Beat>[
       companionId: _third,
       deviceId: _study,
     );
-    emit(world.pulse(_third, MoonKind.body, PulseDirection.inward,
-        deviceId: _study));
+    emit(
+      world.pulse(
+        _third,
+        MoonKind.body,
+        PulseDirection.inward,
+        deviceId: _study,
+      ),
+    );
   }),
   _Beat(const Duration(milliseconds: 1300), (world, emit) {
     world.advanceVoiceStage('input', 'done', latencyMs: 51);
@@ -395,8 +439,14 @@ final List<_Beat> _script = <_Beat>[
       outcome: 'deferred',
       milestone: 'brain_cancelled',
     );
-    emit(world.pulse(_third, MoonKind.act, PulseDirection.inward,
-        tone: PulseTone.warn));
+    emit(
+      world.pulse(
+        _third,
+        MoonKind.act,
+        PulseDirection.inward,
+        tone: PulseTone.warn,
+      ),
+    );
   }),
   _Beat(const Duration(milliseconds: 3000), (world, emit) {}),
 ];
@@ -550,8 +600,11 @@ class _MockWorld {
     _memory = const CockpitMemory(
       realmsTotal: 2,
       activeRealmId: 'realm-yanzhou',
-      runnersOnline: 3,
-      runnersTotal: 4,
+      audienceScope: 'companion:companion-yanzhou',
+      dataReadable: true,
+      materializationState: 'ready',
+      projectionPending: 0,
+      lastMaterializedAt: '2026-08-29T12:00:00Z',
       lastRecallHits: 0,
       lastWriteDisposition: '摘要写回',
     );
@@ -600,16 +653,15 @@ class _MockWorld {
     PulseDirection direction, {
     String deviceId = '',
     PulseTone tone = PulseTone.normal,
-  }) =>
-      CockpitPulse(
-        id: _id('pulse'),
-        companionId: companionId,
-        leg: leg,
-        direction: direction,
-        tone: tone,
-        firedAt: DateTime.now(),
-        deviceId: deviceId,
-      );
+  }) => CockpitPulse(
+    id: _id('pulse'),
+    companionId: companionId,
+    leg: leg,
+    direction: direction,
+    tone: tone,
+    firedAt: DateTime.now(),
+    deviceId: deviceId,
+  );
 
   void startVoiceTurn({required String companionId, required String deviceId}) {
     final now = DateTime.now();
@@ -636,7 +688,10 @@ class _MockWorld {
         stages: const [
           CockpitTurnStage(key: 'input', label: '输入', status: 'running'),
           CockpitTurnStage(
-              key: 'memory_recall', label: '记忆召回', status: 'pending'),
+            key: 'memory_recall',
+            label: '记忆召回',
+            status: 'pending',
+          ),
           CockpitTurnStage(key: 'agent_turn', label: '推理', status: 'pending'),
           CockpitTurnStage(key: 'tts', label: '合成', status: 'pending'),
           CockpitTurnStage(key: 'memory_write', label: '写回', status: 'pending'),
@@ -674,32 +729,34 @@ class _MockWorld {
 
   void advanceVoiceStage(String key, String status, {int? latencyMs}) {
     if (_voiceTurnId.isEmpty) return;
-    _turns = _turns.map((turn) {
-      if (turn.turnId != _voiceTurnId) return turn;
-      return CockpitTurn(
-        turnId: turn.turnId,
-        companionId: turn.companionId,
-        status: turn.status,
-        trigger: turn.trigger,
-        latencyMs: latencyMs ?? turn.latencyMs,
-        memoryHits: turn.memoryHits,
-        toolNames: turn.toolNames,
-        breakdown: turn.breakdown,
-        deviceId: turn.deviceId,
-        stages: turn.stages
-            .map(
-              (stage) => stage.key == key
-                  ? CockpitTurnStage(
-                      key: stage.key,
-                      label: stage.label,
-                      status: status,
-                      latencyMs: latencyMs ?? stage.latencyMs,
-                    )
-                  : stage,
-            )
-            .toList(growable: false),
-      );
-    }).toList(growable: false);
+    _turns = _turns
+        .map((turn) {
+          if (turn.turnId != _voiceTurnId) return turn;
+          return CockpitTurn(
+            turnId: turn.turnId,
+            companionId: turn.companionId,
+            status: turn.status,
+            trigger: turn.trigger,
+            latencyMs: latencyMs ?? turn.latencyMs,
+            memoryHits: turn.memoryHits,
+            toolNames: turn.toolNames,
+            breakdown: turn.breakdown,
+            deviceId: turn.deviceId,
+            stages: turn.stages
+                .map(
+                  (stage) => stage.key == key
+                      ? CockpitTurnStage(
+                          key: stage.key,
+                          label: stage.label,
+                          status: status,
+                          latencyMs: latencyMs ?? stage.latencyMs,
+                        )
+                      : stage,
+                )
+                .toList(growable: false),
+          );
+        })
+        .toList(growable: false);
 
     final hopLabel = switch (key) {
       'input' => '语音通道',
@@ -713,54 +770,58 @@ class _MockWorld {
       'memory_recall' || 'memory_write' => 'memory',
       _ => 'service',
     };
-    _activities = _activities.map((activity) {
-      if (activity.activityId != _voiceActivityId) return activity;
-      final route = [...activity.route];
-      final index = route.indexWhere((hop) => hop.stage == key);
-      final hop = CockpitHop(
-        hopId: 'hop-$key',
-        label: hopLabel,
-        stage: key,
-        status: status,
-        nodeType: nodeType,
-        latencyMs: latencyMs,
-      );
-      if (index >= 0) {
-        route[index] = hop;
-      } else {
-        route.add(hop);
-      }
-      // Whatever came before the newly-running hop has, by construction, been
-      // passed. Marking it done is what makes the route read as a wavefront
-      // rather than a list of independent lamps.
-      for (var i = 0; i < route.length - 1; i += 1) {
-        if (route[i].status == 'running') {
-          route[i] = CockpitHop(
-            hopId: route[i].hopId,
-            label: route[i].label,
-            stage: route[i].stage,
-            status: 'done',
-            nodeType: route[i].nodeType,
-            latencyMs: route[i].latencyMs,
+    _activities = _activities
+        .map((activity) {
+          if (activity.activityId != _voiceActivityId) return activity;
+          final route = [...activity.route];
+          final index = route.indexWhere((hop) => hop.stage == key);
+          final hop = CockpitHop(
+            hopId: 'hop-$key',
+            label: hopLabel,
+            stage: key,
+            status: status,
+            nodeType: nodeType,
+            latencyMs: latencyMs,
           );
-        }
-      }
-      return CockpitActivity(
-        activityId: activity.activityId,
-        kind: activity.kind,
-        companionId: activity.companionId,
-        status: activity.status,
-        outcome: activity.outcome,
-        summary: activity.summary,
-        turnId: activity.turnId,
-        originDeviceId: activity.originDeviceId,
-        targetDeviceIds: activity.targetDeviceIds,
-        route: route,
-        currentHopId: status == 'running' ? hop.hopId : activity.currentHopId,
-        startedAt: activity.startedAt,
-        updatedAt: DateTime.now(),
-      );
-    }).toList(growable: false);
+          if (index >= 0) {
+            route[index] = hop;
+          } else {
+            route.add(hop);
+          }
+          // Whatever came before the newly-running hop has, by construction, been
+          // passed. Marking it done is what makes the route read as a wavefront
+          // rather than a list of independent lamps.
+          for (var i = 0; i < route.length - 1; i += 1) {
+            if (route[i].status == 'running') {
+              route[i] = CockpitHop(
+                hopId: route[i].hopId,
+                label: route[i].label,
+                stage: route[i].stage,
+                status: 'done',
+                nodeType: route[i].nodeType,
+                latencyMs: route[i].latencyMs,
+              );
+            }
+          }
+          return CockpitActivity(
+            activityId: activity.activityId,
+            kind: activity.kind,
+            companionId: activity.companionId,
+            status: activity.status,
+            outcome: activity.outcome,
+            summary: activity.summary,
+            turnId: activity.turnId,
+            originDeviceId: activity.originDeviceId,
+            targetDeviceIds: activity.targetDeviceIds,
+            route: route,
+            currentHopId: status == 'running'
+                ? hop.hopId
+                : activity.currentHopId,
+            startedAt: activity.startedAt,
+            updatedAt: DateTime.now(),
+          );
+        })
+        .toList(growable: false);
   }
 
   void setRecall(String companionId, int hits) {
@@ -801,8 +862,12 @@ class _MockWorld {
     _memory = CockpitMemory(
       realmsTotal: _memory.realmsTotal,
       activeRealmId: _memory.activeRealmId,
-      runnersOnline: _memory.runnersOnline,
-      runnersTotal: _memory.runnersTotal,
+      audienceScope: _memory.audienceScope,
+      dataReadable: _memory.dataReadable,
+      materializationState: _memory.materializationState,
+      projectionPending: _memory.projectionPending,
+      lastMaterializedAt: _memory.lastMaterializedAt,
+      degradedReason: _memory.degradedReason,
       lastRecallHits: hits,
       lastWriteDisposition: _memory.lastWriteDisposition,
     );
@@ -830,8 +895,9 @@ class _MockWorld {
                                 hopId: hop.hopId,
                                 label: hop.label,
                                 stage: hop.stage,
-                                status:
-                                    outcome == 'success' ? 'done' : 'degraded',
+                                status: outcome == 'success'
+                                    ? 'done'
+                                    : 'degraded',
                                 nodeType: hop.nodeType,
                                 latencyMs: hop.latencyMs,
                               )
@@ -920,11 +986,13 @@ class _MockWorld {
   void finishBackgroundJob(String companionId) {
     _jobs = _jobs
         .where(
-            (job) => job.companionId != companionId || job.status != 'running')
+          (job) => job.companionId != companionId || job.status != 'running',
+        )
         .toList(growable: false);
     _activities = _activities
         .map(
-          (activity) => activity.kind == 'background_job' &&
+          (activity) =>
+              activity.kind == 'background_job' &&
                   activity.companionId == companionId &&
                   isActiveActivity(activity)
               ? CockpitActivity(
@@ -1025,11 +1093,11 @@ class _MockWorld {
   }
 
   static String _deviceName(String deviceId) => switch (deviceId) {
-        _living => '客厅音箱',
-        _study => '书房屏',
-        _car => '车机',
-        _ => deviceId,
-      };
+    _living => '客厅音箱',
+    _study => '书房屏',
+    _car => '车机',
+    _ => deviceId,
+  };
 
   /// Whether the staged memory service is answering. One beat of the script
   /// takes it away, so the degraded-lane path is something you can watch rather
@@ -1037,29 +1105,26 @@ class _MockWorld {
   var memoryReadable = true;
 
   CockpitSnapshot snapshot(StreamState state) => CockpitSnapshot(
-        provenance: CockpitProvenance.staged,
-        generatedAt: DateTime.now(),
-        ownerLane: const CockpitLane<CockpitOwner?>.ok(
-          CockpitOwner(ownerId: 'owner-shenyi', displayName: '沈亦'),
-        ),
-        companionsLane: CockpitLane<List<CockpitCompanion>>.ok(_companions),
-        devicesLane: CockpitLane<List<CockpitDevice>>.ok(_devices),
-        servicesLane: CockpitLane<List<CockpitService>>.ok(_services),
-        activitiesLane: CockpitLane<List<CockpitActivity>>.ok(_activities),
-        turnsLane: CockpitLane<List<CockpitTurn>>.ok(_turns),
-        jobsLane: CockpitLane<List<CockpitJob>>.ok(_jobs),
-        eventsLane: CockpitLane<List<CockpitEvent>>.ok(_events),
-        memoryLane: memoryReadable
-            ? CockpitLane<CockpitMemory?>.ok(_memory)
-            : const CockpitLane<CockpitMemory?>.missing(
-                null,
-                '记忆服务没有回应（连接超时 2s）',
-              ),
-        streamState: state,
-        traceId: _voiceTurnId.isEmpty ? '—' : compactId(_voiceTurnId),
-        cursor: _seq,
-        defaultCompanionId: _master,
-      );
+    provenance: CockpitProvenance.staged,
+    generatedAt: DateTime.now(),
+    ownerLane: const CockpitLane<CockpitOwner?>.ok(
+      CockpitOwner(ownerId: 'owner-shenyi', displayName: '沈亦'),
+    ),
+    companionsLane: CockpitLane<List<CockpitCompanion>>.ok(_companions),
+    devicesLane: CockpitLane<List<CockpitDevice>>.ok(_devices),
+    servicesLane: CockpitLane<List<CockpitService>>.ok(_services),
+    activitiesLane: CockpitLane<List<CockpitActivity>>.ok(_activities),
+    turnsLane: CockpitLane<List<CockpitTurn>>.ok(_turns),
+    jobsLane: CockpitLane<List<CockpitJob>>.ok(_jobs),
+    eventsLane: CockpitLane<List<CockpitEvent>>.ok(_events),
+    memoryLane: memoryReadable
+        ? CockpitLane<CockpitMemory?>.ok(_memory)
+        : const CockpitLane<CockpitMemory?>.missing(null, '记忆服务没有回应（连接超时 2s）'),
+    streamState: state,
+    traceId: _voiceTurnId.isEmpty ? '—' : compactId(_voiceTurnId),
+    cursor: _seq,
+    defaultCompanionId: _master,
+  );
 }
 
 /// The runtime substrate, as the console's cockpit lists it. Client products

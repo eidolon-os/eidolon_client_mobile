@@ -16,45 +16,66 @@ import 'package:http/testing.dart';
 Map<String, dynamic> libraryWire({
   int withheld = 1,
   bool truncated = false,
+  String materializationState = 'ready',
+  int projectionPending = 0,
   List<Map<String, dynamic>>? wings,
-}) => {
-  'contract_version': '1',
-  'wings':
-      wings ??
-      [
-        {
-          'wing_id': 'Wing_Life',
-          'display_name': '生活',
-          'description': '日常起居与习惯',
-          'entry_count': 3,
-          'rooms': [
+}) =>
+    {
+      'contract_version': '1',
+      'memory_realm_id': 'realm-owner-1',
+      'audience_scope': 'companion:companion-a',
+      'materialization': {
+        'ready': materializationState == 'ready',
+        'data_readable': materializationState != 'unavailable',
+        'materialization_state': materializationState,
+        'projection_pending': projectionPending,
+        'last_materialized_at': '2026-08-29T12:00:00Z',
+        'degraded_reason': materializationState == 'degraded' ? 'KG 暂不可读' : '',
+      },
+      'wings': wings ??
+          [
             {
-              'room_id': '饮食',
+              'wing_id': 'Wing_Life',
+              'display_name': '生活',
+              'description': '日常起居与习惯',
               'entry_count': 3,
-              'titles': ['乌龙茶', '不吃香菜'],
-              'more': true,
+              'rooms': [
+                {
+                  'room_id': '饮食',
+                  'entry_count': 3,
+                  'titles': ['乌龙茶', '不吃香菜'],
+                  'more': true,
+                },
+              ],
             },
           ],
-        },
-      ],
-  'entry_count': 3,
-  'withheld_count': withheld,
-  'truncated': truncated,
-};
+      'entry_count': 3,
+      'withheld_count': withheld,
+      'truncated': truncated,
+    };
 
 MemoryLibraryView library({
   int withheld = 1,
   bool truncated = false,
+  String materializationState = 'ready',
+  int projectionPending = 0,
   List<Map<String, dynamic>>? wings,
-}) => MemoryLibraryView.fromJson(
-  libraryWire(withheld: withheld, truncated: truncated, wings: wings),
-);
+}) =>
+    MemoryLibraryView.fromJson(
+      libraryWire(
+        withheld: withheld,
+        truncated: truncated,
+        materializationState: materializationState,
+        projectionPending: projectionPending,
+        wings: wings,
+      ),
+    );
 
 http.Response _hostAnswer(Map<String, dynamic> body) => http.Response.bytes(
-  utf8.encode(jsonEncode(body)),
-  200,
-  headers: const {'content-type': 'application/json'},
-);
+      utf8.encode(jsonEncode(body)),
+      200,
+      headers: const {'content-type': 'application/json'},
+    );
 
 void main() {
   group('the memory library client', () {
@@ -119,6 +140,29 @@ void main() {
   });
 
   group('the memory library page', () {
+    testWidgets(
+      'shows the Realm materialization rather than process liveness',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MemoryLibraryPage(
+              library: library(
+                materializationState: 'materializing',
+                projectionPending: 3,
+              ),
+            ),
+          ),
+        );
+
+        expect(
+          find.byKey(const Key('memory-materialization-status')),
+          findsOneWidget,
+        );
+        expect(find.textContaining('记忆正在整理 · 3 项待同步'), findsOneWidget);
+        expect(find.textContaining('realm-owner-1'), findsOneWidget);
+      },
+    );
+
     testWidgets('says how much was withheld rather than hiding it', (
       tester,
     ) async {
@@ -246,10 +290,7 @@ void main() {
           200,
         );
         expect(find.text('记忆纠错与隐私'), findsOneWidget);
-        expect(
-          find.text('仅在内容不准确或涉及隐私时使用；日常记忆由伙伴自动整理。'),
-          findsOneWidget,
-        );
+        expect(find.text('仅在内容不准确或涉及隐私时使用；日常记忆由伙伴自动整理。'), findsOneWidget);
       },
     );
 
@@ -301,33 +342,33 @@ void main() {
         });
 
     List<CompanionSummaryView> companions() => [
-      CompanionSummaryView.fromJson({
-        'companion_id': 'companion-a',
-        'display_name': '小忆',
-        'kind': 'conversational',
-        'lifecycle_state': 'active',
-        'revision': 1,
-        'created_at': '2026-08-28T08:00:00Z',
-        'updated_at': '2026-08-28T08:00:00Z',
-        'genome_id': 'genome-a',
-        'memory_realm_id': 'realm-owner-1',
-        'running': true,
-        'last_active_at': '2026-08-28T08:00:00Z',
-      }),
-      CompanionSummaryView.fromJson({
-        'companion_id': 'companion-b',
-        'display_name': '阿力',
-        'kind': 'conversational',
-        'lifecycle_state': 'active',
-        'revision': 1,
-        'created_at': '2026-08-28T08:01:00Z',
-        'updated_at': '2026-08-28T08:01:00Z',
-        'genome_id': 'genome-b',
-        'memory_realm_id': 'realm-owner-1',
-        'running': true,
-        'last_active_at': '2026-08-28T08:01:00Z',
-      }),
-    ];
+          CompanionSummaryView.fromJson({
+            'companion_id': 'companion-a',
+            'display_name': '小忆',
+            'kind': 'conversational',
+            'lifecycle_state': 'active',
+            'revision': 1,
+            'created_at': '2026-08-28T08:00:00Z',
+            'updated_at': '2026-08-28T08:00:00Z',
+            'genome_id': 'genome-a',
+            'memory_realm_id': 'realm-owner-1',
+            'running': true,
+            'last_active_at': '2026-08-28T08:00:00Z',
+          }),
+          CompanionSummaryView.fromJson({
+            'companion_id': 'companion-b',
+            'display_name': '阿力',
+            'kind': 'conversational',
+            'lifecycle_state': 'active',
+            'revision': 1,
+            'created_at': '2026-08-28T08:01:00Z',
+            'updated_at': '2026-08-28T08:01:00Z',
+            'genome_id': 'genome-b',
+            'memory_realm_id': 'realm-owner-1',
+            'running': true,
+            'last_active_at': '2026-08-28T08:01:00Z',
+          }),
+        ];
 
     testWidgets(
       'defaults to one Companion and switches the private memory read',
@@ -518,14 +559,14 @@ void main() {
               loadContext: () async => context(),
               loadDay: wired
                   ? (_, __) async => MemoryDayView.fromJson({
-                      'contract_version': '1',
-                      'since': '2026-08-24T00:00:00.000',
-                      'entries': [],
-                      'entry_count': 0,
-                      'more_in_window': false,
-                      'undated_count': 0,
-                      'truncated': false,
-                    })
+                        'contract_version': '1',
+                        'since': '2026-08-24T00:00:00.000',
+                        'entries': [],
+                        'entry_count': 0,
+                        'more_in_window': false,
+                        'undated_count': 0,
+                        'truncated': false,
+                      })
                   : null,
             ),
           ),
@@ -554,13 +595,13 @@ void main() {
               loadContext: () async => context(),
               loadCopy: wired
                   ? (_) async => MemoryCopyView.fromJson({
-                      'contract_version': '1',
-                      'taken_at': '2026-08-24T12:31:00+00:00',
-                      'records': [],
-                      'record_count': 0,
-                      'undated_count': 0,
-                      'truncated': false,
-                    })
+                        'contract_version': '1',
+                        'taken_at': '2026-08-24T12:31:00+00:00',
+                        'records': [],
+                        'record_count': 0,
+                        'undated_count': 0,
+                        'truncated': false,
+                      })
                   : null,
             ),
           ),

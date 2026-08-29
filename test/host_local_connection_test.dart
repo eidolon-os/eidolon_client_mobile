@@ -1458,6 +1458,16 @@ void main() {
                     }
                   : {
                       'contract_version': '1',
+                      'memory_realm_id': 'realm-owner-1',
+                      'audience_scope': 'companion:companion-a',
+                      'materialization': {
+                        'ready': true,
+                        'data_readable': true,
+                        'materialization_state': 'ready',
+                        'projection_pending': 0,
+                        'last_materialized_at': '2026-08-29T12:00:00Z',
+                        'degraded_reason': '',
+                      },
                       'wings': [
                         {
                           'wing_id': 'Wing_Life',
