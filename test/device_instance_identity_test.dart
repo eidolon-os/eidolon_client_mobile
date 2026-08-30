@@ -57,6 +57,51 @@ void main() {
     );
   });
 
+  test('the same key in the wrong encoding is refused, not silently rehashed',
+      () {
+    // The trap this closes, and it is invisible once hashed: a raw
+    // uncompressed point (`0x04 || X || Y`) is the *same key* as its SPKI DER
+    // encoding, and hashing it yields a perfectly well-formed
+    // `device-instance-<64hex>` that no Authority has a record of. The answer
+    // is a 422 naming nothing — no crypto error, no signature failure.
+    //
+    // Live on the firmware side right now: ESP32 derives through
+    // `mbedtls_pk_write_pubkey_der` and is correct, but the natural PSA idiom
+    // for its in-progress mbedtls 4 port, `psa_export_public_key`, returns the
+    // raw point for P-256. That port would have shipped boards that could not
+    // be claimed while every older board kept working.
+    final spki = base64Url.decode(
+      _pad((golden['operational_public_key'] as String)
+          .substring(operationalKeySpkiScheme.length)),
+    );
+    // The point is carried inside the SPKI, so this is the same key.
+    final rawPoint = spki.sublist(spki.length - 65);
+    expect(rawPoint.first, 0x04);
+
+    expect(
+      () => deriveDeviceInstanceId(base64Url.encode(rawPoint)),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('raw uncompressed point'),
+        ),
+      ),
+    );
+    // And the correct encoding of that same key still derives the vector's id.
+    expect(
+      deriveDeviceInstanceId(golden['operational_public_key'] as String),
+      golden['device_instance_id'],
+    );
+  });
+
+  test('a key that is not a P-256 SPKI is refused', () {
+    expect(
+      () => deriveDeviceInstanceId(base64Url.encode(List.filled(91, 0x30))),
+      throwsA(isA<FormatException>()),
+    );
+  });
+
   test('an invented identity is refused rather than derived', () {
     expect(
       () => deriveDeviceInstanceId('mobile-android-dcaa15ac8c09efa36c97'),
@@ -81,3 +126,6 @@ void main() {
     expect(identity.deviceInstanceId, isNot(identity.installId));
   });
 }
+
+String _pad(String value) =>
+    value.padRight(value.length + (-value.length % 4), '=');
