@@ -164,6 +164,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
       setState(() => _error = '请选择 Wi-Fi,或输入隐藏网络名称');
       return;
     }
+    var networkCommitted = false;
     await _run(() async {
       setState(() {
         _step = _Step.working;
@@ -186,14 +187,20 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             DeviceWifiCredentials(ssid: ssid, password: _password.text),
         onboardingTarget: target,
       );
+      networkCommitted = checkpoint.provisioningState ==
+          DeviceProvisioningState.networkConfigured;
       _showCheckpoint(checkpoint);
-      if (checkpoint.failure != null &&
-          checkpoint.provisioningState !=
-              DeviceProvisioningState.networkConfigured) {
+      if (checkpoint.failure != null && !networkCommitted) {
         throw Exception(checkpoint.failure!.message);
       }
     });
-    if (mounted && _step != _Step.complete) {
+    // Returning to the network form answers the network step failing, and
+    // nothing else. Once the device has committed the network there is nothing
+    // left to choose here and Admission owns the screen. Rewinding on anything
+    // short of completion left the Wi-Fi form standing — password filled,
+    // button live — beneath a progress line that had already moved on to Grant
+    // collection, so the page stated two incompatible things at once.
+    if (mounted && _step != _Step.complete && !networkCommitted) {
       setState(() => _step = _Step.choosingNetwork);
     }
   }

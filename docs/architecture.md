@@ -60,7 +60,7 @@ Conversation 功能存在，不参与默认启动，也不在 Host Control 阶�
    **这台手机还不会用它去提出 Enrollment**：`POST /api/admission/v1/enrollments` 在移动端
    尚未实现，`hub_client.dart` 里那条签名注册路径（`X-Device-ID` 等头）在 Hub 上已无对端
    （命中数 0），产品配置下不再被调用。缺什么、为什么、怎么补，见
-   `docs/跨系统/纯软件Body准入身份裁决.md`。
+   `docs/设备与Body/纯软件Body准入身份裁决.md`。
 3. 读 Admission 的 recovery 投影，把这台手机的处境报成 `MobileBodyStanding` 的七段之一
    （`mobile_body_standing.dart`），每段说清发生了什么、缺什么、谁能动。不能自行前进的几段
    停止轮询，并指名缺口而不是给一个「再试一次」。
