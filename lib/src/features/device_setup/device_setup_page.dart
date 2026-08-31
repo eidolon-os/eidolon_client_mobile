@@ -467,33 +467,41 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         ],
       );
 
-  Widget _working() => _refused ? _refusedSetup() : _admissionInProgress();
-
-  Widget _admissionInProgress() => Column(
+  /// The Host's verdict decides what this says, and whether resuming is worth
+  /// offering. It does not decide whether the person may leave.
+  ///
+  /// Leaving is what forgets the checkpoint, and the checkpoint is what the
+  /// resume scan adopts, so a way out is the only thing keeping this screen
+  /// from becoming the entrance. Offering it solely on refusal moved that dead
+  /// end one step along rather than closing it: a failure graded retryable —
+  /// a device that never created its Enrollment, because it was reflashed and
+  /// can no longer reach the Host — retries forever behind a door only a
+  /// refusal can open.
+  Widget _working() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('设备接入进行中', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 12),
-          const Text('配网完成不代表批准，批准也不代表 Claim 已生效。'),
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            key: const Key('resume-device-admission'),
-            onPressed: _busy ? null : _resumePersistedAdmission,
-            icon: const Icon(Icons.refresh),
-            label: const Text('从主机恢复状态'),
+          Text(
+            _refused ? '这次接入进行不下去了' : '设备接入进行中',
+            style: Theme.of(context).textTheme.titleLarge,
           ),
-        ],
-      );
-
-  Widget _refusedSetup() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('这次接入进行不下去了', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 12),
-          const Text('主机不会再为这次 Enrollment 交付 Grant。设备本身没有被改动，'
-              '重新设置一次即可——包括同一台设备。'),
+          Text(
+            _refused
+                ? '主机不会再为这次 Enrollment 交付 Grant。设备本身没有被改动，'
+                    '重新设置一次即可——包括同一台设备。'
+                : '配网完成不代表批准，批准也不代表 Claim 已生效。',
+          ),
           const SizedBox(height: 16),
-          FilledButton.icon(
+          if (!_refused) ...[
+            FilledButton.icon(
+              key: const Key('resume-device-admission'),
+              onPressed: _busy ? null : _resumePersistedAdmission,
+              icon: const Icon(Icons.refresh),
+              label: const Text('从主机恢复状态'),
+            ),
+            const SizedBox(height: 8),
+          ],
+          OutlinedButton.icon(
             key: const Key('restart-device-setup'),
             onPressed: _busy ? null : _startOver,
             icon: const Icon(Icons.restart_alt),

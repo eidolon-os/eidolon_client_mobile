@@ -59,7 +59,8 @@ void main() {
     expect(admission.recoverCalls, 1);
   });
 
-  testWidgets('a setup still in flight keeps its retry', (tester) async {
+  testWidgets('a setup still in flight keeps its retry and its way out',
+      (tester) async {
     final store = InMemoryDeviceSetupCheckpointStore();
     await store.save(_checkpoint());
     final admission = _Admission(
@@ -70,7 +71,36 @@ void main() {
     await _pumpUntil(tester, () => admission.recoverCalls == 1);
 
     expect(find.byKey(const Key('resume-device-admission')), findsOneWidget);
-    expect(find.byKey(const Key('restart-device-setup')), findsNothing);
+    expect(find.byKey(const Key('restart-device-setup')), findsOneWidget);
+  });
+
+  testWidgets('a device that never created an Enrollment is not a dead end',
+      (tester) async {
+    // The shape a reflashed board produces: network committed, no Enrollment,
+    // and a failure the coordinator grades retryable. Retrying is the right
+    // default — the device usually just has not got there yet — but this one
+    // never will, so the entrance has to stay openable.
+    final store = InMemoryDeviceSetupCheckpointStore();
+    await store.save(_checkpoint(enrollmentId: null));
+    final admission = _GoneAdmission();
+
+    await tester.pumpWidget(_page(store, admission));
+    await _pumpUntil(
+      tester,
+      () => find.byKey(const Key('restart-device-setup')).evaluate().isNotEmpty,
+    );
+
+    expect(admission.recoverCalls, 0, reason: 'no Enrollment id to recover');
+    expect(find.textContaining('Device has not created an Enrollment yet'),
+        findsOneWidget);
+    expect(find.byKey(const Key('resume-device-admission')), findsOneWidget);
+    expect(find.byKey(const Key('restart-device-setup')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('restart-device-setup')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('准备设备'), findsOneWidget);
+    expect(await store.list(), isEmpty);
   });
 
   testWidgets('a Host that no longer has this Enrollment is a dead end too',
@@ -114,7 +144,10 @@ Future<void> _pumpUntil(
   await tester.pump();
 }
 
-DeviceSetupCheckpoint _checkpoint() => DeviceSetupCheckpoint(
+DeviceSetupCheckpoint _checkpoint({
+  String? enrollmentId = 'enrollment_01',
+}) =>
+    DeviceSetupCheckpoint(
       contractVersion: DeviceSetupCheckpoint.currentContractVersion,
       setupId: 'setup-dead-end',
       requestId: 'intent-dead-end',
@@ -127,7 +160,7 @@ DeviceSetupCheckpoint _checkpoint() => DeviceSetupCheckpoint(
       updatedAt: DateTime.utc(2026, 8, 27),
       onboardingTarget: deviceOnboardingTargetFixture(),
       deviceId: namedDeviceInstanceId('device_01'),
-      enrollmentId: 'enrollment_01',
+      enrollmentId: enrollmentId,
       expectedProposalRevision: 2,
     );
 
