@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly SDK_COMMIT="6a62e2f762637d9bff0103fdcbe7e5f6e45a310e"
+readonly SDK_COMMIT="e9fae0be2cce27f1577c43b0df1d17938308add4"
 readonly SDK_BINDING="contracts/device_foundation/v1/generated/dart/device_foundation_v1.dart"
 readonly MOBILE_BINDING="lib/src/generated/device_foundation_v1.dart"
 readonly SDK_CONSUMER_FIXTURE="contracts/device_foundation/v1/examples/valid/admission-consumer-surface.json"
@@ -28,6 +28,13 @@ readonly MOBILE_SETUP_DESCRIPTOR_GOLDEN="test/fixtures/device_foundation/setup-d
 # held to these numbers rather than to review.
 readonly SDK_COMMISSIONING_IDENTITY_GOLDEN="contracts/device_foundation/v1/golden/development-commissioning-identity.json"
 readonly MOBILE_COMMISSIONING_IDENTITY_GOLDEN="test/fixtures/device_foundation/development-commissioning-identity.json"
+# Which bytes a device instance id is derived from — and which encodings of the
+# same key must be refused rather than hashed. Three of the four implementations
+# of this rule would hash a raw uncompressed point into a well-formed identity
+# no Authority has a record of; this side is one of the consumers that has to
+# keep holding the line.
+readonly SDK_DERIVATION_GOLDEN="contracts/device_foundation/v1/golden/device-instance-derivation.json"
+readonly MOBILE_DERIVATION_GOLDEN="test/fixtures/device_foundation/device-instance-derivation.json"
 
 mode="${1:---check}"
 sdk_root="${EIDOLON_SDK_ROOT:-../eidolon_sdk}"
@@ -48,6 +55,7 @@ sdk_paths=(
   "$SDK_DESCRIPTOR_GOLDEN"
   "$SDK_SETUP_DESCRIPTOR_GOLDEN"
   "$SDK_COMMISSIONING_IDENTITY_GOLDEN"
+  "$SDK_DERIVATION_GOLDEN"
 )
 mobile_paths=(
   "$MOBILE_BINDING"
@@ -57,6 +65,7 @@ mobile_paths=(
   "$MOBILE_DESCRIPTOR_GOLDEN"
   "$MOBILE_SETUP_DESCRIPTOR_GOLDEN"
   "$MOBILE_COMMISSIONING_IDENTITY_GOLDEN"
+  "$MOBILE_DERIVATION_GOLDEN"
 )
 
 drifted=0

@@ -57,6 +57,56 @@ void main() {
     );
   });
 
+  group('the contract vector for this rule', () {
+    // Vendored from the SDK by tool/sync_device_foundation_binding.sh. Before
+    // it existed this app was correct by coincidence: Android happens to hand
+    // over SPKI DER, and nothing said it had to. Three of the four
+    // implementations of this rule would hash a raw uncompressed point into a
+    // well-formed identity no Authority has a record of.
+    final derivation = jsonDecode(
+      File(
+        'test/fixtures/device_foundation/device-instance-derivation.json',
+      ).readAsStringSync(),
+    ) as Map<String, dynamic>;
+
+    test('every accepted spelling of one key is one device', () {
+      for (final spelling in derivation['accepted_spellings'] as List) {
+        expect(
+          deriveDeviceInstanceId(spelling as String),
+          derivation['device_instance_id'],
+          reason: 'spelling $spelling derived another device',
+        );
+      }
+    });
+
+    test('every encoding the vector refuses is refused here too', () {
+      for (final entry in derivation['must_refuse'] as List) {
+        final refused = entry as Map<String, dynamic>;
+        expect(
+          () => deriveDeviceInstanceId(refused['encoded'] as String),
+          throwsA(isA<FormatException>()),
+          reason: 'the vector refuses ${refused['case']} and this does not',
+        );
+      }
+    });
+
+    test('the id this app derives is the one the vector states', () {
+      expect(
+        deriveDeviceInstanceId(derivation['operational_public_key'] as String),
+        derivation['device_instance_id'],
+      );
+      // And never the digest the vector records for the wrong encoding — the
+      // one somebody would see in the wild if an implementation drifted.
+      final rawPoint = (derivation['must_refuse'] as List).firstWhere(
+        (entry) => (entry as Map)['case'] == 'raw-uncompressed-point',
+      ) as Map<String, dynamic>;
+      expect(
+        derivation['device_instance_id'],
+        isNot(rawPoint['digest_if_wrongly_hashed']),
+      );
+    });
+  });
+
   test('the same key in the wrong encoding is refused, not silently rehashed',
       () {
     // The trap this closes, and it is invisible once hashed: a raw

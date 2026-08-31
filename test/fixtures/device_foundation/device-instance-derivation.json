@@ -1,0 +1,36 @@
+{
+  "vector_id": "DF-DEVICE-INSTANCE-DERIVATION-001",
+  "purpose": "What a device instance id is derived from, and what may never be derived from. The rule lived in four implementations and in no vector: Hub, the firmware, this SDK and a phone each read it from prose and each had to get it right alone.",
+  "namespace": "device-instance-",
+  "digest": "sha256",
+  "derived_from": "the SubjectPublicKeyInfo DER of the device's operational key",
+  "operational_public_key": "p256-spki:MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEaxfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpZP40Li_hp_m47n60p8D54WK84zV2sxXs7LtkBoN79R9Q",
+  "spki_der_base64url": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEaxfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpZP40Li_hp_m47n60p8D54WK84zV2sxXs7LtkBoN79R9Q",
+  "spki_der_length_bytes": 91,
+  "device_instance_id": "device-instance-5cd252fb0ce8932436faf8ccd1040981b89ee4ad6b9fe9e2a2b7e71aacb27cd3",
+  "accepted_spellings": [
+    "p256-spki:MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEaxfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpZP40Li_hp_m47n60p8D54WK84zV2sxXs7LtkBoN79R9Q",
+    "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEaxfR8uEsQkf4vOblY6RA8ncDfYEt6zOg9KE5RdiYwpZP40Li_hp_m47n60p8D54WK84zV2sxXs7LtkBoN79R9Q"
+  ],
+  "must_refuse": [
+    {
+      "case": "raw-uncompressed-point",
+      "encoded": "BGsX0fLhLEJH-Lzm5WOkQPJ3A32BLeszoPShOUXYmMKWT-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+      "length_bytes": 65,
+      "why": "The same key as spki_der_base64url, written without its SPKI header. Hashing it yields a well-formed device instance id that no Authority has a record of, so nothing fails where the mistake is: the device is refused later as an identity nobody recognises. The natural PSA idiom (psa_export_public_key) and Android's raw EC point both hand back this encoding.",
+      "digest_if_wrongly_hashed": "device-instance-698bea63dc44a344663ff1429aea10842df27b6b991ef25866b2c6c02cdcc5be"
+    },
+    {
+      "case": "spki-header-without-a-key",
+      "encoded": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgA",
+      "length_bytes": 26,
+      "why": "An SPKI prefix with no point. Three tests in this repository named their device by hashing exactly this, which is how a stub became an identity."
+    },
+    {
+      "case": "empty",
+      "encoded": "",
+      "length_bytes": 0,
+      "why": "Nothing is not a key."
+    }
+  ]
+}
