@@ -80,6 +80,10 @@ class DeviceProvisioningDescriptor {
   String get deviceId => setup.deviceId;
   String get displayName => setup.displayName;
   String get sessionId => setup.sessionId;
+  String get identityFingerprint => setup.identityFingerprint;
+
+  /// The identity this device says it already holds, or null if it holds none.
+  String? get deviceBaseId => setup.deviceBaseId;
   SetupDescriptorTrustV1 get trust => setup.trust;
 }
 
@@ -104,12 +108,51 @@ class DeviceWifiCredentials {
 
 /// A device answering on its own setup hotspot, before it belongs to anyone.
 
+/// What the Host signed, and what it named the device while signing it.
+class CommissioningVoucher {
+  const CommissioningVoucher({
+    required this.voucher,
+    required this.jti,
+    required this.deviceBaseId,
+    required this.expiresAt,
+  });
+
+  final String voucher;
+  final String jti;
+  final String deviceBaseId;
+  final DateTime expiresAt;
+
+  factory CommissioningVoucher.fromJson(Map<String, dynamic> value) {
+    final voucher = value['voucher'];
+    final jti = value['jti'];
+    final baseId = value['device_base_id'];
+    final expiresAt = value['expires_at'];
+    if (voucher is! String ||
+        voucher.isEmpty ||
+        voucher.length > 4096 ||
+        jti is! String ||
+        jti.isEmpty ||
+        baseId is! String ||
+        baseId.isEmpty ||
+        expiresAt is! String) {
+      throw const FormatException('Unsupported commissioning voucher');
+    }
+    return CommissioningVoucher(
+      voucher: voucher,
+      jti: jti,
+      deviceBaseId: baseId,
+      expiresAt: DateTime.parse(expiresAt).toUtc(),
+    );
+  }
+}
+
 class DeviceOnboardingTarget {
   const DeviceOnboardingTarget({
     required this.ownerDomainId,
     required this.ownerDomainDescriptor,
     required this.ownerRootCertificate,
     required this.authoritySigningCertificate,
+    this.commissioningVoucher,
     this.hostAddress,
   });
 
@@ -118,12 +161,34 @@ class DeviceOnboardingTarget {
   final String ownerRootCertificate;
   final String authoritySigningCertificate;
 
+  /// The standing this device will have when it asks to be admitted.
+  ///
+  /// The device ships with no identity material at all, so this one-shot
+  /// voucher — signed by the Host for the key the device generated itself — is
+  /// what makes a first Proposal possible. Absent when a device that is already
+  /// known is only being pointed at a new network, because nothing about its
+  /// identity is changing then. Deliberately not in the checkpoint: it is spent
+  /// once and re-issued on demand, and a copy left on disk would outlive the
+  /// commissioning it belonged to.
+  final String? commissioningVoucher;
+
   /// The address the Host answered on when it handed this target over.
   ///
   /// Deliberately absent from the wire and from the checkpoint: it describes
   /// one client's route to a deployment at one moment, not the Owner Domain.
   /// The signed descriptor is the durable fact.
   final String? hostAddress;
+
+  /// This target, carrying the standing the Host just signed for one device.
+  DeviceOnboardingTarget withCommissioningVoucher(String voucher) =>
+      DeviceOnboardingTarget(
+        ownerDomainId: ownerDomainId,
+        ownerDomainDescriptor: ownerDomainDescriptor,
+        ownerRootCertificate: ownerRootCertificate,
+        authoritySigningCertificate: authoritySigningCertificate,
+        commissioningVoucher: voucher,
+        hostAddress: hostAddress,
+      );
 
   /// This target, as reached at [hostAddress].
   DeviceOnboardingTarget reachedAt(String hostAddress) =>
@@ -132,6 +197,7 @@ class DeviceOnboardingTarget {
         ownerDomainDescriptor: ownerDomainDescriptor,
         ownerRootCertificate: ownerRootCertificate,
         authoritySigningCertificate: authoritySigningCertificate,
+        commissioningVoucher: commissioningVoucher,
         hostAddress: hostAddress,
       );
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly SDK_COMMIT="e9fae0be2cce27f1577c43b0df1d17938308add4"
+readonly SDK_COMMIT="bc754c162362ed9326d7e18d80b7e9d86db28ce1"
 readonly SDK_BINDING="contracts/device_foundation/v1/generated/dart/device_foundation_v1.dart"
 readonly MOBILE_BINDING="lib/src/generated/device_foundation_v1.dart"
 readonly SDK_CONSUMER_FIXTURE="contracts/device_foundation/v1/examples/valid/admission-consumer-surface.json"
@@ -21,13 +21,15 @@ readonly MOBILE_DESCRIPTOR_GOLDEN="test/fixtures/device_foundation/owner-domain-
 # act on. Both ends now answer to this vector.
 readonly SDK_SETUP_DESCRIPTOR_GOLDEN="contracts/device_foundation/v1/golden/setup-descriptor.json"
 readonly MOBILE_SETUP_DESCRIPTOR_GOLDEN="test/fixtures/device_foundation/setup-descriptor.json"
-# How a device instance id is derived from an operational key. This app used to
-# invent `mobile-android-<hash of ANDROID_ID>`, which Hub answers 422 to, so no
-# enrollment for this phone could exist — and the phone's own read path compared
-# its invented id against Hub's derived one and never matched. The derivation is
-# held to these numbers rather than to review.
-readonly SDK_COMMISSIONING_IDENTITY_GOLDEN="contracts/device_foundation/v1/golden/development-commissioning-identity.json"
-readonly MOBILE_COMMISSIONING_IDENTITY_GOLDEN="test/fixtures/device_foundation/development-commissioning-identity.json"
+# What a Body must present to be admitted, and how its identity is derived from
+# an operational key. This app used to invent `mobile-android-<hash of
+# ANDROID_ID>`, which Hub answers 422 to, so no enrollment for this phone could
+# exist — and the phone's own read path compared its invented id against Hub's
+# derived one and never matched. The derivation is held to these numbers rather
+# than to review. Since 2026-08-31 the same vector also carries the voucher this
+# app asks the Host to sign on a device's behalf.
+readonly SDK_COMMISSIONING_IDENTITY_GOLDEN="contracts/device_foundation/v1/golden/commissioning-voucher.json"
+readonly MOBILE_COMMISSIONING_IDENTITY_GOLDEN="test/fixtures/device_foundation/commissioning-voucher.json"
 # Which bytes a device instance id is derived from — and which encodings of the
 # same key must be refused rather than hashed. Three of the four implementations
 # of this rule would hash a raw uncompressed point into a well-formed identity

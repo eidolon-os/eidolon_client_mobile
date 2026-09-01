@@ -198,6 +198,45 @@ class LocalApiClient {
     ).reachedAt(origin.host);
   }
 
+  /// Ask this Host to sign the standing one device needs to be admitted.
+  ///
+  /// [operationalSpkiSha256] is the fingerprint the device stated in its own
+  /// setup descriptor — the key the voucher is bound to. This phone never holds
+  /// that key, and does not need to: the binding only has to say which key it
+  /// is, so a voucher read off the wire is useless to anything else.
+  ///
+  /// [presentedDeviceBaseId] is whatever identity the device says it already
+  /// has, forwarded and not vouched for. The Host asks Hub whether it issued
+  /// that identity to this very key and mints a new one otherwise, which is
+  /// what lets a removed device come back as itself without letting any device
+  /// name itself.
+  Future<CommissioningVoucher> issueCommissioningVoucher(
+    String baseUrl, {
+    required String accessToken,
+    required String operationalSpkiSha256,
+    String? presentedDeviceBaseId,
+  }) async {
+    final origin = parseBaseUri(baseUrl);
+    final response = await _httpClient
+        .post(
+          origin.resolve('/api/local/v1/commissioning-vouchers'),
+          headers: {
+            ..._authorizedHeaders(accessToken),
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'contract_version': '1',
+            'operational_spki_sha256': operationalSpkiSha256,
+            if (presentedDeviceBaseId != null)
+              'presented_device_base_id': presentedDeviceBaseId,
+          }),
+        )
+        .timeout(timeout);
+    return CommissioningVoucher.fromJson(
+      _decodeResponse(response, operation: 'Commissioning voucher'),
+    );
+  }
+
   /// The Enrollments this Owner has waiting, as the Host projects them.
   ///
   /// The Host is the only Admission surface this phone talks to. Hub owns the

@@ -2,6 +2,7 @@ import '../host_setup/host_product_controller.dart';
 import '../host_setup/local_api_client.dart';
 import '../../generated/device_foundation_v1.dart';
 import 'device_setup_coordinator.dart';
+import 'device_setup_models.dart';
 import 'device_setup_ports.dart';
 
 /// The admission half of device setup, as this Controller performs it.
@@ -16,6 +17,15 @@ class HostControllerDeviceAdmission implements DeviceAdmissionPort {
   const HostControllerDeviceAdmission(this._controller);
 
   final HostProductController _controller;
+
+  @override
+  Future<CommissioningVoucher> issueCommissioningVoucher({
+    required String operationalSpkiSha256,
+    String? presentedDeviceBaseId,
+  }) => _controller.issueCommissioningVoucher(
+        operationalSpkiSha256: operationalSpkiSha256,
+        presentedDeviceBaseId: presentedDeviceBaseId,
+      );
 
   @override
   Future<EnrollmentProposalPageV1> listRecovery({

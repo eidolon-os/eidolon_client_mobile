@@ -32,6 +32,19 @@ abstract interface class DeviceProvisioningSession {
 }
 
 abstract interface class DeviceAdmissionPort {
+  /// Ask the Host to sign the standing this device needs to be admitted.
+  ///
+  /// [operationalSpkiSha256] is the fingerprint the device stated in its own
+  /// setup descriptor; [presentedDeviceBaseId] is the identity it says it
+  /// already holds, forwarded and not vouched for. Which of the two the Host
+  /// signs — that identity, or a newly minted one — is Hub's answer, not this
+  /// controller's: a device that could name itself would be choosing the anchor
+  /// its whole Claim history hangs from.
+  Future<CommissioningVoucher> issueCommissioningVoucher({
+    required String operationalSpkiSha256,
+    String? presentedDeviceBaseId,
+  });
+
   Future<EnrollmentProposalPageV1> listRecovery({
     AdmissionListCursorV1? after,
   });

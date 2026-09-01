@@ -622,6 +622,26 @@ class HostProductController extends ChangeNotifier {
     return _deviceAdmissionRepository.fetchTarget();
   }
 
+  /// Sign the standing a device needs, for the Controller session in hand.
+  ///
+  /// Deliberately gated on the same Workspace readiness as fetching the
+  /// onboarding target: a voucher names an Owner Domain, and there is no Owner
+  /// Domain to name until the Workspace exists.
+  Future<CommissioningVoucher> issueCommissioningVoucher({
+    required String operationalSpkiSha256,
+    String? presentedDeviceBaseId,
+  }) {
+    if (!(_workspace?.isReady ?? false)) {
+      throw const HostControllerAuthorizationException(
+        '请先完成 Owner Workspace，再添加设备',
+      );
+    }
+    return _deviceAdmissionRepository.issueCommissioningVoucher(
+      operationalSpkiSha256: operationalSpkiSha256,
+      presentedDeviceBaseId: presentedDeviceBaseId,
+    );
+  }
+
   Future<EnrollmentProposalPageV1> listEnrollmentRecovery({
     AdmissionListCursorV1? after,
   }) async {

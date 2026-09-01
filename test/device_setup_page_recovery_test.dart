@@ -92,6 +92,28 @@ EnrollmentRecoveryProjectionV1 _projection({
     );
 
 class _Admission implements DeviceAdmissionPort {
+  @override
+  Future<CommissioningVoucher> issueCommissioningVoucher({
+    required String operationalSpkiSha256,
+    String? presentedDeviceBaseId,
+  }) async {
+    voucherRequests.add(
+      (
+        operationalSpkiSha256: operationalSpkiSha256,
+        presentedDeviceBaseId: presentedDeviceBaseId,
+      ),
+    );
+    return CommissioningVoucher(
+      voucher: 'header.payload.signature',
+      jti: 'jti-${voucherRequests.length}',
+      deviceBaseId: presentedDeviceBaseId ?? 'device-base-${'a' * 64}',
+      expiresAt: DateTime.utc(2027),
+    );
+  }
+
+  final List<({String operationalSpkiSha256, String? presentedDeviceBaseId})>
+      voucherRequests = [];
+
   _Admission(this.current);
 
   EnrollmentRecoveryProjectionV1 current;

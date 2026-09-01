@@ -92,9 +92,30 @@ class DeviceSetupCoordinator {
         clearFailure: true,
       );
       await checkpoints.save(checkpoint);
+      // The device carries no identity material of its own, so the standing to
+      // ask for admission is minted here, while a person is in front of it and
+      // this Controller's authorization stands. It travels with the trust
+      // handover: a device that trusted an Owner Domain but could not introduce
+      // itself to it would sit silent, and the only symptom would be an
+      // approval queue that never shows it.
+      final CommissioningVoucher voucher;
+      try {
+        voucher = await admission.issueCommissioningVoucher(
+          operationalSpkiSha256: session.descriptor.identityFingerprint,
+          presentedDeviceBaseId: session.descriptor.deviceBaseId,
+        );
+      } catch (error) {
+        throw DeviceSetupException(
+          code: 'commissioning_voucher_unavailable',
+          message: 'Host could not sign this device\'s commissioning: $error',
+          retryable: true,
+        );
+      }
       final evidence = await session.configureNetwork(
         credentials: credentials,
-        onboardingTarget: onboardingTarget,
+        onboardingTarget: onboardingTarget.withCommissioningVoucher(
+          voucher.voucher,
+        ),
         createCommandId: checkpoint.createCommandId,
         collectCommandId: checkpoint.collectCommandId,
         ackCommandId: checkpoint.ackCommandId,

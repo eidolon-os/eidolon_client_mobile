@@ -204,6 +204,8 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
           'owner_root_certificate': onboardingTarget.ownerRootCertificate,
           'authority_signing_certificate':
               onboardingTarget.authoritySigningCertificate,
+          if (onboardingTarget.commissioningVoucher != null)
+            'commissioning_voucher': onboardingTarget.commissioningVoucher,
           'admission_command_ids': {
             'create': createCommandId,
             'collect': collectCommandId,

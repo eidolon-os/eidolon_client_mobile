@@ -579,6 +579,18 @@ class HostDeviceAdmissionRepository {
         client.fetchDeviceOnboardingTarget(baseUrl, accessToken: accessToken),
   );
 
+  Future<CommissioningVoucher> issueCommissioningVoucher({
+    required String operationalSpkiSha256,
+    String? presentedDeviceBaseId,
+  }) => _session.execute(
+    (client, baseUrl, accessToken) => client.issueCommissioningVoucher(
+      baseUrl,
+      accessToken: accessToken,
+      operationalSpkiSha256: operationalSpkiSha256,
+      presentedDeviceBaseId: presentedDeviceBaseId,
+    ),
+  );
+
   Future<EnrollmentProposalPageV1> listRecovery({
     required String ownerDomainId,
     AdmissionListCursorV1? after,

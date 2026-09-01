@@ -596,6 +596,7 @@ class SetupDescriptorV1 {
     required this.identityFingerprint,
     required this.sessionId,
     required this.expiresIn,
+    required this.deviceBaseId,
     required this.trust,
   });
 
@@ -613,9 +614,14 @@ class SetupDescriptorV1 {
     'trust',
   };
 
-  /// The one field a descriptor may leave out, and the only way to say that
-  /// this setup offer does not end.
-  static const Set<String> optionalFields = {'expires_in_seconds'};
+  /// The two fields a descriptor may leave out. No duration is the only way to
+  /// say that this setup offer does not end; no base identity is the only way
+  /// to say that this device has never been commissioned — or that its storage
+  /// was erased, which is now the same statement.
+  static const Set<String> optionalFields = {
+    'device_base_id',
+    'expires_in_seconds',
+  };
 
   final String deviceId;
   final String deviceKind;
@@ -630,6 +636,13 @@ class SetupDescriptorV1 {
   /// own. Null is neither "already expired" nor "expires now" — nothing may
   /// substitute an instant for the absence.
   final SetupWindowRemainingSecondsV1? expiresIn;
+
+  /// The identity this device already holds, or null if it holds none.
+  ///
+  /// Forwarded to the Host and never acted on here: only Hub knows whether it
+  /// issued this identity to this device's key, and a controller that decided
+  /// otherwise would be letting a device name itself.
+  final String? deviceBaseId;
   final SetupDescriptorTrustV1 trust;
 
   factory SetupDescriptorV1.fromJson(Map<String, dynamic> value) {
@@ -647,6 +660,13 @@ class SetupDescriptorV1 {
     if (sessionId.length < 16 ||
         !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(sessionId)) {
       throw const FormatException('Invalid setup session id');
+    }
+    final rawBaseId = value['device_base_id'];
+    if (rawBaseId != null &&
+        (rawBaseId is! String ||
+            !RegExp(r'^(device-base-[0-9a-f]{64}|software-body-[0-9a-f]{40})$')
+                .hasMatch(rawBaseId))) {
+      throw const FormatException('Invalid device base identity');
     }
     SetupDescriptorTrustV1? trust;
     for (final candidate in SetupDescriptorTrustV1.values) {
@@ -669,6 +689,7 @@ class SetupDescriptorV1 {
       expiresIn: value.containsKey('expires_in_seconds')
           ? SetupWindowRemainingSecondsV1.parse(value['expires_in_seconds'])
           : null,
+      deviceBaseId: rawBaseId as String?,
       trust: trust,
     );
   }
@@ -677,6 +698,8 @@ class SetupDescriptorV1 {
   /// writing `null` there would be the same mistake as writing 0.
   Map<String, dynamic> toJson() => {
     'contract_version': contractVersion,
+    // Canonical order: the base identity sorts before the instance id.
+    if (deviceBaseId != null) 'device_base_id': deviceBaseId,
     'device_id': deviceId,
     'device_kind': deviceKind,
     'display_name': displayName,

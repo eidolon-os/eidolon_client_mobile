@@ -21,7 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final golden = jsonDecode(
     File(
-      'test/fixtures/device_foundation/development-commissioning-identity.json',
+      'test/fixtures/device_foundation/commissioning-voucher.json',
     ).readAsStringSync(),
   ) as Map<String, dynamic>;
 

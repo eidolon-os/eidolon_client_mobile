@@ -83,6 +83,52 @@ void main() {
     expect(result.encode(), isNot(contains('not-persisted')));
   });
 
+  test('the standing a device needs is minted before trust is handed over',
+      () async {
+    // The device carries no identity material, so this is the only thing that
+    // makes its first Proposal possible. Two properties are the point: the
+    // voucher is asked for while the session is open — a person is in front of
+    // the device then, and this Controller's authorization stands — and it
+    // travels with the trust handover rather than after it, because a device
+    // that trusted an Owner Domain but could not introduce itself to it would
+    // sit silent with nothing to show for it.
+    final session = _Session(_descriptor);
+    final admission = _Admission(_projection(state: 'pending_review'));
+    final coordinator = _coordinator(
+      session,
+      admission,
+      InMemoryDeviceSetupCheckpointStore(),
+    );
+
+    final result = await coordinator.provisionAndAdmit(
+      setupId: 'setup-voucher',
+      requestId: 'intent-voucher',
+      candidate: _candidate,
+      credentials: const DeviceWifiCredentials(
+        ssid: 'Home WiFi',
+        password: 'not-persisted',
+      ),
+      onboardingTarget: deviceOnboardingTargetFixture(),
+    );
+
+    expect(admission.voucherRequests, hasLength(1));
+    expect(
+      admission.voucherRequests.single.operationalSpkiSha256,
+      _setup.identityFingerprint,
+    );
+    // This device has never been commissioned, so it presents no identity and
+    // the Host mints one. A device that presented its own would be forwarded
+    // and still not believed: only Hub knows what it issued.
+    expect(admission.voucherRequests.single.presentedDeviceBaseId, isNull);
+    expect(
+      session.handedOverTarget?.commissioningVoucher,
+      'header.payload.signature',
+    );
+    // Spent once, and never written down: a copy in the checkpoint would
+    // outlive the commissioning it belonged to.
+    expect(result.encode(), isNot(contains('header.payload.signature')));
+  });
+
   test('reply loss and coordinator restart recover before any replay',
       () async {
     final session = _Session(_descriptor);
@@ -306,6 +352,7 @@ class _Session implements DeviceProvisioningSession {
   @override
   final DeviceProvisioningDescriptor descriptor;
   Map<String, String>? commandIds;
+  DeviceOnboardingTarget? handedOverTarget;
 
   @override
   Future<void> close() async {}
@@ -323,6 +370,7 @@ class _Session implements DeviceProvisioningSession {
       'collect': collectCommandId,
       'ack': ackCommandId,
     };
+    handedOverTarget = onboardingTarget;
     return const CommissioningStatusEvidenceV1(
       sessionId: 'setup_session_01',
       setupGeneration: 1,
@@ -363,6 +411,28 @@ class _Transport implements DeviceProvisioningTransport {
 }
 
 class _Admission implements DeviceAdmissionPort {
+  @override
+  Future<CommissioningVoucher> issueCommissioningVoucher({
+    required String operationalSpkiSha256,
+    String? presentedDeviceBaseId,
+  }) async {
+    voucherRequests.add(
+      (
+        operationalSpkiSha256: operationalSpkiSha256,
+        presentedDeviceBaseId: presentedDeviceBaseId,
+      ),
+    );
+    return CommissioningVoucher(
+      voucher: 'header.payload.signature',
+      jti: 'jti-${voucherRequests.length}',
+      deviceBaseId: presentedDeviceBaseId ?? 'device-base-${'a' * 64}',
+      expiresAt: DateTime.utc(2027),
+    );
+  }
+
+  final List<({String operationalSpkiSha256, String? presentedDeviceBaseId})>
+      voucherRequests = [];
+
   _Admission(this.current, {this.loseDecisionReply = false});
 
   EnrollmentRecoveryProjectionV1 current;
