@@ -16,7 +16,9 @@ class ManagementV1 {
   static String companionsByCompanionIdConversationsPath(String companionId) =>
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/conversations';
   static String companionsByCompanionIdConversationsByConversationIdTurnsPath(
-          String companionId, String conversationId) =>
+    String companionId,
+    String conversationId,
+  ) =>
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/conversations/${Uri.encodeComponent(conversationId)}/turns';
   static String companionsByCompanionIdFacePath(String companionId) =>
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/face';
@@ -29,18 +31,25 @@ class ManagementV1 {
   static String companionsByCompanionIdPersonaHistoryPath(String companionId) =>
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona-history';
   static String companionsByCompanionIdPersonaRestorationsPath(
-          String companionId) =>
+    String companionId,
+  ) =>
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona-restorations';
   static String companionsByCompanionIdTasksPath(String companionId) =>
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks';
   static String companionsByCompanionIdTasksByTaskIdPath(
-          String companionId, String taskId) =>
+    String companionId,
+    String taskId,
+  ) =>
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks/${Uri.encodeComponent(taskId)}';
   static String companionsByCompanionIdTasksByTaskIdCancelPath(
-          String companionId, String taskId) =>
+    String companionId,
+    String taskId,
+  ) =>
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks/${Uri.encodeComponent(taskId)}/cancel';
   static String companionsByCompanionIdTasksByTaskIdRetryPath(
-          String companionId, String taskId) =>
+    String companionId,
+    String taskId,
+  ) =>
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks/${Uri.encodeComponent(taskId)}/retry';
   static const String contextPath = '/api/management/v1/context';
   static const String controllersPath = '/api/management/v1/controllers';
@@ -56,7 +65,9 @@ class ManagementV1 {
   static const String homePath = '/api/management/v1/home';
   static const String hostServicesPath = '/api/management/v1/host/services';
   static String hostServicesByServiceIdByOperationPath(
-          String serviceId, String operation) =>
+    String serviceId,
+    String operation,
+  ) =>
       '/api/management/v1/host/services/${Uri.encodeComponent(serviceId)}/${Uri.encodeComponent(operation)}';
   static const String hostVitalsPath = '/api/management/v1/host/vitals';
   static const String memoryEntriesPath = '/api/management/v1/memory/entries';
@@ -115,8 +126,9 @@ class ActivityMomentView {
       action: value['action'] as String,
       detail: value['detail'] == null
           ? null
-          : ((value['detail'] as Map<String, dynamic>)
-              .map((key, entry) => MapEntry(key, entry as String))),
+          : ((value['detail'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as String),
+            )),
       eventId: value['event_id'] as String,
       occurredAt: value['occurred_at'] as String,
       outcome: value['outcome'] as String,
@@ -157,8 +169,10 @@ class ActivityView {
     return ActivityView(
       contractVersion: value['contract_version'] as String?,
       moments: ((value['moments'] as List<dynamic>)
-          .map((entry) =>
-              ActivityMomentView.fromJson(entry as Map<String, dynamic>))
+          .map(
+            (entry) =>
+                ActivityMomentView.fromJson(entry as Map<String, dynamic>),
+          )
           .toList()),
       nextCursor: value['next_cursor'] as String?,
     );
@@ -432,8 +446,8 @@ class CompanionLifecycleView {
       releasedDevices: value['released_devices'] == null
           ? null
           : ((value['released_devices'] as List<dynamic>)
-              .map((entry) => entry as String)
-              .toList()),
+                .map((entry) => entry as String)
+                .toList()),
       revision: value['revision'] as int,
     );
   }
@@ -508,8 +522,10 @@ class CompanionRosterView {
   factory CompanionRosterView.fromJson(Map<String, dynamic> value) {
     return CompanionRosterView(
       companions: ((value['companions'] as List<dynamic>)
-          .map((entry) =>
-              CompanionSummaryView.fromJson(entry as Map<String, dynamic>))
+          .map(
+            (entry) =>
+                CompanionSummaryView.fromJson(entry as Map<String, dynamic>),
+          )
           .toList()),
       contractVersion: value['contract_version'] as String?,
       defaultCompanionId: value['default_companion_id'] as String?,
@@ -601,9 +617,7 @@ class CompanionSummaryView {
 }
 
 class ControllerInvitationRequest {
-  const ControllerInvitationRequest({
-    this.ttlSeconds,
-  });
+  const ControllerInvitationRequest({this.ttlSeconds});
 
   final int? ttlSeconds;
 
@@ -614,9 +628,7 @@ class ControllerInvitationRequest {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      if (ttlSeconds != null) 'ttl_seconds': ttlSeconds,
-    };
+    return {if (ttlSeconds != null) 'ttl_seconds': ttlSeconds};
   }
 }
 
@@ -701,10 +713,7 @@ class ControllerView {
 }
 
 class ControllersView {
-  const ControllersView({
-    this.contractVersion,
-    required this.controllers,
-  });
+  const ControllersView({this.contractVersion, required this.controllers});
 
   final String? contractVersion;
 
@@ -715,7 +724,8 @@ class ControllersView {
       contractVersion: value['contract_version'] as String?,
       controllers: ((value['controllers'] as List<dynamic>)
           .map(
-              (entry) => ControllerView.fromJson(entry as Map<String, dynamic>))
+            (entry) => ControllerView.fromJson(entry as Map<String, dynamic>),
+          )
           .toList()),
     );
   }
@@ -749,8 +759,9 @@ class ConversationPageView {
       companionId: value['companion_id'] as String,
       contractVersion: value['contract_version'] as String?,
       conversations: ((value['conversations'] as List<dynamic>)
-          .map((entry) =>
-              ConversationView.fromJson(entry as Map<String, dynamic>))
+          .map(
+            (entry) => ConversationView.fromJson(entry as Map<String, dynamic>),
+          )
           .toList()),
       nextCursor: value['next_cursor'] as String?,
     );
@@ -819,18 +830,12 @@ class DefaultCompanionRequest {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'companion_id': companionId,
-      'expected_revision': expectedRevision,
-    };
+    return {'companion_id': companionId, 'expected_revision': expectedRevision};
   }
 }
 
 class DefaultCompanionView {
-  const DefaultCompanionView({
-    this.contractVersion,
-    this.defaultCompanionId,
-  });
+  const DefaultCompanionView({this.contractVersion, this.defaultCompanionId});
 
   final String? contractVersion;
 
@@ -918,22 +923,16 @@ class DeviceRemovalConditionView {
 }
 
 class DeviceRemovalRequest {
-  const DeviceRemovalRequest({
-    required this.requestId,
-  });
+  const DeviceRemovalRequest({required this.requestId});
 
   final String requestId;
 
   factory DeviceRemovalRequest.fromJson(Map<String, dynamic> value) {
-    return DeviceRemovalRequest(
-      requestId: value['request_id'] as String,
-    );
+    return DeviceRemovalRequest(requestId: value['request_id'] as String);
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'request_id': requestId,
-    };
+    return {'request_id': requestId};
   }
 }
 
@@ -959,8 +958,11 @@ class DeviceRemovalView {
   factory DeviceRemovalView.fromJson(Map<String, dynamic> value) {
     return DeviceRemovalView(
       conditions: ((value['conditions'] as List<dynamic>)
-          .map((entry) => DeviceRemovalConditionView.fromJson(
-              entry as Map<String, dynamic>))
+          .map(
+            (entry) => DeviceRemovalConditionView.fromJson(
+              entry as Map<String, dynamic>,
+            ),
+          )
           .toList()),
       contractVersion: value['contract_version'] as String?,
       deviceId: value['device_id'] as String,
@@ -1120,9 +1122,7 @@ class DevicesView {
 }
 
 class ForgetConfirmRequest {
-  const ForgetConfirmRequest({
-    required this.confirmationToken,
-  });
+  const ForgetConfirmRequest({required this.confirmationToken});
 
   final String confirmationToken;
 
@@ -1133,9 +1133,7 @@ class ForgetConfirmRequest {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'confirmation_token': confirmationToken,
-    };
+    return {'confirmation_token': confirmationToken};
   }
 }
 
@@ -1207,8 +1205,9 @@ class ForgetProposalView {
       contractVersion: value['contract_version'] as String?,
       detail: value['detail'] as String?,
       entries: ((value['entries'] as List<dynamic>)
-          .map((entry) =>
-              ForgetEntryView.fromJson(entry as Map<String, dynamic>))
+          .map(
+            (entry) => ForgetEntryView.fromJson(entry as Map<String, dynamic>),
+          )
           .toList()),
       expiresAt: value['expires_at'] as int?,
       needsConfirmation: value['needs_confirmation'] as bool,
@@ -1273,10 +1272,7 @@ class ForgetResultView {
 }
 
 class ForgetTargetRequest {
-  const ForgetTargetRequest({
-    this.action,
-    required this.target,
-  });
+  const ForgetTargetRequest({this.action, required this.target});
 
   final String? action;
 
@@ -1290,10 +1286,7 @@ class ForgetTargetRequest {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      if (action != null) 'action': action,
-      'target': target,
-    };
+    return {if (action != null) 'action': action, 'target': target};
   }
 }
 
@@ -1372,30 +1365,36 @@ class HomeView {
   factory HomeView.fromJson(Map<String, dynamic> value) {
     return HomeView(
       companionCounts: HomeCountsView.fromJson(
-          value['companion_counts'] as Map<String, dynamic>),
+        value['companion_counts'] as Map<String, dynamic>,
+      ),
       companions: value['companions'] == null
           ? null
           : ((value['companions'] as List<dynamic>)
-              .map((entry) =>
-                  CompanionSummaryView.fromJson(entry as Map<String, dynamic>))
-              .toList()),
+                .map(
+                  (entry) => CompanionSummaryView.fromJson(
+                    entry as Map<String, dynamic>,
+                  ),
+                )
+                .toList()),
       contractVersion: value['contract_version'] as String?,
       defaultCompanionId: value['default_companion_id'] as String?,
-      devices:
-          HomeCountsView.fromJson(value['devices'] as Map<String, dynamic>),
+      devices: HomeCountsView.fromJson(
+        value['devices'] as Map<String, dynamic>,
+      ),
       machineAttention: value['machine_attention'] == null
           ? null
           : ((value['machine_attention'] as List<dynamic>)
-              .map((entry) => entry as String)
-              .toList()),
+                .map((entry) => entry as String)
+                .toList()),
       memory: value['memory'] as String?,
       ownerDisplayName: value['owner_display_name'] as String?,
       ownerRevision: value['owner_revision'] as int,
       runtimeUnavailable: value['runtime_unavailable'] as String?,
       unavailable: value['unavailable'] == null
           ? null
-          : ((value['unavailable'] as Map<String, dynamic>)
-              .map((key, entry) => MapEntry(key, entry as String))),
+          : ((value['unavailable'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as String),
+            )),
     );
   }
 
@@ -1419,9 +1418,7 @@ class HomeView {
 }
 
 class HostServiceInventoryView {
-  const HostServiceInventoryView({
-    this.services,
-  });
+  const HostServiceInventoryView({this.services});
 
   final List<HostServiceView>? services;
 
@@ -1430,9 +1427,11 @@ class HostServiceInventoryView {
       services: value['services'] == null
           ? null
           : ((value['services'] as List<dynamic>)
-              .map((entry) =>
-                  HostServiceView.fromJson(entry as Map<String, dynamic>))
-              .toList()),
+                .map(
+                  (entry) =>
+                      HostServiceView.fromJson(entry as Map<String, dynamic>),
+                )
+                .toList()),
     );
   }
 
@@ -1445,9 +1444,7 @@ class HostServiceInventoryView {
 }
 
 class HostServiceMutationRequest {
-  const HostServiceMutationRequest({
-    required this.expectedRevision,
-  });
+  const HostServiceMutationRequest({required this.expectedRevision});
 
   final int expectedRevision;
 
@@ -1458,9 +1455,7 @@ class HostServiceMutationRequest {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'expected_revision': expectedRevision,
-    };
+    return {'expected_revision': expectedRevision};
   }
 }
 
@@ -1573,8 +1568,10 @@ class HostVitalsView {
       vitals: value['vitals'] == null
           ? null
           : ((value['vitals'] as List<dynamic>)
-              .map((entry) => VitalView.fromJson(entry as Map<String, dynamic>))
-              .toList()),
+                .map(
+                  (entry) => VitalView.fromJson(entry as Map<String, dynamic>),
+                )
+                .toList()),
     );
   }
 
@@ -1613,17 +1610,20 @@ class ManagementContextView {
 
   factory ManagementContextView.fromJson(Map<String, dynamic> value) {
     return ManagementContextView(
-      capabilities: ((value['capabilities'] as Map<String, dynamic>)
-          .map((key, entry) => MapEntry(key, entry as bool))),
+      capabilities: ((value['capabilities'] as Map<String, dynamic>).map(
+        (key, entry) => MapEntry(key, entry as bool),
+      )),
       contractVersion: value['contract_version'] as String?,
       defaultCompanionId: value['default_companion_id'] as String?,
-      limits: ((value['limits'] as Map<String, dynamic>)
-          .map((key, entry) => MapEntry(key, entry as int?))),
+      limits: ((value['limits'] as Map<String, dynamic>).map(
+        (key, entry) => MapEntry(key, entry as int?),
+      )),
       owner: OwnerContextView.fromJson(value['owner'] as Map<String, dynamic>),
       unavailable: value['unavailable'] == null
           ? null
-          : ((value['unavailable'] as Map<String, dynamic>)
-              .map((key, entry) => MapEntry(key, entry as String))),
+          : ((value['unavailable'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as String),
+            )),
     );
   }
 
@@ -1667,8 +1667,10 @@ class MemoryCopyView {
       contractVersion: value['contract_version'] as String?,
       recordCount: value['record_count'] as int,
       records: ((value['records'] as List<dynamic>)
-          .map((entry) =>
-              MemoryExportRecordView.fromJson(entry as Map<String, dynamic>))
+          .map(
+            (entry) =>
+                MemoryExportRecordView.fromJson(entry as Map<String, dynamic>),
+          )
           .toList()),
       takenAt: value['taken_at'] as String,
       truncated: value['truncated'] as bool,
@@ -1717,8 +1719,9 @@ class MemoryDayView {
     return MemoryDayView(
       contractVersion: value['contract_version'] as String?,
       entries: ((value['entries'] as List<dynamic>)
-          .map((entry) =>
-              MemoryEntryView.fromJson(entry as Map<String, dynamic>))
+          .map(
+            (entry) => MemoryEntryView.fromJson(entry as Map<String, dynamic>),
+          )
           .toList()),
       entryCount: value['entry_count'] as int,
       moreInWindow: value['more_in_window'] as bool,
@@ -1903,11 +1906,7 @@ class MemoryGraphNodeView {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'degree': degree,
-      'label': label,
-      'node_id': nodeId,
-    };
+    return {'degree': degree, 'label': label, 'node_id': nodeId};
   }
 }
 
@@ -1931,12 +1930,16 @@ class MemoryGraphView {
     return MemoryGraphView(
       contractVersion: value['contract_version'] as String?,
       edges: ((value['edges'] as List<dynamic>)
-          .map((entry) =>
-              MemoryGraphEdgeView.fromJson(entry as Map<String, dynamic>))
+          .map(
+            (entry) =>
+                MemoryGraphEdgeView.fromJson(entry as Map<String, dynamic>),
+          )
           .toList()),
       nodes: ((value['nodes'] as List<dynamic>)
-          .map((entry) =>
-              MemoryGraphNodeView.fromJson(entry as Map<String, dynamic>))
+          .map(
+            (entry) =>
+                MemoryGraphNodeView.fromJson(entry as Map<String, dynamic>),
+          )
           .toList()),
       truncated: value['truncated'] as bool,
     );
@@ -1986,12 +1989,14 @@ class MemoryLibraryView {
       contractVersion: value['contract_version'] as String?,
       entryCount: value['entry_count'] as int,
       materialization: MemoryMaterialization.fromJson(
-          value['materialization'] as Map<String, dynamic>),
+        value['materialization'] as Map<String, dynamic>,
+      ),
       memoryRealmId: value['memory_realm_id'] as String,
       truncated: value['truncated'] as bool,
       wings: ((value['wings'] as List<dynamic>)
           .map(
-              (entry) => MemoryWingView.fromJson(entry as Map<String, dynamic>))
+            (entry) => MemoryWingView.fromJson(entry as Map<String, dynamic>),
+          )
           .toList()),
       withheldCount: value['withheld_count'] as int,
     );
@@ -2120,7 +2125,8 @@ class MemoryWingView {
       entryCount: value['entry_count'] as int,
       rooms: ((value['rooms'] as List<dynamic>)
           .map(
-              (entry) => MemoryRoomView.fromJson(entry as Map<String, dynamic>))
+            (entry) => MemoryRoomView.fromJson(entry as Map<String, dynamic>),
+          )
           .toList()),
       wingId: value['wing_id'] as String,
     );
@@ -2254,50 +2260,54 @@ class PersonaAuthoring {
       behaviorGuidance: value['behavior_guidance'] == null
           ? null
           : ((value['behavior_guidance'] as List<dynamic>)
-              .map((entry) => entry as String)
-              .toList()),
+                .map((entry) => entry as String)
+                .toList()),
       boundaries: value['boundaries'] == null
           ? null
           : ((value['boundaries'] as List<dynamic>)
-              .map((entry) => entry as String)
-              .toList()),
+                .map((entry) => entry as String)
+                .toList()),
       characterPortrait: value['character_portrait'] as String?,
       commitments: value['commitments'] == null
           ? null
           : ((value['commitments'] as List<dynamic>)
-              .map((entry) => entry as String)
-              .toList()),
+                .map((entry) => entry as String)
+                .toList()),
       dialogueExamples: value['dialogue_examples'] == null
           ? null
           : ((value['dialogue_examples'] as List<dynamic>)
-              .map((entry) => entry as String)
-              .toList()),
+                .map((entry) => entry as String)
+                .toList()),
       modalityNotes: value['modality_notes'] == null
           ? null
-          : ((value['modality_notes'] as Map<String, dynamic>)
-              .map((key, entry) => MapEntry(key, entry as String))),
+          : ((value['modality_notes'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as String),
+            )),
       pinnedFacts: value['pinned_facts'] == null
           ? null
           : ((value['pinned_facts'] as List<dynamic>)
-              .map((entry) => entry as String)
-              .toList()),
+                .map((entry) => entry as String)
+                .toList()),
       relationshipNarrative: value['relationship_narrative'] as String?,
       safetyBoundaries: value['safety_boundaries'] == null
           ? null
           : ((value['safety_boundaries'] as List<dynamic>)
-              .map((entry) => entry as String)
-              .toList()),
+                .map((entry) => entry as String)
+                .toList()),
       selfConcept: value['self_concept'] as String?,
       traits: value['traits'] == null
           ? null
-          : ((value['traits'] as Map<String, dynamic>).map((key, entry) =>
-              MapEntry(key,
-                  PersonaTraitState.fromJson(entry as Map<String, dynamic>)))),
+          : ((value['traits'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(
+                key,
+                PersonaTraitState.fromJson(entry as Map<String, dynamic>),
+              ),
+            )),
       values: value['values'] == null
           ? null
           : ((value['values'] as List<dynamic>)
-              .map((entry) => entry as String)
-              .toList()),
+                .map((entry) => entry as String)
+                .toList()),
       voicePortrait: value['voice_portrait'] as String?,
     );
   }
@@ -2380,8 +2390,10 @@ class PersonaHistoryView {
   factory PersonaHistoryView.fromJson(Map<String, dynamic> value) {
     return PersonaHistoryView(
       chapters: ((value['chapters'] as List<dynamic>)
-          .map((entry) =>
-              PersonaChapterView.fromJson(entry as Map<String, dynamic>))
+          .map(
+            (entry) =>
+                PersonaChapterView.fromJson(entry as Map<String, dynamic>),
+          )
           .toList()),
       companionId: value['companion_id'] as String,
       contractVersion: value['contract_version'] as String?,
@@ -2398,22 +2410,16 @@ class PersonaHistoryView {
 }
 
 class PersonaRestoreRequest {
-  const PersonaRestoreRequest({
-    required this.chapterId,
-  });
+  const PersonaRestoreRequest({required this.chapterId});
 
   final String chapterId;
 
   factory PersonaRestoreRequest.fromJson(Map<String, dynamic> value) {
-    return PersonaRestoreRequest(
-      chapterId: value['chapter_id'] as String,
-    );
+    return PersonaRestoreRequest(chapterId: value['chapter_id'] as String);
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'chapter_id': chapterId,
-    };
+    return {'chapter_id': chapterId};
   }
 }
 
@@ -2453,10 +2459,7 @@ class PersonaTraitState {
 }
 
 class RecollectionView {
-  const RecollectionView({
-    this.rememberedAt,
-    this.text,
-  });
+  const RecollectionView({this.rememberedAt, this.text});
 
   final String? rememberedAt;
 
@@ -2495,8 +2498,9 @@ class RecollectionsView {
       contractVersion: value['contract_version'] as String?,
       query: value['query'] as String,
       recollections: ((value['recollections'] as List<dynamic>)
-          .map((entry) =>
-              RecollectionView.fromJson(entry as Map<String, dynamic>))
+          .map(
+            (entry) => RecollectionView.fromJson(entry as Map<String, dynamic>),
+          )
           .toList()),
     );
   }
@@ -2511,12 +2515,7 @@ class RecollectionsView {
 }
 
 class Refusal {
-  const Refusal({
-    this.code,
-    required this.kind,
-    this.reason,
-    this.retryable,
-  });
+  const Refusal({this.code, required this.kind, this.reason, this.retryable});
 
   final String? code;
 
@@ -2546,30 +2545,21 @@ class Refusal {
 }
 
 class RenameRequest {
-  const RenameRequest({
-    required this.displayName,
-  });
+  const RenameRequest({required this.displayName});
 
   final String displayName;
 
   factory RenameRequest.fromJson(Map<String, dynamic> value) {
-    return RenameRequest(
-      displayName: value['display_name'] as String,
-    );
+    return RenameRequest(displayName: value['display_name'] as String);
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'display_name': displayName,
-    };
+    return {'display_name': displayName};
   }
 }
 
 class RevokedSessionsView {
-  const RevokedSessionsView({
-    this.contractVersion,
-    required this.revokedAt,
-  });
+  const RevokedSessionsView({this.contractVersion, required this.revokedAt});
 
   final String? contractVersion;
 
@@ -2591,10 +2581,7 @@ class RevokedSessionsView {
 }
 
 class SpokenMessageView {
-  const SpokenMessageView({
-    required this.role,
-    this.text,
-  });
+  const SpokenMessageView({required this.role, this.text});
 
   final String role;
 
@@ -2608,10 +2595,7 @@ class SpokenMessageView {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'role': role,
-      if (text != null) 'text': text,
-    };
+    return {'role': role, if (text != null) 'text': text};
   }
 }
 
@@ -2755,8 +2739,10 @@ class TranscriptTurnView {
     return TranscriptTurnView(
       finishedAt: value['finished_at'] as String?,
       messages: ((value['messages'] as List<dynamic>)
-          .map((entry) =>
-              SpokenMessageView.fromJson(entry as Map<String, dynamic>))
+          .map(
+            (entry) =>
+                SpokenMessageView.fromJson(entry as Map<String, dynamic>),
+          )
           .toList()),
       startedAt: value['started_at'] as String?,
       status: value['status'] as String?,
@@ -2797,8 +2783,10 @@ class TranscriptView {
       conversationId: value['conversation_id'] as String,
       nextCursor: value['next_cursor'] as String?,
       turns: ((value['turns'] as List<dynamic>)
-          .map((entry) =>
-              TranscriptTurnView.fromJson(entry as Map<String, dynamic>))
+          .map(
+            (entry) =>
+                TranscriptTurnView.fromJson(entry as Map<String, dynamic>),
+          )
           .toList()),
     );
   }
