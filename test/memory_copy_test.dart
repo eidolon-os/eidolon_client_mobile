@@ -156,7 +156,7 @@ void main() {
         ),
       );
 
-      expect(find.textContaining('你明确让它记住的 · 相处方式'), findsOneWidget);
+      expect(find.textContaining('已整理的记录 · 相处方式'), findsOneWidget);
       expect(find.textContaining('userconfirm:'), findsNothing);
       expect(find.textContaining('interaction'), findsNothing);
     });

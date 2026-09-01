@@ -321,7 +321,7 @@ void main() {
         ),
       );
 
-      expect(find.text('你明确让它记住的'), findsOneWidget);
+      expect(find.text('已整理的记录'), findsOneWidget);
       expect(find.text('userconfirm:a7e75e91b75e38c9'), findsNothing);
       expect(find.text('关于你的背景、身份和重要价值观'), findsOneWidget);
       expect(find.textContaining('MBTI'), findsNothing);

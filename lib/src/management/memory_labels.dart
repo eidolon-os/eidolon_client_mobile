@@ -7,7 +7,7 @@
 String memoryRoomLabel(String roomId) {
   final value = roomId.trim();
   final lower = value.toLowerCase();
-  if (lower.startsWith('userconfirm')) return '你明确让它记住的';
+  if (lower.startsWith('userconfirm')) return '已整理的记录';
   if (lower.startsWith('turn:') || lower.startsWith('conversation:')) {
     return '对话中记下的';
   }
