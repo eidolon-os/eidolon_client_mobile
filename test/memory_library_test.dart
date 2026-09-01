@@ -258,7 +258,8 @@ void main() {
       // The front door remains useful while empty: it still explains the
       // model, lets the Owner switch Eidolons and offers the ways to explore.
       expect(find.byKey(const Key('memory-library-list')), findsOneWidget);
-      expect(find.text('和它聊聊，或者直接说“请记住……”。'), findsOneWidget);
+      expect(find.text('在日常对话里自然分享就好，伙伴会在后台自动整理。'), findsOneWidget);
+      expect(find.textContaining('请记住'), findsNothing);
     });
 
     testWidgets(

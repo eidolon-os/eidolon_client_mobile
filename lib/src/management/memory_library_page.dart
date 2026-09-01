@@ -463,7 +463,7 @@ class _EmptyMemory extends StatelessWidget {
             SizedBox(height: 10),
             Text('还没有记下什么'),
             SizedBox(height: 4),
-            Text('和它聊聊，或者直接说“请记住……”。'),
+            Text('在日常对话里自然分享就好，伙伴会在后台自动整理。'),
           ],
         ),
       );
