@@ -55,6 +55,14 @@ class DeviceSetupCoordinator {
     required DeviceProvisioningCandidate candidate,
     required DeviceWifiCredentials credentials,
     required DeviceOnboardingTarget onboardingTarget,
+    /// The standing this device will present, signed by the Host **before** the
+    /// phone joined the device's access point.
+    ///
+    /// It cannot be fetched from here. Opening a session moves this phone onto
+    /// the device's own network, where the Host is not reachable at all — the
+    /// same ordering the Host target is read under, and the same failure if it
+    /// is ignored: an 8-second timeout at the one moment the device is ready.
+    required CommissioningVoucher voucher,
     String? companionId,
   }) async {
     try {
@@ -92,25 +100,6 @@ class DeviceSetupCoordinator {
         clearFailure: true,
       );
       await checkpoints.save(checkpoint);
-      // The device carries no identity material of its own, so the standing to
-      // ask for admission is minted here, while a person is in front of it and
-      // this Controller's authorization stands. It travels with the trust
-      // handover: a device that trusted an Owner Domain but could not introduce
-      // itself to it would sit silent, and the only symptom would be an
-      // approval queue that never shows it.
-      final CommissioningVoucher voucher;
-      try {
-        voucher = await admission.issueCommissioningVoucher(
-          operationalSpkiSha256: session.descriptor.identityFingerprint,
-          presentedDeviceBaseId: session.descriptor.deviceBaseId,
-        );
-      } catch (error) {
-        throw DeviceSetupException(
-          code: 'commissioning_voucher_unavailable',
-          message: 'Host could not sign this device\'s commissioning: $error',
-          retryable: true,
-        );
-      }
       final evidence = await session.configureNetwork(
         credentials: credentials,
         onboardingTarget: onboardingTarget.withCommissioningVoucher(

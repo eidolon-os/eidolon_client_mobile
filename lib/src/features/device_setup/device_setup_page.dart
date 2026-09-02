@@ -53,6 +53,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   List<DeviceProvisioningCandidate> _candidates = const [];
   DeviceProvisioningCandidate? _candidate;
   DeviceProvisioningSession? _session;
+  DeviceProvisioningDescriptor? _descriptor;
+  CommissioningVoucher? _voucher;
   List<DeviceWifiNetwork> _networks = const [];
   DeviceWifiNetwork? _network;
   DeviceOnboardingTarget? _target;
@@ -148,15 +150,53 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   Future<void> _select(DeviceProvisioningCandidate candidate) => _run(() async {
         setState(() => _progress = '正在读取设备身份');
         final session = await widget.transport.open(candidate);
+        final descriptor = session.descriptor;
         final networks = await session.scanNetworks();
+        // Everything the Host has to answer for this device is asked for here,
+        // between leaving the device's access point and going back to it. The
+        // device carries no identity material, so the standing it will present
+        // is signed now, for the key it just showed us — and it can only be
+        // asked for from the Host's own network. Doing it a step later, with
+        // the session still open, is an 8-second timeout at the one moment the
+        // device is finally ready to be told something.
+        await session.close();
+        setState(() => _progress = '正在向主机取得这台设备的准入凭据');
+        final voucher = await _issueVoucher(descriptor);
         setState(() {
           _candidate = candidate;
-          _session = session;
+          _session = null;
+          _descriptor = descriptor;
+          _voucher = voucher;
           _networks = networks;
           _step = _Step.choosingNetwork;
           _progress = null;
         });
       });
+
+  /// Ask the Host to sign this device's standing, once this phone is back on
+  /// the Host's network.
+  ///
+  /// Releasing the device's network is not instant on Android, so a first
+  /// attempt can still leave from the wrong side of the switch. Retried rather
+  /// than reported: the alternative is telling the operator that the Host is
+  /// unreachable at the exact moment it is merely still being handed back.
+  Future<CommissioningVoucher> _issueVoucher(
+    DeviceProvisioningDescriptor descriptor,
+  ) async {
+    Object? failure;
+    for (var attempt = 0; attempt < 4; attempt++) {
+      try {
+        return await widget.admission.issueCommissioningVoucher(
+          operationalSpkiSha256: descriptor.identityFingerprint,
+          presentedDeviceBaseId: descriptor.deviceBaseId,
+        );
+      } catch (error) {
+        failure = error;
+        await Future<void>.delayed(const Duration(seconds: 3));
+      }
+    }
+    throw Exception('主机没有为这台设备签发准入凭据：$failure');
+  }
 
   Future<void> _finish() async {
     final ssid = (_network?.ssid ?? _hiddenSsid.text).trim();
@@ -174,10 +214,18 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
       if (target == null) {
         throw Exception('还没有读到这台 Host 的信息,请退回上一步重新查找设备。');
       }
+      final voucher = _voucher;
+      if (voucher == null) {
+        throw Exception('还没有这台设备的准入凭据,请退回上一步重新选择设备。');
+      }
       _activeSetupId ??= _uuidV4();
       _activeRequestId ??= _uuidV4();
+      // Back onto the device's access point, now carrying everything the Host
+      // had to say.
+      final session = _session ?? await widget.transport.open(_candidate!);
+      _session = session;
       final coordinator = _coordinator(
-        transport: _OpenSessionTransport(widget.transport, _session!),
+        transport: _OpenSessionTransport(widget.transport, session),
       );
       final checkpoint = await coordinator.provisionAndAdmit(
         setupId: _activeSetupId!,
@@ -186,6 +234,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         credentials:
             DeviceWifiCredentials(ssid: ssid, password: _password.text),
         onboardingTarget: target,
+        voucher: voucher,
       );
       networkCommitted = checkpoint.provisioningState ==
           DeviceProvisioningState.networkConfigured;
@@ -404,10 +453,10 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         children: [
           Text('选择家庭 Wi-Fi', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
-          if (_session != null)
+          if (_descriptor != null)
             Text(
               key: const Key('provisionable-device'),
-              '${_session!.descriptor.displayName} · ${_session!.descriptor.deviceId}',
+              '${_descriptor!.displayName} · ${_descriptor!.deviceId}',
             ),
           const SizedBox(height: 12),
           for (final network in _networks)

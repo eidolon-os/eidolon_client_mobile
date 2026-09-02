@@ -64,6 +64,7 @@ void main() {
         password: 'not-persisted',
       ),
       onboardingTarget: deviceOnboardingTargetFixture(),
+      voucher: _voucher,
       companionId: 'companion-1',
     );
 
@@ -83,15 +84,15 @@ void main() {
     expect(result.encode(), isNot(contains('not-persisted')));
   });
 
-  test('the standing a device needs is minted before trust is handed over',
+  test('the standing is carried into the handover, never fetched from inside it',
       () async {
-    // The device carries no identity material, so this is the only thing that
-    // makes its first Proposal possible. Two properties are the point: the
-    // voucher is asked for while the session is open — a person is in front of
-    // the device then, and this Controller's authorization stands — and it
-    // travels with the trust handover rather than after it, because a device
-    // that trusted an Owner Domain but could not introduce itself to it would
-    // sit silent with nothing to show for it.
+    // The device carries no identity material, so this voucher is the only
+    // thing that makes its first Proposal possible — and it has to be signed
+    // before this phone joins the device's access point. Asking for it from
+    // here, with the session open, reaches for a Host that is not on the
+    // network any more: it failed on real hardware as an 8-second timeout at
+    // the one moment the device was finally ready to be told something. The
+    // coordinator therefore takes the voucher and asks for nothing.
     final session = _Session(_descriptor);
     final admission = _Admission(_projection(state: 'pending_review'));
     final coordinator = _coordinator(
@@ -109,17 +110,10 @@ void main() {
         password: 'not-persisted',
       ),
       onboardingTarget: deviceOnboardingTargetFixture(),
+      voucher: _voucher,
     );
 
-    expect(admission.voucherRequests, hasLength(1));
-    expect(
-      admission.voucherRequests.single.operationalSpkiSha256,
-      _setup.identityFingerprint,
-    );
-    // This device has never been commissioned, so it presents no identity and
-    // the Host mints one. A device that presented its own would be forwarded
-    // and still not believed: only Hub knows what it issued.
-    expect(admission.voucherRequests.single.presentedDeviceBaseId, isNull);
+    expect(admission.voucherRequests, isEmpty);
     expect(
       session.handedOverTarget?.commissioningVoucher,
       'header.payload.signature',
@@ -145,6 +139,7 @@ void main() {
       candidate: _candidate,
       credentials: const DeviceWifiCredentials(ssid: 'Home', password: 'pw'),
       onboardingTarget: deviceOnboardingTargetFixture(),
+      voucher: _voucher,
     );
     expect(failed.admissionState, DeviceAdmissionState.failed);
     expect(failed.enrollmentId, 'enrollment_01');
@@ -244,6 +239,7 @@ void main() {
         password: 'not-persisted',
       ),
       onboardingTarget: deviceOnboardingTargetFixture(),
+      voucher: _voucher,
       companionId: 'companion-1',
     );
 
@@ -268,6 +264,7 @@ void main() {
         password: 'not-persisted',
       ),
       onboardingTarget: deviceOnboardingTargetFixture(),
+      voucher: _voucher,
       companionId: 'companion-1',
     );
 
@@ -328,6 +325,13 @@ EnrollmentRecoveryProjectionV1 _projection({
       claimState: claimState,
       claimOwnerDomainGeneration: claimOwnerDomainGeneration,
     );
+
+final _voucher = CommissioningVoucher(
+  voucher: 'header.payload.signature',
+  jti: 'jti-0123456789abcdef0123456789abcdef',
+  deviceBaseId: 'device-base-${'a' * 64}',
+  expiresAt: DateTime.utc(2027),
+);
 
 DeviceSetupCheckpoint _checkpoint(String setupId) => DeviceSetupCheckpoint(
       contractVersion: DeviceSetupCheckpoint.currentContractVersion,
