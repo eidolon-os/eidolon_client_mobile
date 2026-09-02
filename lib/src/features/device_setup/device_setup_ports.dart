@@ -18,14 +18,6 @@ abstract interface class DeviceProvisioningSession {
 
   Future<List<DeviceWifiNetwork>> scanNetworks();
 
-  /// Run [action] with this phone's requests going to the Owner's network.
-  ///
-  /// Joining a device's access point takes the whole process with it, so the
-  /// Host — which has to sign this device's standing, for the key only this
-  /// session can show — is unreachable for as long as the session is held.
-  /// The session stays open; only the routing moves, and it moves back.
-  Future<T> overOwnerNetwork<T>(Future<T> Function() action);
-
   /// Configures only the device's network and onboarding destination.
   /// Host Setup codes and Controller credentials never cross this port.
   Future<CommissioningStatusEvidenceV1> configureNetwork({

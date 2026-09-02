@@ -113,8 +113,6 @@ class DeviceProvisioningManager(
     private val connectivity = context.applicationContext
         .getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
-    private var ownerNetwork: Network? = null
-    private var deviceNetwork: Network? = null
     private val lock = Any()
     private var device: ESPDevice? = null
     private var connectResult: PendingResult? = null
@@ -315,12 +313,6 @@ class DeviceProvisioningManager(
 
     private fun joinDeviceNetwork(transportId: String) {
         val pending = synchronized(lock) { connectResult } ?: return
-        // The network this process is on before it is bound to the device's.
-        // Kept because the Host has to be asked something in the middle of a
-        // session, and every socket this process opens while the session is
-        // held goes over the device instead — a Host that is present and
-        // reachable then answers nothing at all.
-        ownerNetwork = connectivity.activeNetwork
         val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             // Without this, Android validates the network, finds no internet
@@ -338,7 +330,6 @@ class DeviceProvisioningManager(
                 // network. The commissioning adapter retains this lease through
                 // committed terminal evidence and its ACK, then releases it
                 // before the next Host request.
-                deviceNetwork = network
                 connectivity.bindProcessToNetwork(network)
                 mainHandler.post { startSession(transportId, pending) }
             }
@@ -507,38 +498,6 @@ class DeviceProvisioningManager(
                 }
             }
         })
-    }
-
-    /** Send this process's requests over the Owner's network again, session intact.
-     *
-     * Joining the device's access point binds the whole process to it, so a
-     * request meant for the Host leaves by the one link that cannot reach it.
-     * Leaving and rejoining the device to get around that costs a second
-     * system consent for the same setup, and Android stops granting it: on
-     * real hardware the rejoin was cancelled outright. The session is left
-     * open and only the routing moves.
-     */
-    fun useOwnerNetwork(result: MethodChannel.Result) {
-        val owner = ownerNetwork
-        if (owner == null) {
-            result.error("OWNER_NETWORK_UNKNOWN", "No Owner network was recorded", null)
-            return
-        }
-        connectivity.bindProcessToNetwork(owner)
-        Log.i(TAG, "Requests now leave by the Owner's network")
-        result.success(null)
-    }
-
-    /** Point this process back at the device, for the rest of the session. */
-    fun useDeviceNetwork(result: MethodChannel.Result) {
-        val network = deviceNetwork
-        if (network == null) {
-            result.error("PROVISIONING_CLOSED", "No setup session is open", null)
-            return
-        }
-        connectivity.bindProcessToNetwork(network)
-        Log.i(TAG, "Requests leave by the device's network again")
-        result.success(null)
     }
 
     /** Tell the device which Host it belongs to, and hear whether it agrees. */
@@ -874,7 +833,6 @@ class DeviceProvisioningManager(
         networkCallback = null
         // Give the phone its own network back before anything else is asked of
         // it — the Host is not on the device's access point.
-        deviceNetwork = null
         connectivity.bindProcessToNetwork(null)
         device?.let { espDevice ->
             try {

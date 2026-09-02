@@ -178,24 +178,17 @@ class _Admission implements DeviceAdmissionPort {
   @override
   Future<CommissioningVoucher> issueCommissioningVoucher({
     required String operationalSpkiSha256,
-    String? presentedDeviceBaseId,
   }) async {
-    voucherRequests.add(
-      (
-        operationalSpkiSha256: operationalSpkiSha256,
-        presentedDeviceBaseId: presentedDeviceBaseId,
-      ),
-    );
+    voucherRequests.add(operationalSpkiSha256);
     return CommissioningVoucher(
       voucher: 'header.payload.signature',
       jti: 'jti-${voucherRequests.length}',
-      deviceBaseId: presentedDeviceBaseId ?? 'device-base-${'a' * 64}',
+      deviceBaseId: 'device-base-${'a' * 64}',
       expiresAt: DateTime.utc(2027),
     );
   }
 
-  final List<({String operationalSpkiSha256, String? presentedDeviceBaseId})>
-      voucherRequests = [];
+  final List<String> voucherRequests = [];
 
   _Admission(this.current);
 
@@ -248,24 +241,17 @@ class _GoneAdmission implements DeviceAdmissionPort {
   @override
   Future<CommissioningVoucher> issueCommissioningVoucher({
     required String operationalSpkiSha256,
-    String? presentedDeviceBaseId,
   }) async {
-    voucherRequests.add(
-      (
-        operationalSpkiSha256: operationalSpkiSha256,
-        presentedDeviceBaseId: presentedDeviceBaseId,
-      ),
-    );
+    voucherRequests.add(operationalSpkiSha256);
     return CommissioningVoucher(
       voucher: 'header.payload.signature',
       jti: 'jti-${voucherRequests.length}',
-      deviceBaseId: presentedDeviceBaseId ?? 'device-base-${'a' * 64}',
+      deviceBaseId: 'device-base-${'a' * 64}',
       expiresAt: DateTime.utc(2027),
     );
   }
 
-  final List<({String operationalSpkiSha256, String? presentedDeviceBaseId})>
-      voucherRequests = [];
+  final List<String> voucherRequests = [];
 
   int recoverCalls = 0;
 
