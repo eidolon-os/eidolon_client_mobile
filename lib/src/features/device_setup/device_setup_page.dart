@@ -61,6 +61,15 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   String? _error;
   String? _progress;
   bool _busy = false;
+  /// Live while the screen is showing an admission that has not finished.
+  ///
+  /// The spinner and this timer are one thing on purpose. The panel used to
+  /// render "已批准，等待设备领取 Grant" beside a spinner and then never ask
+  /// again — the Host converged eight seconds later and the screen kept the
+  /// snapshot for as long as the operator stood there. A spinner is a claim
+  /// that something is in progress, so the only honest way to show one is to
+  /// be asking.
+  Timer? _admissionWatch;
 
   /// A resumed setup the Host has already finished refusing.
   ///
@@ -96,6 +105,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
 
   @override
   void dispose() {
+    _keepAskingWhileWaiting(waiting: false);
     WidgetsBinding.instance.removeObserver(this);
     _password.dispose();
     _hiddenSsid.dispose();
@@ -298,6 +308,27 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         _showCheckpoint(recovered);
       });
 
+  /// Ask the Host again until the answer stops changing.
+  ///
+  /// `waiting` is the page's own existing notion of "not over" — neither ready
+  /// nor refused — so there is no second definition of doneness to keep in
+  /// step. Asking stops at a terminal answer, when the operator starts over,
+  /// and when the page goes away.
+  void _keepAskingWhileWaiting({required bool waiting}) {
+    if (!waiting) {
+      _admissionWatch?.cancel();
+      _admissionWatch = null;
+      return;
+    }
+    _admissionWatch ??= Timer.periodic(
+      // Long enough that a converging Enrollment is not polled pointlessly,
+      // short enough that a person watching the screen sees it land: the Host
+      // took eight seconds to go from approved to ClaimActive.
+      const Duration(seconds: 3),
+      (_) => unawaited(_autoResumePersistedAdmission()),
+    );
+  }
+
   void _showCheckpoint(DeviceSetupCheckpoint checkpoint) {
     if (!mounted) return;
     setState(() {
@@ -320,6 +351,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         _error = checkpoint.failure?.message;
       }
     });
+    _keepAskingWhileWaiting(waiting: !checkpoint.isReady && !_refused);
   }
 
   /// Let go of a refused setup so the next device can be set up.
@@ -332,6 +364,9 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         if (setupId != null) {
           await widget.checkpoints.remove(setupId);
         }
+        // Nothing left to converge on; the periodic ask would otherwise keep
+        // scanning for a checkpoint that has just been forgotten.
+        _keepAskingWhileWaiting(waiting: false);
         if (!mounted) return;
         setState(() {
           _activeSetupId = null;

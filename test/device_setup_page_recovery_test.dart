@@ -47,6 +47,54 @@ void main() {
     expect(find.text('设备已设置完成'), findsOneWidget);
     expect(admission.decideCalls, 0);
   });
+
+  testWidgets('a spinner means the page is still asking the Host',
+      (tester) async {
+    // The panel used to render "已批准，等待设备领取 Grant" beside a spinner and
+    // then never ask again: the Host converged eight seconds later and the
+    // screen kept the snapshot for as long as the operator stood there. A
+    // spinner is a claim that something is in progress, so it has to be tied
+    // to asking — and the asking has to stop when the answer is terminal.
+    final store = InMemoryDeviceSetupCheckpointStore();
+    await store.save(_checkpoint());
+    final admission = _Admission(
+      _projection(state: 'approved_awaiting_handoff', withDecision: true),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DeviceSetupPage(
+          transport: _Transport(),
+          admission: admission,
+          checkpoints: store,
+          loadTarget: () async => deviceOnboardingTargetFixture(),
+        ),
+      ),
+    );
+    await _pumpUntil(tester, () => admission.recoverCalls == 1);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    // No lifecycle event, no tap: standing still is enough.
+    await tester.pump(const Duration(seconds: 3));
+    await _pumpUntil(tester, () => admission.recoverCalls >= 2);
+    expect(admission.recoverCalls, greaterThanOrEqualTo(2));
+
+    admission.current = _projection(
+      state: 'grant_acknowledged',
+      withDecision: true,
+      withDelivery: true,
+      claimState: 'active',
+    );
+    await tester.pump(const Duration(seconds: 3));
+    await _pumpUntil(tester, () => find.text('设备已设置完成').evaluate().isNotEmpty);
+
+    expect(find.text('设备已设置完成'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    final settled = admission.recoverCalls;
+    await tester.pump(const Duration(seconds: 9));
+    expect(admission.recoverCalls, settled,
+        reason: 'a terminal answer stops the asking');
+  });
 }
 
 Future<void> _pumpUntil(
