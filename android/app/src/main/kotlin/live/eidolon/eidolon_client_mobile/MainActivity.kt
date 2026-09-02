@@ -105,6 +105,8 @@ class MainActivity : FlutterActivity() {
                     result,
                 )
                 "provisioningScanNetworks" -> deviceProvisioning.scanNetworks(result)
+                "provisioningUseOwnerNetwork" -> deviceProvisioning.useOwnerNetwork(result)
+                "provisioningUseDeviceNetwork" -> deviceProvisioning.useDeviceNetwork(result)
                 "provisioningHandOverTrust" -> deviceProvisioning.handOverTrust(
                     call.argument<String>("payloadJson") ?: error("payloadJson is required"),
                     result,

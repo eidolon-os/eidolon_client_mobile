@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly SDK_COMMIT="bc754c162362ed9326d7e18d80b7e9d86db28ce1"
+readonly SDK_COMMIT="c55de60ebf54e0395bdd9dede86ce1c17acc0c6c"
 readonly SDK_BINDING="contracts/device_foundation/v1/generated/dart/device_foundation_v1.dart"
 readonly MOBILE_BINDING="lib/src/generated/device_foundation_v1.dart"
 readonly SDK_CONSUMER_FIXTURE="contracts/device_foundation/v1/examples/valid/admission-consumer-surface.json"

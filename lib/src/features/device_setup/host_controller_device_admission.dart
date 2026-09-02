@@ -21,10 +21,8 @@ class HostControllerDeviceAdmission implements DeviceAdmissionPort {
   @override
   Future<CommissioningVoucher> issueCommissioningVoucher({
     required String operationalSpkiSha256,
-    String? presentedDeviceBaseId,
   }) => _controller.issueCommissioningVoucher(
         operationalSpkiSha256: operationalSpkiSha256,
-        presentedDeviceBaseId: presentedDeviceBaseId,
       );
 
   @override

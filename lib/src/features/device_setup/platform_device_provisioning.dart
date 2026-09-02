@@ -169,6 +169,18 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
   final DeviceProvisioningDescriptor descriptor;
 
   @override
+  Future<T> overOwnerNetwork<T>(Future<T> Function() action) async {
+    await _channel.invokeMethod<void>('provisioningUseOwnerNetwork');
+    try {
+      return await action();
+    } finally {
+      // Always handed back, including when the Host refused: the rest of this
+      // session speaks to the device and nothing else.
+      await _channel.invokeMethod<void>('provisioningUseDeviceNetwork');
+    }
+  }
+
+  @override
   Future<List<DeviceWifiNetwork>> scanNetworks() async {
     final raw = await _channel.invokeListMethod<Object?>(
       'provisioningScanNetworks',

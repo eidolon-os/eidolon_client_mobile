@@ -629,7 +629,6 @@ class HostProductController extends ChangeNotifier {
   /// Domain to name until the Workspace exists.
   Future<CommissioningVoucher> issueCommissioningVoucher({
     required String operationalSpkiSha256,
-    String? presentedDeviceBaseId,
   }) {
     if (!(_workspace?.isReady ?? false)) {
       throw const HostControllerAuthorizationException(
@@ -638,7 +637,6 @@ class HostProductController extends ChangeNotifier {
     }
     return _deviceAdmissionRepository.issueCommissioningVoucher(
       operationalSpkiSha256: operationalSpkiSha256,
-      presentedDeviceBaseId: presentedDeviceBaseId,
     );
   }
 

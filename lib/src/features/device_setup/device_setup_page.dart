@@ -152,19 +152,21 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         final session = await widget.transport.open(candidate);
         final descriptor = session.descriptor;
         final networks = await session.scanNetworks();
-        // Everything the Host has to answer for this device is asked for here,
-        // between leaving the device's access point and going back to it. The
-        // device carries no identity material, so the standing it will present
-        // is signed now, for the key it just showed us — and it can only be
-        // asked for from the Host's own network. Doing it a step later, with
-        // the session still open, is an 8-second timeout at the one moment the
-        // device is finally ready to be told something.
-        await session.close();
+        // The Host has to sign this device's standing for the key it just
+        // showed, and the Host is only reachable over the Owner's network —
+        // this session holds the process on the device's. The session stays
+        // open and the routing moves for exactly this one call: leaving the
+        // device and coming back costs a second system consent that Android
+        // stops granting, which on real hardware cancelled the setup outright.
         setState(() => _progress = '正在向主机取得这台设备的准入凭据');
-        final voucher = await _issueVoucher(descriptor);
+        final voucher = await session.overOwnerNetwork(
+          () => widget.admission.issueCommissioningVoucher(
+            operationalSpkiSha256: descriptor.identityFingerprint,
+          ),
+        );
         setState(() {
           _candidate = candidate;
-          _session = null;
+          _session = session;
           _descriptor = descriptor;
           _voucher = voucher;
           _networks = networks;
@@ -172,31 +174,6 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           _progress = null;
         });
       });
-
-  /// Ask the Host to sign this device's standing, once this phone is back on
-  /// the Host's network.
-  ///
-  /// Releasing the device's network is not instant on Android, so a first
-  /// attempt can still leave from the wrong side of the switch. Retried rather
-  /// than reported: the alternative is telling the operator that the Host is
-  /// unreachable at the exact moment it is merely still being handed back.
-  Future<CommissioningVoucher> _issueVoucher(
-    DeviceProvisioningDescriptor descriptor,
-  ) async {
-    Object? failure;
-    for (var attempt = 0; attempt < 4; attempt++) {
-      try {
-        return await widget.admission.issueCommissioningVoucher(
-          operationalSpkiSha256: descriptor.identityFingerprint,
-          presentedDeviceBaseId: descriptor.deviceBaseId,
-        );
-      } catch (error) {
-        failure = error;
-        await Future<void>.delayed(const Duration(seconds: 3));
-      }
-    }
-    throw Exception('主机没有为这台设备签发准入凭据：$failure');
-  }
 
   Future<void> _finish() async {
     final ssid = (_network?.ssid ?? _hiddenSsid.text).trim();
@@ -220,12 +197,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
       }
       _activeSetupId ??= _uuidV4();
       _activeRequestId ??= _uuidV4();
-      // Back onto the device's access point, now carrying everything the Host
-      // had to say.
-      final session = _session ?? await widget.transport.open(_candidate!);
-      _session = session;
       final coordinator = _coordinator(
-        transport: _OpenSessionTransport(widget.transport, session),
+        transport: _OpenSessionTransport(widget.transport, _session!),
       );
       final checkpoint = await coordinator.provisionAndAdmit(
         setupId: _activeSetupId!,

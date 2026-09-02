@@ -18,6 +18,14 @@ abstract interface class DeviceProvisioningSession {
 
   Future<List<DeviceWifiNetwork>> scanNetworks();
 
+  /// Run [action] with this phone's requests going to the Owner's network.
+  ///
+  /// Joining a device's access point takes the whole process with it, so the
+  /// Host — which has to sign this device's standing, for the key only this
+  /// session can show — is unreachable for as long as the session is held.
+  /// The session stays open; only the routing moves, and it moves back.
+  Future<T> overOwnerNetwork<T>(Future<T> Function() action);
+
   /// Configures only the device's network and onboarding destination.
   /// Host Setup codes and Controller credentials never cross this port.
   Future<CommissioningStatusEvidenceV1> configureNetwork({
@@ -34,15 +42,12 @@ abstract interface class DeviceProvisioningSession {
 abstract interface class DeviceAdmissionPort {
   /// Ask the Host to sign the standing this device needs to be admitted.
   ///
-  /// [operationalSpkiSha256] is the fingerprint the device stated in its own
-  /// setup descriptor; [presentedDeviceBaseId] is the identity it says it
-  /// already holds, forwarded and not vouched for. Which of the two the Host
-  /// signs — that identity, or a newly minted one — is Hub's answer, not this
-  /// controller's: a device that could name itself would be choosing the anchor
-  /// its whole Claim history hangs from.
+  /// The key fingerprint is all this carries. Which identity the Host signs —
+  /// one it already issued to that key, or a new one — is Hub's answer, and
+  /// the device is never asked: a Body that could name itself would be
+  /// choosing the anchor its whole Claim history hangs from.
   Future<CommissioningVoucher> issueCommissioningVoucher({
     required String operationalSpkiSha256,
-    String? presentedDeviceBaseId,
   });
 
   Future<EnrollmentProposalPageV1> listRecovery({

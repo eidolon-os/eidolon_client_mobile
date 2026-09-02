@@ -81,9 +81,6 @@ class DeviceProvisioningDescriptor {
   String get displayName => setup.displayName;
   String get sessionId => setup.sessionId;
   String get identityFingerprint => setup.identityFingerprint;
-
-  /// The identity this device says it already holds, or null if it holds none.
-  String? get deviceBaseId => setup.deviceBaseId;
   SetupDescriptorTrustV1 get trust => setup.trust;
 }
 

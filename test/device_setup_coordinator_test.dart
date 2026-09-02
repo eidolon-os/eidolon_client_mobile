@@ -391,6 +391,14 @@ class _Session implements DeviceProvisioningSession {
   }
 
   @override
+  Future<T> overOwnerNetwork<T>(Future<T> Function() action) async {
+    ownerNetworkCalls += 1;
+    return action();
+  }
+
+  int ownerNetworkCalls = 0;
+
+  @override
   Future<List<DeviceWifiNetwork>> scanNetworks() async => const [];
 }
 

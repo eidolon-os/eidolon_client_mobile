@@ -581,13 +581,11 @@ class HostDeviceAdmissionRepository {
 
   Future<CommissioningVoucher> issueCommissioningVoucher({
     required String operationalSpkiSha256,
-    String? presentedDeviceBaseId,
   }) => _session.execute(
     (client, baseUrl, accessToken) => client.issueCommissioningVoucher(
       baseUrl,
       accessToken: accessToken,
       operationalSpkiSha256: operationalSpkiSha256,
-      presentedDeviceBaseId: presentedDeviceBaseId,
     ),
   );
 

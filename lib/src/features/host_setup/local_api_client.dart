@@ -205,16 +205,13 @@ class LocalApiClient {
   /// that key, and does not need to: the binding only has to say which key it
   /// is, so a voucher read off the wire is useless to anything else.
   ///
-  /// [presentedDeviceBaseId] is whatever identity the device says it already
-  /// has, forwarded and not vouched for. The Host asks Hub whether it issued
-  /// that identity to this very key and mints a new one otherwise, which is
-  /// what lets a removed device come back as itself without letting any device
+  /// Which identity is signed is the Host's answer, resolved from that key
+  /// against what Hub has issued — the device is never asked, so it can never
   /// name itself.
   Future<CommissioningVoucher> issueCommissioningVoucher(
     String baseUrl, {
     required String accessToken,
     required String operationalSpkiSha256,
-    String? presentedDeviceBaseId,
   }) async {
     final origin = parseBaseUri(baseUrl);
     final response = await _httpClient
@@ -227,8 +224,6 @@ class LocalApiClient {
           body: jsonEncode({
             'contract_version': '1',
             'operational_spki_sha256': operationalSpkiSha256,
-            if (presentedDeviceBaseId != null)
-              'presented_device_base_id': presentedDeviceBaseId,
           }),
         )
         .timeout(timeout);
