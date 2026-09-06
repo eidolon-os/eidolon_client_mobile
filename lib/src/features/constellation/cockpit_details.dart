@@ -424,8 +424,10 @@ Widget deviceSheetBody(CockpitDevice device, {String companionName = ''}) =>
         FactTable(
           rows: <(String, String)>[
             ('名称', deviceShortName(device)),
-            ('形态', deviceTypeLabel(device)),
-            ('硬件', device.kind),
+            // 「形态」曾在这里，读 device.kind 猜物理/虚拟。那个字段是 Manifest
+            // 标识，不是形态，而这条 wire 上没有任何字段说得出形态 —— 所以这里
+            // 不再说。下面这行按它真实的身份标注。
+            ('Manifest', device.kind.isEmpty ? '—' : device.kind),
             ('角色', device.role.isEmpty ? '—' : device.role),
             ('在场', devicePresenceLabel(device)),
             ('归属伙伴', companionName.isEmpty ? '未绑定' : companionName),
@@ -434,8 +436,11 @@ Widget deviceSheetBody(CockpitDevice device, {String companionName = ''}) =>
               ('能力', device.capabilities.join('、')),
           ],
         ),
-        if (device.preparedWebBody)
-          const SheetNote(text: '这是一个已经备好、但还没有附身的 Web 身体。既不是在线，也不是故障。'),
+        if (device.presenceUnobserved)
+          const SheetNote(
+            text: '这台身体在主人的名册上，但没有任何权威回答过它此刻在不在 —— '
+                '这台主机上没有东西在观测它。既不是在线，也不是故障。',
+          ),
       ],
     );
 

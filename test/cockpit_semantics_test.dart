@@ -241,7 +241,7 @@ void main() {
     CockpitDevice device({
       bool online = false,
       String status = 'active',
-      bool prepared = false,
+      bool unobserved = false,
       String kind = 'esp32',
     }) =>
         CockpitDevice(
@@ -250,13 +250,13 @@ void main() {
           kind: kind,
           status: status,
           online: online,
-          preparedWebBody: prepared,
+          presenceUnobserved: unobserved,
         );
 
-    test('备好的 Web 身体既不是在线也不是故障', () {
-      final prepared = device(kind: 'web', prepared: true);
-      expect(devicePresenceLabel(prepared), '已准备');
-      expect(devicePresenceTone(prepared), CockpitTone.idle);
+    test('没人观测过的身体既不是在线也不是故障', () {
+      final unobserved = device(status: 'unknown', unobserved: true);
+      expect(devicePresenceLabel(unobserved), '无人观测');
+      expect(devicePresenceTone(unobserved), CockpitTone.idle);
     });
 
     test('离线是故障色，未探测是未知', () {
@@ -265,10 +265,24 @@ void main() {
       expect(devicePresenceTone(device(status: 'unknown')), CockpitTone.idle);
     });
 
-    test('形态只看硬件，不看角色', () {
-      expect(deviceTypeLabel(device(kind: 'web')), '虚拟身体');
-      expect(deviceTypeLabel(device(kind: 'raspberry-pi5')), '物理身体');
-      expect(deviceTypeLabel(device(kind: 'unknown')), '设备');
+    test('Manifest 标识不参与任何在场措辞', () {
+      // device.kind 里放的是 Manifest 标识，不是硬件类别（见 CockpitDevice.kind）。
+      // 曾经有一个 deviceTypeLabel 按子串把它读成「虚拟身体」/「物理身体」，
+      // 于是一个叫 eidolon-webcam-… 的 Manifest 会被说成虚拟身体，而一个真的
+      // Web 身体只要标识里不含 web 就被说成物理身体。现在没有哪句话读它。
+      for (final kind in const <String>[
+        'eidolon-webcam-s3-v1',
+        'eidolon-phone-body-v1',
+        'web',
+        '',
+      ]) {
+        expect(
+          devicePresenceLabel(device(kind: kind, status: 'unknown', unobserved: true)),
+          '无人观测',
+        );
+        expect(devicePresenceLabel(device(kind: kind, online: true)), '在线');
+        expect(devicePresenceLabel(device(kind: kind, status: 'offline')), '离线');
+      }
     });
 
     test('没有名字时退回可读的尾号，而不是甩一串标识', () {

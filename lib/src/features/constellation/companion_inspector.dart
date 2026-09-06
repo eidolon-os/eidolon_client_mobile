@@ -410,7 +410,7 @@ class _Bodies extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '${deviceTypeLabel(device)} · ${device.role.isEmpty ? device.kind : device.role}',
+                        device.role.isEmpty ? device.kind : device.role,
                         style: Cockpit.mono(size: 9, color: Cockpit.inkDim),
                       ),
                     ],

@@ -215,12 +215,17 @@ CockpitDevice _device(Map<String, Object?> json) {
     role: _stringOr(json['role']),
     lastSeenAt: _timeOrNull(presence['observed_at']),
     capabilities: _strings(json['capabilities']),
-    // A web body nobody has answered for is "prepared", not offline — and only
-    // when the absence of an answer is what happened.
-    preparedWebBody:
-        state == wire.presenceUnknown &&
-        source == wire.presenceSourceNone &&
-        _stringOr(json['device_kind']).toLowerCase().contains('web'),
+    // Nobody with standing has answered for this body. Not offline — offline is
+    // something an authority says.
+    //
+    // This used to also require `device_kind` to contain "web", which read a
+    // Manifest identifier as if it were a hardware class (see
+    // [CockpitDevice.kind]) and got both directions wrong. Nothing on this wire
+    // says what a body runs on, so nothing here claims to: the condition is the
+    // half that an authority actually asserted — `unknown` from `none`, which is
+    // the shape the Host uses for a body it knows exists and nobody observes.
+    presenceUnobserved:
+        state == wire.presenceUnknown && source == wire.presenceSourceNone,
   );
 }
 

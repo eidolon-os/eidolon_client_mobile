@@ -145,13 +145,24 @@ class CockpitDevice {
     this.role = '',
     this.lastSeenAt,
     this.capabilities = const <String>[],
-    this.preparedWebBody = false,
+    this.presenceUnobserved = false,
   });
 
   final String deviceId;
   final String name;
 
-  /// Hardware class. Never the logical role — that comes from the companion.
+  /// The Manifest identifier this body was admitted under.
+  ///
+  /// The wire calls this `device_kind` and the schema still describes it as a
+  /// hardware class, but no producer has ever put one there: Hub copies
+  /// `manifest_id` into a column it happens to have named `device_kind`
+  /// (`hub/contracts/mappers.py`), and Admin projects it onward unchanged
+  /// (`local_api/management/mission_control.py`). The wire key is deliberately
+  /// not being renamed — see `docs/设备与Body/Manifest契约收敛.md` §8.3 ⑤ — so
+  /// the correction that is available here is to stop reading it as a kind.
+  ///
+  /// It is an opaque identifier. Show it, match it whole against something an
+  /// authority also names, but never take it apart for meaning.
   final String kind;
   final String status;
   final bool online;
@@ -160,9 +171,16 @@ class CockpitDevice {
   final DateTime? lastSeenAt;
   final List<String> capabilities;
 
-  /// A web body that has been provisioned but has not attached. It is neither
-  /// online nor a fault, and calling it either would be a lie.
-  final bool preparedWebBody;
+  /// This body is on the Owner's roster and no authority has answered for
+  /// whether it is present. Neither online nor a fault, and calling it either
+  /// would be a lie.
+  ///
+  /// This is `presence.state == unknown` reached with `presence.source == none`
+  /// — the Host's own words for it are "known to exist, and unobserved. Two
+  /// different facts, and this is the second one." It says nothing about what
+  /// the body runs on: this wire carries no field that does, which is why this
+  /// used to be called `preparedWebBody` and was wrong.
+  final bool presenceUnobserved;
 }
 
 class CockpitTurnStage {
@@ -662,16 +680,23 @@ String activityStatusLabel(String status) => switch (status.toLowerCase()) {
   _ => status.isEmpty ? '未知' : status,
 };
 
-String deviceTypeLabel(CockpitDevice device) {
-  final kind = device.kind.toLowerCase();
-  if (kind.contains('web') || kind.contains('virtual')) return '虚拟身体';
-  if (kind.isEmpty || kind == 'unknown') return '设备';
-  return '物理身体';
-}
+// There is deliberately no `deviceTypeLabel` here any more.
+//
+// It read 虚拟身体 / 物理身体 out of `device.kind` by substring — but that field
+// carries a Manifest identifier (see [CockpitDevice.kind]), so a Manifest named
+// `eidolon-webcam-...` was announced as a virtual body and a real web body whose
+// Manifest id happened not to spell `web` was announced as a physical one. The
+// replacement is not a better pattern: nothing on this wire says what a body
+// runs on. `role`/`role_kind` answer a different question (which Eidolon speaks
+// through it), `capabilities` is empty for every body the blackboard has not
+// seen, and the canonical `DeviceCapabilityManifest` — which is not on this wire
+// at all — declares properties, actions, events and media, and no form factor.
+// So this app does not say. A screen that needs a word for a body has its name,
+// its role and its Manifest id, all of which somebody actually asserted.
 
 String devicePresenceLabel(CockpitDevice device) {
   if (device.online) return '在线';
-  if (device.preparedWebBody) return '已准备';
+  if (device.presenceUnobserved) return '无人观测';
   if (device.status == 'degraded') return '不稳定';
   if (device.status == 'active') return '已绑定';
   if (device.status == 'unknown') return '未探测';
@@ -680,7 +705,7 @@ String devicePresenceLabel(CockpitDevice device) {
 
 CockpitTone devicePresenceTone(CockpitDevice device) {
   if (device.online) return CockpitTone.ok;
-  if (device.preparedWebBody) return CockpitTone.idle;
+  if (device.presenceUnobserved) return CockpitTone.idle;
   if (device.status == 'degraded') return CockpitTone.warn;
   if (device.status == 'offline') return CockpitTone.bad;
   return CockpitTone.idle;

@@ -16,6 +16,23 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// Skips when the sibling checkout is not present, the same way the SDK's own
 /// cross-repository mirror tests do.
+/// Returns the contract payload with one device row patched.
+///
+/// Everything except the field under test stays the contract's own. The row
+/// must be there: a golden that changes shape has to turn this red rather than
+/// quietly stop testing anything.
+Map<String, Object?> _patchDevice(
+  Map<String, Object?> json,
+  String deviceId,
+  void Function(Map<String, Object?> device) patch,
+) {
+  final copy = jsonDecode(jsonEncode(json)) as Map<String, Object?>;
+  final lane = copy['devices']! as Map<String, Object?>;
+  final items = (lane['items']! as List<Object?>).cast<Map<String, Object?>>();
+  patch(items.singleWhere((item) => item['device_id'] == deviceId));
+  return copy;
+}
+
 Map<String, Object?>? _golden(String name) {
   // Walk up looking for the SDK beside us. Not just `..`: this repository is
   // also worked on from a git worktree, which sits one level deeper, and a test
@@ -78,7 +95,8 @@ void main() {
       // 没有权威回答过它 —— 这既不是在线也不是故障。
       final web = devices.firstWhere((d) => d.deviceId == 'dev-web-body');
       expect(web.online, isFalse);
-      expect(devicePresenceLabel(web), '已准备');
+      expect(web.presenceUnobserved, isTrue);
+      expect(devicePresenceLabel(web), '无人观测');
       expect(devicePresenceTone(web), CockpitTone.idle);
 
       // Hub 说它离线，那才是离线。
@@ -227,6 +245,88 @@ void main() {
       // can tell which ones are new without asking a second function where the
       // one it just parsed came from.
       expect(events.first.ingestSeq, 10491);
+    });
+  });
+
+  group('device_kind 不是设备种类', () {
+    // 这条 wire 上的 `device_kind` 里放的是 Manifest 标识：Hub 把 `manifest_id`
+    // 写进一个恰好叫 device_kind 的列（`hub/contracts/mappers.py`），Admin 原样
+    // 投影出来（`local_api/management/mission_control.py:_row`）。schema 的描述
+    // 和这份 golden 里的 `"web"` 都是旧说法，而键名是刻意不改的
+    // （`docs/设备与Body/Manifest契约收敛.md` §8.3 ⑤）。所以消费侧的更正只有一个：
+    // 不要把它当种类读。
+    test('在场判定不看它 —— 两个方向都不看', () {
+      final json = _golden('snapshot-healthy.json');
+      if (json == null) {
+        markTestSkipped('eidolon_sdk checkout 不在旁边');
+        return;
+      }
+      // 给两台设备各换上一个恰好能骗过旧子串判定的 Manifest 标识：一台在线的
+      // 摄像头，标识里带着 web；一台真正无人观测的身体，标识里不带。
+      final patched = _patchDevice(
+        _patchDevice(
+          json,
+          'dev-esp32-living',
+          (device) => device['device_kind'] = 'eidolon-webcam-s3-v1',
+        ),
+        'dev-web-body',
+        (device) => device['device_kind'] = 'eidolon-phone-body-v1',
+      );
+      final devices = parseMissionControlRuntime(patched).devices.value;
+
+      // 旧判定会因为标识里没有 web 而把它读成离线。
+      final unobserved = devices.firstWhere((d) => d.deviceId == 'dev-web-body');
+      expect(unobserved.presenceUnobserved, isTrue);
+      expect(devicePresenceLabel(unobserved), '无人观测');
+      expect(devicePresenceTone(unobserved), CockpitTone.idle);
+      // 字段照旧透传，只是按它真实的身份用。
+      expect(unobserved.kind, 'eidolon-phone-body-v1');
+
+      // 旧判定不会误伤这一台（它在线，先一步返回），但标识里的 web 也不该在
+      // 任何地方变成一句关于形态的话。
+      final live = devices.firstWhere((d) => d.deviceId == 'dev-esp32-living');
+      expect(live.presenceUnobserved, isFalse);
+      expect(devicePresenceLabel(live), '在线');
+      expect(live.kind, 'eidolon-webcam-s3-v1');
+    });
+
+    test('权威回答了 unknown，和没有权威回答不是一回事', () {
+      final json = _golden('snapshot-healthy.json');
+      if (json == null) {
+        markTestSkipped('eidolon_sdk checkout 不在旁边');
+        return;
+      }
+      // 同一台设备，同样的 unknown，只是这一次 Hub 答了。`source` 的取值来自
+      // schema 自己的词表。
+      final answered = _patchDevice(json, 'dev-web-body', (device) {
+        (device['presence']! as Map<String, Object?>)['source'] = 'hub';
+      });
+      final devices = parseMissionControlRuntime(answered).devices.value;
+      final device = devices.firstWhere((d) => d.deviceId == 'dev-web-body');
+
+      expect(device.presenceUnobserved, isFalse);
+      expect(devicePresenceLabel(device), '未探测');
+      expect(devicePresenceTone(device), CockpitTone.idle);
+    });
+
+    test('离线仍然是离线 —— 那是有人回答的', () {
+      final json = _golden('snapshot-healthy.json');
+      if (json == null) {
+        markTestSkipped('eidolon_sdk checkout 不在旁边');
+        return;
+      }
+      final patched = _patchDevice(
+        json,
+        'dev-esp32-unclaimed',
+        (device) => device['device_kind'] = 'eidolon-web-console-v1',
+      );
+      final devices = parseMissionControlRuntime(patched).devices.value;
+      final off =
+          devices.firstWhere((d) => d.deviceId == 'dev-esp32-unclaimed');
+
+      expect(off.presenceUnobserved, isFalse);
+      expect(devicePresenceLabel(off), '离线');
+      expect(devicePresenceTone(off), CockpitTone.bad);
     });
   });
 }

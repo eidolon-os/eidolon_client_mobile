@@ -535,7 +535,7 @@ class _MockWorld {
         online: false,
         companionId: _master,
         role: '临时化身',
-        preparedWebBody: true,
+        presenceUnobserved: true,
       ),
       const CockpitDevice(
         deviceId: _car,

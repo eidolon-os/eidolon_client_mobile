@@ -589,7 +589,7 @@ MoonFacts moonFacts(CompanionUnit unit, MoonKind kind) {
         );
       }
       return MoonFacts(
-        value: total == 1 ? deviceTypeLabel(unit.devices.first) : '$total 个身体',
+        value: '$total 个身体',
         tone: unit.devices.any((device) => device.online)
             ? CockpitTone.ok
             : CockpitTone.idle,
