@@ -160,6 +160,20 @@ def main() -> int:
     if not contracts.is_file():
         print(f"{contracts} is not there: no SDK checkout to mirror", file=sys.stderr)
         return 2
+    if not DART_PATH.is_file():
+        # Fails, and says what happened. It already failed — `read_text` raises
+        # and the exit code is non-zero — but a traceback is not a diagnosis,
+        # and this is the one file whose disappearance makes every assertion
+        # here meaningless. The SDK's own mirror had the sibling of this bug and
+        # it *skipped*: renaming this file would have turned its whole mobile
+        # section into a silent pass, forever.
+        print(
+            f"{DART_PATH.relative_to(REPO_ROOT)} is gone — every mirrored "
+            f"constant is named against it, so nothing below could be checked. "
+            f"If it moved, move this path with it.",
+            file=sys.stderr,
+        )
+        return 1
 
     try:
         ledger = load_ledger()
