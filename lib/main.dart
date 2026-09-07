@@ -1127,6 +1127,17 @@ class _Actions extends StatelessWidget {
             ),
           ),
         ),
+      // An act this phone can take is drawn wherever it exists, not only where
+      // the stage is stopped. `collect` lives here: the stage advances, so the
+      // phase is never `bodyBlocked`, and this branch's bare 「立即检查状态」 was
+      // the only thing on screen while a Grant sat waiting to be redeemed. The
+      // controller now redeems it by itself; this is what a person is left with
+      // when that attempt failed.
+      ClientPhase.awaitingApproval || ClientPhase.awaitingBinding
+          when controller.enrollmentAct != MobileBodyEnrollmentAct.none &&
+              !(controller.phase == ClientPhase.awaitingApproval &&
+                  controller.awaitsThisControllersApproval) =>
+        _EnrollmentAction(controller: controller),
       ClientPhase.awaitingApproval || ClientPhase.awaitingBinding => SizedBox(
           width: double.infinity,
           child: FilledButton.tonalIcon(

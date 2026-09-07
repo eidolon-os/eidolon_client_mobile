@@ -79,6 +79,13 @@ class ClientController extends ChangeNotifier {
   // is no longer something that can be read off a connection.
   bool _inConversation = false;
   bool _controlRecoveryInFlight = false;
+
+  /// Guards the one step this controller takes without being asked.
+  ///
+  /// `complete()` is followed by a re-read, and the re-read runs the same
+  /// decision again; without this the second pass would try to collect a Grant
+  /// that has already been collected.
+  bool _collecting = false;
   int _controlRecoveryAttempt = 0;
 
   ClientPhase phase = ClientPhase.idle;
@@ -232,17 +239,45 @@ class ClientController extends ChangeNotifier {
     if (showRegistering) {
       _setPhase(ClientPhase.registering);
     }
-    final next = await _provisionConfig(sessionIntent: sessionIntent);
-    config = next;
+    var next = await _provisionConfig(sessionIntent: sessionIntent);
     failure = null;
     // A standing is Admission's own answer about this one device, and it says
     // more than the five status values can carry. When there is one it decides
     // the phase, so that a stage which cannot advance is drawn as stopped
     // rather than as 「待批准」 with a retry button in front of it.
-    final standing = next.bodyStanding;
+    var standing = next.bodyStanding;
     enrollmentAct = standing == null || _enrollment == null
         ? MobileBodyEnrollmentAct.none
         : await _enrollment.actFor(standing);
+    // Redeeming an approved Grant is the device's own step, with no decision
+    // left for anybody: the Authority has already said yes, and this process is
+    // holding the one-shot key and challenge it takes. A standard device does
+    // it without being asked, and the card above says exactly that —
+    // 「这一步在这台手机上跑…不需要你做什么」.
+    //
+    // It used to wait for a tap that no screen drew. `collect` was rendered
+    // only from `ClientPhase.bodyBlocked`, and this stage is not blocked — it
+    // advances, and this phone can advance it — so the phase fell through to
+    // 「立即检查状态」 and the collection never happened. On real hardware that
+    // stopped the chain one step short of a Claim, under a true sentence and a
+    // control that was not there.
+    if (enrollmentAct == MobileBodyEnrollmentAct.collect && !_collecting) {
+      _collecting = true;
+      try {
+        await _enrollment!.complete();
+        next = await _provisionConfig(sessionIntent: sessionIntent);
+        standing = next.bodyStanding;
+        enrollmentAct = standing == null
+            ? MobileBodyEnrollmentAct.none
+            : await _enrollment.actFor(standing);
+      } catch (exception) {
+        // Reported rather than swallowed, and the act stays `collect` — so the
+        // control is drawn and a person can take the step the phone could not.
+        failure = _classifyFailure(exception);
+      } finally {
+        _collecting = false;
+      }
+    }
     // Two different facts, and the screen needs both. `advances` is the
     // Authority's: this stage moves on its own. Whether *this phone* can still
     // move it is local, and the Authority cannot know it — the collection
@@ -253,6 +288,7 @@ class ClientController extends ChangeNotifier {
     // in front of a collection nobody is performing and nobody can. That is the
     // exact shape this screen was rewritten to delete, arriving from the other
     // side.
+    config = next;
     final stalled = enrollmentAct == MobileBodyEnrollmentAct.abandon ||
         enrollmentAct == MobileBodyEnrollmentAct.waitForExpiry;
     if (standing != null && (!standing.advances || stalled)) {
