@@ -235,12 +235,25 @@ class DeviceControlClient {
       // reconnect budget on a room that will refuse the token.
       //
       // Judged against the grant's own issue time rather than against this
-      // phone's clock, and that is deliberate. The vector's live channel
-      // expires at a fixed instant which is already in the past — as any
-      // recorded example's must be — so a wall-clock comparison would refuse
-      // the valid case too. It would also let a phone with a wrong clock
-      // refuse a channel that is perfectly good, which is a worse failure than
-      // the one it prevents.
+      // phone's clock. Two reasons, and the second one is a caution rather
+      // than a justification:
+      //
+      // The reason to prefer it: a wall-clock comparison would let a phone
+      // with a wrong clock refuse a channel that is perfectly good, which is a
+      // worse failure than the one it prevents. It also cannot be applied to
+      // a recorded example at all — the vector's accepted channel expires at
+      // a fixed instant nine days in the past, as any recorded example's
+      // eventually must, so a clock-judging consumer refuses the case the
+      // contract calls valid.
+      //
+      // The caution: **the vector does not pin this rule**, and I briefly
+      // credited it with doing so. `DF-DEVICE-CONTROL-CONFIGURATION-RESPONSE-001`
+      // says an expired channel must be refused and never says how expiry is
+      // judged; its `expires_at_ms: 0` was chosen to match the firmware, which
+      // tests `> 0`. So the firmware and this client already disagree — on
+      // `expires_at_ms: 1` with a large `issued_at_ms`, it accepts and this
+      // refuses — and the contract does not say which is right. Reported to
+      // the SDK. Until it answers, this is a choice, not a pinned rule.
       throw DeviceControlRefusal(
         detail: 'Device Control delivered a channel with no life in it',
         status: response.statusCode,
