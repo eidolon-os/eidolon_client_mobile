@@ -14,6 +14,68 @@ const agentSessionTopic = 'lk.agent.session';
 const sessionOpenType = 'session_open';
 const sessionCloseType = 'session_close';
 
+/// The wire schema version the session-control payload must declare.
+///
+/// `WIRE_SCHEMA_VERSION` in `eidolon_sdk/biz/contracts`, named here rather than
+/// written as a bare `1` at the one call site that needs it.
+const sessionControlSchemaVersion = 1;
+
+/// The member naming which conversation a session request is about.
+///
+/// **Required.** The Channel Provider runs the request through
+/// `normalize_conversation_id` and drops it when that returns null — which it
+/// does for an absent field — so a payload without this is not a malformed
+/// request, it is no request at all. This client omitted it, and the result was
+/// a phone that published its microphone into the room, a Provider that
+/// subscribed to it, and nothing ever asked an agent to answer. Nothing logged
+/// anything.
+const sessionConversationIdField = 'conversation_id';
+
+/// The characters and length `normalize_conversation_id` accepts.
+///
+/// Enforced on this side too, because a rejected id is dropped silently at the
+/// far end: the failure would arrive as a conversation that never starts,
+/// which is the same symptom as no request at all.
+final sessionConversationIdPattern = RegExp(r'^[A-Za-z0-9\-_.:]{1,64}$');
+
+/// Server → client on [sessionControlTopic]: the conversation actually began.
+///
+/// Not consumed yet. Named so the omission is visible: until it is, this client
+/// shows a conversation as live from the moment it *asks* for one, and the
+/// firmware distinguishes those two states (`conversation_confirmed_`).
+const sessionStartedType = 'session_started';
+
+/// The session-control document, built in one place.
+///
+/// It lived inline in `EidolonSession` and shipped one member short of the
+/// contract — no `conversation_id` — which the Channel Provider drops without
+/// logging. The result on hardware was a phone publishing its microphone into
+/// the room, the Provider subscribing to it, and no agent ever asked to
+/// answer. A wire document with no home is a wire document nothing tests.
+///
+/// Throws on an id the far end would reject, because there the rejection is
+/// silent: a bad id and no request at all produce the same symptom.
+Map<String, Object?> sessionRequestPayload({
+  required String type,
+  required String conversationId,
+}) {
+  if (type != sessionOpenType && type != sessionCloseType) {
+    throw ArgumentError.value(type, 'type', 'not a session request type');
+  }
+  if (!sessionConversationIdPattern.hasMatch(conversationId)) {
+    throw ArgumentError.value(
+      conversationId,
+      'conversationId',
+      'must match the contract: 1-64 of [A-Za-z0-9-_.:]',
+    );
+  }
+  return <String, Object?>{
+    'schema_v': sessionControlSchemaVersion,
+    'type': type,
+    sessionConversationIdField: conversationId,
+  };
+}
+
 const controlOpRoomJoin = 'room.join';
 const sessionIntentField = 'session_intent';
 const sessionIntentUserInitiated = 'user_initiated';

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:livekit_client/livekit_client.dart';
@@ -18,6 +19,15 @@ import '../protocol/eidolon_protocol.dart';
 class EidolonSession {
   Room? _room;
   EventsListener<RoomEvent>? _listener;
+
+  /// The conversation this client is currently asking to have, if any.
+  ///
+  /// Null between conversations. It is not derived from the room or the
+  /// channel: both outlive a conversation, which is the whole reason the
+  /// contract has a separate correlation key.
+  String? _conversationId;
+  int _conversationSequence = 0;
+  final _random = Random.secure();
 
   final _dataController = StreamController<SessionData>.broadcast();
   final _stateController = StreamController<SessionState>.broadcast();
@@ -75,6 +85,11 @@ class EidolonSession {
   /// are what this starts, so it is said explicitly rather than implied by
   /// being connected.
   Future<void> openSession() async {
+    // One id per conversation, minted here and kept until it closes — the
+    // firmware's shape (`current_conversation_id_`), because `session_open`
+    // and `session_close` are statements about the same conversation and the
+    // far end correlates them by this value.
+    _conversationId ??= _newConversationId();
     await _publishSessionRequest(sessionOpenType);
     await _room?.localParticipant
         ?.setMicrophoneEnabled(true, audioCaptureOptions: _capture);
@@ -85,16 +100,43 @@ class EidolonSession {
     await _room?.localParticipant?.setMicrophoneEnabled(false);
     _videoController.add(null);
     await _publishSessionRequest(sessionCloseType);
+    // Cleared after the close is sent, not before: the close is about this
+    // conversation and has to carry its id.
+    _conversationId = null;
+  }
+
+  /// A conversation id in the shape the contract accepts.
+  ///
+  /// Device-prefixed, random, and sequenced, the way the firmware builds its
+  /// `esp32-…` ids: the prefix says which kind of Body asked, the randomness
+  /// keeps two installs apart, and the counter keeps two conversations on one
+  /// install apart even inside the same millisecond.
+  String _newConversationId() {
+    _conversationSequence += 1;
+    String block() => _random.nextInt(0x100000000).toRadixString(16).padLeft(8, '0');
+    return 'mobile-${block()}-${block()}-'
+        '${_conversationSequence.toRadixString(16).padLeft(8, '0')}';
   }
 
   Future<void> _publishSessionRequest(String type) async {
     final participant = _room?.localParticipant;
     if (participant == null) throw StateError('Channel is not connected');
+    final conversationId = _conversationId;
+    if (conversationId == null) {
+      // Refused here rather than sent. The Provider drops a request it cannot
+      // correlate and drops it without a log line, so the failure would arrive
+      // as a conversation that never starts — indistinguishable from never
+      // having asked for one.
+      throw StateError('Session request has no conversation to name');
+    }
     await participant.publishData(
-      Uint8List.fromList(utf8.encode(jsonEncode({
-        'schema_v': 1,
-        'type': type,
-      }))),
+      Uint8List.fromList(
+        utf8.encode(
+          jsonEncode(
+            sessionRequestPayload(type: type, conversationId: conversationId),
+          ),
+        ),
+      ),
       reliable: true,
       topic: sessionControlTopic,
     );
