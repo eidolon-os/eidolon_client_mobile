@@ -122,17 +122,24 @@ void main() {
 
   test('the audio the Provider asks for is not honoured, and not refused', () {
     // The vector says a binding with three channels or a rate out of range
-    // must be refused, and this app refuses neither — because it reads
-    // `audio` at all only on the legacy Hub path, and even there nothing
-    // consumes `HubConfig.sampleRate` or `.channels`. On the Device Control
-    // path the member is dropped.
+    // must be refused, and this app refuses neither. Kept as an assertion
+    // about the current behaviour, with the reason now established rather than
+    // assumed:
     //
-    // Asserted as it is rather than quietly left out. Refusing here would deny
-    // a channel this app can in fact join; honouring it means wiring the rate
-    // into capture, which is the audio path's change and not this file's. What
-    // must not happen is the gap being invisible — the vector's own reason is
-    // that a rate accepted and not honoured is silence with nothing reporting
-    // it, and that sentence describes this app today.
+    // `audio.sample_rate` and `audio.channels` are settable by a Body that
+    // feeds PCM into the transport, which is what the firmware does —
+    // `livekit_session.cc` takes the binding's values with a fallback. This
+    // Body publishes through `livekit_client`, whose `AudioCaptureOptions`
+    // carries nine members and no rate or channel count, and whose only
+    // publish entry (`setMicrophoneEnabled`) takes nothing else. WebRTC
+    // negotiates the rate on the wire. There is nothing here to set.
+    //
+    // So refusing would deny a channel this app can join, and honouring is not
+    // expressible — which makes this a question about which obligation applies
+    // to a transport-negotiated Body, and that belongs to the contract.
+    // `DF-CHANNEL-BINDING-AUDIO-001` is registered against this repository and
+    // the evidence has gone to the SDK. Until it answers, this test is what
+    // keeps the behaviour from being changed by accident in either direction.
     final vector = _vector();
     final refusals = (vector['must_refuse']! as List<Object?>)
         .cast<Map<String, dynamic>>();

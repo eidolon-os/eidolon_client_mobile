@@ -18,14 +18,30 @@
 /// Provider's own wire bytes. `DF-CHANNEL-BINDING-001` names this repository
 /// among the requirement's owners.
 ///
-/// One obligation from that vector is **not** met here, and is recorded rather
-/// than hidden: it says a binding whose `audio` names three channels or a rate
-/// out of range must be refused, and this reader drops `audio` entirely. Every
-/// such binding is accepted and the Provider's rate is then ignored, which is
-/// the vector's own stated failure — a rate accepted and not honoured is
-/// silence with nothing reporting it. Refusing here would deny a channel this
-/// app can join; the real fix is for the capture path to honour the rate, and
-/// that is not this file's change.
+/// ## Why `audio` is dropped
+///
+/// `DF-LIVEKIT-SESSION-BINDING-001` says a binding whose `audio` names three
+/// channels or a rate out of range must be refused, and this reader refuses
+/// neither. That looks like neglect and is not; it is a difference between two
+/// kinds of Body, and it is written down here because the alternative is a
+/// comment that promises a fix nobody can make.
+///
+/// `audio.sample_rate` and `audio.channels` are settable by a Body that feeds
+/// PCM into the transport itself, which is what the firmware does —
+/// `livekit_session.cc` takes the binding's values, with a fallback, and opens
+/// its capture at them. This Body does not feed PCM. It publishes through
+/// `livekit_client`, whose `AudioCaptureOptions` has nine members and not one
+/// of them is a rate or a channel count, and whose only publish entry point
+/// (`setMicrophoneEnabled`) accepts nothing else. The rate on the wire is
+/// negotiated by WebRTC.
+///
+/// So there is nothing here to set and nothing to check a request against.
+/// Refusing on the member would deny a channel this app can join perfectly
+/// well — trading a rate mismatch that WebRTC resolves for a Body that cannot
+/// talk at all. `DF-CHANNEL-BINDING-AUDIO-001` is registered against this
+/// repository for the gap; the evidence above has gone to the SDK, because
+/// which of the two obligations applies to a transport-negotiated Body is a
+/// contract question, not this file's.
 library;
 
 import 'dart:convert';

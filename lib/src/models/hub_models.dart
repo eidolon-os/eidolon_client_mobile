@@ -79,8 +79,6 @@ class HubConfig {
     required this.session,
     this.registrationId = '',
     this.deviceFingerprint = '',
-    this.sampleRate = 16000,
-    this.channels = 1,
     this.bodyStanding,
     this.bodyEnrollment,
   });
@@ -89,8 +87,6 @@ class HubConfig {
   final RoomConfig session;
   final String registrationId;
   final String deviceFingerprint;
-  final int sampleRate;
-  final int channels;
 
   /// Where this phone stands as a Body, when the answer came from Admission.
   ///
@@ -113,15 +109,12 @@ class HubConfig {
       throw const FormatException('Hub response is missing a valid config');
     }
     final config = json['config'] as Map<String, dynamic>;
-    final audio = config['audio'] as Map<String, dynamic>? ?? const {};
     final device = json['device'] as Map<String, dynamic>? ?? const {};
     return HubConfig(
       status: HubConfigStatus.parse(json['status'] as String?),
       session: RoomConfig.fromJson(config),
       registrationId: json['registration_id'] as String? ?? '',
       deviceFingerprint: device['fingerprint'] as String? ?? '',
-      sampleRate: audio['sample_rate'] as int? ?? 16000,
-      channels: audio['channels'] as int? ?? 1,
     );
   }
 }
