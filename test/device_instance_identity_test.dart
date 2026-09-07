@@ -16,7 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// after someone else created the record, this phone could not have found it.
 ///
 /// These vectors are the SDK's own, vendored by
-/// `tool/sync_device_foundation_binding.sh`. Review is what let four
+/// `tool/sync_device_foundation_v1.py`. Review is what let four
 /// implementations of one rule disagree.
 void main() {
   final golden = jsonDecode(
@@ -58,7 +58,7 @@ void main() {
   });
 
   group('the contract vector for this rule', () {
-    // Vendored from the SDK by tool/sync_device_foundation_binding.sh. Before
+    // Vendored from the SDK by tool/sync_device_foundation_v1.py. Before
     // it existed this app was correct by coincidence: Android happens to hand
     // over SPKI DER, and nothing said it had to. Three of the four
     // implementations of this rule would hash a raw uncompressed point into a

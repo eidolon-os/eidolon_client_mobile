@@ -13,7 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// contract" — while neither end was wrong about its own half.
 ///
 /// So the field table lives in the SDK now, this file asserts against the golden
-/// vector synced byte-for-byte by tool/sync_device_foundation_binding.sh, and a
+/// vector synced byte-for-byte by tool/sync_device_foundation_v1.py, and a
 /// field added to the contract without reaching this binding is a red test
 /// rather than a device the Owner cannot set up.
 void main() {

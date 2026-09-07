@@ -236,7 +236,7 @@ void main() {
         requests.add(request);
         return http.Response(
           jsonEncode(
-            canonicalAdmissionValue('DF-PH2B0-CLAIM-PAGE-VALID'),
+            canonicalContractValue('DF-PH2B0-CLAIM-PAGE-VALID'),
           ),
           200,
         );

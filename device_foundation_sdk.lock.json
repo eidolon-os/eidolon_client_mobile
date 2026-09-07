@@ -1,0 +1,90 @@
+{
+  "sdk_commit": "394abcbf747928dfc482fe02f9356046a438b043",
+  "files": [
+    {
+      "source": "contracts/device_foundation/v1/generated/dart/device_foundation_v1.dart",
+      "target": "lib/src/generated/device_foundation_v1.dart",
+      "sha256": "a81df9e87461d9cf065d7025b361013e5570998809e6edd9f794c6c072e336a8"
+    },
+    {
+      "source": "contracts/device_foundation/v1/examples/valid/admission-consumer-surface.json",
+      "target": "test/fixtures/device_foundation/admission-consumer-surface.json",
+      "sha256": "d436d7f81441817845618983ffb35bffd06c8a6d23166614089f19f6d87fbaaa"
+    },
+    {
+      "source": "contracts/device_foundation/v1/examples/valid/admission.json",
+      "target": "test/fixtures/device_foundation/admission.json",
+      "sha256": "6b9227ac6ffe9efe6c4ae1ffab8aa1999cce2185b2b3b6c06fb0e111b5997c52"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/admission-event-stream.json",
+      "target": "test/fixtures/device_foundation/admission-event-stream.json",
+      "sha256": "31e9821d2160536ecdd51506c71492db0e8cc180b0a0a702068b6b88ab729104"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/owner-domain-descriptor.json",
+      "target": "test/fixtures/device_foundation/owner-domain-descriptor.json",
+      "sha256": "a1601efa5bf3dd10d8e061c0d474696226c1f0c591e493b0d39f2c70594a3cfa"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/setup-descriptor.json",
+      "target": "test/fixtures/device_foundation/setup-descriptor.json",
+      "sha256": "fb8a600f9eda52f489fb49c9bfd37144078fbe8f1498e711b71a77e67559c540"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/commissioning-voucher.json",
+      "target": "test/fixtures/device_foundation/commissioning-voucher.json",
+      "sha256": "53072e86b2592f8cd2aa6d1e49e1a8bbb2079bbd0dd1014fa763ccd1ebc65a65"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/device-instance-derivation.json",
+      "target": "test/fixtures/device_foundation/device-instance-derivation.json",
+      "sha256": "40fe62d4c0cfc5de8d55c2881caca88d5baec4aec183912a3b673d0664ca3b8a"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/rfc9180-p256-base.json",
+      "target": "test/fixtures/device_foundation/rfc9180-p256-base.json",
+      "sha256": "2da81d1c67a05e5a91acdc2efe0bdfa063eb79bf67a9101172b820e5fbce3d1c"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/claim-grant-aad.json",
+      "target": "test/fixtures/device_foundation/claim-grant-aad.json",
+      "sha256": "0fa64032f0830a382ed81ea53afac3558de5d3593518d0160f2ad03c1cc794a9"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/claim-grant-wire-envelope.json",
+      "target": "test/fixtures/device_foundation/claim-grant-wire-envelope.json",
+      "sha256": "431afb7f831e3f58616bdcdf11b349cb68929e920eaee993e3174999a6c58772"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/canonical-vectors.json",
+      "target": "test/fixtures/device_foundation/canonical-vectors.json",
+      "sha256": "4fbcb214e977ef41c6aceb2a30307621a1cb0efeefb5291548b15b101f7d5b3e"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/es256-vectors.json",
+      "target": "test/fixtures/device_foundation/es256-vectors.json",
+      "sha256": "052a32c1196868ed88fe1bfa9e926454f5a04aba6de6f6445c415ff850fb8278"
+    },
+    {
+      "source": "contracts/device_foundation/v1/examples/valid/common.json",
+      "target": "test/fixtures/device_foundation/common.valid.json",
+      "sha256": "da3f6e78f50e874d091656c59aa67e87c58d9c09ac4acfdf5f624df9b98e8c54"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/claim-grant-collection-proof.json",
+      "target": "test/fixtures/device_foundation/claim-grant-collection-proof.json",
+      "sha256": "3beaaec5dc93bbc336b302a05f9786a2c7de3028fe7b3a471a09ea601c957947"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/claim-grant-ack-proof.json",
+      "target": "test/fixtures/device_foundation/claim-grant-ack-proof.json",
+      "sha256": "545b79ab0428659d04a2d0981a715d6942164d5fe8f5deda1a686ab95d73a42d"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/livekit-session-binding.json",
+      "target": "test/fixtures/device_foundation/livekit-session-binding.json",
+      "sha256": "21c9a40aeb0621259e043502ecb7a352eda30ddb64cd5bc5e24b2481dbaff107"
+    }
+  ]
+}

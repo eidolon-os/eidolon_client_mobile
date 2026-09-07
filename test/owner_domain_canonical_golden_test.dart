@@ -11,7 +11,7 @@ import 'support/owner_domain_fixtures.dart';
 /// The canonical signing bytes of an Owner Domain descriptor exist in three
 /// independent implementations: the Python SDK, ESP32 C++ and this Dart file.
 /// Only the golden vector is authoritative, and it is synced byte-for-byte from
-/// the SDK by tool/sync_device_foundation_binding.sh. Asserting against a string
+/// the SDK by tool/sync_device_foundation_v1.py. Asserting against a string
 /// written out here instead would make this repo a second authority, which is
 /// how a descriptor field can be added in the SDK and silently break signature
 /// verification on this client with every test still green.

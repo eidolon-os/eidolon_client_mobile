@@ -1,0 +1,36 @@
+{
+  "standard": "RFC 8785",
+  "vectors": [
+    {
+      "vector_id": "RFC8785-SECTION-3.2.2",
+      "source": "https://www.rfc-editor.org/rfc/rfc8785.html#section-3.2.2",
+      "value": {
+        "numbers": [333333333.3333333, 1e+30, 4.5, 0.002, 1e-27],
+        "string": "€$\u000f\nA'B\"\\\\\"/",
+        "literals": [null, true, false]
+      },
+      "canonical_utf8": "{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}"
+    },
+    {
+      "vector_id": "DF-COMMAND-ENVELOPE-001",
+      "source": "Eidolon Device Foundation section 3.7",
+      "value": {
+        "contract": "eidolon.device-foundation.command",
+        "contract_version": "1.0",
+        "command_type": "admission.create-enrollment",
+        "command_id": "command_01",
+        "correlation_id": "intent_01",
+        "causation_id": null,
+        "issued_at": "2026-08-18T00:00:00Z",
+        "deadline": "2026-08-18T00:15:00Z",
+        "payload": {
+          "enrollment_id": "enrollment_01",
+          "proposal_revision": 1
+        },
+        "extensions": {}
+      },
+      "canonical_utf8": "{\"causation_id\":null,\"command_id\":\"command_01\",\"command_type\":\"admission.create-enrollment\",\"contract\":\"eidolon.device-foundation.command\",\"contract_version\":\"1.0\",\"correlation_id\":\"intent_01\",\"deadline\":\"2026-08-18T00:15:00Z\",\"extensions\":{},\"issued_at\":\"2026-08-18T00:00:00Z\",\"payload\":{\"enrollment_id\":\"enrollment_01\",\"proposal_revision\":1}}",
+      "sha256": "38bacfffa2b9be197c7b9cb599e84bce8f06eca64d6d48b0c3e9269b64d58da3"
+    }
+  ]
+}

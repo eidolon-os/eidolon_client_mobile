@@ -5,10 +5,21 @@ import 'package:crypto/crypto.dart';
 
 import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 
-Map<String, dynamic> canonicalAdmissionValue(String caseId) {
+/// One canonical example case from the SDK's own vectors, by id.
+///
+/// Reads every vendored example file rather than a caller-chosen one, so a case
+/// that moves between them — as the Manifest documents did when they gained a
+/// schema — does not silently stop being found.
+///
+/// Throws when the id matches nothing, and that is the point. A fixture that
+/// answers "nothing" for an id nobody typed correctly leaves the producer with
+/// no check at all while the test stays green, which is how an inlined copy
+/// drifts from the vector it was supposed to be held to.
+Map<String, dynamic> canonicalContractValue(String caseId) {
   for (final path in const [
     'test/fixtures/device_foundation/admission.json',
     'test/fixtures/device_foundation/admission-consumer-surface.json',
+    'test/fixtures/device_foundation/common.valid.json',
   ]) {
     final document = jsonDecode(File(path).readAsStringSync());
     for (final item in document['cases'] as List<dynamic>) {
@@ -34,7 +45,7 @@ Map<String, dynamic> canonicalProposal({
   String? deviceId,
   int revision = 2,
 }) {
-  final value = canonicalAdmissionValue('DF-ADMISSION-PROPOSAL-VALID');
+  final value = canonicalContractValue('DF-ADMISSION-PROPOSAL-VALID');
   return {
     ...value,
     'state': state,
@@ -48,7 +59,7 @@ Map<String, dynamic> canonicalDecision({
   String ownerDomainId = 'owner-domain_01',
   int revision = 2,
 }) {
-  final value = canonicalAdmissionValue('DF-ADMISSION-DECISION-RECORD-VALID');
+  final value = canonicalContractValue('DF-ADMISSION-DECISION-RECORD-VALID');
   final actor = Map<String, dynamic>.from(value['actor'] as Map);
   return {
     ...value,
@@ -73,7 +84,7 @@ EnrollmentRecoveryProjectionV1 canonicalProjection({
   String? claimState,
   int claimOwnerDomainGeneration = 3,
 }) {
-  final projection = canonicalAdmissionValue(
+  final projection = canonicalContractValue(
     'DF-PH2B0-RECOVERY-PROJECTION-VALID',
   );
   projection['proposal'] = canonicalProposal(
@@ -87,12 +98,12 @@ EnrollmentRecoveryProjectionV1 canonicalProjection({
       ? canonicalDecision(ownerDomainId: ownerDomainId, revision: revision)
       : null;
   projection['grant_delivery'] = withDelivery
-      ? canonicalAdmissionValue('DF-PH2B0-GRANT-DELIVERY-VALID')
+      ? canonicalContractValue('DF-PH2B0-GRANT-DELIVERY-VALID')
       : null;
   if (claimState == null) {
     projection['claim'] = null;
   } else {
-    final claim = canonicalAdmissionValue('DF-ADMISSION-CLAIM-RECORD-VALID');
+    final claim = canonicalContractValue('DF-ADMISSION-CLAIM-RECORD-VALID');
     final ref = Map<String, dynamic>.from(claim['device_ref'] as Map);
     projection['claim'] = {
       ...claim,
@@ -113,7 +124,7 @@ EnrollmentProposalPageV1 canonicalRecoveryPage(
   String ownerDomainId = 'owner-domain_01',
   AdmissionListCursorV1? nextCursor,
 }) {
-  final value = canonicalAdmissionValue('DF-PH2B0-PROPOSAL-PAGE-VALID');
+  final value = canonicalContractValue('DF-PH2B0-PROPOSAL-PAGE-VALID');
   return EnrollmentProposalPageV1.fromJson({
     ...value,
     'owner_domain_id': ownerDomainId,
@@ -125,7 +136,7 @@ EnrollmentProposalPageV1 canonicalRecoveryPage(
 AdmissionListCursorV1 canonicalAdmissionCursor({
   String ownerDomainId = 'owner-domain_01',
 }) {
-  final value = canonicalAdmissionValue('DF-PH2B0-ADMISSION-CURSOR-VALID');
+  final value = canonicalContractValue('DF-PH2B0-ADMISSION-CURSOR-VALID');
   return AdmissionListCursorV1.fromJson({
     ...value,
     'owner_domain_id': ownerDomainId,

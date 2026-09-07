@@ -1,0 +1,521 @@
+{
+  "cases": [
+    {
+      "case_id": "DF-COMMON-IDENTIFIER-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "Identifier",
+      "value": "device_01"
+    },
+    {
+      "case_id": "DF-COMMON-DEVICE-INSTANCE-ID-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "DeviceInstanceId",
+      "value": "device-instance-3164c593258209d757654dbd421d2bd9732fe088bce70d8c90be15dd98b587ba"
+    },
+    {
+      "case_id": "DF-COMMON-DEVICE-BASE-ID-MINTED-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "DeviceBaseId",
+      "value": "device-base-4f3b4f3b4f3b4f3b4f3b4f3b4f3b4f3b4f3b4f3b4f3b4f3b4f3b4f3b4f3b4f3b"
+    },
+    {
+      "case_id": "DF-COMMON-DEVICE-BASE-ID-SOFTWARE-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "DeviceBaseId",
+      "value": "software-body-a71ca71ca71ca71ca71ca71ca71ca71ca71ca71c"
+    },
+    {
+      "case_id": "DF-COMMON-SHA256-DIGEST-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "Sha256Digest",
+      "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "case_id": "DF-COMMON-OWNER-DOMAIN-ID-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "OwnerDomainId",
+      "value": "owner-domain_01"
+    },
+    {
+      "case_id": "DF-COMMON-BUSINESS-OWNER-ID-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "BusinessOwnerId",
+      "value": "owner_01"
+    },
+    {
+      "case_id": "DF-COMMON-P256-SIGNATURE-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "P256RawSignature",
+      "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "case_id": "DF-COMMON-DEVICE-REF-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "DeviceRef",
+      "value": {
+        "device_instance_id": "device-instance-69aa70893d053e3866eb4bcf2a4aee7e6d23168660b09083de32e2402253774b",
+        "owner_domain_id": "owner-domain_01",
+        "owner_domain_generation": 3,
+        "claim_generation": 2,
+        "trust_epoch": 3
+      }
+    },
+    {
+      "case_id": "DF-COMMON-BODY-TARGET-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "BodyTargetRef",
+      "value": {
+        "mount_id": "mount_01",
+        "body_endpoint_id": "voice-body",
+        "assignment_generation": 4
+      }
+    },
+    {
+      "case_id": "DF-COMMON-MANIFEST-REF-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "ManifestRef",
+      "value": {
+        "manifest_id": "manifest_01",
+        "revision": 2,
+        "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    },
+    {
+      "case_id": "DF-COMMON-ACTOR-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "ActorRef",
+      "value": {
+        "principal_id": "controller_01",
+        "principal_type": "controller",
+        "owner_domain_id": "owner-domain_01",
+        "granted_scopes": [
+          "device.claim.approve"
+        ],
+        "authentication_strength": "hardware-backed"
+      }
+    },
+    {
+      "case_id": "DF-COMMON-CONTROLLER-ACTOR-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "ControllerActorRef",
+      "value": {
+        "principal_id": "controller_01",
+        "principal_type": "controller",
+        "owner_domain_id": "owner-domain_01",
+        "granted_scopes": [
+          "device.claim.approve"
+        ],
+        "authentication_strength": "hardware-backed"
+      }
+    },
+    {
+      "case_id": "DF-COMMON-COMMAND-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "CommandEnvelope",
+      "value": {
+        "contract": "eidolon.device-foundation.command",
+        "contract_version": "1.0",
+        "command_type": "admission.create-enrollment",
+        "command_id": "command_01",
+        "correlation_id": "intent_01",
+        "causation_id": null,
+        "issued_at": "2026-08-18T00:00:00Z",
+        "deadline": "2026-08-18T00:15:00Z",
+        "payload": {
+          "enrollment_id": "enrollment_01"
+        },
+        "extensions": {}
+      }
+    },
+    {
+      "case_id": "DF-COMMON-COMMAND-RESULT-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "CommandResult",
+      "value": {
+        "command_id": "command_01",
+        "outcome": "committed",
+        "resource_ref": {
+          "enrollment_id": "enrollment_01"
+        },
+        "resource_revision": 1,
+        "occurred_at": "2026-08-18T00:00:01Z",
+        "extensions": {}
+      }
+    },
+    {
+      "case_id": "DF-COMMON-PROBLEM-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "DeviceProblem",
+      "value": {
+        "code": "REVISION_CONFLICT",
+        "category": "conflict",
+        "retryable": false,
+        "authority": "body-mesh",
+        "command_id": "command_01",
+        "resource_ref": {
+          "mount_id": "mount_01"
+        },
+        "current_revision": 8,
+        "current_generation": null,
+        "retry_after_ms": null,
+        "detail": "The expected revision is stale.",
+        "incident_id": "incident_01"
+      }
+    },
+    {
+      "case_id": "DF-HOST-DESCRIPTOR-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "OwnerDomainDescriptor",
+      "value": {
+        "owner_domain_id": "owner-domain_01",
+        "owner_domain_generation": 3,
+        "directory_revision": 7,
+        "descriptor_uri": "https://admission.owner.example/api/device-onboarding/v1/descriptor",
+        "trust_root_refs": [
+          "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        "endpoints": [
+          {
+            "authority": "admission",
+            "logical_audience": "eidolon-admission",
+            "uri": "https://admission.owner.example/v1",
+            "transport_profile": "https-json",
+            "priority": 10
+          },
+          {
+            "authority": "device-control",
+            "logical_audience": "eidolon-device-control",
+            "uri": "https://control.owner.example/v1",
+            "transport_profile": "https-json",
+            "priority": 10
+          }
+        ],
+        "issued_at": "2026-08-18T00:00:00Z",
+        "expires_at": "2026-08-19T00:00:00Z",
+        "signing_key_id": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    {
+      "case_id": "DF-CRYPTO-CLAIM-GRANT-AAD-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "ClaimGrantAAD",
+      "value": {
+        "contract": "eidolon.device-foundation.claim-grant-aad",
+        "profile_id": "eidolon-trust-p256-hpke-v1",
+        "enrollment_id": "enrollment_01",
+        "proposal_revision": 3,
+        "device_instance_id": "device-instance-3164c593258209d757654dbd421d2bd9732fe088bce70d8c90be15dd98b587ba",
+        "hardware_evidence_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "manifest_ref": {
+          "manifest_id": "manifest_01",
+          "revision": 7,
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "owner_domain_id": "owner-domain_01",
+        "owner_domain_generation": 3,
+        "claim_generation": 2,
+        "trust_epoch": 4,
+        "grant_id": "grant_01"
+      }
+    },
+    {
+      "case_id": "DF-PROFILE-COMMISSIONING-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "CommissioningProfile",
+      "value": {
+        "profile_id": "eidolon-trust-p256-hpke-v1",
+        "schema_version": "1.0",
+        "eid_pair_versions": [
+          "1.0"
+        ],
+        "methods": [
+          "softap",
+          "ble"
+        ],
+        "network_bearers": [
+          "wifi"
+        ],
+        "physical_presence": [
+          "button",
+          "qr_secret"
+        ],
+        "base_identity_source": "hub-issued",
+        "attestation_schemes": [],
+        "secure_storage_level": "secure-element",
+        "monotonic_counter": true,
+        "candidate_network": true,
+        "rollback_guarantee": "crash-safe",
+        "max_message_size": 16384,
+        "trusted_clock": false,
+        "reset_modes": [
+          "network",
+          "owner",
+          "factory"
+        ]
+      }
+    },
+    {
+      "case_id": "DF-COMM-TERMINAL-COMMITTED-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "CommissioningStatusEvidence",
+      "value": {
+        "contract": "eidolon.device-foundation.commissioning-status",
+        "contract_version": "1.0",
+        "profile_id": "eidolon-trust-p256-hpke-v1",
+        "session_id": "setup_session_01",
+        "setup_generation": 7,
+        "state_revision": 5,
+        "state": "committed",
+        "conditions": {
+          "wifi_connected": true,
+          "owner_route_validated": true,
+          "trust_committed": true,
+          "network_committed": true
+        },
+        "failure_code": null
+      }
+    },
+    {
+      "case_id": "DF-COMM-TERMINAL-ACK-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "CommissioningTerminalAck",
+      "value": {
+        "contract": "eidolon.device-foundation.commissioning-terminal-ack",
+        "contract_version": "1.0",
+        "session_id": "setup_session_01",
+        "setup_generation": 7,
+        "observed_state_revision": 5
+      }
+    },
+    {
+      "case_id": "DF-COMM-SESSION-ID-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "CommissioningSessionId",
+      "value": "setup_session_01"
+    },
+    {
+      "case_id": "DF-SETUP-WINDOW-REMAINING-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "SetupWindowRemainingSeconds",
+      "value": 600
+    },
+    {
+      "case_id": "DF-SETUP-DESCRIPTOR-BOUNDED-WINDOW-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "SetupDescriptor",
+      "value": {
+        "contract_version": "1",
+        "device_id": "device-instance-591d7c62d0bc738376935f77ff2acd5472bbee64207a765df03af6d6240c07dc",
+        "device_kind": "atk-dnesp32s3",
+        "display_name": "Eidolon atk-dnesp32s3",
+        "identity_fingerprint": "p256:591d7c62d0bc738376935f77ff2acd5472bbee64207a765df03af6d6240c07dc",
+        "session_id": "setup_session_01",
+        "expires_in_seconds": 600,
+        "trust": "manufacturer-bound"
+      }
+    },
+    {
+      "case_id": "DF-SETUP-DESCRIPTOR-NO-DEADLINE-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "SetupDescriptor",
+      "value": {
+        "contract_version": "1",
+        "device_id": "device-instance-591d7c62d0bc738376935f77ff2acd5472bbee64207a765df03af6d6240c07dc",
+        "device_kind": "atk-dnesp32s3",
+        "display_name": "Eidolon atk-dnesp32s3",
+        "identity_fingerprint": "p256:591d7c62d0bc738376935f77ff2acd5472bbee64207a765df03af6d6240c07dc",
+        "session_id": "setup_session_01",
+        "trust": "development-tofu"
+      }
+    },
+    {
+      "case_id": "DF-MANIFEST-BOX3-DOCUMENT-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "DeviceCapabilityManifest",
+      "value": {
+        "actions": [],
+        "events": [],
+        "media": [
+          {
+            "codecs": [
+              "opus"
+            ],
+            "direction": "bidirectional",
+            "kind": "audio"
+          }
+        ],
+        "properties": [
+          {
+            "name": "interaction_mode",
+            "observable": false,
+            "schema": {
+              "const": "full_duplex",
+              "type": "string"
+            },
+            "writable": false
+          }
+        ],
+        "schema_version": 1,
+        "title": "eidolon-box3"
+      }
+    },
+    {
+      "case_id": "DF-MANIFEST-BOX3-CAMERA-DOCUMENT-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "DeviceCapabilityManifest",
+      "value": {
+        "actions": [],
+        "events": [],
+        "media": [
+          {
+            "codecs": [
+              "opus"
+            ],
+            "direction": "bidirectional",
+            "kind": "audio"
+          },
+          {
+            "codecs": [
+              "h264"
+            ],
+            "direction": "publish",
+            "kind": "video"
+          }
+        ],
+        "properties": [
+          {
+            "name": "interaction_mode",
+            "observable": false,
+            "schema": {
+              "const": "full_duplex",
+              "type": "string"
+            },
+            "writable": false
+          }
+        ],
+        "schema_version": 1,
+        "title": "eidolon-box3-camera"
+      }
+    },
+    {
+      "case_id": "DF-MANIFEST-SOFTWARE-BODY-DOCUMENT-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "DeviceCapabilityManifest",
+      "value": {
+        "actions": [],
+        "events": [],
+        "media": [
+          {
+            "codecs": [
+              "opus"
+            ],
+            "direction": "bidirectional",
+            "kind": "audio"
+          },
+          {
+            "codecs": [
+              "h264"
+            ],
+            "direction": "subscribe",
+            "kind": "video"
+          }
+        ],
+        "properties": [
+          {
+            "name": "interaction_mode",
+            "observable": false,
+            "schema": {
+              "const": "full_duplex",
+              "type": "string"
+            },
+            "writable": false
+          }
+        ],
+        "schema_version": 1,
+        "title": "Eidolon Mobile"
+      }
+    },
+    {
+      "case_id": "DF-MANIFEST-ACCEPTS-MEDIA-WITHOUT-CODECS",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "DeviceCapabilityManifest",
+      "value": {
+        "actions": [],
+        "events": [],
+        "media": [
+          {
+            "direction": "bidirectional",
+            "kind": "audio"
+          }
+        ],
+        "properties": [],
+        "schema_version": 1,
+        "title": "no-codecs"
+      }
+    },
+    {
+      "case_id": "DF-MANIFEST-ACCEPTS-A-BODY-THAT-DECLARES-NO-MEDIA",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "DeviceCapabilityManifest",
+      "value": {
+        "actions": [],
+        "events": [],
+        "media": [],
+        "properties": [],
+        "schema_version": 1,
+        "title": "sensor-only"
+      }
+    },
+    {
+      "case_id": "DF-MANIFEST-FULL-AFFORDANCE-DOCUMENT-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "DeviceCapabilityManifest",
+      "value": {
+        "actions": [
+          {
+            "name": "set_volume",
+            "version": 1,
+            "input_schema": {
+              "type": "integer"
+            },
+            "output_schema": {
+              "type": "null"
+            },
+            "idempotent": true
+          }
+        ],
+        "events": [
+          {
+            "name": "button_pressed",
+            "data_schema": {
+              "type": "object"
+            }
+          }
+        ],
+        "media": [
+          {
+            "codecs": [
+              "opus"
+            ],
+            "direction": "publish",
+            "kind": "audio"
+          }
+        ],
+        "properties": [
+          {
+            "name": "interaction_mode",
+            "observable": false,
+            "schema": {
+              "const": "ptt",
+              "type": "string"
+            },
+            "writable": false
+          }
+        ],
+        "schema_version": 1,
+        "title": "every-affordance"
+      }
+    }
+  ]
+}
