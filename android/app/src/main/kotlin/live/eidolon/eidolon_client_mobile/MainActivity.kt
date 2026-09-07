@@ -60,6 +60,9 @@ class MainActivity : FlutterActivity() {
     private var setupScanCallback: ScanCallback? = null
     private var setupScanResult: MethodChannel.Result? = null
     private var commissioningManager: BleCommissioningManager? = null
+    /** This enrollment's handoff key. In memory only; see HandoffKeyHolder. */
+    private val handoffKeys = HandoffKeyHolder()
+
     private val pinnedHttpsClient by lazy { PinnedHttpsClient(mainHandler) }
     private val deviceProvisioning by lazy {
         DeviceProvisioningManager(applicationContext, mainHandler)
@@ -84,6 +87,17 @@ class MainActivity : FlutterActivity() {
                     result.success(verifyOwnerDomainDescriptor(call))
                 "getControllerIdentity" -> result.success(controllerIdentity())
                 "signControllerChallenge" -> result.success(signControllerChallenge(call))
+                "signDeviceCanonicalDocument" ->
+                    result.success(signDeviceCanonicalDocument(call))
+                "issueHandoffKey" -> result.success(issueHandoffKey())
+                "openClaimGrant" -> result.success(openClaimGrant(call))
+                "signHandoffCanonicalDocument" ->
+                    result.success(signHandoffCanonicalDocument(call))
+                "holdsHandoffKey" -> result.success(handoffKeys.holdsKey())
+                "discardHandoffKey" -> {
+                    handoffKeys.discard()
+                    result.success(true)
+                }
                 "pinnedHttpsRequest" -> pinnedHttpsClient.request(call, result)
                 "requestMicrophonePermission" -> requestMicrophonePermission(result)
                 "requestBluetoothPermissions" -> requestBluetoothPermissions(result)
@@ -244,6 +258,86 @@ class MainActivity : FlutterActivity() {
         signer.initSign(ensureKeyEntry(CONTROLLER_KEY_ALIAS).privateKey)
         signer.update(canonical.toByteArray(StandardCharsets.UTF_8))
         return base64Url(signer.sign())
+    }
+
+    /**
+     * Sign an already-canonical document with this device's operational key.
+     *
+     * The bytes are signed exactly as given. Canonicalisation is Dart's — it
+     * has the one RFC 8785 implementation this app owns and the vectors that
+     * pin it — and a second canonicaliser here, in a language with no test
+     * against those vectors, is how the evidence document and the digest the
+     * Authority recomputes come to differ over a space.
+     *
+     * Returns P1363 (`r || s`, base64url), not the DER the JCA hands back:
+     * every Eidolon contract states ES256 that way, and
+     * `golden/es256-vectors.json` is the authority for it.
+     *
+     * The key is not a parameter. `signRequest` and `signControllerChallenge`
+     * each imply theirs the same way, and for good reason: which key speaks for
+     * this device is an application fact, not something a caller should be able
+     * to choose — the operational key and the Controller key mean different
+     * things to a Host and must never be interchangeable from up there.
+     */
+    /**
+     * Mint the one-shot key this enrollment's ClaimGrant will be sealed to.
+     *
+     * The private half never crosses this boundary. Dart gets the public key to
+     * put in the proposal, the id the envelope will name, and an opaque handle
+     * to present when the Grant comes back.
+     */
+    private fun issueHandoffKey(): Map<String, String> {
+        val issued = handoffKeys.issue()
+        return mapOf(
+            "handle" to issued.handle,
+            "publicKey" to issued.publicKeySpki,
+            "keyId" to issued.keyId,
+        )
+    }
+
+    /**
+     * Prove possession of this enrollment's handoff key.
+     *
+     * Canonicalisation is Dart's, here as everywhere: what crosses is bytes.
+     */
+    private fun signHandoffCanonicalDocument(call: MethodCall): String {
+        val handle = call.argument<String>("handle") ?: error("handle is required")
+        val document = call.argument<String>("document") ?: error("document is required")
+        require(document.isNotEmpty()) { "document cannot be empty" }
+        return handoffKeys.sign(handle, document.toByteArray(StandardCharsets.UTF_8))
+    }
+
+    /**
+     * Open a ClaimGrant envelope with the handoff key [call] names.
+     *
+     * The AAD arrives as bytes rather than as fields: canonicalising it is
+     * Dart's, and it holds the only RFC 8785 implementation this app owns.
+     * Rebuilding the AAD here would be a second canonicaliser deciding what a
+     * Grant is bound to.
+     */
+    private fun openClaimGrant(call: MethodCall): String {
+        val handle = call.argument<String>("handle") ?: error("handle is required")
+        fun bytes(name: String): ByteArray {
+            val value = call.argument<String>(name) ?: error("$name is required")
+            return Base64.decode(value, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+        }
+        val plaintext = handoffKeys.open(
+            handle = handle,
+            encapsulatedKey = bytes("encapsulatedKey"),
+            aad = bytes("aad"),
+            ciphertext = bytes("ciphertext"),
+        )
+        return base64Url(plaintext)
+    }
+
+    private fun signDeviceCanonicalDocument(call: MethodCall): String {
+        val document = call.argument<String>("document")
+            ?: error("document is required")
+        require(document.isNotEmpty()) { "document cannot be empty" }
+        val signer = Signature.getInstance("SHA256withECDSA")
+        signer.initSign(ensureKeyEntry().privateKey)
+        signer.update(document.toByteArray(StandardCharsets.UTF_8))
+        return base64Url(EcdsaSignatureEncoding.derToP1363(signer.sign()))
     }
 
     private fun signRequest(call: MethodCall): Map<String, String> {

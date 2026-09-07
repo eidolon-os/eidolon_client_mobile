@@ -56,7 +56,7 @@ internal object OwnerDomainDescriptorVerifier {
         val verifier = Signature.getInstance("SHA256withECDSA")
         verifier.initVerify(authority.publicKey)
         verifier.update(canonicalSigningDocument.toByteArray(StandardCharsets.UTF_8))
-        require(verifier.verify(p1363ToDer(rawSignature))) {
+        require(verifier.verify(EcdsaSignatureEncoding.p1363ToDer(rawSignature))) {
             "Descriptor signature is invalid"
         }
         return true
@@ -88,25 +88,6 @@ internal object OwnerDomainDescriptorVerifier {
         value.replace('-', '+').replace('_', '/') + "=".repeat((4 - value.length % 4) % 4),
         Base64.DEFAULT,
     )
-
-    private fun p1363ToDer(raw: ByteArray): ByteArray {
-        fun integer(value: ByteArray): ByteArray {
-            val firstNonZero = value.indexOfFirst { it.toInt() != 0 }.let {
-                if (it < 0) value.lastIndex else it
-            }
-            val magnitude = value.copyOfRange(firstNonZero, value.size)
-            val positive = if ((magnitude[0].toInt() and 0x80) != 0) {
-                byteArrayOf(0) + magnitude
-            } else {
-                magnitude
-            }
-            return byteArrayOf(0x02, positive.size.toByte()) + positive
-        }
-        val r = integer(raw.copyOfRange(0, 32))
-        val s = integer(raw.copyOfRange(32, 64))
-        val body = r + s
-        return byteArrayOf(0x30, body.size.toByte()) + body
-    }
 
     private fun sha256(value: ByteArray): ByteArray =
         MessageDigest.getInstance("SHA-256").digest(value)
