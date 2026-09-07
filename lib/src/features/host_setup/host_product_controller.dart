@@ -50,6 +50,44 @@ enum HostConnectionRecovery {
   reclaimRequired,
 }
 
+/// What is actually left to do about a Workspace the Host would not report.
+///
+/// The same distinction [HostConnectionRecovery] draws one plane up, drawn here
+/// because the card had exactly the defect that enum exists to prevent:
+/// 「重新加载 Workspace」 was its only control, offered in front of every
+/// refusal alike.
+///
+/// Found on a real Host rather than reasoned about. A freshly claimed phone
+/// asked `GET /api/local/v1/setup/workspace` and was refused: bootstrap still
+/// held an Owner from an earlier setup, and the Data plane had no Workspace for
+/// it. The Owner binding is Host state, not per-Controller, so *every* phone
+/// claimed onto that Host lands there — and both the reload and the initialize
+/// the app could send are refused for the same reason, forever. The screen said
+/// 「暂时不可用」 and drew a reload button.
+///
+/// The Local API has since moved that condition onto 409 beside the two
+/// self-disagreements it already had, and tagged all three with a reason a
+/// person can read. So this enum is no longer keyed to a status code that used
+/// to mean one thing: it is keyed to whether anything on *this phone* can
+/// change the answer, which is the question the control has to be chosen by.
+/// The Host's sentence and this app's control are two halves of one answer, and
+/// they are now decided in one place — see `_workspaceRefusal`.
+enum WorkspaceRecovery {
+  /// The Host answered "not right now". Loading again is the whole way
+  /// forward.
+  retry,
+
+  /// This management session is no longer good. Loading again asks with the
+  /// same dead session and gets the same answer; a new connection is what
+  /// replaces it.
+  reconnect,
+
+  /// Nothing on this phone changes the answer, and the sentence says where it
+  /// does change. Offering any control here would be the promise that made
+  /// this enum necessary.
+  fixedElsewhere,
+}
+
 class HostProductController extends ChangeNotifier {
   HostProductController({
     required ManagedHost host,
@@ -115,6 +153,7 @@ class HostProductController extends ChangeNotifier {
   HostProductConnection? _connection;
   WorkspaceStatus? _workspace;
   String? _workspaceError;
+  WorkspaceRecovery _workspaceRecovery = WorkspaceRecovery.retry;
   HostHome? _home;
 
   /// What this Host says it can do at all, read once per connected session.
@@ -146,6 +185,10 @@ class HostProductController extends ChangeNotifier {
   HostProductConnection? get connection => _connection;
   WorkspaceStatus? get workspace => _workspace;
   String? get workspaceError => _workspaceError;
+
+  /// What [workspaceError] leaves a person able to do. Meaningless while
+  /// [workspaceError] is null.
+  WorkspaceRecovery get workspaceRecovery => _workspaceRecovery;
 
   /// What is mine, right now. Null while it has not been read, or when the
   /// Host refused — and [homeError] says which.
@@ -219,7 +262,7 @@ class HostProductController extends ChangeNotifier {
     if (_workspaceBusy || _connection == null || _disposed) return;
     _workspaceBusy = true;
     _workspace = null;
-    _workspaceError = null;
+    _clearWorkspaceRefusal();
     _home = null;
     _homeError = null;
     _devices = null;
@@ -244,18 +287,24 @@ class HostProductController extends ChangeNotifier {
     final ownerName = ownerDisplayName.trim();
     final companionName = companionDisplayName.trim();
     if (ownerName.isEmpty || ownerName.length > 128) {
-      _workspaceError = '请填写 1–128 个字符的称呼。';
+      _refuseWorkspace((
+        sentence: '请填写 1–128 个字符的称呼。',
+        recovery: WorkspaceRecovery.retry,
+      ));
       _notify();
       return;
     }
     if (companionName.isEmpty || companionName.length > 128) {
-      _workspaceError = '请填写 1–128 个字符的 Eidolon 名称。';
+      _refuseWorkspace((
+        sentence: '请填写 1–128 个字符的 Eidolon 名称。',
+        recovery: WorkspaceRecovery.retry,
+      ));
       _notify();
       return;
     }
 
     _workspaceBusy = true;
-    _workspaceError = null;
+    _clearWorkspaceRefusal();
     _homeError = null;
     _notify();
     try {
@@ -272,13 +321,19 @@ class HostProductController extends ChangeNotifier {
     } on HostControllerAuthorizationException catch (error) {
       _failAuthorization(error);
     } on LocalApiRequestException catch (error) {
-      _workspaceError = _workspaceFailure(error);
+      _refuseWorkspace(_workspaceRefusal(error));
     } on PinnedHttpException catch (error) {
-      _workspaceError = _pinnedHttpFailure(error, workspaceIsOptional: true);
+      _refuseWorkspace(_pinnedHttpWorkspaceRefusal(error));
     } on FormatException {
-      _workspaceError = '主机没有返回完整的 Workspace 结果，请重试。';
+      _refuseWorkspace((
+        sentence: '主机没有返回完整的 Workspace 结果，请重试。',
+        recovery: WorkspaceRecovery.retry,
+      ));
     } catch (_) {
-      _workspaceError = 'Workspace 暂时未能完成；主机认领和 Wi-Fi 不会回滚。';
+      _refuseWorkspace((
+        sentence: 'Workspace 暂时未能完成；主机认领和 Wi-Fi 不会回滚。',
+        recovery: WorkspaceRecovery.retry,
+      ));
     } finally {
       _workspaceBusy = false;
       _notify();
@@ -788,16 +843,25 @@ class HostProductController extends ChangeNotifier {
     } on HostControllerAuthorizationException {
       rethrow;
     } on LocalApiRequestException catch (error) {
-      _workspaceError = _workspaceFailure(error);
+      _refuseWorkspace(_workspaceRefusal(error));
       return;
     } on PinnedHttpException catch (error) {
-      _workspaceError = _pinnedHttpFailure(error, workspaceIsOptional: true);
+      _refuseWorkspace(_pinnedHttpWorkspaceRefusal(error));
       return;
     } on FormatException {
-      _workspaceError = '主机已安全连接，但 Workspace 返回了不兼容的数据。';
+      // A Host answering in a shape this build cannot read will answer the
+      // same way next time; the versions have to meet somewhere else.
+      _refuseWorkspace((
+        sentence: '主机已安全连接，但 Workspace 返回了这个版本读不懂的数据，'
+            '需要升级手机 App 或主机，让两边的版本对上。',
+        recovery: WorkspaceRecovery.fixedElsewhere,
+      ));
       return;
     } catch (_) {
-      _workspaceError = '主机已安全接入，但 Workspace 服务暂时不可用。';
+      _refuseWorkspace((
+        sentence: '主机已安全接入，但 Workspace 服务暂时不可用。',
+        recovery: WorkspaceRecovery.retry,
+      ));
       return;
     }
     _workspace = workspace;
@@ -905,7 +969,7 @@ class HostProductController extends ChangeNotifier {
 
   void _clearProductState() {
     _workspace = null;
-    _workspaceError = null;
+    _clearWorkspaceRefusal();
     _home = null;
     _homeError = null;
     _devices = null;
@@ -961,13 +1025,98 @@ class HostProductController extends ChangeNotifier {
     return '$message 主机认领和 Wi-Fi 不会回滚，可稍后继续 Workspace。';
   }
 
-  String _workspaceFailure(LocalApiRequestException error) =>
-      switch (error.statusCode) {
+  /// The transport half of the same judgement.
+  ///
+  /// Three of these kinds are a network that comes back and one is not: a Host
+  /// whose cryptographic identity stopped matching what this phone saved never
+  /// matches again by reloading — that is the case [HostConnectionRecovery]
+  /// already refuses to offer a retry for, so this hands it to the connection
+  /// plane rather than answering it here. The two build-version kinds are
+  /// hopeless in the same way and say so in their own sentence.
+  ({String sentence, WorkspaceRecovery recovery}) _pinnedHttpWorkspaceRefusal(
+    PinnedHttpException error,
+  ) => (
+    sentence: _pinnedHttpFailure(error, workspaceIsOptional: true),
+    recovery: switch (error.kind) {
+      PinnedHttpFailureKind.secureChannel => WorkspaceRecovery.reconnect,
+      PinnedHttpFailureKind.invalidRequest ||
+      PinnedHttpFailureKind.unsupportedPlatform =>
+        WorkspaceRecovery.fixedElsewhere,
+      PinnedHttpFailureKind.timeout ||
+      PinnedHttpFailureKind.unreachable ||
+      PinnedHttpFailureKind.io ||
+      PinnedHttpFailureKind.platform =>
+        WorkspaceRecovery.retry,
+    },
+  );
+
+  /// Why the Workspace could not be read, and what that leaves someone able to
+  /// do about it.
+  ///
+  /// Two facts, produced together, because producing them apart is how the 404
+  /// below came to be shown as 「暂时不可用」 under a reload button: the sentence
+  /// was chosen here and the control was chosen on the page, and neither knew
+  /// what the other had decided.
+  ({String sentence, WorkspaceRecovery recovery}) _workspaceRefusal(
+    LocalApiRequestException error,
+  ) {
+    final recovery = switch (error.statusCode) {
+      401 => WorkspaceRecovery.reconnect,
+      // Three conditions now, all of them the Host disagreeing with itself:
+      // an Owner binding whose Workspace the Data plane does not have, an
+      // Owner scope that does not match the Workspace it does have, and a
+      // setup form submitted to a Host that already finished setup. None of
+      // them changes for another phone or another reload.
+      409 => WorkspaceRecovery.fixedElsewhere,
+      // Not this Host's state — this Host's build. The route this app needs is
+      // one it does not serve, which upgrading fixes and reloading does not.
+      // It used to mean the orphaned Owner binding, until the Local API moved
+      // that onto 409 where the two conditions beside it already lived.
+      404 => WorkspaceRecovery.fixedElsewhere,
+      // The one refusal a person can answer on this screen: the name is in a
+      // field in front of them.
+      422 => WorkspaceRecovery.retry,
+      _ => WorkspaceRecovery.retry,
+    };
+    // The Host's own sentence wins wherever it wrote one, and the fallbacks
+    // below are only for a Host that did not. This is not politeness: the Host
+    // grades a refusal this app cannot, and the sentences worth having are the
+    // ones this app could never compose — which Owner name a Workspace was
+    // built under, and that `owner-reset` is what forgets an Owner without
+    // costing anyone their claim. A screen keyed on the status code alone has
+    // to offer one guess for three different conflicts.
+    final reason = error.reason;
+    if (reason != null) return (sentence: reason, recovery: recovery);
+    return (
+      sentence: switch (error.statusCode) {
         401 => '本次管理会话已失效，请重新连接主机。',
-        409 => '主机的 Owner 绑定与 Workspace 不一致，已停止继续设置。',
+        409 => '主机的 Owner 绑定与 Workspace 不一致，已停止继续设置。'
+            '这要在主机那边修好，手机这边重试不会有别的结果。',
+        404 => '这台主机的版本还没有 Workspace 设置接口，'
+            '手机这边重试不会有别的结果——需要升级主机或换用匹配的 App 版本。',
         422 => 'Workspace 名称未被主机接受，请检查后重试。',
         _ => '主机已安全接入，但 Workspace 服务暂时不可用。认领和 Wi-Fi 不会回滚。',
-      };
+      },
+      recovery: recovery,
+    );
+  }
+
+  void _refuseWorkspace(
+    ({String sentence, WorkspaceRecovery recovery}) refusal,
+  ) {
+    _workspaceError = refusal.sentence;
+    _workspaceRecovery = refusal.recovery;
+  }
+
+  /// Clear the sentence and what it left someone able to do, together.
+  ///
+  /// Together because a recovery outliving its sentence is how a screen ends
+  /// up withholding a control that would have worked: the next refusal defaults
+  /// to whatever the last one decided.
+  void _clearWorkspaceRefusal() {
+    _workspaceError = null;
+    _workspaceRecovery = WorkspaceRecovery.retry;
+  }
 
   /// Why the bodies could not be read, in the words of the plane that refused.
   ///

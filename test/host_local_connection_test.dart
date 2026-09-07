@@ -336,6 +336,9 @@ http.Response _jsonResponse(Object body, [int status = 200]) =>
 LocalApiClient _clientFor(
   Map<String, dynamic> overview, {
   int workspaceStatusCode = 200,
+
+  /// What the Host wrote about the refusal, when it wrote anything.
+  String? workspaceReason,
   bool workspaceReady = false,
   int runtimeStatusCode = 200,
   bool withReadyDevice = false,
@@ -399,7 +402,18 @@ LocalApiClient _clientFor(
           );
         }
         if (workspaceStatusCode != 200) {
-          return http.Response('', workspaceStatusCode);
+          // A tagged `{"detail": {"reason": ...}}` when the caller asked for
+          // one, which is the only shape the App reads — a bare string detail
+          // is operator prose and is dropped on purpose. A fake that could not
+          // produce the tagged shape would leave the branch that prefers the
+          // Host's own words untested.
+          return _jsonResponse(
+            <String, dynamic>{
+              if (workspaceReason != null)
+                'detail': <String, dynamic>{'reason': workspaceReason},
+            },
+            workspaceStatusCode,
+          );
         }
         return _jsonResponse(
           workspaceReady
@@ -627,6 +641,152 @@ void main() {
     expect(find.byKey(const Key('local-connection-error')), findsNothing);
     expect(find.byKey(const Key('workspace-setup-error')), findsOneWidget);
     expect(find.textContaining('认领和 Wi-Fi 不会回滚'), findsOneWidget);
+    // The other half of this pair: an outage is exactly what a reload is for.
+    expect(find.byKey(const Key('retry-workspace-status')), findsOneWidget);
+  });
+
+  testWidgets('a Host whose two halves disagree is not offered a reload',
+      (tester) async {
+    // Found on a real Host, not reasoned about. A pad claimed a freshly started
+    // Mac Host and `GET /api/local/v1/setup/workspace` refused: bootstrap still
+    // held an Owner from an earlier setup and the Data plane had no Workspace
+    // under it. The Owner binding is Host state rather than per-Controller, so
+    // this is the answer for every phone, and `PUT` refuses for the same
+    // reason — there is no reload, and no first-time creation, that ends
+    // anywhere else.
+    //
+    // The screen said 「暂时不可用」 and drew 「重新加载 Workspace」, which is this
+    // project's defect shape exactly: a button in front of an event that never
+    // happens.
+    //
+    // It arrives as 409 now. It was a 404 when this was found, and the Local
+    // API moved it beside the two self-disagreements that were already 409 —
+    // so the status is asserted here as what the Host sends, not as what the
+    // condition is.
+    const orphaned = '这台主机记着一位 Owner，但它的数据面里没有对应的 Workspace，两边对不上。'
+        '要在主机上修：恢复那份数据，或者运行 owner-reset。';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(
+            _hostOverview(),
+            workspaceStatusCode: 409,
+            workspaceReason: orphaned,
+          ),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The claim still stands. Refusing to draw a control is not the same as
+    // reporting a broken connection, and must not be shown as one.
+    expect(find.byKey(const Key('local-connection-complete')), findsOneWidget);
+    expect(find.byKey(const Key('local-connection-error')), findsNothing);
+    expect(find.byKey(const Key('workspace-unavailable')), findsOneWidget);
+
+    expect(find.byKey(const Key('retry-workspace-status')), findsNothing);
+    expect(find.byKey(const Key('reconnect-for-workspace')), findsNothing);
+    expect(find.byKey(const Key('workspace-fixed-elsewhere')), findsOneWidget);
+    // The Host's own sentence, not this app's paraphrase of a status code. It
+    // names `owner-reset`, which this app has no way to know about — and that
+    // is the whole reason the tagged reason is preferred over the fallback.
+    expect(find.text(orphaned), findsOneWidget);
+    // Including in the heading: 「暂」不可用 would promise the same thing the
+    // button used to.
+    expect(find.text('Workspace 状态暂不可用'), findsNothing);
+  });
+
+  testWidgets('a conflict the Host did not explain still withholds the reload',
+      (tester) async {
+    // The fallback path. A Host too old to tag its refusals still must not be
+    // handed a reload button for a conflict, so the recovery is decided by the
+    // status and only the *words* fall back.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(
+            _hostOverview(),
+            workspaceStatusCode: 409,
+          ),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('workspace-fixed-elsewhere')), findsOneWidget);
+    expect(find.byKey(const Key('retry-workspace-status')), findsNothing);
+    expect(find.textContaining('要在主机那边修好'), findsOneWidget);
+  });
+
+  testWidgets('a Host without the Workspace route is a version gap, not an outage',
+      (tester) async {
+    // What 404 means now that the orphaned binding moved to 409: this Host's
+    // build does not serve the route. Reloading cannot add it, so the control
+    // is withheld for a different reason than the conflict above — and the
+    // sentence must not be the conflict's, which is what it would have been if
+    // the branch had simply been left pointing at the old story.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(
+            _hostOverview(),
+            workspaceStatusCode: 404,
+          ),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('workspace-fixed-elsewhere')), findsOneWidget);
+    expect(find.byKey(const Key('retry-workspace-status')), findsNothing);
+    expect(find.textContaining('需要升级主机'), findsOneWidget);
+    expect(find.textContaining('数据面'), findsNothing);
+  });
+
+  testWidgets('an expired management session is offered a new one, not a reload',
+      (tester) async {
+    // 401 is not an outage either: reloading asks with the same dead session.
+    // The sentence already said 「请重新连接主机」 while the only button on the
+    // card reloaded — the words and the control disagreed.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HostLocalConnectionPage(
+          managementClientFactory: (_) => _quietManagementClient(),
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          transport: _LegacyHostTransport(),
+          controllerKeys: _FakeControllerKeys(),
+          discovery: _FakeDiscovery(),
+          localApiClientFactory: (_) => _clientFor(
+            _hostOverview(),
+            workspaceStatusCode: 401,
+          ),
+          onHostUpdated: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('workspace-unavailable')), findsOneWidget);
+    expect(find.byKey(const Key('reconnect-for-workspace')), findsOneWidget);
+    expect(find.byKey(const Key('retry-workspace-status')), findsNothing);
   });
 
   testWidgets(

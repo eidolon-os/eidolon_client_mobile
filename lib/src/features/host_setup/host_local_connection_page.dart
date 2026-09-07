@@ -1010,7 +1010,14 @@ class _WorkspaceCard extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Workspace 状态暂不可用',
+                  // 「暂」 is a promise too. It is true of an outage and false
+                  // of a Host whose two halves disagree, and heading a
+                  // permanent condition with "temporarily" is the same lie as
+                  // the reload button below, one line higher.
+                  controller.workspaceRecovery ==
+                          WorkspaceRecovery.fixedElsewhere
+                      ? 'Workspace 读不到'
+                      : 'Workspace 状态暂不可用',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
@@ -1022,14 +1029,35 @@ class _WorkspaceCard extends StatelessWidget {
             key: const Key('workspace-setup-error'),
           ),
           const SizedBox(height: 12),
-          FilledButton.tonalIcon(
-            key: const Key('retry-workspace-status'),
-            onPressed: controller.workspaceBusy
-                ? null
-                : controller.refreshWorkspace,
-            icon: const Icon(Icons.refresh),
-            label: const Text('重新加载 Workspace'),
-          ),
+          // The control follows the refusal. 「重新加载 Workspace」 used to be
+          // the only one here, drawn in front of every answer alike — including
+          // the Host-side mismatch that returns the same 404 to every phone and
+          // every reload. A button that cannot work is worse than none: it
+          // makes an unresolvable state look like an unlucky one.
+          switch (controller.workspaceRecovery) {
+            WorkspaceRecovery.retry => FilledButton.tonalIcon(
+              key: const Key('retry-workspace-status'),
+              onPressed: controller.workspaceBusy
+                  ? null
+                  : controller.refreshWorkspace,
+              icon: const Icon(Icons.refresh),
+              label: const Text('重新加载 Workspace'),
+            ),
+            WorkspaceRecovery.reconnect => FilledButton.icon(
+              key: const Key('reconnect-for-workspace'),
+              onPressed: controller.workspaceBusy || controller.connecting
+                  ? null
+                  : () => onReconnect(),
+              icon: const Icon(Icons.link),
+              label: const Text('重新连接主机'),
+            ),
+            // Deliberately no control. The sentence above says where this is
+            // repaired, and every button this card could draw would be aimed
+            // at the wrong place.
+            WorkspaceRecovery.fixedElsewhere => const SizedBox.shrink(
+              key: Key('workspace-fixed-elsewhere'),
+            ),
+          },
         ],
       ),
     ),
