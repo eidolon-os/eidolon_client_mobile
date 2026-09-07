@@ -57,10 +57,12 @@ Conversation 功能存在，不参与默认启动，也不在 Host Control 阶�
    Domain trust anchor 和签名目录一致的逻辑 Authority endpoint。
 2. 在 AndroidKeyStore 里持有一把 P-256 operational key，并从它的 SPKI 派生这台设备的
    `device-instance-<sha256>` —— 与 ESP32 同一条规则（`device_instance_identity.dart`）。
-   **这台手机还不会用它去提出 Enrollment**：`POST /api/admission/v1/enrollments` 在移动端
-   尚未实现，`hub_client.dart` 里那条签名注册路径（`X-Device-ID` 等头）在 Hub 上已无对端
-   （命中数 0），产品配置下不再被调用。缺什么、为什么、怎么补，见
-   `docs/设备与Body/纯软件Body准入身份裁决.md`。
+   这台手机用它提出自己的 Enrollment：`create → collect → ack` 由
+   `device_setup/mobile_body_enrollment.dart` 编排，走与 ESP32 完全相同的一条链路。
+   提出与批准是两次调用而不是一次 —— 软件路径上两者是同一个人，把它折成一步就是
+   在补偿裁决 W1 明确拒绝补偿的那个弱化。`hub_client.dart` 里那条旧的签名注册路径
+   （`X-Device-ID` 等头）在 Hub 上已无对端（命中数 0），产品配置下不再被调用。
+   设计依据见 `docs/设备与Body/纯软件Body准入身份裁决.md`。
 3. 读 Admission 的 recovery 投影，把这台手机的处境报成 `MobileBodyStanding` 的七段之一
    （`mobile_body_standing.dart`），每段说清发生了什么、缺什么、谁能动。不能自行前进的几段
    停止轮询，并指名缺口而不是给一个「再试一次」。

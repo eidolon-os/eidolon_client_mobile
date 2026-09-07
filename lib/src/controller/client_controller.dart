@@ -8,6 +8,9 @@ import 'package:livekit_client/livekit_client.dart';
 
 import '../avatar/avatar_stage.dart';
 import '../features/conversation/conversation_provisioner.dart';
+import '../features/conversation/mobile_body_standing.dart';
+import '../features/device_setup/mobile_body_enrollment_session.dart';
+import '../features/device_setup/mobile_body_manifest.dart';
 import '../models/client_ui_state.dart';
 import '../models/hub_models.dart';
 import '../platform/platform_bridge.dart';
@@ -27,11 +30,13 @@ class ClientController extends ChangeNotifier {
     Duration controlReconnectGrace = const Duration(seconds: 2),
     Duration controlRecoveryRetry = const Duration(seconds: 2),
     ConversationProvisioner? conversationProvisioner,
+    MobileBodyEnrollmentSession? enrollment,
   })  : _platform = platform ?? const PlatformBridge(),
         _hubClient = hubClient ?? HubClient(platform: platform),
         _session = session ?? EidolonSession(),
         _vad = vad,
         _conversationProvisioner = conversationProvisioner,
+        _enrollment = enrollment,
         _controlReconnectGrace = controlReconnectGrace,
         _controlRecoveryRetry = controlRecoveryRetry {
     _dataSubscription = _session.dataEvents.listen(_onSessionData);
@@ -52,6 +57,12 @@ class ClientController extends ChangeNotifier {
   final EidolonSession _session;
   final VadProcessor _vad;
   final ConversationProvisioner? _conversationProvisioner;
+
+  /// The Enrollment this phone has in flight, if this build wired one.
+  ///
+  /// Null means no control is drawn for any of it. A screen that offered acts
+  /// nothing could perform would be worse than the silence it replaced.
+  final MobileBodyEnrollmentSession? _enrollment;
   final Duration _controlReconnectGrace;
   final Duration _controlRecoveryRetry;
 
@@ -100,6 +111,8 @@ class ClientController extends ChangeNotifier {
         failure: failure,
         notice: notice,
         bodyStanding: config?.bodyStanding,
+        enrollmentAct: enrollmentAct,
+        enrollmentExpiresAt: config?.bodyEnrollment?.expiresAt,
         deviceFingerprint: config?.deviceFingerprint ?? '',
       );
 
@@ -146,10 +159,12 @@ class ClientController extends ChangeNotifier {
 
   /// Whether something this screen is waiting on can still arrive.
   ///
-  /// The polling predicate, and the one thing today's screen had wrong: it
+  /// The polling predicate, and the one thing the old screen had wrong: it
   /// polled every five seconds for an Enrollment that only this phone may
-  /// create and that this version cannot create, so 「待批准」 was permanent by
-  /// construction. A standing that cannot advance is not waiting.
+  /// create and that no version had ever created, so 「待批准」 was permanent by
+  /// construction. A standing that cannot advance is not waiting — and that is
+  /// still the rule now that the proposal exists, because a proposal nobody has
+  /// made is not in flight.
   bool get isWaiting =>
       (phase == ClientPhase.awaitingApproval ||
           phase == ClientPhase.awaitingBinding) &&
@@ -158,6 +173,28 @@ class ClientController extends ChangeNotifier {
   /// The Owner holding this phone can approve it from here.
   bool get awaitsThisControllersApproval =>
       config?.bodyStanding?.awaitsThisControllersApproval ?? false;
+
+  /// What this phone can do about its Enrollment, as of the last projection.
+  ///
+  /// Recomputed after every provision rather than derived in the widget: the
+  /// answer depends on whether the platform still holds a handoff key, which is
+  /// a question with an await in it and no place in a build method.
+  MobileBodyEnrollmentAct enrollmentAct = MobileBodyEnrollmentAct.none;
+
+  /// The Enrollment the act refers to, when the Authority named one.
+  MobileBodyEnrollmentRef? get enrollmentRef => config?.bodyEnrollment;
+
+  /// This phone can propose itself as a Body from here, now.
+  ///
+  /// Read straight off the standing rather than off the phase: `bodyBlocked`
+  /// covers both the stages where a person can act and the one where the gap is
+  /// the Host's to close, and drawing the same control for both would put a
+  /// button in front of something it cannot change.
+  ///
+  /// Null standing is false. A screen with no Admission answer has not been
+  /// told there is nothing, it has not been told anything.
+  bool get canProposeItself =>
+      config?.bodyStanding?.canProposeItself ?? false;
 
   Future<void> start() async {
     if (_busy) return;
@@ -203,7 +240,22 @@ class ClientController extends ChangeNotifier {
     // the phase, so that a stage which cannot advance is drawn as stopped
     // rather than as 「待批准」 with a retry button in front of it.
     final standing = next.bodyStanding;
-    if (standing != null && !standing.advances) {
+    enrollmentAct = standing == null || _enrollment == null
+        ? MobileBodyEnrollmentAct.none
+        : await _enrollment.actFor(standing);
+    // Two different facts, and the screen needs both. `advances` is the
+    // Authority's: this stage moves on its own. Whether *this phone* can still
+    // move it is local, and the Authority cannot know it — the collection
+    // challenge and the handoff key live only in the process that proposed.
+    //
+    // Folding them is not tidiness. `approvedAwaitingHandoff` advances, so on
+    // its own it draws 「正在领取归属凭证」 with a 「立即检查状态」 beside it —
+    // in front of a collection nobody is performing and nobody can. That is the
+    // exact shape this screen was rewritten to delete, arriving from the other
+    // side.
+    final stalled = enrollmentAct == MobileBodyEnrollmentAct.abandon ||
+        enrollmentAct == MobileBodyEnrollmentAct.waitForExpiry;
+    if (standing != null && (!standing.advances || stalled)) {
       _activationTimer?.cancel();
       _setPhase(ClientPhase.bodyBlocked);
       return;
@@ -709,6 +761,70 @@ class ClientController extends ChangeNotifier {
       notifyListeners();
     } catch (_) {
       // Ignore unrelated/malformed data packets on this topic.
+    }
+  }
+
+  /// Propose this phone as a Body.
+  ///
+  /// The first of two acts by the same person. It stops at a pending proposal
+  /// on purpose — the approval that follows is the second, and one call that
+  /// did both would be the compensation `纯软件Body准入身份裁决` W1 refused.
+  Future<void> proposeSelf({String title = defaultMobileBodyTitle}) =>
+      _enrollmentAction(
+        MobileBodyEnrollmentAct.propose,
+        (session) => session.propose(title: title),
+      );
+
+  /// Collect and acknowledge the Grant for an approved proposal.
+  Future<void> finishEnrollment() => _enrollmentAction(
+        MobileBodyEnrollmentAct.collect,
+        (session) => session.complete(),
+      );
+
+  /// Withdraw a proposal this phone can no longer finish.
+  ///
+  /// Only offered where the Authority allows the transition, which is
+  /// `pending_review` alone — see [MobileBodyEnrollmentAct.waitForExpiry] for
+  /// the state where it does not.
+  Future<void> abandonEnrollment() {
+    final enrollmentId = enrollmentRef?.enrollmentId;
+    if (enrollmentId == null) {
+      // Nothing to address the withdrawal to. Refused here rather than sent,
+      // because the Authority would answer about an id this screen invented.
+      return Future<void>.value();
+    }
+    return _enrollmentAction(
+      MobileBodyEnrollmentAct.abandon,
+      (session) => session.abandon(
+        enrollmentId: enrollmentId,
+        reason: 'device_replaced',
+      ),
+    );
+  }
+
+  /// Run one Enrollment act, then re-read where this phone stands.
+  ///
+  /// Re-reading is not a refresh for its own sake: every one of these changes
+  /// what the Authority will say next, and a screen still showing the previous
+  /// answer would be offering the act that was just taken.
+  Future<void> _enrollmentAction(
+    MobileBodyEnrollmentAct expected,
+    Future<void> Function(MobileBodyEnrollmentSession session) act,
+  ) async {
+    final session = _enrollment;
+    if (_busy || session == null || enrollmentAct != expected) return;
+    _busy = true;
+    failure = null;
+    notifyListeners();
+    try {
+      await act(session);
+      await _registerAndApply(showRegistering: false);
+    } catch (exception) {
+      failure = _classifyFailure(exception);
+      notifyListeners();
+    } finally {
+      _busy = false;
+      notifyListeners();
     }
   }
 

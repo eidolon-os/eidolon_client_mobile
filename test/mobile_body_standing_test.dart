@@ -46,18 +46,66 @@ void main() {
     }
   });
 
-  test('a dead end names what is missing rather than inviting a retry', () {
-    for (final standing in const [
-      MobileBodyStanding.notEnrolled,
-      MobileBodyStanding.claimRevoked,
-      MobileBodyStanding.admissionEnded,
-    ]) {
-      expect(mobileBodySentence(standing).detail, contains('还不会'));
+  test('a standing that does not advance offers an act, or names a gap', () {
+    // This test used to assert that all three of these said 「还不会」, because
+    // this app could not propose an Enrollment for itself. It can now, so what
+    // is asserted is the invariant that outlived the gap: a standing that will
+    // not move on its own must give the reader something to do or something to
+    // know — never a reason to wait.
+    for (final standing in MobileBodyStanding.values) {
+      if (standing.advances) continue;
+      final detail = mobileBodySentence(standing).detail;
+      if (standing.canProposeItself) {
+        expect(
+          detail,
+          contains('登记'),
+          reason: '$standing can act, so its sentence must name the act',
+        );
+        // And must not promise the act is enough. On this path the same
+        // person still has to approve what they just proposed — the weakening
+        // W1 accepts on condition that it stays visible.
+        expect(
+          detail,
+          contains('批准'),
+          reason: '$standing must say an approval still follows',
+        );
+      } else {
+        expect(
+          detail,
+          contains('当前版本'),
+          reason: '$standing cannot act, so its sentence must name the gap',
+        );
+      }
     }
+  });
+
+  test('the phone is not offered enrollment where it already holds a Claim',
+      () {
+    // `claimActiveWithoutChannel` also does not advance, and offering to
+    // propose there would be a button that undoes something: that phone is a
+    // Body already, and what it lacks is a Channel, which is the Host's to
+    // give.
+    expect(
+      MobileBodyStanding.claimActiveWithoutChannel.canProposeItself,
+      isFalse,
+    );
     expect(
       mobileBodySentence(MobileBodyStanding.claimActiveWithoutChannel).detail,
-      contains('当前版本'),
+      isNot(contains('重新登记')),
     );
+  });
+
+  test('acting and advancing are never the same standing', () {
+    // Two different facts about the same screen: whether a person may do
+    // something, and whether waiting ends by itself. Collapsing them is what
+    // put 「立即检查状态」 in front of an event that was never coming.
+    for (final standing in MobileBodyStanding.values) {
+      expect(
+        standing.advances && standing.canProposeItself,
+        isFalse,
+        reason: '$standing claims both a wait and an act',
+      );
+    }
   });
 
   test('exactly one standing is the Owner\'s to act on from this phone', () {

@@ -12,6 +12,9 @@ import 'src/controller/client_controller.dart';
 import 'src/features/conversation/conversation_provisioner.dart';
 import 'src/features/conversation/mobile_conversation_provisioner.dart';
 import 'src/features/device_setup/device_admission_queue.dart';
+import 'src/features/device_setup/mobile_body_claim_store.dart';
+import 'src/features/device_setup/mobile_body_enrollment_session.dart';
+import 'src/features/device_setup/mobile_body_enrollment_wiring.dart';
 import 'src/features/device_setup/device_setup_ports.dart';
 import 'src/features/device_setup/host_controller_device_admission.dart';
 import 'src/features/setup/eidolon_app_shell.dart';
@@ -53,7 +56,10 @@ class EidolonMobileApp extends StatelessWidget {
           provisioner: MobileConversationProvisioner(
             loadTarget: controller.fetchDeviceOnboardingTarget,
             admission: HostControllerDeviceAdmission(controller),
+            claims: PlatformMobileBodyClaimStore(),
+            buildDeviceControl: deviceControlClientBuilder(),
           ),
+          enrollment: buildMobileBodyEnrollment(controller),
           onApproveThisPhone: (context) =>
               openDeviceAdmissionQueue(context, controller),
         ),
@@ -66,6 +72,7 @@ class ClientPage extends StatefulWidget {
   const ClientPage({
     super.key,
     this.provisioner,
+    this.enrollment,
     this.onApproveThisPhone,
     this.platform,
   });
@@ -83,6 +90,13 @@ class ClientPage extends StatefulWidget {
   /// give it. It used to poll for that approval every five seconds and offer
   /// 「立即检查状态」 — a refresh button in front of a decision the person
   /// holding the phone was already authorised to make.
+  /// The Enrollment this phone has in flight, if this build wired one.
+  ///
+  /// Null draws no Enrollment control at all — the screen keeps saying what is
+  /// true and offers nothing, which is where it was before any of this existed.
+  /// A button wired to nothing would be worse than that silence.
+  final MobileBodyEnrollmentSession? enrollment;
+
   final Future<void> Function(BuildContext context)? onApproveThisPhone;
 
   @override
@@ -98,6 +112,7 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     controller = ClientController(
       conversationProvisioner: widget.provisioner,
+      enrollment: widget.enrollment,
       platform: widget.platform,
     )..addListener(_refresh);
   }
@@ -212,7 +227,7 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
                   child: _Actions(
                     controller: controller,
                     onApproveThisPhone: widget.onApproveThisPhone,
-                  ),
+                    ),
                 ),
               ],
             ),
@@ -249,7 +264,7 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
             child: _Actions(
               controller: controller,
               onApproveThisPhone: widget.onApproveThisPhone,
-            ),
+              ),
           ),
         ],
       ];
@@ -992,6 +1007,86 @@ class _FailureCard extends StatelessWidget {
       );
 }
 
+/// The control for a stopped Enrollment, or the honest absence of one.
+///
+/// Five outcomes, because there are five. Collapsing them was the original
+/// defect on this screen: 「立即检查状态」 stood in front of an Enrollment that
+/// no party was making, and later in front of one no party could finish.
+class _EnrollmentAction extends StatelessWidget {
+  const _EnrollmentAction({required this.controller});
+
+  final ClientController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final busy = controller.uiState.busy;
+    switch (controller.enrollmentAct) {
+      case MobileBodyEnrollmentAct.propose:
+        return _button(
+          // Not 「开始对话」. What this does is propose; the approval that
+          // follows is a second act by the same person, and a label promising
+          // a conversation would hide it.
+          label: '登记这台手机',
+          icon: Icons.badge_rounded,
+          onPressed: busy ? null : controller.proposeSelf,
+        );
+      case MobileBodyEnrollmentAct.collect:
+        return _button(
+          label: '领取归属凭证',
+          icon: Icons.download_done_rounded,
+          onPressed: busy ? null : controller.finishEnrollment,
+        );
+      case MobileBodyEnrollmentAct.abandon:
+        return _button(
+          label: '撤回这次登记',
+          icon: Icons.undo_rounded,
+          onPressed: busy ? null : controller.abandonEnrollment,
+          // A withdrawal is not the thing this screen is for, and it undoes
+          // something. It gets the quieter of the two buttons.
+          tonal: true,
+        );
+      case MobileBodyEnrollmentAct.waitForExpiry:
+        // No control at all, and this is the case that most tempts one. The
+        // Authority does not allow `approved_awaiting_handoff` to be
+        // cancelled, so 「撤回」 here would fail every time it was pressed. The
+        // sentence beside it names the expiry; nothing here should suggest the
+        // wait can be shortened.
+        return const SizedBox.shrink();
+      case MobileBodyEnrollmentAct.approve:
+      case MobileBodyEnrollmentAct.none:
+        // `approve` is drawn by the approval route above, and `none` is a gap
+        // this phone cannot close.
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _button({
+    required String label,
+    required IconData icon,
+    required VoidCallback? onPressed,
+    bool tonal = false,
+  }) {
+    final child = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 13),
+      child: Text(label),
+    );
+    return SizedBox(
+      width: double.infinity,
+      child: tonal
+          ? FilledButton.tonalIcon(
+              onPressed: onPressed,
+              icon: Icon(icon),
+              label: child,
+            )
+          : FilledButton.icon(
+              onPressed: onPressed,
+              icon: Icon(icon),
+              label: child,
+            ),
+    );
+  }
+}
+
 class _Actions extends StatelessWidget {
   const _Actions({required this.controller, this.onApproveThisPhone});
   final ClientController controller;
@@ -1013,10 +1108,11 @@ class _Actions extends StatelessWidget {
             ),
           ),
         ),
-      // Nothing to offer. The screen has already said what is missing and
-      // that waiting will not supply it; a button here would be the fifth
-      // 「再试一次」 standing in front of something that cannot happen.
-      ClientPhase.bodyBlocked => const SizedBox.shrink(),
+      // Stopped, and what can be done about it depends on two things at once:
+      // what the Authority says, and whether this process still holds the
+      // one-shot key and challenge the Enrollment needs. `enrollmentAct` is
+      // that pair already resolved — see `mobile_body_enrollment_session.dart`.
+      ClientPhase.bodyBlocked => _EnrollmentAction(controller: controller),
       ClientPhase.awaitingApproval when controller.awaitsThisControllersApproval
               && onApproveThisPhone != null =>
         SizedBox(

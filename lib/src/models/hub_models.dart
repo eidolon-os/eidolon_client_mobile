@@ -82,6 +82,7 @@ class HubConfig {
     this.sampleRate = 16000,
     this.channels = 1,
     this.bodyStanding,
+    this.bodyEnrollment,
   });
 
   final HubConfigStatus status;
@@ -99,6 +100,13 @@ class HubConfig {
   /// mapped onto `pendingApproval` — which is how the screen came to announce
   /// that the Host was claiming a device it had never heard of.
   final MobileBodyStanding? bodyStanding;
+
+  /// The Enrollment behind [bodyStanding], when there is one.
+  ///
+  /// Null whenever no proposal exists — which is not the same as "there is one
+  /// and this build could not read it". The stages differ in what a person can
+  /// do, so the absence has to be the absence rather than a default.
+  final MobileBodyEnrollmentRef? bodyEnrollment;
 
   factory HubConfig.fromJson(Map<String, dynamic> json) {
     if (json['success'] != true || json['config'] is! Map<String, dynamic>) {

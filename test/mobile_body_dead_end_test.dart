@@ -74,7 +74,17 @@ void main() {
     controller.dispose();
   });
 
-  test('ClaimActive without a Channel stops too, and says why', () async {
+  test('ClaimActive without a Channel waits, and says what it cannot tell',
+      () async {
+    // This asserted a stop, and that was right while the app could not ask for
+    // a channel at all — 「当前版本到此为止」 was the honest sentence and
+    // re-asking would have been a retry in front of nothing.
+    //
+    // The app asks now (`device_control_client.dart`), and the Host provisions
+    // the channel after the Claim, so this is a wait that can end. What it must
+    // not do is promise: a provisioning that was refused looks identical from
+    // here, and the sentence says that rather than choosing the hopeful
+    // reading.
     final controller = await connect(
       standing(
         MobileBodyStanding.claimActiveWithoutChannel,
@@ -82,9 +92,10 @@ void main() {
       ),
     );
 
-    expect(controller.phase, ClientPhase.bodyBlocked);
-    expect(controller.isWaiting, isFalse);
-    expect(controller.uiState.supportingText, contains('当前版本'));
+    expect(controller.phase, ClientPhase.awaitingBinding);
+    expect(controller.isWaiting, isTrue);
+    expect(controller.uiState.supportingText, contains('分不出来'));
+    expect(controller.uiState.supportingText, isNot(contains('当前版本')));
     controller.dispose();
   });
 

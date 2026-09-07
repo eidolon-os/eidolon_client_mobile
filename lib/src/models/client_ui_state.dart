@@ -1,4 +1,5 @@
 import '../features/conversation/mobile_body_standing.dart';
+import '../features/device_setup/mobile_body_enrollment_session.dart';
 
 enum ClientPhase {
   idle,
@@ -84,6 +85,8 @@ class ClientUiState {
     this.failure,
     this.notice,
     this.bodyStanding,
+    this.enrollmentAct = MobileBodyEnrollmentAct.none,
+    this.enrollmentExpiresAt,
     this.deviceFingerprint = '',
   });
 
@@ -102,6 +105,12 @@ class ClientUiState {
   /// Where this phone stands as a Body, when Admission is what answered.
   final MobileBodyStanding? bodyStanding;
 
+  /// What this phone can do about its Enrollment, already resolved.
+  final MobileBodyEnrollmentAct enrollmentAct;
+
+  /// When an Enrollment that can only expire does.
+  final DateTime? enrollmentExpiresAt;
+
   final String deviceFingerprint;
 
   /// The one sentence that owns the admission copy, when there is a standing.
@@ -110,9 +119,32 @@ class ClientUiState {
   /// phases are three and the standings are seven, and the three-way fold is
   /// exactly what said 「正在关联 Companion」 to a phone that was in fact
   /// finished, and 「主机正在认领 Mobile」 to one that had never asked.
-  MobileBodySentence? get bodySentence => bodyStanding == null
-      ? null
-      : mobileBodySentence(bodyStanding!, fingerprint: deviceFingerprint);
+  MobileBodySentence? get bodySentence {
+    final standing = bodyStanding;
+    if (standing == null) return null;
+    // Two of the acts mean the Authority's own sentence is no longer true: it
+    // still describes a proposal in motion, and this phone can no longer move
+    // it. The Authority cannot know that — what is missing never left this
+    // process — so the correction happens here rather than in the projection.
+    switch (enrollmentAct) {
+      case MobileBodyEnrollmentAct.abandon:
+        return unfinishableEnrollmentSentence(
+          withdrawable: true,
+          fingerprint: deviceFingerprint,
+        );
+      case MobileBodyEnrollmentAct.waitForExpiry:
+        return unfinishableEnrollmentSentence(
+          withdrawable: false,
+          expiresAt: enrollmentExpiresAt,
+          fingerprint: deviceFingerprint,
+        );
+      case MobileBodyEnrollmentAct.propose:
+      case MobileBodyEnrollmentAct.approve:
+      case MobileBodyEnrollmentAct.collect:
+      case MobileBodyEnrollmentAct.none:
+        return mobileBodySentence(standing, fingerprint: deviceFingerprint);
+    }
+  }
 
   bool get hubOnline =>
       controlConnection == ChannelConnectionState.connected ||

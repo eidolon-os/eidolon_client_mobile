@@ -1,10 +1,10 @@
-import 'dart:collection';
 import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/services.dart';
 
 import '../../platform/app_preferences.dart';
+import '../../protocol/canonical_json.dart';
 import 'device_setup_models.dart';
 import 'device_setup_ports.dart';
 
@@ -195,24 +195,5 @@ String canonicalOwnerDomainDescriptorSigningJson(
   final document = Map<String, dynamic>.from(
     target.ownerDomainDescriptor.toJson(),
   )..remove('signature');
-  return jsonEncode(_canonicalJson(document));
-}
-
-Object? _canonicalJson(Object? value) {
-  if (value == null || value is String || value is bool || value is num) {
-    return value;
-  }
-  if (value is List) {
-    return value.map(_canonicalJson).toList(growable: false);
-  }
-  if (value is Map) {
-    if (value.keys.any((key) => key is! String)) {
-      throw const FormatException('Canonical JSON keys must be strings');
-    }
-    final keys = value.keys.cast<String>().toList()..sort();
-    return LinkedHashMap<String, Object?>.fromEntries(
-      keys.map((key) => MapEntry(key, _canonicalJson(value[key]))),
-    );
-  }
-  throw const FormatException('Canonical document contains a non-JSON value');
+  return canonicalJsonEncode(document);
 }
