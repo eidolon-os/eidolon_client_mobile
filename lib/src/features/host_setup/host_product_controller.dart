@@ -48,6 +48,17 @@ enum HostConnectionRecovery {
   /// is precisely what fails, so the way back is to be claimed again — which
   /// somebody standing at the Host has to open the window for first.
   reclaimRequired,
+
+  /// The Host answered and this build could not read the answer. Nothing about
+  /// the Host is wrong and nothing here is retryable — the two versions have to
+  /// meet.
+  ///
+  /// Its own value because it was briefly folded into [identityChanged], which
+  /// carries a paragraph about the Host having been reinstalled and issuing a
+  /// new key. That paragraph is false for a version gap, and it appeared on a
+  /// real device above a sentence that was true — sending somebody to
+  /// 「不再管理这台主机」 over a field that had moved.
+  versionGap,
 }
 
 /// What is actually left to do about a Workspace the Host would not report.
@@ -258,7 +269,7 @@ class HostProductController extends ChangeNotifier {
       _failConnection(
         '主机答复了，但这个版本的 App 读不懂它的格式。'
         '重新连接不会有别的结果——需要把 App 或主机升级到互相匹配的版本。',
-        recovery: HostConnectionRecovery.identityChanged,
+        recovery: HostConnectionRecovery.versionGap,
       );
     } catch (_) {
       _failConnection('无法安全连接主机。请确认当前设备和主机连接同一 Wi-Fi 后重试。');

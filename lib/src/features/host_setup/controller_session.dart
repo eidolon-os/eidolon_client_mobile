@@ -48,22 +48,32 @@ class LocalControllerSession {
     required this.expiresAt,
     required this.controllerId,
     required this.resetEpoch,
-    required this.ownerId,
   });
 
+  /// The session, validated on the members this app actually uses.
+  ///
+  /// It used to require `controller.length == 7`, and the seventh was
+  /// `owner_id`. Bootstrap stopped publishing that — it was Host state
+  /// asserting an Owner scope the Data plane might have no Workspace for, and
+  /// the Owner is now resolved per request by the plane that holds it — so the
+  /// principal came back with six members and this threw on every connect.
+  ///
+  /// The count is gone rather than adjusted. It pinned the shape of a document
+  /// this app does not own, in a place where being wrong makes the first
+  /// request fail; a member this app has no use for should not be able to do
+  /// that. What is required is what is read, and extras are ignored — the same
+  /// rule `HostOverview.fromJson` already followed, which is why that payload
+  /// survived the same change.
   factory LocalControllerSession.fromJson(Map<String, dynamic> value) {
     final controller = value['controller'];
     final expiresAt = DateTime.tryParse(value['expires_at'] as String? ?? '');
     final token = value['access_token'];
-    final ownerId = controller is Map ? controller['owner_id'] : null;
-    if (value.length != 5 ||
-        value['contract_version'] != '1' ||
+    if (value['contract_version'] != '1' ||
         value['token_type'] != 'Bearer' ||
         token is! String ||
         !RegExp(r'^[A-Za-z0-9_-]{43}$').hasMatch(token) ||
         expiresAt == null ||
         controller is! Map ||
-        controller.length != 7 ||
         controller['contract_version'] != '1' ||
         controller['controller_id'] is! String ||
         !RegExp(r'^ectrl-[0-9a-f]{20}$')
@@ -71,11 +81,7 @@ class LocalControllerSession {
         controller['role'] != 'host_admin' ||
         !{'android', 'ios'}.contains(controller['platform']) ||
         controller['reset_epoch'] is! int ||
-        (controller['reset_epoch'] as int) < 0 ||
-        (ownerId != null &&
-            (ownerId is! String ||
-                !RegExp(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
-                    .hasMatch(ownerId)))) {
+        (controller['reset_epoch'] as int) < 0) {
       throw const FormatException(
         'Local API 返回了无效的 Controller session',
       );
@@ -85,7 +91,6 @@ class LocalControllerSession {
       expiresAt: expiresAt.toUtc(),
       controllerId: controller['controller_id'] as String,
       resetEpoch: controller['reset_epoch'] as int,
-      ownerId: ownerId as String?,
     );
   }
 
@@ -93,5 +98,4 @@ class LocalControllerSession {
   final DateTime expiresAt;
   final String controllerId;
   final int resetEpoch;
-  final String? ownerId;
 }

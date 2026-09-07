@@ -57,7 +57,6 @@ HostProductConnection _connection() => HostProductConnection(
         },
       }),
       controllerId: 'ectrl-0123456789abcdefabcd',
-      ownerId: 'owner-1',
       sessionExpiresAt: DateTime.utc(2026, 8, 11, 1),
     );
 

@@ -65,14 +65,12 @@ class HostProductConnection {
     required this.endpoint,
     required this.overview,
     required this.controllerId,
-    required this.ownerId,
     required this.sessionExpiresAt,
   });
 
   final LocalApiEndpoint endpoint;
   final HostOverview overview;
   final String controllerId;
-  final String? ownerId;
   final DateTime sessionExpiresAt;
 }
 
@@ -136,7 +134,6 @@ class HostProductSession {
       endpoint: endpoint,
       overview: overview,
       controllerId: session.controllerId,
-      ownerId: session.ownerId,
       sessionExpiresAt: session.expiresAt,
     );
   }

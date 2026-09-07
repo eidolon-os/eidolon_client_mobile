@@ -722,6 +722,12 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                 label: const Text('回到主机管理'),
               ),
             ] else if (_controller.connectionRecovery ==
+                HostConnectionRecovery.versionGap) ...[
+              // No control at all. The sentence above already says where this
+              // is closed, and every button this screen could draw — retry,
+              // forget, reclaim — is aimed at a Host that is not the problem.
+              const SizedBox.shrink(key: Key('local-connection-version-gap')),
+            ] else if (_controller.connectionRecovery ==
                 HostConnectionRecovery.reclaimRequired) ...[
               // The Host is the right one; it has withdrawn this phone's
               // authority. Connecting is exactly the thing that fails, so a
