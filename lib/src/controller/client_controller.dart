@@ -605,7 +605,7 @@ class ClientController extends ChangeNotifier {
         if (phase == ClientPhase.conversation) {
           await _ack(command, 'completed', 'OK', result: {'joined': true});
         }
-      case 'config.refresh':
+      case controlOpConfigRefresh:
         try {
           await _registerAndApply(showRegistering: false);
           await _ack(command, 'completed', 'OK');
@@ -617,7 +617,7 @@ class ClientController extends ChangeNotifier {
             message: exception.toString(),
           );
         }
-      case 'device.identify':
+      case controlOpDeviceIdentify:
         await _handleIdentify(command);
       case 'body.presence.set':
         await _handleBodyPresence(command);
@@ -714,7 +714,7 @@ class ClientController extends ChangeNotifier {
   Future<void> _handleSessionControl(String payload) async {
     try {
       final root = jsonDecode(payload) as Map<String, dynamic>;
-      if (root['type'] == 'session_end') await leave();
+      if (root['type'] == sessionEndType) await leave();
     } catch (_) {
       // Ignore malformed packets from unknown participants.
     }

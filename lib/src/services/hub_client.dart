@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/hub_models.dart';
 import '../platform/platform_bridge.dart';
+import '../protocol/eidolon_protocol.dart';
 
 typedef HttpClientFactory = http.Client Function();
 
@@ -31,7 +32,7 @@ class HubClient {
     final body = jsonEncode({
       'capabilities': [
         {
-          'name': 'device.identify',
+          'name': controlOpDeviceIdentify,
           'version': 1,
           'description': 'Identify this Eidolon mobile client',
           'input_schema': {

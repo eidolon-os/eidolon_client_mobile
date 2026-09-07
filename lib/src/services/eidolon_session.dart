@@ -195,7 +195,7 @@ class EidolonSession {
     if (participant == null) return;
     final payload = jsonEncode({
       'schema_v': 1,
-      'type': 'client.audio_state',
+      'type': clientAudioStateType,
       'seq': ++_audioStateSequence,
       'input_mode': 'auto',
       'playback_state': agentSpeaking ? 'agent_speaking' : 'idle',

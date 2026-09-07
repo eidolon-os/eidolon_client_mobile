@@ -1,0 +1,111 @@
+{
+  "_why": "Every SDK wire constant in a vocabulary this client speaks, and what was decided about it. A constant that lands in neither column fails tool/check_wire_contract_mirror.py — which is the check that was missing when SESSION_CONVERSATION_ID_FIELD was added and this client went twelve days publishing a session request the Channel Provider discarded.",
+  "vocabularies": [
+    "WIRE",
+    "SESSION",
+    "CONTROL",
+    "EVENT",
+    "CLIENT"
+  ],
+  "constants": {
+    "WIRE_SCHEMA_VERSION": {
+      "dart": "sessionControlSchemaVersion"
+    },
+    "SESSION_CONTROL_TOPIC": {
+      "dart": "sessionControlTopic"
+    },
+    "SESSION_OPEN_TYPE": {
+      "dart": "sessionOpenType"
+    },
+    "SESSION_CLOSE_TYPE": {
+      "dart": "sessionCloseType"
+    },
+    "SESSION_STARTED_TYPE": {
+      "dart": "sessionStartedType"
+    },
+    "SESSION_CONVERSATION_ID_FIELD": {
+      "dart": "sessionConversationIdField"
+    },
+    "SESSION_INTENT_FIELD": {
+      "dart": "sessionIntentField"
+    },
+    "SESSION_INTENT_USER_INITIATED": {
+      "dart": "sessionIntentUserInitiated"
+    },
+    "SESSION_INTENT_PROACTIVE": {
+      "dart": "sessionIntentProactive"
+    },
+    "SESSION_CONVERSATION_ID_MAX_LENGTH": {
+      "not_mirrored": "carried by sessionConversationIdPattern's length bound, which the checker verifies against this value rather than as a separate constant"
+    },
+    "SESSION_INTENT_PRESENCE": {
+      "not_mirrored": "presence-initiated sessions are begun by the Host orchestrator; this client never asks for one, and roomJoinSessionIntent deliberately reads anything it does not know as a normal user session"
+    },
+    "SESSION_FLOW_ID_FIELD": {
+      "not_mirrored": "correlates a flow across Hub components; nothing on this client reads or produces it"
+    },
+    "SESSION_END_TYPE": {
+      "dart": "sessionEndType"
+    },
+    "SESSION_END_IDLE_NORMAL": {
+      "not_mirrored": "a reason on SESSION_END_TYPE, which this client does not consume"
+    },
+    "SESSION_END_USER_LEFT": {
+      "not_mirrored": "a reason on SESSION_END_TYPE, which this client does not consume"
+    },
+    "SESSION_END_ERROR": {
+      "not_mirrored": "a reason on SESSION_END_TYPE, which this client does not consume"
+    },
+    "SESSION_END_PROACTIVE_DONE": {
+      "not_mirrored": "a reason on SESSION_END_TYPE, which this client does not consume"
+    },
+    "SESSION_END_SUPERSEDED": {
+      "not_mirrored": "a reason on SESSION_END_TYPE, which this client does not consume"
+    },
+    "CONTROL_TOPIC": {
+      "dart": "controlTopic"
+    },
+    "CONTROL_OP_ROOM_JOIN": {
+      "dart": "controlOpRoomJoin"
+    },
+    "CONTROL_OP_PLAYBACK_STOP": {
+      "not_mirrored": "a Host to device operation this client does not implement"
+    },
+    "CONTROL_OP_PTT_TURN_STATUS": {
+      "not_mirrored": "push to talk is not a mode this client offers; it is full duplex only"
+    },
+    "CONTROL_OP_CONFIG_REFRESH": {
+      "dart": "controlOpConfigRefresh"
+    },
+    "CONTROL_OP_DEVICE_IDENTIFY": {
+      "dart": "controlOpDeviceIdentify"
+    },
+    "CONTROL_OP_DEVICE_ROLL_CALL": {
+      "not_mirrored": "a Host to device operation this client does not implement"
+    },
+    "CONTROL_OP_GUARD_VISION_BENCHMARK": {
+      "not_mirrored": "guard vision runs on boards with a camera; this client publishes no video"
+    },
+    "CONTROL_OP_GUARD_RUNTIME_SYNC": {
+      "not_mirrored": "guard runtime is not part of a phone Body"
+    },
+    "CONTROL_OP_GUARD_OWNER_FACE_PROFILE_SYNC": {
+      "not_mirrored": "guard face profiles belong to the vision path this client does not have"
+    },
+    "CONTROL_OP_ALIASES": {
+      "not_mirrored": "a computed alias table over the operations above; not a value a client sends"
+    },
+    "EVENT_TOPIC": {
+      "not_mirrored": "device to Host telemetry events; this client emits none yet"
+    },
+    "CLIENT_AUDIO_STATE_TOPIC": {
+      "dart": "clientAudioStateTopic"
+    },
+    "CLIENT_AUDIO_STATE_TYPE": {
+      "dart": "clientAudioStateType"
+    },
+    "CLIENT_AUDIO_STATE_KNOWN_KEYS": {
+      "not_mirrored": "a computed frozenset the server filters incoming keys with; not a value a client sends"
+    }
+  }
+}

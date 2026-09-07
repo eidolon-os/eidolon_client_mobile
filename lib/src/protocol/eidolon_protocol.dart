@@ -77,6 +77,25 @@ Map<String, Object?> sessionRequestPayload({
 }
 
 const controlOpRoomJoin = 'room.join';
+
+/// Host → client operations this client implements, and the reverse-direction
+/// session type it acts on.
+///
+/// These four were spelled inline where they were used — two `case` labels in
+/// `client_controller.dart`, a payload field in `eidolon_session.dart`, a
+/// command name in `hub_client.dart` — which is the same fault that let the
+/// session request go a member short: a wire value written far from the wire
+/// vocabulary is a value no mirror can see. `tool/check_wire_contract_mirror.py`
+/// found all four by noticing that the ledger called them unmirrored while
+/// their values were in `lib/` anyway.
+const controlOpConfigRefresh = 'config.refresh';
+const controlOpDeviceIdentify = 'device.identify';
+const clientAudioStateType = 'client.audio_state';
+
+/// Server → client: this conversation is over. The reverse direction of
+/// [sessionControlTopic], and the one member of that vocabulary this client
+/// does consume — see [sessionStartedType] for the one it does not.
+const sessionEndType = 'session_end';
 const sessionIntentField = 'session_intent';
 const sessionIntentUserInitiated = 'user_initiated';
 const sessionIntentProactive = 'proactive_initiated';
