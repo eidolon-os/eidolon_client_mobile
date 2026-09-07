@@ -757,8 +757,12 @@ void main() {
 
     expect(find.byKey(const Key('workspace-fixed-elsewhere')), findsOneWidget);
     expect(find.byKey(const Key('retry-workspace-status')), findsNothing);
-    expect(find.textContaining('需要升级主机'), findsOneWidget);
+    expect(find.textContaining('把主机升级到会给出原因的版本'), findsOneWidget);
+    // Names neither condition. A bare 404 could be a missing route or an older
+    // Host refusing without a reason, and the version that could tell them
+    // apart is the one being asked for — so the sentence must not pick.
     expect(find.textContaining('数据面'), findsNothing);
+    expect(find.textContaining('没有 Workspace 设置接口'), findsNothing);
   });
 
   testWidgets('an expired management session is offered a new one, not a reload',

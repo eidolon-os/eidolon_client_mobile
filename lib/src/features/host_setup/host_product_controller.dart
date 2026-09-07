@@ -1068,10 +1068,11 @@ class HostProductController extends ChangeNotifier {
       // setup form submitted to a Host that already finished setup. None of
       // them changes for another phone or another reload.
       409 => WorkspaceRecovery.fixedElsewhere,
-      // Not this Host's state — this Host's build. The route this app needs is
-      // one it does not serve, which upgrading fixes and reloading does not.
-      // It used to mean the orphaned Owner binding, until the Local API moved
-      // that onto 409 where the two conditions beside it already lived.
+      // Not this Host's state — this Host's build. A Local API that serves
+      // this route answers 409 for every conflict and tags each one, so a bare
+      // 404 is a Host old enough that it either lacks the route or is refusing
+      // for a reason it has no way to tell this app. Both are the same repair
+      // and neither is a reload.
       404 => WorkspaceRecovery.fixedElsewhere,
       // The one refusal a person can answer on this screen: the name is in a
       // field in front of them.
@@ -1092,8 +1093,16 @@ class HostProductController extends ChangeNotifier {
         401 => '本次管理会话已失效，请重新连接主机。',
         409 => '主机的 Owner 绑定与 Workspace 不一致，已停止继续设置。'
             '这要在主机那边修好，手机这边重试不会有别的结果。',
-        404 => '这台主机的版本还没有 Workspace 设置接口，'
-            '手机这边重试不会有别的结果——需要升级主机或换用匹配的 App 版本。',
+        // Deliberately does not claim which of the two it is. This app cannot
+        // tell "no such route" from "an older Host refusing without saying
+        // why" — the version that would have told it is the version being
+        // asked for. Naming one of them would be a guess dressed as a
+        // diagnosis, and the guess was already wrong once here: this branch
+        // used to carry the Data-plane sentence, because that was the only way
+        // the condition had ever arrived.
+        404 => '这台主机没有说明它为什么拒绝，这个版本的主机也没法说明。'
+            '手机这边重试不会有别的结果——把主机升级到会给出原因的版本，'
+            '它才能告诉你要修什么。',
         422 => 'Workspace 名称未被主机接受，请检查后重试。',
         _ => '主机已安全接入，但 Workspace 服务暂时不可用。认领和 Wi-Fi 不会回滚。',
       },
