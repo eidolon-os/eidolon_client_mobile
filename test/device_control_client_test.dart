@@ -22,6 +22,12 @@ import 'support/admission_fixtures.dart';
 /// expected bytes with `canonicalJsonEncode` — the same encoder the code under
 /// test uses — so it agreed with the producer by construction and could not
 /// fail on a changed member set. The vector is read now.
+Map<String, dynamic> _responses() => jsonDecode(
+      File('test/fixtures/device_foundation/'
+              'device-control-configuration-response.json')
+          .readAsStringSync(),
+    ) as Map<String, dynamic>;
+
 Map<String, dynamic> _vector() => jsonDecode(
       File('test/fixtures/device_foundation/'
               'device-control-configuration-proof.json')
@@ -145,6 +151,68 @@ void main() {
         expect(map.containsKey(segment), isTrue, reason: '$path is absent');
         value = map[segment];
       }
+    }
+  });
+
+  test('each answer the vector pins leads to the conclusion it names',
+      () async {
+    // `configuration:pull`'s outer answer, against the contract's own three
+    // cases. The distinction this pins is the one §4.3 records the product
+    // having already collapsed once: approved-with-no-channel is neither an
+    // error nor a revocation, and a Body that reads it as either abandons an
+    // enrolment that is fine or joins a room that does not exist.
+    final vector = _responses();
+    final expected = <String, ({bool stands, bool session})>{
+      'DF-DEVICE-CONTROL-CONFIGURATION-ACTIVE': (stands: true, session: true),
+      'DF-DEVICE-CONTROL-CONFIGURATION-APPROVED-AWAITING-CHANNEL':
+          (stands: true, session: false),
+      'DF-DEVICE-CONTROL-CONFIGURATION-REVOKED':
+          (stands: false, session: false),
+    };
+
+    for (final entry in (vector['cases']! as List<Object?>)
+        .cast<Map<String, dynamic>>()) {
+      final caseId = entry['case_id']! as String;
+      final want = expected[caseId];
+      expect(want, isNotNull, reason: 'the vector grew a case: $caseId');
+
+      final configuration = await client(
+        MockClient((_) async => ok(entry['response'])),
+        nonce: vector['request_nonce']! as String,
+      ).pullConfiguration(
+        deviceRef: Map<String, Object?>.from(vector['device_ref']! as Map),
+        operationalPublicKey: 'p256-spki:AAAA',
+        sign: (_) async => 'x' * 86,
+      );
+
+      expect(configuration.claimStands, want!.stands, reason: caseId);
+      expect(configuration.session != null, want.session, reason: caseId);
+    }
+  });
+
+  test('every answer the vector says must be refused is refused', () async {
+    // Four of them, and all four carry the right nonce on purpose — so the
+    // echo check this client already had catches none of them. What each one
+    // withholds is different, and the point of the set is that a Body cannot
+    // pass by getting one right.
+    final vector = _responses();
+    final refusals = (vector['must_refuse']! as List<Object?>)
+        .cast<Map<String, dynamic>>();
+
+    expect(refusals, hasLength(4));
+    for (final entry in refusals) {
+      await expectLater(
+        client(
+          MockClient((_) async => ok(entry['response'])),
+          nonce: vector['request_nonce']! as String,
+        ).pullConfiguration(
+          deviceRef: Map<String, Object?>.from(vector['device_ref']! as Map),
+          operationalPublicKey: 'p256-spki:AAAA',
+          sign: (_) async => 'x' * 86,
+        ),
+        throwsA(isA<DeviceControlRefusal>()),
+        reason: entry['case_id'] as String,
+      );
     }
   });
 

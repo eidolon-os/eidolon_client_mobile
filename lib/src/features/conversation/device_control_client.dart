@@ -179,6 +179,19 @@ class DeviceControlClient {
         retryable: false,
       );
     }
+    if (decoded['operation'] != deviceControlConfigurationOperation) {
+      // An answer to another question is not an answer to this one. The nonce
+      // does not cover it: `DF-DEVICE-CONTROL-CONFIGURATION-WRONG-OPERATION`
+      // carries this ask's own nonce on a `manifest-assert` reply, so a client
+      // checking only the echo would read a different operation's lifecycle
+      // and channels as its own.
+      throw DeviceControlRefusal(
+        detail: 'Device Control answered a different operation: '
+            '${decoded['operation']}',
+        status: response.statusCode,
+        retryable: false,
+      );
+    }
     if (decoded['nonce'] != nonce) {
       // The nonce comes back so a device can tell this answer from a replayed
       // one. Checked rather than trusted: an answer about an older ask could
@@ -215,11 +228,42 @@ class DeviceControlClient {
         retryable: false,
       );
     }
+    final issuedAt = channel['issued_at_ms'];
+    final expiresAt = channel['expires_at_ms'];
+    if (issuedAt is! int || expiresAt is! int || expiresAt <= issuedAt) {
+      // A grant with no life left is not a grant: accepting it spends the
+      // reconnect budget on a room that will refuse the token.
+      //
+      // Judged against the grant's own issue time rather than against this
+      // phone's clock, and that is deliberate. The vector's live channel
+      // expires at a fixed instant which is already in the past — as any
+      // recorded example's must be — so a wall-clock comparison would refuse
+      // the valid case too. It would also let a phone with a wrong clock
+      // refuse a channel that is perfectly good, which is a worse failure than
+      // the one it prevents.
+      throw DeviceControlRefusal(
+        detail: 'Device Control delivered a channel with no life in it',
+        status: response.statusCode,
+        retryable: false,
+      );
+    }
+    final binding = channel['opaque_binding'];
+    if (binding is! String || binding.isEmpty) {
+      // Says a channel exists and withholds how to reach it, which is worse
+      // than saying there is none — an empty binding would otherwise reach
+      // `liveKitSessionFromBinding` and be reported as unreadable bytes, when
+      // what happened is that the Authority sent none.
+      throw DeviceControlRefusal(
+        detail: 'Device Control named a channel and delivered no binding for it',
+        status: response.statusCode,
+        retryable: false,
+      );
+    }
     return DeviceConfiguration(
       claimStands: true,
       session: liveKitSessionFromBinding(
         bindingFormat: channel['binding_format'] as String? ?? '',
-        opaqueBinding: channel['opaque_binding'] as String? ?? '',
+        opaqueBinding: binding,
       ),
     );
   }

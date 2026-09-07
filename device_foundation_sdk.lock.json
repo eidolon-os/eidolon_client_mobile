@@ -1,5 +1,5 @@
 {
-  "sdk_commit": "47b76a83738a90e9788c3b54cdbf0df15857b5c9",
+  "sdk_commit": "4da821f6b019c0af725081410f6d5de8742d29a6",
   "files": [
     {
       "source": "contracts/device_foundation/v1/generated/dart/device_foundation_v1.dart",
@@ -34,7 +34,7 @@
     {
       "source": "contracts/device_foundation/v1/golden/commissioning-voucher.json",
       "target": "test/fixtures/device_foundation/commissioning-voucher.json",
-      "sha256": "53072e86b2592f8cd2aa6d1e49e1a8bbb2079bbd0dd1014fa763ccd1ebc65a65"
+      "sha256": "af23b3321c5a302f8334469212d2ecf1a0534424725a75649f93ab0dd47edc2a"
     },
     {
       "source": "contracts/device_foundation/v1/golden/device-instance-derivation.json",
@@ -90,6 +90,11 @@
       "source": "contracts/device_foundation/v1/golden/device-control-configuration-proof.json",
       "target": "test/fixtures/device_foundation/device-control-configuration-proof.json",
       "sha256": "0a978baad3d0c4d0aba61e91959a766b2a0afe08d57296372555703c3c33a249"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/device-control-configuration-response.json",
+      "target": "test/fixtures/device_foundation/device-control-configuration-response.json",
+      "sha256": "2d2b442c3200b022fc99f7aec0a75f3d0039088ce8da3637da825291b44f45cf"
     }
   ]
 }
