@@ -36,14 +36,26 @@ class HandoffKeyHolderTest {
     /** A holder whose key is one this test can also seal to. */
     private fun holder() = HandoffKeyHolder(generate = { recipient })
 
-    /** A ClaimGrant as a Hub would have sealed it to [recipient]. */
+    /**
+     * A ClaimGrant as a Hub would have sealed it to [recipient].
+     *
+     * This helper used to derive under `ByteArray(0)`, matching the empty
+     * `info` the product then passed — so it sealed and opened under the same
+     * wrong key schedule and passed, while no Grant from a real Authority
+     * could ever open. A fake that shares the product's mistake proves the
+     * mistake is consistent, not that it is right.
+     *
+     * It derives under `CLAIM_GRANT_HPKE_INFO` now, which is the same constant
+     * the product passes — so on its own this is still only a round trip. What
+     * keeps the pair honest is the separate test below asserting that constant
+     * against the Authority's literal spelling.
+     */
     private fun seal(aad: ByteArray, plaintext: ByteArray): Pair<ByteArray, ByteArray> {
         val ephemeral = HpkeP256.generateHandoffKeyPair()
         val enc = ephemeral.publicKeyUncompressed
         val sharedSecret =
             HpkeP256.decapsulate(recipient.privateKey, enc, recipient.publicKeyUncompressed)
-        // Empty info: the ClaimGrant profile binds its context through the AAD.
-        val schedule = HpkeP256.keySchedule(sharedSecret, ByteArray(0))
+        val schedule = HpkeP256.keySchedule(sharedSecret, CLAIM_GRANT_HPKE_INFO)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(
             Cipher.ENCRYPT_MODE,
@@ -216,5 +228,35 @@ class HandoffKeyHolderTest {
         repeat(32) { seen += holder.issue().handle }
 
         assertEquals(32, seen.size)
+    }
+
+    /**
+     * The one value in this path that neither end transmits.
+     *
+     * `info` is hashed into the HPKE key schedule, so if the Authority and this
+     * client disagree on it every Grant fails with a bad AEAD tag — which is
+     * indistinguishable from a Grant addressed to another device, and is what
+     * a real-device run actually showed. This client had `ByteArray(0)` and a
+     * comment explaining why that was correct; the Authority has
+     * `info = b"eidolon-trust-p256-hpke-v1"` in
+     * `hub/admission/crypto.py::seal_claim_grant`.
+     *
+     * `rfc9180-p256-base.json` cannot pin this. That vector carries its own
+     * `info` and proves the construction; which string this profile feeds it
+     * is a separate fact, and it had none. This is that assertion — a literal,
+     * because the value it has to equal lives in another repository and the
+     * only thing worse than duplicating it is deriving it from the code under
+     * test.
+     */
+    @Test
+    fun `the ClaimGrant profile derives under the Authority's info string`() {
+        assertEquals(
+            "eidolon-trust-p256-hpke-v1",
+            String(CLAIM_GRANT_HPKE_INFO, Charsets.UTF_8),
+        )
+        assertFalse(
+            CLAIM_GRANT_HPKE_INFO.isEmpty(),
+            "an empty info derives a different key and every Grant fails",
+        )
     }
 }

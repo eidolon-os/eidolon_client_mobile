@@ -35,6 +35,18 @@ import java.util.Base64
  * the shape this project keeps finding and refusing to ship: a screen that says
  * "in progress" about something no party can advance.
  */
+/**
+ * The HPKE application info the ClaimGrant profile derives its key schedule
+ * under, byte for byte as the Authority uses it
+ * (`hub/admission/crypto.py::seal_claim_grant`).
+ *
+ * Named rather than inlined because it is a value two implementations must
+ * agree on exactly and neither transmits: a disagreement here is not a
+ * mismatch anybody can see, it is a bad AEAD tag.
+ */
+internal val CLAIM_GRANT_HPKE_INFO: ByteArray =
+    "eidolon-trust-p256-hpke-v1".toByteArray(Charsets.UTF_8)
+
 internal class HandoffKeyHolder(
     private val random: SecureRandom = SecureRandom(),
     private val generate: () -> HpkeP256.HandoffKeyPair = HpkeP256::generateHandoffKeyPair,
@@ -103,10 +115,21 @@ internal class HandoffKeyHolder(
             recipientPrivateKey = pair.privateKey,
             recipientPublicKeyUncompressed = pair.publicKeyUncompressed,
             encapsulatedKey = encapsulatedKey,
-            // The ClaimGrant profile binds its context through the AAD, so the
-            // HPKE `info` string is empty. Passing the AAD here as well would
-            // bind it twice and disagree with every other implementation.
-            info = ByteArray(0),
+            // The profile id, as the Authority's key schedule uses it.
+            //
+            // This was `ByteArray(0)`, with a comment asserting that the
+            // profile bound its context through the AAD alone and that passing
+            // anything here would "disagree with every other implementation".
+            // That was reasoning, not a reading, and it was wrong: `info` is
+            // hashed into the key schedule, so an empty one derives a
+            // different AES key and every Grant fails with
+            // `AEADBadTagException` — the same symptom as a Grant addressed to
+            // another device. It took a real-device run to find.
+            //
+            // `rfc9180-p256-base.json` could not catch it: that vector carries
+            // its own `info` and proves the HPKE construction, not which
+            // string this profile feeds it.
+            info = CLAIM_GRANT_HPKE_INFO,
             aad = aad,
             ciphertext = ciphertext,
         )
