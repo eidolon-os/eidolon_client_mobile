@@ -63,12 +63,23 @@ class HostDescriptor {
   final String bleServiceUuid;
 }
 
+/// What Bootstrap knows about itself.
+///
+/// It used to also publish `workspace_state`, and that member is gone from the
+/// wire: it was Bootstrap asserting something about the Data plane, which
+/// Bootstrap cannot see, and it was the half that said `ready` on a Host with
+/// no Workspace. Whether a Host has been set up is answered by
+/// `GET /api/local/v1/setup/readiness`, from the plane that holds it.
+///
+/// Required here for two schema versions after the Host stopped sending it,
+/// which made the very first request this app makes throw — and the failure
+/// surfaced as 「请确认当前设备和主机连接同一 Wi-Fi」. Nothing about that was
+/// true.
 class HostBootstrapState {
   const HostBootstrapState({
     required this.resetEpoch,
     required this.claim,
     required this.network,
-    required this.workspace,
     required this.updatedAt,
   });
 
@@ -85,7 +96,6 @@ class HostBootstrapState {
       resetEpoch: resetEpoch,
       claim: _parseClaim(_requiredString(json, 'claim_state')),
       network: _parseNetwork(_requiredString(json, 'network_state')),
-      workspace: _parseWorkspace(_requiredString(json, 'workspace_state')),
       updatedAt: updatedAt,
     );
   }
@@ -93,7 +103,6 @@ class HostBootstrapState {
   final int resetEpoch;
   final HostClaimState claim;
   final HostNetworkState network;
-  final HostWorkspaceState workspace;
   final DateTime updatedAt;
 }
 
@@ -170,8 +179,3 @@ HostNetworkState _parseNetwork(String value) => switch (value) {
       _ => throw FormatException('Unknown network state: $value'),
     };
 
-HostWorkspaceState _parseWorkspace(String value) => switch (value) {
-      'absent' => HostWorkspaceState.absent,
-      'ready' => HostWorkspaceState.ready,
-      _ => throw FormatException('Unknown workspace state: $value'),
-    };

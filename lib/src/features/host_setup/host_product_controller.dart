@@ -248,8 +248,18 @@ class HostProductController extends ChangeNotifier {
       );
     } on PlatformException catch (error) {
       _failConnection(_platformError(error));
-    } on FormatException catch (error) {
-      _failConnection(error.message);
+    } on FormatException {
+      // The Host answered, and this build could not read the answer. It used
+      // to show `error.message` — 「Missing string field workspace_state」 and
+      // the like — which is prose written for whoever reads the Host, not for
+      // the person holding the phone, and it was offered under 「重新连接」.
+      // Reconnecting cannot close a version gap: `state.workspace_state` left
+      // the Host overview and this app went on requiring it.
+      _failConnection(
+        '主机答复了，但这个版本的 App 读不懂它的格式。'
+        '重新连接不会有别的结果——需要把 App 或主机升级到互相匹配的版本。',
+        recovery: HostConnectionRecovery.identityChanged,
+      );
     } catch (_) {
       _failConnection('无法安全连接主机。请确认当前设备和主机连接同一 Wi-Fi 后重试。');
     } finally {
@@ -1091,8 +1101,13 @@ class HostProductController extends ChangeNotifier {
     return (
       sentence: switch (error.statusCode) {
         401 => '本次管理会话已失效，请重新连接主机。',
-        409 => '主机的 Owner 绑定与 Workspace 不一致，已停止继续设置。'
-            '这要在主机那边修好，手机这边重试不会有别的结果。',
+        // 409's one remaining producer is a setup form submitted to a Host
+        // that already has a Workspace, and the Host names the existing Owner
+        // when it says so. The Owner-binding mismatch this used to describe
+        // cannot occur any more: Bootstrap no longer records anything about the
+        // Data plane, so there are no longer two stores that could disagree.
+        409 => '这台主机已经完成过设置，它不接受再设置一次。'
+            '手机这边重试不会有别的结果。',
         // Deliberately does not claim which of the two it is. This app cannot
         // tell "no such route" from "an older Host refusing without saying
         // why" — the version that would have told it is the version being

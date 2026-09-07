@@ -134,8 +134,6 @@ MockClient _workingClient() => MockClient((request) async {
                 'reset_epoch': 2,
                 'claim_state': 'claimed',
                 'network_state': 'connected',
-                'workspace_state': 'ready',
-                'recovery_state': 'normal',
                 'updated_at': '2026-08-09T08:00:00Z',
               },
             }),

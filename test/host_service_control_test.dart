@@ -56,8 +56,6 @@ HostProductConnection _connection() => HostProductConnection(
           'reset_epoch': 2,
           'claim_state': 'claimed',
           'network_state': 'connected',
-          'workspace_state': 'ready',
-          'recovery_state': 'normal',
           'updated_at': '2026-08-11T00:00:00Z',
         },
       }),

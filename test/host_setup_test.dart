@@ -29,8 +29,6 @@ const _hostOverview = <String, dynamic>{
     'reset_epoch': 0,
     'claim_state': 'unclaimed',
     'network_state': 'unconfigured',
-    'workspace_state': 'absent',
-    'recovery_state': 'normal',
     'updated_at': '2026-08-05T00:00:00Z',
   },
 };

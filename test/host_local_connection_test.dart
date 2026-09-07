@@ -109,9 +109,14 @@ ManagedHost _host({String? tlsSpkiFingerprint}) => ManagedHost(
       tlsSpkiFingerprint: tlsSpkiFingerprint,
     );
 
+/// The Host overview as the Host actually answers it.
+///
+/// `workspace_state` and `recovery_state` are deliberately absent: Bootstrap
+/// stopped publishing them, and a fixture that kept sending them is what let
+/// the product go on requiring one for two schema versions — the app threw on
+/// the first request it makes and blamed the Wi-Fi.
 Map<String, dynamic> _hostOverview({
   String hostId = validHostId,
-  String workspaceState = 'absent',
   String claimState = 'claimed',
 }) =>
     {
@@ -129,8 +134,6 @@ Map<String, dynamic> _hostOverview({
         'reset_epoch': 2,
         'claim_state': claimState,
         'network_state': 'connected',
-        'workspace_state': workspaceState,
-        'recovery_state': 'normal',
         'updated_at': '2026-08-06T08:00:00Z',
       },
     };
@@ -727,7 +730,7 @@ void main() {
 
     expect(find.byKey(const Key('workspace-fixed-elsewhere')), findsOneWidget);
     expect(find.byKey(const Key('retry-workspace-status')), findsNothing);
-    expect(find.textContaining('要在主机那边修好'), findsOneWidget);
+    expect(find.textContaining('已经完成过设置'), findsOneWidget);
   });
 
   testWidgets('a Host without the Workspace route is a version gap, not an outage',
@@ -834,7 +837,7 @@ void main() {
           controllerKeys: _FakeControllerKeys(),
           discovery: _FakeDiscovery(),
           localApiClientFactory: (_) => _clientFor(
-            _hostOverview(workspaceState: 'ready'),
+            _hostOverview(),
             workspaceReady: true,
           ),
           onHostUpdated: (_) async {},
@@ -873,7 +876,7 @@ void main() {
           controllerKeys: _FakeControllerKeys(),
           discovery: _FakeDiscovery(),
           localApiClientFactory: (_) => _clientFor(
-            _hostOverview(workspaceState: 'ready'),
+            _hostOverview(),
             workspaceReady: true,
           ),
           onHostUpdated: (_) async {},
@@ -960,7 +963,7 @@ void main() {
           controllerKeys: _FakeControllerKeys(),
           discovery: _FakeDiscovery(),
           localApiClientFactory: (_) => _clientFor(
-            _hostOverview(workspaceState: 'ready'),
+            _hostOverview(),
             workspaceReady: true,
             withReadyDevice: true,
           ),
@@ -1393,7 +1396,7 @@ void main() {
     // One Host, so one fake: a factory that built a fresh one per call would
     // forget the name it was just told.
     final host = _clientFor(
-      _hostOverview(workspaceState: 'ready'),
+      _hostOverview(),
       workspaceReady: true,
       ownerName: ownerName,
     );
@@ -1437,7 +1440,7 @@ void main() {
     // One Host, so one fake: a factory that built a fresh one per call would
     // forget the name it was just told.
     final host = _clientFor(
-      _hostOverview(workspaceState: 'ready'),
+      _hostOverview(),
       workspaceReady: true,
       ownerName: ownerName,
     );
@@ -1486,7 +1489,7 @@ void main() {
           controllerKeys: _FakeControllerKeys(),
           discovery: _FakeDiscovery(),
           localApiClientFactory: (_) => _clientFor(
-            _hostOverview(workspaceState: 'ready'),
+            _hostOverview(),
             workspaceReady: true,
             withReadyDevice: true,
           ),
@@ -1527,7 +1530,7 @@ void main() {
           controllerKeys: _FakeControllerKeys(),
           discovery: _FakeDiscovery(),
           localApiClientFactory: (_) => _clientFor(
-            _hostOverview(workspaceState: 'ready'),
+            _hostOverview(),
             workspaceReady: true,
           ),
           // Answers per path: the roster screen reads /context first, to learn
@@ -1601,7 +1604,7 @@ void main() {
           controllerKeys: _FakeControllerKeys(),
           discovery: _FakeDiscovery(),
           localApiClientFactory: (_) => _clientFor(
-            _hostOverview(workspaceState: 'ready'),
+            _hostOverview(),
             workspaceReady: true,
           ),
           // Answers per path: the library screen reads /context first, to learn

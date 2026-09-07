@@ -639,9 +639,6 @@ class _ForQuoting extends StatelessWidget {
                 ),
                 _StatusRow(label: 'Owner', value: _claimLabel(state.claim)),
                 _StatusRow(label: '网络', value: networkLabel(state.network)),
-                _StatusRow(
-                    label: 'Workspace',
-                    value: _workspaceLabel(state.workspace)),
                 _StatusRow(label: 'Reset epoch', value: '${state.resetEpoch}'),
                 _StatusRow(label: '状态更新时间', value: _dateTime(state.updatedAt)),
                 _SelectableStatusRow(label: 'Host ID', value: host.hostId),
@@ -994,11 +991,6 @@ String networkLabel(HostNetworkState state) => switch (state) {
 String _claimLabel(HostClaimState state) => switch (state) {
       HostClaimState.unclaimed => '未认领',
       HostClaimState.claimed => '已认领',
-    };
-
-String _workspaceLabel(HostWorkspaceState state) => switch (state) {
-      HostWorkspaceState.absent => '未创建',
-      HostWorkspaceState.ready => '已就绪',
     };
 
 String _dateTime(DateTime value) {

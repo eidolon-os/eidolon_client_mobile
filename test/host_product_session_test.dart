@@ -110,8 +110,6 @@ Map<String, dynamic> _overview({int resetEpoch = 2}) => {
         'reset_epoch': resetEpoch,
         'claim_state': 'claimed',
         'network_state': 'connected',
-        'workspace_state': 'ready',
-        'recovery_state': 'normal',
         'updated_at': '2026-08-09T08:00:00Z',
       },
     };
