@@ -12,7 +12,7 @@ typedef HttpClientFactory = http.Client Function();
 /// The mobile client always has platform AEC and supports simultaneous capture
 /// and playback, so this is a hardware/client capability rather than a session
 /// preference.
-const mobileInteractionMode = 'full_duplex';
+const mobileInteractionMode = interactionModeFullDuplex;
 
 class HubClient {
   HubClient({

@@ -198,7 +198,8 @@ class EidolonSession {
       'type': clientAudioStateType,
       'seq': ++_audioStateSequence,
       'input_mode': 'auto',
-      'playback_state': agentSpeaking ? 'agent_speaking' : 'idle',
+      'playback_state':
+          agentSpeaking ? playbackStateAgentSpeaking : playbackStateIdle,
       'mic_muted': muted,
       'ptt': false,
       'rms': 0,

@@ -1,12 +1,5 @@
 {
-  "_why": "Every SDK wire constant in a vocabulary this client speaks, and what was decided about it. A constant that lands in neither column fails tool/check_wire_contract_mirror.py — which is the check that was missing when SESSION_CONVERSATION_ID_FIELD was added and this client went twelve days publishing a session request the Channel Provider discarded.",
-  "vocabularies": [
-    "WIRE",
-    "SESSION",
-    "CONTROL",
-    "EVENT",
-    "CLIENT"
-  ],
+  "_why": "Every module-level constant eidolon_sdk/biz/contracts publishes, and what was decided about it: mirrored to a named Dart constant, or deliberately not mirrored with a reason. A constant in neither column fails tool/check_wire_contract_mirror.py. The scope is the whole file on purpose — it used to be a list of name prefixes, and that list went short by twenty constants, three of which this client had mirrored all along with nothing checking them.",
   "constants": {
     "WIRE_SCHEMA_VERSION": {
       "dart": "sessionControlSchemaVersion"
@@ -106,6 +99,66 @@
     },
     "CLIENT_AUDIO_STATE_KNOWN_KEYS": {
       "not_mirrored": "a computed frozenset the server filters incoming keys with; not a value a client sends"
+    },
+    "COMPANION_UI_STATE_TOPIC": {
+      "dart": "uiStateTopic"
+    },
+    "LIVEKIT_TRANSCRIPTION_TOPIC": {
+      "dart": "transcriptionTopic"
+    },
+    "LIVEKIT_AGENT_SESSION_TOPIC": {
+      "dart": "agentSessionTopic"
+    },
+    "INTERACTION_MODE_FULL_DUPLEX": {
+      "dart": "interactionModeFullDuplex"
+    },
+    "PLAYBACK_STATE_AGENT_SPEAKING": {
+      "dart": "playbackStateAgentSpeaking"
+    },
+    "PLAYBACK_STATE_IDLE": {
+      "dart": "playbackStateIdle"
+    },
+    "INTERACTION_MODE_HALF_DUPLEX": {
+      "not_mirrored": "this Body declares interaction_mode as a pinned full_duplex const in its Manifest and never offers the half-duplex alternative; zero occurrences in lib/"
+    },
+    "INTERACTION_MODE_PTT": {
+      "not_mirrored": "push to talk is a mode this client does not offer; the value 'ptt' is too short to search for reliably, so this is reasoning rather than a measurement"
+    },
+    "INPUT_MODE_AUTO": {
+      "not_mirrored": "input mode is a board-side capture concept; this client publishes through livekit_client, which owns its own capture. The value 'auto' is too short to search for reliably"
+    },
+    "INPUT_MODE_MANUAL": {
+      "not_mirrored": "input mode is a board-side capture concept this client has no equivalent of; zero occurrences in lib/"
+    },
+    "INPUT_MODE_PTT": {
+      "not_mirrored": "input mode is a board-side capture concept this client has no equivalent of; the value 'ptt' is too short to search for reliably"
+    },
+    "INPUT_MODE_UNKNOWN": {
+      "not_mirrored": "input mode is a board-side capture concept this client has no equivalent of; 'unknown' is far too common a word to search for"
+    },
+    "PLAYBACK_STATE_UNKNOWN": {
+      "not_mirrored": "this client reports only speaking or idle on the audio-state topic and never the unknown third state; 'unknown' is far too common a word to search for"
+    },
+    "VALID_CONTROL_OPS": {
+      "not_mirrored": "a computed set the server validates incoming ops against; a client sends one op, not the set"
+    },
+    "VALID_INPUT_MODES": {
+      "not_mirrored": "a computed set over the input modes above, none of which this client has"
+    },
+    "VALID_INTERACTION_MODES": {
+      "not_mirrored": "a computed set; this Body pins one interaction mode in its Manifest rather than choosing from the set at runtime"
+    },
+    "VALID_PLAYBACK_STATES": {
+      "not_mirrored": "a computed set the server validates against; this client sends one state at a time"
+    },
+    "VALID_SESSION_END_REASONS": {
+      "not_mirrored": "a computed set over the end reasons this client does not consume"
+    },
+    "VALID_SESSION_INTENTS": {
+      "not_mirrored": "a computed set; roomJoinSessionIntent deliberately treats anything it does not recognise as a normal user session rather than validating against a mirrored set"
+    },
+    "VALID_SESSION_REQUEST_TYPES": {
+      "not_mirrored": "a computed set over sessionOpenType and sessionCloseType, both mirrored; sessionRequestPayload refuses anything else by naming the two rather than by carrying the set"
     }
   }
 }

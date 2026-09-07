@@ -92,6 +92,20 @@ const controlOpConfigRefresh = 'config.refresh';
 const controlOpDeviceIdentify = 'device.identify';
 const clientAudioStateType = 'client.audio_state';
 
+/// How a Body takes turns, as the contract names it.
+///
+/// This value had two constants in two files — `mobileBodyInteractionMode` in
+/// the Manifest and `mobileInteractionMode` in the Hub client — which is one
+/// wire value with two spellings and two places to change it. It is one now,
+/// here, where the mirror can see it.
+const interactionModeFullDuplex = 'full_duplex';
+
+/// What the far end is doing with the floor, reported on the audio-state
+/// topic. These were inline in `eidolon_session.dart` and compared inline in
+/// `client_controller.dart`.
+const playbackStateAgentSpeaking = 'agent_speaking';
+const playbackStateIdle = 'idle';
+
 /// Server → client: this conversation is over. The reverse direction of
 /// [sessionControlTopic], and the one member of that vocabulary this client
 /// does consume — see [sessionStartedType] for the one it does not.

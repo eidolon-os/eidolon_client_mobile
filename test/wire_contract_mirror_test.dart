@@ -61,8 +61,16 @@ void main() {
     expect(ledger.existsSync(), isTrue);
 
     final decoded = ledger.readAsStringSync();
-    expect(decoded, contains('"vocabularies"'));
     expect(decoded, contains('"constants"'));
+    // The scope is the whole contract file, not a list of prefixes. That list
+    // was itself a roll-call and it went short by twenty constants — three of
+    // which this client had mirrored all along with nothing checking them —
+    // so a ledger that reintroduces one has reintroduced the fault.
+    expect(
+      decoded,
+      isNot(contains('"vocabularies"')),
+      reason: 'the boundary is the contract file; a prefix list can go short',
+    );
 
     final constants = RegExp(r'"([A-Z][A-Z0-9_]*)":\s*\{([^}]*)\}')
         .allMatches(decoded);

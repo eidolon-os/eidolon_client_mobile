@@ -727,7 +727,7 @@ class ClientController extends ChangeNotifier {
       final nextTurn = switch (state) {
         'listening' => AgentTurnState.listening,
         'thinking' => AgentTurnState.thinking,
-        'speaking' || 'agent_speaking' => AgentTurnState.speaking,
+        'speaking' || playbackStateAgentSpeaking => AgentTurnState.speaking,
         _ => null,
       };
       // Unknown packets must not reset a healthy full-duplex session to idle.

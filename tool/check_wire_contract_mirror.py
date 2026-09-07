@@ -27,11 +27,23 @@ made to pass by choosing less.
 
 ## The rule
 
-So the unit here is not a constant, it is a **vocabulary**. `mirror` declares
-which vocabularies this client participates in, and every SDK constant in one
-of them must carry a decision — mirrored to a named Dart constant, or
-deliberately not mirrored with a reason. A new constant lands in neither
-column and this fails, saying so. Nobody has to remember to add an assertion.
+The unit is not a constant. **Every module-level constant the contract file
+publishes** must carry a decision in `wire_contract_mirror.json` — mirrored to
+a named Dart constant, or deliberately not mirrored with a reason. A new
+constant lands in neither column and this fails, naming it. Nobody has to
+remember to add an assertion.
+
+The scope used to be a list of name prefixes, which was the same mistake one
+level out: a roll-call of *vocabularies* instead of a roll-call of constants,
+and just as able to go short by choosing less. It did. Comparing boundaries
+with the SDK's own mirror showed twenty of fifty-three constants watched by
+neither — among them `LIVEKIT_TRANSCRIPTION_TOPIC`, `LIVEKIT_AGENT_SESSION_TOPIC`
+and `COMPANION_UI_STATE_TOPIC`, which this client had mirrored all along and
+nothing checked, and `INTERACTION_MODE_FULL_DUPLEX`, which had two constants
+under two names in two files.
+
+So the boundary is the file. There is no longer a place to put a name where
+nobody has to decide about it.
 
 The reasons are load-bearing in the other direction too: a constant recorded
 as not mirrored must not actually be used, so a decision cannot rot into a
@@ -124,20 +136,13 @@ def dart_constants(source: Path) -> dict[str, object]:
 
 def load_ledger() -> dict:
     ledger = json.loads(LEDGER_PATH.read_text(encoding="utf-8"))
-    vocabularies = ledger.get("vocabularies")
-    if not isinstance(vocabularies, list) or not vocabularies:
-        raise MirrorLedgerInvalid(
-            "the ledger declares no vocabularies, so it would demand nothing"
-        )
     if not isinstance(ledger.get("constants"), dict):
         raise MirrorLedgerInvalid("the ledger records no decisions")
+    if not ledger["constants"]:
+        raise MirrorLedgerInvalid(
+            "the ledger decides nothing, so it would demand nothing"
+        )
     return ledger
-
-
-def in_scope(name: str, vocabularies: list[str]) -> bool:
-    return any(
-        name == prefix or name.startswith(f"{prefix}_") for prefix in vocabularies
-    )
 
 
 def main() -> int:
@@ -162,7 +167,6 @@ def main() -> int:
         print(str(invalid), file=sys.stderr)
         return 1
 
-    vocabularies: list[str] = ledger["vocabularies"]
     decisions: dict[str, dict] = ledger["constants"]
     sdk = sdk_constants(contracts)
     dart = dart_constants(DART_PATH)
@@ -173,15 +177,17 @@ def main() -> int:
     )
 
     failures: list[str] = []
-    scoped = sorted(name for name in sdk if in_scope(name, vocabularies))
+    # Every constant the contract publishes. No prefix filter: the filter was
+    # itself a list that could go short, and it did.
+    scoped = sorted(sdk)
 
-    # The assertion that would have caught the bug: a constant entered a
-    # vocabulary this client speaks and nobody decided anything about it.
+    # The assertion that would have caught the bug: a constant entered the
+    # contract and nobody decided anything about it.
     for name in scoped:
         if name not in decisions:
             failures.append(
-                f"{name} is new in a vocabulary this client participates in and the "
-                f"ledger says nothing about it — mirror it, or record why not"
+                f"{name} is new in the wire contract and the ledger says nothing "
+                f"about it — mirror it, or record why not"
             )
 
     for name, decision in sorted(decisions.items()):
@@ -189,12 +195,6 @@ def main() -> int:
             failures.append(
                 f"{name} is in the ledger and no longer in the SDK: the decision "
                 f"describes a constant nobody has"
-            )
-            continue
-        if not in_scope(name, vocabularies):
-            failures.append(
-                f"{name} is decided but outside every declared vocabulary, so "
-                f"nothing keeps its neighbours honest"
             )
             continue
         mirrored = decision.get("dart")
@@ -240,15 +240,6 @@ def main() -> int:
         else:
             failures.append(f"{name} has an empty decision")
 
-    # A prefix that matches nothing is a typo, and a typo silently narrows what
-    # must be decided. Not required to mirror anything, though: `EVENT` is a
-    # vocabulary this client speaks none of, and watching it anyway is the
-    # point — the day this client emits its first event, the constant it
-    # reaches for is already in the ledger with a reason to overturn.
-    for prefix in vocabularies:
-        if not any(in_scope(name, [prefix]) for name in scoped):
-            failures.append(f"vocabulary {prefix} matches no SDK constant")
-
     # The pattern is the other half of `SESSION_CONVERSATION_ID_MAX_LENGTH`,
     # and it is a `final`, not a `const`, so the scan above cannot see it.
     max_length = sdk.get("SESSION_CONVERSATION_ID_MAX_LENGTH")
@@ -262,9 +253,10 @@ def main() -> int:
     if failures:
         print("\n".join(failures), file=sys.stderr)
         return 1
+    mirrored = sum(1 for d in decisions.values() if d.get("dart"))
     print(
-        f"wire contract mirror: PASS "
-        f"({len(scoped)} constants across {len(vocabularies)} vocabularies)"
+        f"wire contract mirror: PASS ({len(scoped)} constants in the contract, "
+        f"{mirrored} mirrored, {len(scoped) - mirrored} explained)"
     )
     return 0
 

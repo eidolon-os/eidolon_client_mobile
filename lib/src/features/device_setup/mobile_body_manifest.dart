@@ -37,6 +37,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 import '../../protocol/canonical_json.dart';
+import '../../protocol/eidolon_protocol.dart';
 
 /// The manifest id this phone declares.
 ///
@@ -63,7 +64,7 @@ const mobileBodyManifestRevision = 1;
 /// A build that stopped doing that would have to change this, and would be
 /// wrong not to: the Provider hands the mode to the agent, which uses it to
 /// decide whether it may speak while listening.
-const mobileBodyInteractionMode = 'full_duplex';
+const mobileBodyInteractionMode = interactionModeFullDuplex;
 
 /// What this phone calls itself until the Owner renames it.
 ///
