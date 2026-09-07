@@ -200,6 +200,11 @@ void main() {
         .cast<Map<String, dynamic>>();
 
     expect(refusals, hasLength(4));
+    // The vector publishes the rule now, and it is the one this client uses.
+    // It is asserted rather than assumed because the alternative reading —
+    // judging expiry against the reader's clock — passes every case here by
+    // accident on the day a vector is written and fails them all later.
+    expect(vector['expiry_is_not_judged_against'], "the reader's clock");
     for (final entry in refusals) {
       await expectLater(
         client(
