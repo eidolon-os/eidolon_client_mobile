@@ -20,6 +20,12 @@ class EidolonSession {
   Room? _room;
   EventsListener<RoomEvent>? _listener;
 
+  /// The conversation this client is currently asking to have, readable so the
+  /// controller can tell a lifecycle packet about *this* conversation from one
+  /// about the last. An agent's `session_end` for conversation N can arrive
+  /// after this client has opened N+1; acting on it would end the wrong one.
+  String? get conversationId => _conversationId;
+
   /// The conversation this client is currently asking to have, if any.
   ///
   /// Null between conversations. It is not derived from the room or the

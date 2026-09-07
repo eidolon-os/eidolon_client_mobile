@@ -110,6 +110,7 @@ class ClientController extends ChangeNotifier {
         controlConnection: controlConnection,
         voiceConnection: voiceConnection,
         agentTurn: agentTurn,
+        conversationConfirmed: conversationConfirmed,
         microphone: microphoneState,
         video: videoState,
         busy: _busy,
@@ -187,6 +188,12 @@ class ClientController extends ChangeNotifier {
   /// answer depends on whether the platform still holds a handoff key, which is
   /// a question with an await in it and no place in a build method.
   MobileBodyEnrollmentAct enrollmentAct = MobileBodyEnrollmentAct.none;
+
+  /// Whether the far end has said the conversation actually started.
+  ///
+  /// False between asking and being answered. Not derived from the phase or
+  /// the channel: both are true well before anything is listening.
+  bool conversationConfirmed = false;
 
   /// The Enrollment the act refers to, when the Authority named one.
   MobileBodyEnrollmentRef? get enrollmentRef => config?.bodyEnrollment;
@@ -382,7 +389,10 @@ class ClientController extends ChangeNotifier {
       _inConversation = true;
       await _vad.start();
       microphoneState = MicrophoneState.enabled;
-      // Full-duplex mobile starts listening as soon as the voice room is ready.
+      // Asked, not yet confirmed. `session_started` is what turns this into
+      // 「正在聆听」; until then the screen says it is connecting, because that
+      // is what is true.
+      conversationConfirmed = false;
       // Do not overwrite an early `listening` packet from channel with `idle`.
       agentTurn = AgentTurnState.listening;
       _setPhase(ClientPhase.conversation);
@@ -711,10 +721,53 @@ class ClientController extends ChangeNotifier {
     );
   }
 
+  /// The two things the far end says about a conversation's life.
+  ///
+  /// `session_started` is the agent confirming it is in the room and serving.
+  /// Until it arrives this client has *asked* for a conversation and nothing
+  /// more, which is a different fact from being listened to — the distinction
+  /// the firmware keeps as `conversation_confirmed_` and this client did not.
+  /// The consequence was seen on hardware: the screen read 「正在聆听」 from the
+  /// moment the request was published, which was true about the microphone and
+  /// silent about whether anything was listening. It stayed true-looking
+  /// through an agent that died one millisecond after joining.
+  ///
+  /// `session_end` carries why. Ending on it is what this already did; the
+  /// reason was thrown away, so a service failure and a finished conversation
+  /// left the same way and said the same nothing.
   Future<void> _handleSessionControl(String payload) async {
     try {
       final root = jsonDecode(payload) as Map<String, dynamic>;
-      if (root['type'] == sessionEndType) await leave();
+      // A packet about a different conversation is not about this one. The
+      // agent's end for conversation N can arrive after N+1 has opened, and
+      // acting on it would end the wrong conversation — the same mistake the
+      // Device Control nonce echo exists to prevent, one topic over.
+      final about = root[sessionConversationIdField];
+      final mine = _session.conversationId;
+      if (about is String && mine != null && about != mine) return;
+
+      switch (root['type']) {
+        case sessionStartedType:
+          conversationConfirmed = true;
+          notifyListeners();
+        case sessionEndType:
+          final reason = root[sessionEndReasonField];
+          if (reason == sessionEndError) {
+            // The one end a person has to be told about: the service stopped
+            // serving. Leaving quietly here is how a phone goes back to
+            // standby with nothing said about why the conversation stopped.
+            failure = const ClientFailure(
+              kind: ClientErrorKind.liveKit,
+              title: '对话被结束了',
+              message: '语音服务没能继续这次对话。可以再开一次。',
+              // The Host's own word for it. This client cannot say more than
+              // the taxonomy carries, and inventing detail would be worse than
+              // naming the reason it was given.
+              technicalDetails: 'session_end reason=$sessionEndError',
+            );
+          }
+          await leave();
+      }
     } catch (_) {
       // Ignore malformed packets from unknown participants.
     }

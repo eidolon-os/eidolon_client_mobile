@@ -77,6 +77,7 @@ class ClientUiState {
     required this.controlConnection,
     required this.voiceConnection,
     required this.agentTurn,
+    this.conversationConfirmed = false,
     required this.microphone,
     required this.video,
     required this.busy,
@@ -94,6 +95,16 @@ class ClientUiState {
   final ChannelConnectionState controlConnection;
   final ChannelConnectionState voiceConnection;
   final AgentTurnState agentTurn;
+
+  /// Whether the far end has confirmed the conversation started.
+  ///
+  /// The screen used to read 「正在聆听」 from the moment this client *asked*
+  /// for a conversation. That was true about the microphone and silent about
+  /// whether anything was listening — and it stayed true-looking through an
+  /// agent that joined the room and died a millisecond later, which is exactly
+  /// what an Owner met on hardware: 「正在聆听」, several sentences spoken, and
+  /// nothing in the room to hear them.
+  final bool conversationConfirmed;
   final MicrophoneState microphone;
   final VideoState video;
   final bool busy;
@@ -187,6 +198,10 @@ class ClientUiState {
     if (voiceConnection == ChannelConnectionState.reconnecting) {
       return '正在恢复语音连接…';
     }
+    // Asked, not answered. Said before the mute check on purpose: whether the
+    // microphone is muted is not the interesting fact while nobody has
+    // confirmed there is anything on the other end.
+    if (!conversationConfirmed) return '正在接通对话…';
     if (microphone == MicrophoneState.muted) return '麦克风已静音';
     return switch (agentTurn) {
       AgentTurnState.listening => '正在聆听',
@@ -229,6 +244,10 @@ class ClientUiState {
     if (voiceConnection == ChannelConnectionState.reconnecting) {
       return '画面会保留，连接恢复后将自动继续';
     }
+    // 「请直接说话」 is an instruction, and giving it before anything has
+    // confirmed it is listening is how a person talks into a room with nobody
+    // in it. This says what is actually happening instead.
+    if (!conversationConfirmed) return '已经请求对话，正在等主机接入 Companion';
     if (microphone == MicrophoneState.muted) return '解除静音后才能继续说话';
     return switch (agentTurn) {
       AgentTurnState.listening => '请直接说话，AEC 会抑制扬声器回声',
@@ -257,10 +276,10 @@ class ClientUiState {
           controlConnection == ChannelConnectionState.reconnecting
               ? '控制重连中'
               : 'Hub 在线',
-        ClientPhase.conversation =>
-          voiceConnection == ChannelConnectionState.reconnecting
-              ? '语音重连中'
-              : '对话中',
+        ClientPhase.conversation => switch (voiceConnection) {
+            ChannelConnectionState.reconnecting => '语音重连中',
+            _ => conversationConfirmed ? '对话中' : '接通中',
+          },
         ClientPhase.error => '连接异常',
       };
 }

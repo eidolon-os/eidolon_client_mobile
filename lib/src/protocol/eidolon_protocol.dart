@@ -106,6 +106,24 @@ const interactionModeFullDuplex = 'full_duplex';
 const playbackStateAgentSpeaking = 'agent_speaking';
 const playbackStateIdle = 'idle';
 
+/// The member carrying *why* a conversation ended.
+///
+/// Spelled `"reason"` on the wire. Note it is not one of the contract's named
+/// constants — the SDK publishes the reason *values* (`SESSION_END_*`) but the
+/// agent writes the key inline, so this side cannot be mirror-checked against
+/// a constant that does not exist. Recorded rather than papered over.
+const sessionEndReasonField = 'reason';
+
+/// The one end reason that means the service failed rather than the
+/// conversation finishing.
+///
+/// This client branches on `error` against everything else: the other reasons
+/// (`idle_normal_end`, `user_left`, `proactive_done`, `superseded`) are all
+/// ways a conversation legitimately ends, and a screen that named each of them
+/// would be reciting the taxonomy instead of telling a person whether
+/// something broke.
+const sessionEndError = 'error';
+
 /// Server → client: this conversation is over. The reverse direction of
 /// [sessionControlTopic], and the one member of that vocabulary this client
 /// does consume — see [sessionStartedType] for the one it does not.

@@ -41,19 +41,19 @@
       "dart": "sessionEndType"
     },
     "SESSION_END_IDLE_NORMAL": {
-      "not_mirrored": "a reason on SESSION_END_TYPE, which this client does not consume"
+      "not_mirrored": "this client branches on SESSION_END_ERROR against everything else, so a legitimate end needs no individual name: the screen tells a person whether something broke, not which of five ways a conversation finished"
     },
     "SESSION_END_USER_LEFT": {
-      "not_mirrored": "a reason on SESSION_END_TYPE, which this client does not consume"
+      "not_mirrored": "this client branches on SESSION_END_ERROR against everything else, so a legitimate end needs no individual name: the screen tells a person whether something broke, not which of five ways a conversation finished"
     },
     "SESSION_END_ERROR": {
-      "not_mirrored": "a reason on SESSION_END_TYPE, which this client does not consume"
+      "dart": "sessionEndError"
     },
     "SESSION_END_PROACTIVE_DONE": {
-      "not_mirrored": "a reason on SESSION_END_TYPE, which this client does not consume"
+      "not_mirrored": "this client branches on SESSION_END_ERROR against everything else, so a legitimate end needs no individual name: the screen tells a person whether something broke, not which of five ways a conversation finished"
     },
     "SESSION_END_SUPERSEDED": {
-      "not_mirrored": "a reason on SESSION_END_TYPE, which this client does not consume"
+      "not_mirrored": "this client branches on SESSION_END_ERROR against everything else, so a legitimate end needs no individual name: the screen tells a person whether something broke, not which of five ways a conversation finished"
     },
     "CONTROL_TOPIC": {
       "dart": "controlTopic"
