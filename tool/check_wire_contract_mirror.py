@@ -91,6 +91,20 @@ def sdk_constants(contracts: Path) -> dict[str, object]:
     return found
 
 
+#: The Dart forms this recognises: a single-quoted string or an integer, on one
+#: line. Deliberately narrow, and **fail-closed** — a constant written any other
+#: way (double quotes, adjacent-string concatenation, a wrapped line) is not
+#: seen, so a ledger entry pointing at it reports "claims to be mirrored by X,
+#: which eidolon_protocol.dart does not declare" rather than quietly passing.
+#:
+#: Verified by mutation, both ways: changing `sessionControlSchemaVersion` to 2
+#: reports the drift against `WIRE_SCHEMA_VERSION` (so integers really are
+#: compared, not skipped), and rewriting a value with double quotes fails
+#: loudly. That second property is the one that matters. The SDK's own mobile
+#: mirror used a single-quoted-string regex and could therefore never have seen
+#: the int schema version even if someone had listed it — an extraction blind
+#: spot that fails open is a second way a roll-call goes quietly short, on top
+#: of the constant nobody remembered.
 _DART_CONST = re.compile(
     r"^const\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?P<value>'[^']*'|\d+)\s*;",
     re.MULTILINE,
