@@ -86,8 +86,10 @@ class DeviceControlClient {
     required http.Client transport,
     this.timeout = const Duration(seconds: 20),
     Random? random,
+    String Function()? newNonce,
   })  : _transport = transport,
-        _random = random ?? Random.secure();
+        _random = random ?? Random.secure(),
+        _newNonce = newNonce;
 
   /// The `device-control` authority endpoint from the signed directory.
   final Uri authority;
@@ -96,9 +98,25 @@ class DeviceControlClient {
   final Duration timeout;
   final Random _random;
 
+  /// Where the nonce comes from, overridable only so a test can reproduce the
+  /// contract's own vector.
+  ///
+  /// The same shape `MobileBodyEnrollmentSession` uses for its command ids, and
+  /// for the same reason: `DF-DEVICE-CONTROL-CONFIGURATION-PROOF-001` fixes a
+  /// nonce, and a document that can never carry the vector's nonce can never be
+  /// compared to the vector's bytes. Seeding [random] would not do it — the
+  /// vector's value is not a 32-byte draw.
+  final String Function()? _newNonce;
+
   static const _path = '/api/device-control/v1/configuration:pull';
 
   /// Ask what this Body's configuration is, proving it is that Body.
+  ///
+  /// The signed document is `DF-DEVICE-CONTROL-CONFIGURATION-PROOF-001`. It was
+  /// the third hand-written spelling of a rule with no vector — a Python dict in
+  /// the Authority, a concatenated string in the firmware, and the map below —
+  /// and a device that spelled it differently would hold an active Claim and
+  /// never be given a room, which this product cannot tell apart from waiting.
   ///
   /// [sign] receives the canonical bytes and returns ES256 `r || s` base64url —
   /// the operational key's signature, made on the platform where that key
@@ -212,6 +230,8 @@ class DeviceControlClient {
   /// contract's 16..128, and drawn from a secure source because its whole job
   /// is to make one answer belong to one ask.
   String _nonce() {
+    final override = _newNonce;
+    if (override != null) return override();
     final bytes = List<int>.generate(32, (_) => _random.nextInt(256));
     return base64Url.encode(bytes).replaceAll('=', '');
   }

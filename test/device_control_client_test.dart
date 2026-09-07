@@ -1,7 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/device_control_client.dart';
-import 'package:eidolon_client_mobile/src/protocol/canonical_json.dart';
 import 'package:eidolon_client_mobile/src/protocol/livekit_session_binding.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -16,9 +17,17 @@ import 'support/admission_fixtures.dart';
 /// read as a failure, a missing channel read as a reason, an answer to an older
 /// ask read as an answer to this one.
 ///
-/// The signing document has no vector — the Authority builds it in
-/// `hub/device_control/application.py` and the firmware builds the same bytes —
-/// so its member set is written down here literally.
+/// The signing document is `DF-DEVICE-CONTROL-CONFIGURATION-PROOF-001`. It had
+/// no vector for a while, and the assertion that stood in for one rebuilt the
+/// expected bytes with `canonicalJsonEncode` — the same encoder the code under
+/// test uses — so it agreed with the producer by construction and could not
+/// fail on a changed member set. The vector is read now.
+Map<String, dynamic> _vector() => jsonDecode(
+      File('test/fixtures/device_foundation/'
+              'device-control-configuration-proof.json')
+          .readAsStringSync(),
+    ) as Map<String, dynamic>;
+
 void main() {
   Map<String, Object?> deviceRef() => Map<String, Object?>.from(
         canonicalContractValue('DF-ADMISSION-CLAIM-GRANT-VALID')['device_ref']!
@@ -63,45 +72,80 @@ void main() {
         headers: const {'content-type': 'application/json'},
       );
 
-  DeviceControlClient client(MockClient transport) => DeviceControlClient(
+  DeviceControlClient client(MockClient transport, {String? nonce}) =>
+      DeviceControlClient(
         authority: Uri.parse('https://hub.owner-domain.invalid'),
         transport: transport,
+        // Overridden only where the vector's own nonce is needed. Everywhere
+        // else the real generator runs, including in the test that checks its
+        // shape.
+        newNonce: nonce == null ? null : () => nonce,
       );
 
-  test('the request proves this device over the document the Authority checks',
-      () async {
+  test('the signed request is the bytes the vector pins', () async {
+    final vector = _vector();
+    final document = vector['document']! as Map<String, dynamic>;
+
     late Map<String, dynamic> sent;
     late String signed;
-    final flow = client(MockClient((request) async {
-      sent = jsonDecode(request.body) as Map<String, dynamic>;
-      return ok(answer(nonce: sent['nonce']! as String));
-    }));
+    // Every input from the vector, not from a local helper: the vector's
+    // `device_ref` carries `claim_generation: 7` and `trust_epoch: 4`, values
+    // this file's own fixture does not, and taking the inputs from here while
+    // taking only the expectation from there is how a test named for a golden
+    // never disagrees with one.
+    final flow = client(
+      MockClient((request) async {
+        sent = jsonDecode(request.body) as Map<String, dynamic>;
+        return ok(answer(nonce: sent['nonce']! as String));
+      }),
+      nonce: document['nonce']! as String,
+    );
 
     await flow.pullConfiguration(
-      deviceRef: deviceRef(),
-      operationalPublicKey: 'p256-spki:AAAA',
-      sign: (document) async {
-        signed = document;
-        return 'x' * 86;
+      deviceRef: Map<String, Object?>.from(document['device_ref']! as Map),
+      operationalPublicKey: vector['public_key_spki']! as String,
+      sign: (canonical) async {
+        signed = canonical;
+        return vector['signature']! as String;
       },
     );
 
+    expect(signed, vector['canonical_utf8']);
+    expect(
+      'sha256:${sha256.convert(utf8.encode(signed))}',
+      vector['canonical_sha256'],
+    );
+    // The signing key the vector names. Signing this with the handoff key
+    // would be a device asking about a Claim it is not the subject of, and no
+    // byte comparison above would notice.
+    expect(vector['signing_key'], 'operational');
+    // The envelope is this client's, not the vector's — the vector pins the
+    // document that is signed, and the four members that carry it are the
+    // request contract.
     expect(sent.keys.toSet(), <String>{
       'device_ref',
       'nonce',
       'public_key_spki',
       'device_signature',
     });
-    // The exact document `hub/device_control/application.py` recomputes: three
-    // members, canonical, with the operation naming which edge this is.
-    expect(
-      signed,
-      canonicalJsonEncode(<String, Object?>{
-        'device_ref': deviceRef(),
-        'nonce': sent['nonce'],
-        'operation_type': deviceControlConfigurationOperation,
-      }),
-    );
+  });
+
+  test('every member the vector says must not move is in the signed bytes',
+      () {
+    // A dropped member is invisible to the byte comparison above, which passes
+    // for the vector's own values; it is only visible as an absence.
+    final vector = _vector();
+    final signed = jsonDecode(vector['canonical_utf8']! as String);
+    for (final path in (vector['mutate_each_field_must_fail']! as List<Object?>)
+        .cast<String>()) {
+      Object? value = signed;
+      for (final segment in path.split('.')) {
+        expect(value, isA<Map<String, dynamic>>(), reason: path);
+        final map = value! as Map<String, dynamic>;
+        expect(map.containsKey(segment), isTrue, reason: '$path is absent');
+        value = map[segment];
+      }
+    }
   });
 
   test('a delivered channel becomes a room this device may join', () async {
