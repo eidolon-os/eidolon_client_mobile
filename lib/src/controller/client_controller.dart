@@ -187,17 +187,23 @@ class ClientController extends ChangeNotifier {
   /// construction. A standing that cannot advance is not waiting — and that is
   /// still the rule now that the proposal exists, because a proposal nobody has
   /// made is not in flight.
-  ///
-  /// A channel refusal is the second thing that can end a wait before it
-  /// starts. The Host's answer is a decision, and polling every five seconds
-  /// in front of a decision is the same retry-before-nothing one axis over —
-  /// except for an unanswered request, where the request succeeding is the
-  /// remedy and the poll is how it gets tried again.
   bool get isWaiting =>
       (phase == ClientPhase.awaitingApproval ||
           phase == ClientPhase.awaitingBinding) &&
-      (config?.bodyStanding?.advances ?? true) &&
-      (config?.channelRefusal?.advances ?? true);
+      (config?.bodyStanding?.advances ?? true);
+
+  /// Whether the five second activation poll has anything to poll for.
+  ///
+  /// Narrower than [isWaiting] on purpose, and the two must not be merged. A
+  /// refused channel is the Host's decision, so polling in front of it is the
+  /// retry-before-nothing this app keeps deleting — but the *person* asking
+  /// again is a different act entirely. The refusal sentence sends them to the
+  /// management end to remove the device; when they come back, 「立即检查状态」
+  /// is how they find out it worked, and gating that on the same flag turned
+  /// the control into a button that does nothing. It was drawn and inert for
+  /// exactly one build.
+  bool get pollsForActivation =>
+      isWaiting && (config?.channelRefusal?.advances ?? true);
 
   /// The Owner holding this phone can approve it from here.
   bool get awaitsThisControllersApproval =>
@@ -386,7 +392,7 @@ class ClientController extends ChangeNotifier {
   void _scheduleActivationRefresh() {
     _activationTimer?.cancel();
     _activationTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-      if (_busy || !isWaiting) return;
+      if (_busy || !pollsForActivation) return;
       _busy = true;
       notifyListeners();
       try {

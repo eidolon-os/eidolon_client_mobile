@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/admission_fixtures.dart';
 import 'support/phone_identity_fixtures.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/channel_refusal.dart';
+import 'package:fake_async/fake_async.dart';
 
 /// The screen stops polling for something that cannot arrive.
 ///
@@ -39,6 +40,18 @@ void main() {
         deviceFingerprint: phoneFingerprint,
         bodyStanding: value,
       );
+
+  Future<({ClientController controller, _FakeProvisioner provisioner})>
+      connectWatched(HubConfig config) async {
+    final provisioner = _FakeProvisioner(config);
+    final controller = ClientController(
+      platform: FakePhonePlatform(),
+      session: _FakeSession(),
+      conversationProvisioner: provisioner,
+    );
+    await controller.start();
+    return (controller: controller, provisioner: provisioner);
+  }
 
   Future<ClientController> connect(HubConfig config) async {
     final provisioner = _FakeProvisioner(config);
@@ -101,12 +114,90 @@ void main() {
       );
 
       expect(
-        controller.isWaiting,
+        controller.pollsForActivation,
         isFalse,
-        reason: '$refusal is a decision, and the screen offered a wait',
+        reason: '$refusal is a decision, and the poll ran in front of it',
       );
       controller.dispose();
     }
+  });
+
+  test('the five second poll does not run in front of a decision', () {
+    // Asserted by letting time pass, not by reading the flag. The flag was
+    // already right when a mutation pointed the timer at the wrong one and
+    // every test stayed green — the same mistake as asserting `isWaiting`
+    // instead of calling `checkActivation`.
+    fakeAsync((async) {
+      late _FakeProvisioner refused;
+      late _FakeProvisioner unanswered;
+      late ClientController refusedController;
+      late ClientController unansweredController;
+
+      connectWatched(
+        standing(
+          MobileBodyStanding.claimActiveWithoutChannel,
+          HubConfigStatus.waitingBinding,
+          refusal: ChannelRefusal.claimNotActive,
+        ),
+      ).then((built) {
+        refused = built.provisioner;
+        refusedController = built.controller;
+      });
+      connectWatched(
+        standing(
+          MobileBodyStanding.claimActiveWithoutChannel,
+          HubConfigStatus.waitingBinding,
+          refusal: ChannelRefusal.hostUnanswered,
+        ),
+      ).then((built) {
+        unanswered = built.provisioner;
+        unansweredController = built.controller;
+      });
+      async.flushMicrotasks();
+
+      final refusedBefore = refused.calls;
+      final unansweredBefore = unanswered.calls;
+      async.elapse(const Duration(seconds: 16));
+
+      expect(
+        refused.calls,
+        refusedBefore,
+        reason: 'polled the Host about a decision it had already made',
+      );
+      expect(
+        unanswered.calls,
+        greaterThan(unansweredBefore),
+        reason: 'an unanswered request is exactly what the poll is for',
+      );
+      refusedController.dispose();
+      unansweredController.dispose();
+    });
+  });
+
+  test('a person can still re-check after a refusal tells them what to fix',
+      () async {
+    // The refusal sentence sends them to the management end to remove the
+    // device; 「立即检查状态」 is how they find out it worked. Gating that on
+    // the same flag as the automatic poll drew a control that did nothing —
+    // asserted by calling it, because asserting the flag instead is what let
+    // that regression through the first time.
+    final built = await connectWatched(
+      standing(
+        MobileBodyStanding.claimActiveWithoutChannel,
+        HubConfigStatus.waitingBinding,
+        refusal: ChannelRefusal.deviceFactsStale,
+      ),
+    );
+    final before = built.provisioner.calls;
+
+    await built.controller.checkActivation();
+
+    expect(
+      built.provisioner.calls,
+      greaterThan(before),
+      reason: 'the button was drawn and asked the Host nothing',
+    );
+    built.controller.dispose();
   });
 
   test('an unanswered request keeps the poll, because it is the remedy',
@@ -122,6 +213,7 @@ void main() {
       ),
     );
 
+    expect(controller.pollsForActivation, isTrue);
     expect(controller.isWaiting, isTrue);
     controller.dispose();
   });

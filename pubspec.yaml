@@ -40,6 +40,10 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # Used by mobile_body_dead_end_test to let the five second activation poll
+  # pass without waiting five seconds: the flag being right is not the same
+  # fact as the timer consulting it, and only elapsing time tells them apart.
+  fake_async: ^1.3.3
 
 flutter:
   uses-material-design: true
