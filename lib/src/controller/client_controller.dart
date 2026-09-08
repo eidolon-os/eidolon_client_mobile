@@ -821,7 +821,13 @@ class ClientController extends ChangeNotifier {
       final speaker = source == 'user' ||
               (sessionIdentity.isNotEmpty && identityValue == sessionIdentity)
           ? '你'
-          : 'Eidolon';
+          // Not a name. Nothing on the wire tells a Body which Companion is
+          // answering: the device token deliberately carries no companion_id,
+          // and the Host resolves who answers from the Kernel mount at every
+          // session_open. This said 'Eidolon' and was right only while one
+          // Companion existed — binding this device to a second one made it
+          // wrong with nothing failing.
+          : 'Companion';
       final isFinal = root['final'] == true || root['is_final'] == true;
       final segmentId = (root['segment_id'] ??
               root['stream_id'] ??
