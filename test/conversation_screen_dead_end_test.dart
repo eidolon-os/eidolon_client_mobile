@@ -192,10 +192,13 @@ void main() {
 
     expect(find.text('登记这台手机'), findsNothing);
     expect(find.text('立即检查状态'), findsWidgets);
-    // And the sentence must not promise the channel is coming. The Authority
-    // answers the same way whether provisioning is unfinished or was refused,
-    // so this side says it cannot tell rather than picking the hopeful one.
-    expect(find.textContaining('分不出来'), findsWidgets);
+    // And the sentence must not promise the channel is coming. This used to
+    // assert 「分不出来」 on the belief that the Authority answers the same way
+    // whether provisioning is unfinished or was refused. It does not — Device
+    // Control tags its refusal — so the unrefused case says the one true thing
+    // about itself: the Host did not refuse, and asking again may work.
+    expect(find.textContaining('主机没有拒绝'), findsWidgets);
+    expect(find.textContaining('分不出来'), findsNothing);
     expect(find.textContaining('当前版本'), findsNothing);
   });
 

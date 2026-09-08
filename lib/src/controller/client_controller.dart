@@ -124,6 +124,7 @@ class ClientController extends ChangeNotifier {
         voiceConnection: voiceConnection,
         agentTurn: agentTurn,
         conversationStanding: conversationStanding,
+        channelRefusal: config?.channelRefusal,
         microphone: microphoneState,
         video: videoState,
         busy: _busy,
@@ -186,10 +187,17 @@ class ClientController extends ChangeNotifier {
   /// construction. A standing that cannot advance is not waiting — and that is
   /// still the rule now that the proposal exists, because a proposal nobody has
   /// made is not in flight.
+  ///
+  /// A channel refusal is the second thing that can end a wait before it
+  /// starts. The Host's answer is a decision, and polling every five seconds
+  /// in front of a decision is the same retry-before-nothing one axis over —
+  /// except for an unanswered request, where the request succeeding is the
+  /// remedy and the poll is how it gets tried again.
   bool get isWaiting =>
       (phase == ClientPhase.awaitingApproval ||
           phase == ClientPhase.awaitingBinding) &&
-      (config?.bodyStanding?.advances ?? true);
+      (config?.bodyStanding?.advances ?? true) &&
+      (config?.channelRefusal?.advances ?? true);
 
   /// The Owner holding this phone can approve it from here.
   bool get awaitsThisControllersApproval =>

@@ -9,6 +9,7 @@ import 'device_control_client.dart';
 import '../device_setup/owner_domain_endpoints.dart';
 import 'conversation_provisioner.dart';
 import 'mobile_body_standing.dart';
+import 'channel_refusal.dart';
 
 typedef DeviceOnboardingTargetLoader = Future<DeviceOnboardingTarget>
     Function();
@@ -218,12 +219,28 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
         operationalPublicKey: identity.operationalPublicKey,
         sign: _platform.signDeviceCanonicalDocument,
       );
-    } on Exception {
+    } on DeviceControlRefusal catch (refusal) {
+      // The Host said why. Throwing that away and reporting 「还没有通道」 is
+      // what made the screen tell a person the two cases were
+      // indistinguishable, while the distinguishing tag sat in this exception.
+      // An unrecognised tag maps to null, and the sentence then says only that
+      // the Host refused — not which remedy to reach for.
       return _empty(
         HubConfigStatus.waitingBinding,
         identity.fingerprint,
         enrollment,
         MobileBodyStanding.claimActiveWithoutChannel,
+        refusal: ChannelRefusal.forDetail(refusal.detail),
+      );
+    } on Exception {
+      // Nothing was decided: the request did not complete, or came back
+      // unreadable. Saying 「已经问过主机了」 here was false.
+      return _empty(
+        HubConfigStatus.waitingBinding,
+        identity.fingerprint,
+        enrollment,
+        MobileBodyStanding.claimActiveWithoutChannel,
+        refusal: ChannelRefusal.hostUnanswered,
       );
     }
     if (!configuration.claimStands) {
@@ -283,10 +300,12 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
     HubConfigStatus status,
     String fingerprint,
     MobileBodyEnrollmentRef? enrollment,
-    MobileBodyStanding standing,
-  ) =>
+    MobileBodyStanding standing, {
+    ChannelRefusal? refusal,
+  }) =>
       HubConfig(
         status: status,
+        channelRefusal: refusal,
         session: const RoomConfig(
           serverUrl: '',
           token: '',

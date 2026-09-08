@@ -16,6 +16,7 @@ import 'package:http/testing.dart';
 import 'support/admission_fixtures.dart';
 import 'support/owner_domain_fixtures.dart';
 import 'support/phone_identity_fixtures.dart';
+import 'package:eidolon_client_mobile/src/features/conversation/channel_refusal.dart';
 
 /// What a claimed phone is told, and what it does with each answer.
 ///
@@ -169,6 +170,80 @@ void main() {
     ).provision();
   }
 
+  /// What the Host said about the channel, against what the screen told a
+  /// person about it.
+  ///
+  /// Device Control refuses with a tagged reason. This provisioner used to
+  /// catch every one of them with a bare `on Exception` that did not bind the
+  /// object, report them all as `claimActiveWithoutChannel`, and then show a
+  /// sentence that said 「这两种情况主机的回答是一样的，这台手机分不出来」 —
+  /// while the tag that distinguished them was in the exception it had just
+  /// discarded. The three refusals differ in who has to act next, which is the
+  /// only thing the sentence needed to get right.
+  group('a refusal says which refusal it is', () {
+    MockClient refusing(String detail, {int status = 409}) =>
+        MockClient((request) async => http.Response(
+              jsonEncode(<String, Object?>{'detail': detail}),
+              status,
+              headers: const {'content-type': 'application/json'},
+            ));
+
+    test('an inactive claim does not end by waiting',
+        () async {
+      final config = await provision(deviceControl: refusing('CLAIM_NOT_ACTIVE'));
+
+      expect(config.channelRefusal, ChannelRefusal.claimNotActive);
+      expect(config.channelRefusal!.advances, isFalse);
+    });
+
+    test('a stale record does not end by waiting either', () async {
+      final config = await provision(deviceControl: refusing('STALE_GENERATION'));
+
+      expect(config.channelRefusal, ChannelRefusal.deviceFactsStale);
+      expect(config.channelRefusal!.advances, isFalse);
+    });
+
+    test('a manifest conflict lands on the same remedy', () async {
+      final config =
+          await provision(deviceControl: refusing('MANIFEST_REVISION_CONFLICT'));
+
+      expect(config.channelRefusal, ChannelRefusal.deviceFactsStale);
+    });
+
+    test('a tag this build does not know is not guessed at', () async {
+      // Mapping an unrecognised reason onto a remedy would have the screen
+      // advise an act that cannot help. Null means the sentence says only that
+      // the Host refused.
+      final config =
+          await provision(deviceControl: refusing('SOMETHING_ELSE_ENTIRELY'));
+
+      expect(config.channelRefusal, isNull);
+    });
+
+    test('a request that never completed is not the Host saying no', () async {
+      final config = await provision(
+        deviceControl: MockClient((_) async => throw const _NoAnswer()),
+      );
+
+      expect(config.channelRefusal, ChannelRefusal.hostUnanswered);
+    });
+
+    test('the Host answering with no channel is still its own state', () async {
+      // The one case the old sentence was true for: nothing was refused, and
+      // waiting is honest advice.
+      final config = await provision(
+        deviceControl: MockClient((request) async {
+          final nonce = (jsonDecode(request.body) as Map<String, dynamic>)['nonce']!
+              as String;
+          return configuration(nonce: nonce, withChannel: false);
+        }),
+      );
+
+      expect(config.channelRefusal, isNull);
+      expect(config.bodyStanding, MobileBodyStanding.claimActiveWithoutChannel);
+    });
+  });
+
   test('a delivered channel makes this phone ready to talk', () async {
     final config = await provision(
       deviceControl: MockClient((request) async {
@@ -255,4 +330,9 @@ void main() {
     expect(asked, isFalse);
     expect(config.bodyStanding, MobileBodyStanding.claimActiveWithoutChannel);
   });
+}
+
+/// A request that does not complete, as distinct from a Host that refuses.
+class _NoAnswer implements Exception {
+  const _NoAnswer();
 }

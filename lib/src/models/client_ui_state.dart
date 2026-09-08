@@ -1,6 +1,7 @@
 import '../features/conversation/mobile_body_standing.dart';
 import '../features/device_setup/mobile_body_enrollment_session.dart';
 import '../features/conversation/conversation_standing.dart';
+import '../features/conversation/channel_refusal.dart';
 
 enum ClientPhase {
   idle,
@@ -79,6 +80,7 @@ class ClientUiState {
     required this.voiceConnection,
     required this.agentTurn,
     this.conversationStanding = ConversationStanding.asked,
+    this.channelRefusal,
     required this.microphone,
     required this.video,
     required this.busy,
@@ -107,6 +109,9 @@ class ClientUiState {
   /// nothing in the room to hear them.
   /// What this client knows about the far end, and on what evidence.
   final ConversationStanding conversationStanding;
+
+  /// Why there is no channel, when the Host refused to give one.
+  final ChannelRefusal? channelRefusal;
   final MicrophoneState microphone;
   final VideoState video;
   final bool busy;
@@ -155,7 +160,11 @@ class ClientUiState {
       case MobileBodyEnrollmentAct.approve:
       case MobileBodyEnrollmentAct.collect:
       case MobileBodyEnrollmentAct.none:
-        return mobileBodySentence(standing, fingerprint: deviceFingerprint);
+        return mobileBodySentence(
+          standing,
+          fingerprint: deviceFingerprint,
+          refusal: channelRefusal,
+        );
     }
   }
 

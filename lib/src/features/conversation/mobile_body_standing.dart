@@ -1,3 +1,4 @@
+import 'channel_refusal.dart';
 /// Where this phone actually stands as a Body in the Owner Domain.
 ///
 /// One value per stage the Admission projection distinguishes, plus the stage
@@ -180,6 +181,7 @@ String _localTimestamp(DateTime value) {
 MobileBodySentence mobileBodySentence(
   MobileBodyStanding standing, {
   String fingerprint = '',
+  ChannelRefusal? refusal,
 }) {
   final fingerprintClause =
       fingerprint.isEmpty ? '' : '这台手机的密钥指纹是 $fingerprint。';
@@ -207,18 +209,43 @@ MobileBodySentence mobileBodySentence(
         detail: '这一步在这台手机上跑。确认之后这台手机就归属这个 Owner 了。',
         connectionLabel: '确认归属中',
       ),
-    MobileBodyStanding.claimActiveWithoutChannel => MobileBodySentence(
-        headline: '已归属这个 Owner，还没有通话通道',
-        // Until 2026-09-06 this said 「这是当前版本到此为止…等下去不会变」, and
-        // both halves were true then: the app could not ask. It asks now, so
-        // what is left is a genuine ambiguity rather than a missing feature —
-        // and the sentence has to be about that instead.
-        detail: '归属这一步已经完成，这台手机也已经问过主机了 —— 现在没有通道给它。'
-            '通道由主机在归属之后分配，所以再问一次可能就有了。'
-            '也有可能是分配被拒绝，那样等下去不会变 —— 这两种情况主机的回答是一样的，'
-            '这台手机分不出来。',
-        connectionLabel: '缺通话通道',
-      ),
+    // Four different facts used to arrive here wearing one sentence. The
+    // Host's refusal carries a tag, and this phone was discarding it before
+    // going on to tell the person the answers were indistinguishable. They are
+    // not, and they differ in the only way that matters: who acts next.
+    MobileBodyStanding.claimActiveWithoutChannel => switch (refusal) {
+        ChannelRefusal.claimNotActive => MobileBodySentence(
+            headline: '主机不给这台手机通话通道',
+            detail: '主机说这台手机的归属现在不生效，所以不分配通道 —— 再问一次是'
+                '同样的答案，等下去不会变。这一步要在管理端处理：确认这台设备仍然'
+                '归属这个 Owner，并且指定了由谁应答。$fingerprintClause',
+            connectionLabel: '主机已拒绝',
+          ),
+        ChannelRefusal.deviceFactsStale => MobileBodySentence(
+            headline: '这台手机存的记录比主机旧了',
+            detail: '主机认得这台设备，但它手上那份记录已经不是当前那一份，所以主机'
+                '不按它分配通道 —— 带着同一份记录再问，答案一样，等下去不会变。'
+                '要让它重新登记一次才能对齐：在管理端的「设备」里移除这台设备，'
+                '它下一次连接会自己重新提出登记。$fingerprintClause',
+            connectionLabel: '记录已过期',
+          ),
+        ChannelRefusal.hostUnanswered => MobileBodySentence(
+            headline: '没能问到主机',
+            detail: '这一次请求没有完成，所以还不知道主机会不会给通道 —— 这和'
+                '「主机说没有」是两件事。通常是网络或者主机正忙，再试一次是有意义的。',
+            connectionLabel: '没问到主机',
+          ),
+        // Nothing was refused: the Host answered and had no channel to give.
+        // The one case where waiting is honest advice, and the only one this
+        // sentence was ever true for.
+        null => MobileBodySentence(
+            headline: '已归属这个 Owner，还没有通话通道',
+            detail: '归属这一步已经完成，这台手机也已经问过主机了 —— 主机没有拒绝，'
+                '只是现在没有通道给它。通道由主机在归属之后分配，所以再问一次'
+                '可能就有了。',
+            connectionLabel: '缺通话通道',
+          ),
+      },
     MobileBodyStanding.claimRevoked => MobileBodySentence(
         headline: '这台手机的归属已被撤销',
         detail: '要重新用它对话，得重新登记一次 —— 这一步这台手机自己就能提出，'

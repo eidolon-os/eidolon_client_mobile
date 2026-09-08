@@ -1,5 +1,6 @@
 import '../features/conversation/mobile_body_standing.dart';
 import '../features/device_setup/device_instance_identity.dart';
+import '../features/conversation/channel_refusal.dart';
 
 enum HubConfigStatus {
   pendingApproval,
@@ -81,7 +82,15 @@ class HubConfig {
     this.deviceFingerprint = '',
     this.bodyStanding,
     this.bodyEnrollment,
+    this.channelRefusal,
   });
+
+  /// Why there is no channel, when Device Control refused to say.
+  ///
+  /// Null when nothing was refused — including the ordinary case where the
+  /// Host answered and simply had no channel yet. See [ChannelRefusal] for why
+  /// this is its own field rather than more [bodyStanding] values.
+  final ChannelRefusal? channelRefusal;
 
   final HubConfigStatus status;
   final RoomConfig session;

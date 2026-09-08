@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/admission_fixtures.dart';
 import 'support/phone_identity_fixtures.dart';
+import 'package:eidolon_client_mobile/src/features/conversation/channel_refusal.dart';
 
 /// The screen stops polling for something that cannot arrive.
 ///
@@ -21,9 +22,14 @@ import 'support/phone_identity_fixtures.dart';
 /// may propose itself, and this version cannot. The retry was the whole product
 /// in that state.
 void main() {
-  HubConfig standing(MobileBodyStanding value, HubConfigStatus status) =>
+  HubConfig standing(
+    MobileBodyStanding value,
+    HubConfigStatus status, {
+    ChannelRefusal? refusal,
+  }) =>
       HubConfig(
         status: status,
+        channelRefusal: refusal,
         session: const RoomConfig(
           serverUrl: '',
           token: '',
@@ -78,17 +84,62 @@ void main() {
     controller.dispose();
   });
 
-  test('ClaimActive without a Channel waits, and says what it cannot tell',
+  test('a refused channel is not a wait, and is not polled', () async {
+    // `isWaiting` gates both the sentence and the five second activation poll.
+    // A refusal is the Host's decision, so polling in front of it is the same
+    // retry-before-nothing this file exists to keep deleting — one axis over.
+    for (final refusal in <ChannelRefusal>[
+      ChannelRefusal.claimNotActive,
+      ChannelRefusal.deviceFactsStale,
+    ]) {
+      final controller = await connect(
+        standing(
+          MobileBodyStanding.claimActiveWithoutChannel,
+          HubConfigStatus.waitingBinding,
+          refusal: refusal,
+        ),
+      );
+
+      expect(
+        controller.isWaiting,
+        isFalse,
+        reason: '$refusal is a decision, and the screen offered a wait',
+      );
+      controller.dispose();
+    }
+  });
+
+  test('an unanswered request keeps the poll, because it is the remedy',
       () async {
+    // The half an earlier draft of `ChannelRefusal.advances` got wrong: it said
+    // no wait for all three, which would have stopped the poll exactly where
+    // asking again is the thing that fixes it.
+    final controller = await connect(
+      standing(
+        MobileBodyStanding.claimActiveWithoutChannel,
+        HubConfigStatus.waitingBinding,
+        refusal: ChannelRefusal.hostUnanswered,
+      ),
+    );
+
+    expect(controller.isWaiting, isTrue);
+    controller.dispose();
+  });
+
+  test('ClaimActive without a Channel is a wait that can end', () async {
     // This asserted a stop, and that was right while the app could not ask for
     // a channel at all — 「当前版本到此为止」 was the honest sentence and
     // re-asking would have been a retry in front of nothing.
     //
     // The app asks now (`device_control_client.dart`), and the Host provisions
-    // the channel after the Claim, so this is a wait that can end. What it must
-    // not do is promise: a provisioning that was refused looks identical from
-    // here, and the sentence says that rather than choosing the hopeful
-    // reading.
+    // the channel after the Claim, so this is a wait that can end.
+    //
+    // It used to also assert 「分不出来」, on the belief that a refused
+    // provisioning looked identical from here. It does not: Device Control
+    // tags its refusal, and the phone was discarding the tag. A refusal now
+    // has its own state and its own sentence, so this test is about the case
+    // that was always the honest one — the Host answered and had nothing to
+    // give yet.
     final controller = await connect(
       standing(
         MobileBodyStanding.claimActiveWithoutChannel,
@@ -98,7 +149,8 @@ void main() {
 
     expect(controller.phase, ClientPhase.awaitingBinding);
     expect(controller.isWaiting, isTrue);
-    expect(controller.uiState.supportingText, contains('分不出来'));
+    expect(controller.uiState.supportingText, contains('再问一次可能就有了'));
+    expect(controller.uiState.supportingText, isNot(contains('分不出来')));
     expect(controller.uiState.supportingText, isNot(contains('当前版本')));
     controller.dispose();
   });

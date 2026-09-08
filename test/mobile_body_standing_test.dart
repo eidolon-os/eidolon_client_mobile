@@ -1,6 +1,7 @@
 import 'package:eidolon_client_mobile/src/features/conversation/mobile_body_standing.dart';
 import 'package:eidolon_client_mobile/src/models/client_ui_state.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:eidolon_client_mobile/src/features/conversation/channel_refusal.dart';
 
 /// The screen has to say which of these it is, and who has to act.
 ///
@@ -93,6 +94,75 @@ void main() {
       mobileBodySentence(MobileBodyStanding.claimActiveWithoutChannel).detail,
       isNot(contains('重新登记')),
     );
+  });
+
+  group('a channel refusal is said as the refusal it is', () {
+    MobileBodySentence sentenceFor(ChannelRefusal? refusal) => mobileBodySentence(
+          MobileBodyStanding.claimActiveWithoutChannel,
+          refusal: refusal,
+        );
+
+    test('no sentence tells a person the answers are indistinguishable', () {
+      // The line this group exists to delete: 「这两种情况主机的回答是一样的，
+      // 这台手机分不出来」. The Host tags its refusal, and this phone was
+      // discarding the tag before saying it could not tell.
+      for (final refusal in <ChannelRefusal?>[null, ...ChannelRefusal.values]) {
+        expect(
+          sentenceFor(refusal).detail,
+          isNot(contains('分不出来')),
+          reason: '$refusal still claims the phone cannot tell',
+        );
+      }
+    });
+
+    test('an unanswered request does not claim the Host was asked', () {
+      // Nothing was decided, so 「已经问过主机了」 was false — and it is the
+      // half that made a network fault look like a Host decision.
+      final detail = sentenceFor(ChannelRefusal.hostUnanswered).detail;
+
+      expect(detail, isNot(contains('已经问过主机')));
+      expect(detail, contains('没有完成'));
+    });
+
+    test('each refusal reads as a different answer', () {
+      final labels = <String>{
+        for (final refusal in <ChannelRefusal?>[null, ...ChannelRefusal.values])
+          sentenceFor(refusal).connectionLabel,
+      };
+
+      expect(
+        labels.length,
+        4,
+        reason: 'four facts arrived here wearing one label',
+      );
+    });
+
+    test('only the unrefused case advises waiting', () {
+      expect(sentenceFor(null).detail, contains('再问一次可能就有了'));
+      for (final refusal in ChannelRefusal.values) {
+        expect(
+          sentenceFor(refusal).detail,
+          isNot(contains('可能就有了')),
+          reason: '$refusal is a decision, not a wait',
+        );
+      }
+    });
+
+    test('no refusal promises an act this standing does not offer', () {
+      // `claimActiveWithoutChannel.canProposeItself` is false, so no propose
+      // control is drawn here. A sentence saying this phone will register
+      // itself would be a promise with nothing behind it — which is what the
+      // first draft of the stale-record copy did.
+      expect(MobileBodyStanding.claimActiveWithoutChannel.canProposeItself,
+          isFalse);
+      for (final refusal in ChannelRefusal.values) {
+        expect(
+          sentenceFor(refusal).detail,
+          isNot(contains('这台手机自己就能提出')),
+          reason: '$refusal promises a control that is not drawn',
+        );
+      }
+    });
   });
 
   test('acting and advancing are never the same standing', () {
