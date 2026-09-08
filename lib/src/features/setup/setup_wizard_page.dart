@@ -140,6 +140,15 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       await _transport.secure(tlsSpkiFingerprint: endpoint.tlsSpkiFingerprint);
       final developmentSetup = endpoint.developmentSetup;
       if (developmentSetup == null) {
+        // A null `setup_session` says there is no open claim window. It does
+        // not say why, and this branch used to guess "it may already be
+        // claimed" — which was wrong on a factory-fresh Host with no grants at
+        // all, and sent the operator to the controller-reset guidance for
+        // authority nobody held.
+        //
+        // The Host answers the question instead: `already_claimed` when it
+        // belongs to someone, `controller_denied` when nobody is authorized on
+        // it yet. Only the second one is a Host waiting for its first code.
         try {
           if (await _recoverCompletedClaim(endpoint)) return;
         } on CommissioningRequestException catch (error) {
@@ -147,7 +156,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         }
         throw const CommissioningRequestException(
           'setup_code_unavailable',
-          '这台主机没有开放首次 Setup。它可能已被认领；请从“我的 Eidolon”进入，或使用 Owner/物理恢复流程。',
+          '这台主机没有开放的 Setup 窗口。',
         );
       }
       final now = (widget.clock ?? DateTime.now)().toUtc();
@@ -408,8 +417,13 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         'network_rollback_failed' => '主机未能立即回滚 Wi-Fi；系统检查点会继续保护原网络。',
         'commissioning_denied' =>
           'Setup 码错误、过期或已失效。请核对 $setupCodeDigits 位码；连续 5 次失败后请重新选择主机。',
+        // Says only what the App knows: there is no window. Whether this Host
+        // was ever claimed is a separate question, and the Host answers it with
+        // `already_claimed` below.
         'setup_code_unavailable' =>
-          '这台主机没有开放首次 Setup。它可能已被认领。$controllerResetGuidance',
+          '这台主机现在没有开放的 Setup 窗口。$firstSetupCodeGuidance',
+        'already_claimed' => '这台主机已被认领，而且它不认这台手机的管理凭据。'
+            '$controllerResetGuidance',
         'setup_code_expired' => '开发 Setup 会话已过期，请重新选择主机。',
         // A refusal an Owner can act on has to carry the action. Without the
         // recovery named here, this said "你没有权限" to someone holding the
@@ -468,6 +482,13 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           Text('查找附近主机', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
           const Text('给主机接通电源，并让平板保持在主机附近。首次设置不要求主机已经联网。'),
+          const SizedBox(height: 8),
+          // Said before the scan, not after a refusal: a Host does not open a
+          // claim window by being new, so someone has to mint a code first.
+          // The wizard used to mention this only as recovery advice, which is
+          // where it read as "something went wrong" instead of "step one".
+          const Text('还需要一个 Setup 码：请有人在主机上执行 `eidolon-ops commissioning-code` 取一个，'
+              '首次设置也要用它。'),
           const SizedBox(height: 8),
           const Text('附近列表可能同时包含待设置和已认领主机；选择后 App 才会验证 Host 身份和当前权限。'),
           if (kDebugMode) ...[

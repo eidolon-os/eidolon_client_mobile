@@ -102,6 +102,17 @@ final RegExp setupCodePattern = RegExp('^[0-9]{$setupCodeDigits}\$');
 /// The constant is still called `controllerResetGuidance` because two of its
 /// call sites are in a file another session has open; the name is now narrower
 /// than what it says.
+/// What to do about a Host that has no open Setup window, claimed or not.
+///
+/// Kept apart from [controllerResetGuidance] because the two answer different
+/// questions, and merging them is what produced advice about revoking grants on
+/// a Host that had none. This one is the whole story for a Host nobody has
+/// claimed yet — including a brand-new one, which does **not** open a window on
+/// its own: a window exists if and only if someone minted one (ADR-0006).
+const String firstSetupCodeGuidance = '认领窗口不会自己打开——包括一台全新的主机：'
+    '要有人在主机旁边、能登进这台主机，执行 `eidolon-ops commissioning-code` '
+    '取一个一次性 Setup 码，然后在这里输入。码有有效期，过期就再取一次。';
+
 const String controllerResetGuidance = '如果这台手机以前连得上（例如重装过 App，管理凭据已随之清空），'
     '需要有人在主机旁边、能登进这台主机。通常这样就够了：执行 '
     '`eidolon-ops commissioning-code`，它会给出一个一次性 Setup 码；'
