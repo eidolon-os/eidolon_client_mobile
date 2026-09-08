@@ -81,6 +81,29 @@ class PublishedAddressSource implements HostAddressSource {
 }
 
 /// Where this Host answered last time.
+/// The `.local` names this phone has learned for a Host, if any.
+///
+/// The name probe used to carry a name compiled into the App —
+/// `eidolon-pi5.local`, the name the first board's image happened to have. One
+/// App binary serves every household, and before a Host is claimed the phone
+/// does not know which Host it is about to meet, so a build-time name is right
+/// for one installation and dead weight for the rest: by the time this was
+/// found the board in service answered to `orangepi5-max.local` and the
+/// compiled-in name matched no Host at all.
+///
+/// A name is a way to learn an address, so it has to be learned too. What a
+/// Host once answered on is evidence about *that* Host; a new household with no
+/// history simply has none to offer, and the probe stands down while the browse
+/// and the subnet sweep — neither of which needs a name — carry it.
+List<String> hostNamesRemembered(ManagedHost host) {
+  final remembered = host.lastKnownBaseUrl;
+  if (remembered == null) return const [];
+  final name = Uri.tryParse(remembered)?.host ?? '';
+  // An address is not a name, and resolving one leads nowhere.
+  if (name.isEmpty || InternetAddress.tryParse(name) != null) return const [];
+  return [name];
+}
+
 class RememberedAddressSource implements HostAddressSource {
   const RememberedAddressSource();
 

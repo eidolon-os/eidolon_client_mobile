@@ -17,6 +17,44 @@ import 'local_api_client.dart';
 import 'local_api_discovery.dart';
 import 'pinned_http_client.dart';
 
+/// How long one address gets to itself before the next is tried alongside it.
+///
+/// RFC 8305's Connection Attempt Delay: 250 ms recommended, 100 ms minimum,
+/// and never below 10 ms. Short enough that a wrong first address costs a
+/// quarter second instead of a timeout; long enough that the common case —
+/// the first address being right — makes exactly one connection.
+const Duration _connectionAttemptDelay = Duration(milliseconds: 250);
+
+/// A Host that answered at one of its addresses and proved it was itself.
+///
+/// Carries the client that reached it, still open. Authenticating over the
+/// connection that just worked is both one fewer client and one fewer thing
+/// that can differ between proving where the Host is and talking to it.
+class _ReachedHost {
+  const _ReachedHost(this.endpoint, this.overview, this.client);
+
+  final LocalApiEndpoint endpoint;
+  final HostOverview overview;
+  final LocalApiClient client;
+}
+
+/// What racing one tier of addresses established.
+class _AddressRace {
+  const _AddressRace({
+    required this.winner,
+    required this.failures,
+    required this.answered,
+  });
+
+  final _ReachedHost? winner;
+  final List<Object> failures;
+
+  /// Whether anything at these addresses said anything at all. A Host that
+  /// answered and refused has decided something and there is no point looking
+  /// further; only silence is a reason to keep looking.
+  final bool answered;
+}
+
 typedef LocalApiClientFactory = LocalApiClient Function(String fingerprint);
 
 /// The management boundary gets its own factory for the same reason the client
@@ -98,7 +136,7 @@ class HostProductSession {
     // the Host is asked directly where it is.
     _locator = locator ??
         HostLocator.standard(
-          discovery ?? platformLocalApiDiscovery(),
+          discovery ?? platformLocalApiDiscovery(hostNames: hostNamesRemembered(host)),
           readPublished: (_) async =>
               (await _readEndpointOverBle()).localApiBaseUrls,
         );
@@ -173,40 +211,44 @@ class HostProductSession {
       // is knowledge; moving on to a costlier means because of it would ask the
       // person for a permission and a scan on account of an impostor. Only
       // silence is a reason to keep looking.
-      var answered = false;
-      for (final candidate in tier) {
-        final endpoint = candidate.endpoint;
-        final client = _clientFactory(_host.tlsSpkiFingerprint!);
+      final race = await _firstToAnswer(tier);
+      for (final error in race.failures) {
+        final silence = error is PinnedHttpException && _hostDidNotAnswer(error);
+        if (silence) {
+          silentFailure = error;
+          silentCandidates += 1;
+        } else {
+          decidedFailure ??= error;
+        }
+      }
+      final winner = race.winner;
+      if (winner != null) {
+        final endpoint = winner.endpoint;
+        final client = winner.client;
         try {
-          final overview = await client.fetchHost(endpoint.baseUrl);
-          _verifyHost(overview);
           final controllerSession = await _authenticate(
             client,
             endpoint,
-            overview,
+            winner.overview,
           );
           _endpoint = endpoint;
-          _overview = overview;
+          _overview = winner.overview;
           _controllerSession = controllerSession;
           if (_host.lastKnownBaseUrl != endpoint.baseUrl) {
             _host = _host.copyWith(lastKnownBaseUrl: endpoint.baseUrl);
           }
           return _host;
         } catch (error) {
-          final silence = error is PinnedHttpException &&
-              _hostDidNotAnswer(error);
-          if (silence) {
-            silentFailure = error;
-            silentCandidates += 1;
-          } else {
-            decidedFailure ??= error;
-          }
-          answered |= !silence;
+          // The Host answered and then refused, which decides this attempt.
+          // Trying the same Host again at another of its own addresses would
+          // ask it the same question and get the same answer.
+          decidedFailure ??= error;
+          break;
         } finally {
           client.close();
         }
       }
-      if (answered) break;
+      if (race.answered) break;
     }
     // The refusal that decided this, if anything decided it. Only when
     // nothing anywhere answered does silence become the answer.
@@ -307,6 +349,96 @@ class HostProductSession {
   /// Only the absence of an answer means the address may be wrong. A refusal,
   /// a broken pin, a malformed reply — those all came from something that was
   /// there, and re-locating would hide what it said.
+  /// Which of a Host's own addresses answers first, tried the way RFC 8305
+  /// says to try several addresses for one destination.
+  ///
+  /// A Host publishes every address it has, because only the phone knows which
+  /// subnet it is on. Trying them in order made the *order* load-bearing: the
+  /// board is on Wi-Fi and on a wired link at once, the wired address is listed
+  /// first, and a phone on the Wi-Fi paid the full client timeout against an
+  /// address only a laptop on that cable could reach before it ever tried the
+  /// one that works.
+  ///
+  /// Nobody can sort that list correctly — not the Host, which does not know
+  /// where the phone is, and not the phone, which does not know the Host's
+  /// topology. So it is not sorted, it is raced: start the first, and start the
+  /// next either when [_connectionAttemptDelay] is spent or as soon as one
+  /// already running has settled, whichever comes first. Ordering degrades from
+  /// "decides the outcome" to "decides who gets a 250 ms head start", which is
+  /// what it deserves to decide.
+  ///
+  /// Only the read is raced. `fetchHost` is a GET and identical against every
+  /// address of one Host, so several in flight cost nothing and change nothing;
+  /// authenticating is not, and racing it would mint a session per address. So
+  /// the race establishes *where*, and hands over the client that got there for
+  /// the caller to authenticate on — once.
+  Future<_AddressRace> _firstToAnswer(List<HostAddressCandidate> tier) async {
+    final failures = <Object>[];
+    var answered = false;
+    _ReachedHost? winner;
+    final pending = <Future<void>>[];
+    // Completed by whichever attempt settles next, so a candidate that fails
+    // quickly frees its slot immediately instead of making the next one sit
+    // out a delay that exists for undecided attempts.
+    Completer<void>? settled;
+    // Completed by the first attempt to reach the Host. Separate from the slot
+    // signal because it is never reset: once somebody has answered, waiting on
+    // anything else is waiting for nothing.
+    final decided = Completer<void>();
+
+    void slotFreed() {
+      final waiting = settled;
+      settled = null;
+      if (waiting != null && !waiting.isCompleted) waiting.complete();
+    }
+
+    Future<void> attempt(HostAddressCandidate candidate) async {
+      final client = _clientFactory(_host.tlsSpkiFingerprint!);
+      var handedOver = false;
+      try {
+        final overview = await client.fetchHost(candidate.endpoint.baseUrl);
+        _verifyHost(overview);
+        // A loser of the race is not a failure and is not recorded as one: two
+        // addresses of one Host both answering is the normal case, not a fault.
+        if (winner != null) return;
+        winner = _ReachedHost(candidate.endpoint, overview, client);
+        handedOver = true;
+        if (!decided.isCompleted) decided.complete();
+      } catch (error) {
+        failures.add(error);
+        if (!(error is PinnedHttpException && _hostDidNotAnswer(error))) {
+          answered = true;
+        }
+      } finally {
+        if (!handedOver) client.close();
+        slotFreed();
+      }
+    }
+
+    for (var index = 0; index < tier.length; index += 1) {
+      settled = Completer<void>();
+      pending.add(attempt(tier[index]));
+      if (index == tier.length - 1) break;
+      await Future.any([
+        settled!.future,
+        Future<void>.delayed(_connectionAttemptDelay),
+      ]);
+      if (winner != null) break;
+    }
+    if (winner == null) {
+      // Everything is started and nothing has come back yet. Whichever happens
+      // first: somebody answers, or they have all failed. Waiting for them all
+      // unconditionally is what makes one address that never answers cost its
+      // full client timeout, which is the whole thing this replaces.
+      //
+      // When they have all failed, every candidate's own outcome is wanted — a
+      // timeout and a no-route say different things to the person who has to
+      // read the message.
+      await Future.any([decided.future, Future.wait(pending)]);
+    }
+    return _AddressRace(winner: winner, failures: failures, answered: answered);
+  }
+
   static bool _hostDidNotAnswer(PinnedHttpException error) =>
       switch (error.kind) {
         PinnedHttpFailureKind.unreachable ||

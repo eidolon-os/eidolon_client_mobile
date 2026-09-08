@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/features/host_setup/host_product_session.dart';
@@ -335,6 +336,87 @@ void main() {
 
     expect(clients, 2);
     expect(session.connection?.endpoint.ipAddress, '192.168.1.26');
+  });
+
+  test('a Host address that never answers does not hold up the one that does',
+      () async {
+    // The board on Wi-Fi and a wired link at once. The wired address is first
+    // in the list and only a laptop on that cable can reach it; the phone is on
+    // the Wi-Fi. Tried in order this cost the full client timeout before the
+    // working address was reached — and no ordering fixes it, because neither
+    // side knows where the other is. So they are raced (RFC 8305).
+    final unreachable = Completer<http.Response>();
+    addTearDown(() {
+      if (!unreachable.isCompleted) {
+        unreachable.complete(http.Response('', 200));
+      }
+    });
+    var clients = 0;
+    final session = HostProductSession(
+      host: _host(),
+      transport: _NoopTransport(),
+      controllerKeys: _ControllerKeys(),
+      discovery: _Discovery([
+        _endpoint('10.42.0.2'),
+        _endpoint('192.168.1.33'),
+      ]),
+      clientFactory: (_) {
+        clients += 1;
+        return LocalApiClient(
+          httpClient: clients == 1
+              ? MockClient((_) => unreachable.future)
+              : _workingClient(),
+        );
+      },
+    );
+    addTearDown(session.close);
+
+    final started = DateTime.now();
+    await session.connect();
+    final spent = DateTime.now().difference(started);
+
+    expect(session.connection?.endpoint.ipAddress, '192.168.1.33');
+    // One attempt delay, not one client timeout. Generous against a slow CI
+    // machine and still an order of magnitude under the 8s it replaces.
+    expect(spent, lessThan(const Duration(seconds: 3)));
+    expect(clients, 2);
+  });
+
+  test('the first Host address that answers is the only one authenticated on',
+      () async {
+    // Racing the read is free: a GET of the overview is identical at every
+    // address of one Host. Racing the authentication would not be — it would
+    // mint a controller session per address.
+    final sessionsMinted = <String>[];
+    final session = HostProductSession(
+      host: _host(),
+      transport: _NoopTransport(),
+      controllerKeys: _ControllerKeys(),
+      discovery: _Discovery([
+        _endpoint('192.168.1.33'),
+        _endpoint('10.42.0.2'),
+      ]),
+      clientFactory: (_) => LocalApiClient(
+        httpClient: MockClient((request) async {
+          if (request.url.path == '/api/local/v1/auth/sessions') {
+            sessionsMinted.add(request.url.host);
+          }
+          return switch (request.url.path) {
+            '/api/local/v1/host' =>
+              http.Response(jsonEncode(_overview()), 200),
+            '/api/local/v1/auth/challenges' => _challenge(),
+            '/api/local/v1/auth/sessions' => _session(),
+            '/api/local/v1/setup/workspace' => _workspace(),
+            _ => http.Response('', 404),
+          };
+        }),
+      ),
+    );
+    addTearDown(session.close);
+
+    await session.connect();
+
+    expect(sessionsMinted, ['192.168.1.33']);
   });
 
   test('reconnect replaces a stale Host IP with the newly discovered address',

@@ -52,6 +52,53 @@ void main() {
 
       expect(report.candidates, isEmpty);
     });
+
+    // The defect: `eidolon-pi5.local` was compiled into the App. One binary
+    // serves every household, and before a Host is claimed the phone does not
+    // know which Host it will meet — so a build-time name is right for one
+    // installation and by the time this was found it matched no Host in
+    // service. Names are supplied now, and only ever learned ones.
+    test('a phone with no learned name stands the probe down', () async {
+      final report = await HostnameLocalApiSource(
+        resolve: (_) async => throw StateError('nothing to resolve'),
+        probePort: (_, __, ___) async => throw StateError('nothing to dial'),
+      ).probe(timeout: const Duration(milliseconds: 50));
+
+      expect(report.candidates, isEmpty);
+      expect(report.unavailable, isNotNull);
+    });
+  });
+
+  group('the names a phone has learned', () {
+    ManagedHost remembering(String? url) => ManagedHost(
+          hostId: 'host-01',
+          displayName: 'Host',
+          hostPublicKey: 'key',
+          hostFingerprint: 'sha256:aa',
+          bleServiceUuid: '0000',
+          controllerId: 'ectrl-01',
+          claimedAt: DateTime.utc(2026, 9, 8),
+          tlsSpkiFingerprint: 'sha256:bb',
+          lastKnownBaseUrl: url,
+        );
+
+    test('a name a Host actually answered on is one to try again', () {
+      expect(
+        hostNamesRemembered(remembering('https://orangepi5-max.local:9002')),
+        ['orangepi5-max.local'],
+      );
+    });
+
+    test('an address is not a name, and resolving one leads nowhere', () {
+      expect(
+        hostNamesRemembered(remembering('https://192.168.1.33:9002')),
+        isEmpty,
+      );
+    });
+
+    test('a Host never yet reached offers nothing rather than a guess', () {
+      expect(hostNamesRemembered(remembering(null)), isEmpty);
+    });
   });
 
   group('the locator', () {

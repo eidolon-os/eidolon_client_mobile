@@ -33,13 +33,6 @@ Future<bool> _connect(String host, int port, Duration timeout) async {
   }
 }
 
-/// The mDNS names an Eidolon Host is expected to answer to.
-///
-/// Not a guess at the network: the Host image publishes its own name, and this
-/// is that name. A Host renamed by whoever installed it will not be in this
-/// list, which is exactly why it is one of three probes and not the only one.
-const List<String> defaultHostMdnsNames = <String>['eidolon-pi5.local'];
-
 /// DNS-SD service browse — whoever answers the announcement on this network.
 ///
 /// The mechanism this App had, and the one that fails silently: multicast does
@@ -114,6 +107,20 @@ class AnnouncedLocalApiSource implements LocalApiCandidateSource {
 /// is not a theoretical distinction — on the tablet this was written for the
 /// browse returned nothing while the same Host's `.local` name resolved and
 /// pinged.
+///
+/// Names are supplied, never assumed. This shipped with one compiled in —
+/// `eidolon-pi5.local`, the name the first board's image happened to have. One
+/// App binary serves every household, and before a Host is claimed the phone
+/// does not know which Host it is about to meet, so a name fixed at build time
+/// is right for one installation and dead weight for the rest: the board this
+/// was tested against answers to `orangepi5-max.local`, and the compiled-in
+/// name matched no Host in service.
+///
+/// A name is a way to learn an address, so it has to be learned too — from a
+/// Host this phone has already talked to. With no names this probe reports that
+/// and stands down; the browse either side of it needs no name at all, and the
+/// subnet sweep finds a Host by the port it answers on regardless of what it is
+/// called.
 class HostnameLocalApiSource implements LocalApiCandidateSource {
   HostnameLocalApiSource({
     Iterable<String>? names,
@@ -121,7 +128,7 @@ class HostnameLocalApiSource implements LocalApiCandidateSource {
     HostNameResolver? resolve,
     LocalApiPortProbe? probePort,
     this.attemptTimeout = const Duration(milliseconds: 1200),
-  })  : names = List<String>.unmodifiable(names ?? defaultHostMdnsNames),
+  })  : names = List<String>.unmodifiable(names ?? const <String>[]),
         _resolve = resolve ?? _lookup,
         _probePort = probePort ?? _connect;
 
