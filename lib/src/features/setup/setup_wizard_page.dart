@@ -415,8 +415,11 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           '主机未能完成 Wi-Fi 连接。请检查密码、网络安全模式和信号；主机仍可通过蓝牙继续设置。',
         'network_confirm_failed' => '主机加入了 Wi-Fi，但未能安全确认变更。请重试，失败时会自动回滚。',
         'network_rollback_failed' => '主机未能立即回滚 Wi-Fi；系统检查点会继续保护原网络。',
+        // No longer says what happens after five wrong tries: nothing does.
+        // A wrong code is refused and the window stays open, because revoking
+        // an unexpiring one leaves nobody able to reopen it (ADR-0007).
         'commissioning_denied' =>
-          'Setup 码错误、过期或已失效。请核对 $setupCodeDigits 位码；连续 5 次失败后请重新选择主机。',
+          'Setup 码错误或已失效。请核对 $setupCodeDigits 位码后再试。',
         // Says only what the App knows: there is no window. Whether this Host
         // was ever claimed is a separate question, and the Host answers it with
         // `already_claimed` below.
