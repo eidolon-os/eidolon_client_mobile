@@ -304,7 +304,7 @@ class DevelopmentLanCommissioning {
           ),
         );
       }
-      if (!setup.expiresAt.isAfter(_clock().toUtc())) {
+      if (!setup.isOpenAt(_clock())) {
         return (
           host: null,
           rejection: refuse(
@@ -371,7 +371,7 @@ class DevelopmentLanCommissioning {
       );
     }
     final setup = host.endpoint.developmentSetup;
-    if (setup == null || !setup.expiresAt.isAfter(_clock().toUtc())) {
+    if (setup == null || !setup.isOpenAt(_clock())) {
       throw const CommissioningRequestException(
         'setup_code_expired',
         '开发 Setup 会话已过期，请在 Host 上重新生成',

@@ -160,7 +160,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         );
       }
       final now = (widget.clock ?? DateTime.now)().toUtc();
-      if (!developmentSetup.expiresAt.isAfter(now)) {
+      if (!developmentSetup.isOpenAt(now)) {
         throw const CommissioningRequestException(
           'setup_code_expired',
           '这台主机的开发 Setup 会话已过期，请重新选择主机。',

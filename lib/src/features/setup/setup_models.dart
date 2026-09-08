@@ -285,15 +285,27 @@ class DevelopmentSetupSession {
       throw const SetupTrustException('附近主机返回了无效的开发 Setup 状态');
     }
     final commissioningId = _requiredJsonString(value, 'commissioning_id');
-    final expiresAt =
-        DateTime.tryParse(_requiredJsonString(value, 'expires_at'));
-    if (!CommissioningEndpoint._uuidPattern.hasMatch(commissioningId) ||
-        expiresAt == null) {
+    // A null expiry is a window with no clock on it, which is every window a
+    // Host opens now (ADR-0007): the only things that close one are a claim
+    // consuming it and a newer mint superseding it. Read as "expired" it would
+    // turn every open window into a refusal, so it is read as "no expiry" —
+    // and a *present* but unparseable value is still a malformed document.
+    final rawExpiresAt = value['expires_at'];
+    final DateTime? expiresAt;
+    if (rawExpiresAt == null) {
+      expiresAt = null;
+    } else {
+      expiresAt = DateTime.tryParse(_requiredJsonString(value, 'expires_at'));
+      if (expiresAt == null) {
+        throw const SetupTrustException('附近主机返回了无效的开发 Setup 状态');
+      }
+    }
+    if (!CommissioningEndpoint._uuidPattern.hasMatch(commissioningId)) {
       throw const SetupTrustException('附近主机返回了无效的开发 Setup 状态');
     }
     return DevelopmentSetupSession(
       commissioningId: commissioningId,
-      expiresAt: expiresAt.toUtc(),
+      expiresAt: expiresAt?.toUtc(),
     );
   }
 
@@ -303,7 +315,16 @@ class DevelopmentSetupSession {
   }
 
   final String commissioningId;
-  final DateTime expiresAt;
+
+  /// When this window stops accepting codes, or null when nothing does.
+  final DateTime? expiresAt;
+
+  /// Whether a code submitted now could still be accepted.
+  ///
+  /// The three call sites each wrote `!expiresAt.isAfter(now)`, and each one
+  /// would have had to learn about null separately.
+  bool isOpenAt(DateTime now) =>
+      expiresAt == null || expiresAt!.isAfter(now.toUtc());
 }
 
 class CommissioningRequestException implements Exception {
