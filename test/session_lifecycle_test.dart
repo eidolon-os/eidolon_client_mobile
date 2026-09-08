@@ -9,6 +9,7 @@ import 'package:eidolon_client_mobile/src/services/eidolon_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/phone_identity_fixtures.dart';
+import 'package:eidolon_client_mobile/src/features/conversation/conversation_standing.dart';
 
 /// What the far end says about a conversation's life, and what this client does
 /// with it.
@@ -62,9 +63,9 @@ void main() {
 
     // Nothing has answered. This is the state the screen was calling
     // 「正在聆听」.
-    expect(built.controller.conversationConfirmed, isFalse);
+    expect(built.controller.conversationStanding, ConversationStanding.asked);
     expect(
-      built.controller.uiState.conversationConfirmed,
+      built.controller.uiState.conversationStanding.answered,
       isFalse,
       reason: 'the screen has to be able to see this',
     );
@@ -74,7 +75,10 @@ void main() {
     );
     await Future<void>.delayed(Duration.zero);
 
-    expect(built.controller.conversationConfirmed, isTrue);
+    expect(
+      built.controller.conversationStanding,
+      ConversationStanding.accepted,
+    );
     built.controller.dispose();
   });
 
@@ -92,7 +96,7 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     expect(
-      built.controller.conversationConfirmed,
+      built.controller.conversationStanding.answered,
       isFalse,
       reason: 'confirmed by a packet about a different conversation',
     );

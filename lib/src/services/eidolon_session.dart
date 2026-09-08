@@ -38,11 +38,43 @@ class EidolonSession {
   final _dataController = StreamController<SessionData>.broadcast();
   final _stateController = StreamController<SessionState>.broadcast();
   final _videoController = StreamController<VideoTrack?>.broadcast();
+  final _presenceController = StreamController<bool>.broadcast();
   int _audioStateSequence = 0;
 
   Stream<SessionData> get dataEvents => _dataController.stream;
   Stream<SessionState> get stateEvents => _stateController.stream;
   Stream<VideoTrack?> get remoteVideo => _videoController.stream;
+
+  /// Whether anyone is still on the far end of this channel.
+  ///
+  /// Deliberately its own typed stream rather than another [stateEvents]
+  /// string. That stream is about the *channel*, and a channel can be
+  /// perfectly connected with nobody in the room — which is exactly the case
+  /// a person cannot see. It is also mapped by the controller with a
+  /// catch-all that resolves every unrecognised string to `disconnected`, so
+  /// an unattended room would have been reported as a dropped channel: a
+  /// different fact, with a different remedy, said in the same words.
+  Stream<bool> get farEndPresent => _presenceController.stream;
+
+  /// Remote participants that could be answering, avatars excluded.
+  ///
+  /// The worker that draws a face is not the thing that answers, so an avatar
+  /// publisher lingering after the agent died must not make an empty room look
+  /// attended. The prefix is this app's existing one, not a new rule.
+  bool get _anyoneAnswering =>
+      (_room?.remoteParticipants.values ?? const <RemoteParticipant>[])
+          .any((participant) => !isAvatarIdentity(participant.identity));
+
+  /// Reports the room's occupancy as it is, with no judgement about whether
+  /// the report is actionable.
+  ///
+  /// Whether an empty room *means* the far end abandoned a conversation is the
+  /// controller's decision, and it is made in exactly one place there. This
+  /// used to guard on [isConnected] here as well; two guards in two objects
+  /// for one question is how a condition comes to be enforced in one of them
+  /// and not the other, and the half that lived here could not be reached by
+  /// a test without a live LiveKit room.
+  void _emitPresence() => _presenceController.add(_anyoneAnswering);
 
   bool get isConnected => _room?.connectionState == ConnectionState.connected;
 
@@ -170,6 +202,11 @@ class EidolonSession {
           _videoController.add(null);
         }
       })
+      // Who is in the room is not who is publishing a track. An agent that
+      // died cannot publish `session_end` — the channel is already gone — so
+      // its absence is the only evidence that arrives, and it arrives here.
+      ..on<ParticipantConnectedEvent>((event) => _emitPresence())
+      ..on<ParticipantDisconnectedEvent>((event) => _emitPresence())
       ..on<RoomDisconnectedEvent>((event) {
         _stateController.add(const SessionState('disconnected'));
         _videoController.add(null);
@@ -238,6 +275,7 @@ class EidolonSession {
     await _dataController.close();
     await _stateController.close();
     await _videoController.close();
+    await _presenceController.close();
   }
 }
 

@@ -1,5 +1,6 @@
 import '../features/conversation/mobile_body_standing.dart';
 import '../features/device_setup/mobile_body_enrollment_session.dart';
+import '../features/conversation/conversation_standing.dart';
 
 enum ClientPhase {
   idle,
@@ -77,7 +78,7 @@ class ClientUiState {
     required this.controlConnection,
     required this.voiceConnection,
     required this.agentTurn,
-    this.conversationConfirmed = false,
+    this.conversationStanding = ConversationStanding.asked,
     required this.microphone,
     required this.video,
     required this.busy,
@@ -104,7 +105,8 @@ class ClientUiState {
   /// agent that joined the room and died a millisecond later, which is exactly
   /// what an Owner met on hardware: 「正在聆听」, several sentences spoken, and
   /// nothing in the room to hear them.
-  final bool conversationConfirmed;
+  /// What this client knows about the far end, and on what evidence.
+  final ConversationStanding conversationStanding;
   final MicrophoneState microphone;
   final VideoState video;
   final bool busy;
@@ -198,12 +200,21 @@ class ClientUiState {
     if (voiceConnection == ChannelConnectionState.reconnecting) {
       return '正在恢复语音连接…';
     }
-    // Asked, not answered. Said before the mute check on purpose: whether the
-    // microphone is muted is not the interesting fact while nobody has
-    // confirmed there is anything on the other end.
-    if (!conversationConfirmed) return '正在接通对话…';
+    // Said before the mute check on purpose, both of them: whether this
+    // phone's microphone is muted is not the interesting fact while nobody is
+    // on the other end, or while nobody has answered yet.
+    if (conversationStanding == ConversationStanding.farEndGone) {
+      return '对话已中断';
+    }
+    if (!conversationStanding.answered) return '正在接通对话…';
     if (microphone == MicrophoneState.muted) return '麦克风已静音';
     return switch (agentTurn) {
+      // 「正在聆听」 is a claim about the far end's pipeline, so it waits for
+      // the far end to prove it — a final transcript of this phone's own
+      // speech. Until then the person is still invited to speak, because that
+      // first utterance is what produces the proof.
+      AgentTurnState.listening when !conversationStanding.hearsUs =>
+        '已接通，可以开始说话',
       AgentTurnState.listening => '正在聆听',
       AgentTurnState.thinking => '正在思考',
       AgentTurnState.speaking => '正在回复',
@@ -247,11 +258,20 @@ class ClientUiState {
     // 「请直接说话」 is an instruction, and giving it before anything has
     // confirmed it is listening is how a person talks into a room with nobody
     // in it. This says what is actually happening instead.
-    if (!conversationConfirmed) return '已经请求对话，正在等主机接入 Companion';
+    if (conversationStanding == ConversationStanding.farEndGone) {
+      return '对面已经不在这次对话里了，麦克风已关闭。结束后可以重新开始';
+    }
+    if (!conversationStanding.answered) {
+      return '已经请求对话，正在等主机接入 Companion';
+    }
     if (microphone == MicrophoneState.muted) return '解除静音后才能继续说话';
     return switch (agentTurn) {
+      AgentTurnState.listening when !conversationStanding.hearsUs =>
+        '直接说话就可以',
       AgentTurnState.listening => '请直接说话，AEC 会抑制扬声器回声',
-      AgentTurnState.thinking => 'Eidolon 正在组织回答',
+      // Not a name, for the same reason the transcript no longer uses one:
+      // nothing tells a Body which Companion is answering it.
+      AgentTurnState.thinking => 'Companion 正在组织回答',
       AgentTurnState.speaking => '麦克风仍保持开启，你可以直接说话打断',
       AgentTurnState.idle => '麦克风与扬声器同时工作，可以自然连续对话',
     };
@@ -278,7 +298,13 @@ class ClientUiState {
               : 'Hub 在线',
         ClientPhase.conversation => switch (voiceConnection) {
             ChannelConnectionState.reconnecting => '语音重连中',
-            _ => conversationConfirmed ? '对话中' : '接通中',
+            _ => switch (conversationStanding) {
+                ConversationStanding.farEndGone => '对面已离开',
+                ConversationStanding.asked => '接通中',
+                ConversationStanding.accepted ||
+                ConversationStanding.hearing =>
+                  '对话中',
+              },
           },
         ClientPhase.error => '连接异常',
       };

@@ -1,5 +1,6 @@
 import 'package:eidolon_client_mobile/src/models/client_ui_state.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:eidolon_client_mobile/src/features/conversation/conversation_standing.dart';
 
 void main() {
   /// A conversation the far end has confirmed.
@@ -14,7 +15,7 @@ void main() {
     ChannelConnectionState voice = ChannelConnectionState.connected,
     AgentTurnState agent = AgentTurnState.idle,
     MicrophoneState microphone = MicrophoneState.enabled,
-    bool confirmed = true,
+    ConversationStanding standing = ConversationStanding.hearing,
   }) {
     return ClientUiState(
       phase: ClientPhase.conversation,
@@ -24,7 +25,7 @@ void main() {
       microphone: microphone,
       video: VideoState.audioOnly,
       busy: false,
-      conversationConfirmed: confirmed,
+      conversationStanding: standing,
     );
   }
 
@@ -70,7 +71,7 @@ void main() {
     test('does not claim to be listening', () {
       final state = conversationState(
         agent: AgentTurnState.listening,
-        confirmed: false,
+        standing: ConversationStanding.asked,
       );
 
       expect(state.headline, '正在接通对话…');
@@ -83,7 +84,7 @@ void main() {
       // is listening, it is what sends someone talking into an empty room.
       final state = conversationState(
         agent: AgentTurnState.listening,
-        confirmed: false,
+        standing: ConversationStanding.asked,
       );
 
       expect(state.supportingText, isNot(contains('请直接说话')));
@@ -96,7 +97,7 @@ void main() {
       // unconfirmed sentence wins.
       final state = conversationState(
         microphone: MicrophoneState.muted,
-        confirmed: false,
+        standing: ConversationStanding.asked,
       );
 
       expect(state.headline, '正在接通对话…');
@@ -107,7 +108,7 @@ void main() {
       // and the existing precedence is deliberate.
       final state = conversationState(
         voice: ChannelConnectionState.reconnecting,
-        confirmed: false,
+        standing: ConversationStanding.asked,
       );
 
       expect(state.headline, '正在恢复语音连接…');

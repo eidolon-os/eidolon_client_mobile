@@ -8,6 +8,7 @@ import 'package:livekit_client/livekit_client.dart';
 
 import '../avatar/avatar_stage.dart';
 import '../features/conversation/conversation_provisioner.dart';
+import '../features/conversation/conversation_standing.dart';
 import '../features/conversation/mobile_body_standing.dart';
 import '../features/device_setup/mobile_body_enrollment_session.dart';
 import '../features/device_setup/mobile_body_manifest.dart';
@@ -41,6 +42,17 @@ class ClientController extends ChangeNotifier {
         _controlRecoveryRetry = controlRecoveryRetry {
     _dataSubscription = _session.dataEvents.listen(_onSessionData);
     _stateSubscription = _session.stateEvents.listen(_onSessionState);
+    _presenceSubscription = _session.farEndPresent.listen((present) {
+      // An empty room only means abandonment while there is a conversation to
+      // abandon and a channel still carrying it. On this client's own
+      // teardown LiveKit reports every remote participant as disconnected,
+      // and calling that the far end leaving would put a fault on the screen
+      // every time a person pressed 结束对话; a dropped channel is already
+      // told by `RoomDisconnectedEvent`, in different words with a different
+      // remedy.
+      if (present || !_inConversation || !_session.isConnected) return;
+      unawaited(_onFarEndGone());
+    });
     _videoSubscription = _session.remoteVideo.listen((track) {
       remoteVideoTrack = track;
       videoState = track == null
@@ -68,6 +80,7 @@ class ClientController extends ChangeNotifier {
 
   late final StreamSubscription<SessionData> _dataSubscription;
   late final StreamSubscription<SessionState> _stateSubscription;
+  late final StreamSubscription<bool> _presenceSubscription;
   late final StreamSubscription<VideoTrack?> _videoSubscription;
   Timer? _activationTimer;
   Timer? _audioStateTimer;
@@ -110,7 +123,7 @@ class ClientController extends ChangeNotifier {
         controlConnection: controlConnection,
         voiceConnection: voiceConnection,
         agentTurn: agentTurn,
-        conversationConfirmed: conversationConfirmed,
+        conversationStanding: conversationStanding,
         microphone: microphoneState,
         video: videoState,
         busy: _busy,
@@ -193,7 +206,11 @@ class ClientController extends ChangeNotifier {
   ///
   /// False between asking and being answered. Not derived from the phase or
   /// the channel: both are true well before anything is listening.
-  bool conversationConfirmed = false;
+  /// What this client knows about the far end, and on what evidence.
+  ///
+  /// Was a `bool conversationConfirmed`. See [ConversationStanding] for the two
+  /// things that boolean asserted without evidence.
+  ConversationStanding conversationStanding = ConversationStanding.asked;
 
   /// The Enrollment the act refers to, when the Authority named one.
   MobileBodyEnrollmentRef? get enrollmentRef => config?.bodyEnrollment;
@@ -239,7 +256,18 @@ class ClientController extends ChangeNotifier {
     }
   }
 
-  Future<void> _registerAndApply({
+  /// Fetch this device's configuration and bring the client into line with it.
+  ///
+  /// Returns whether the live session is now running the configuration this
+  /// call fetched. It is `false` whenever the channel was already up: the
+  /// channel is deliberately long-lived and is not torn down to adopt a
+  /// refreshed config, which is correct — nothing per-conversation travels in
+  /// it, and the Host resolves who answers at every `session_open`. The caller
+  /// that acks `config.refresh` needs the distinction, so it is reported here
+  /// rather than re-derived from the guard below; a copy of that condition
+  /// would go stale the moment the guard changed, and the ack would resume
+  /// claiming a config was in force when it was not.
+  Future<bool> _registerAndApply({
     String sessionIntent = '',
     bool showRegistering = true,
   }) async {
@@ -301,26 +329,31 @@ class ClientController extends ChangeNotifier {
     if (standing != null && (!standing.advances || stalled)) {
       _activationTimer?.cancel();
       _setPhase(ClientPhase.bodyBlocked);
-      return;
+      return false;
     }
     switch (next.status) {
       case HubConfigStatus.pendingApproval:
         _setPhase(ClientPhase.awaitingApproval);
         _scheduleActivationRefresh();
+        return false;
       case HubConfigStatus.waitingBinding:
         _setPhase(ClientPhase.awaitingBinding);
         _scheduleActivationRefresh();
+        return false;
       case HubConfigStatus.active:
         _activationTimer?.cancel();
+        var applied = false;
         if (next.session.usable && !_session.isConnected) {
           _setPhase(ClientPhase.activating);
           await _session.connect(next.session);
+          applied = true;
         }
         if (_inConversation) {
           _setPhase(ClientPhase.conversation);
         } else {
           _setPhase(ClientPhase.ready);
         }
+        return applied;
       case HubConfigStatus.revoked:
       case HubConfigStatus.unregistered:
         throw StateError('设备授权已撤销，请在管理端重新批准');
@@ -389,10 +422,10 @@ class ClientController extends ChangeNotifier {
       _inConversation = true;
       await _vad.start();
       microphoneState = MicrophoneState.enabled;
-      // Asked, not yet confirmed. `session_started` is what turns this into
-      // 「正在聆听」; until then the screen says it is connecting, because that
-      // is what is true.
-      conversationConfirmed = false;
+      // Asked, and nothing has answered. `session_started` moves this to
+      // `accepted`; the far end proving it can hear moves it to `hearing`.
+      // Until then the screen says only what is true.
+      conversationStanding = ConversationStanding.asked;
       // Do not overwrite an early `listening` packet from channel with `idle`.
       agentTurn = AgentTurnState.listening;
       _setPhase(ClientPhase.conversation);
@@ -463,6 +496,27 @@ class ClientController extends ChangeNotifier {
           wasEnabled ? MicrophoneState.enabled : MicrophoneState.muted;
       failure = _classifyFailure(exception, liveKitContext: true);
     }
+    notifyListeners();
+  }
+
+  /// The far end left without saying so.
+  ///
+  /// An agent that dies mid-conversation cannot publish `session_end` — the
+  /// channel is already gone, which the Provider logs as ordinary rather than
+  /// a fault — so an empty room is the only notice that ever arrives.
+  ///
+  /// The conversation is deliberately *not* ended here. Returning to standby
+  /// with nothing said is the dead end this screen was rewritten to delete,
+  /// and it would leave the person with no account of why the voice stopped.
+  /// What is closed is the microphone: it is metered, and it was open for
+  /// nobody. The exit the screen already has stays the way out.
+  Future<void> _onFarEndGone() async {
+    conversationStanding = ConversationStanding.farEndGone;
+    agentTurn = AgentTurnState.idle;
+    _audioStateTimer?.cancel();
+    await _vad.stop();
+    await _session.setMicrophoneEnabled(false);
+    microphoneState = MicrophoneState.inactive;
     notifyListeners();
   }
 
@@ -617,8 +671,17 @@ class ClientController extends ChangeNotifier {
         }
       case controlOpConfigRefresh:
         try {
-          await _registerAndApply(showRegistering: false);
-          await _ack(command, 'completed', 'OK');
+          final applied = await _registerAndApply(showRegistering: false);
+          // `completed` is true — the config was fetched and stored. Whether
+          // it is in force is a second fact, and the ack used to assert the
+          // first while implying the second. A refresh that arrives on a live
+          // channel takes effect the next time the channel is built; saying
+          // so lets the management end wait for that instead of believing a
+          // config it can see acknowledged.
+          await _ack(command, 'completed', 'OK', result: {
+            'config_applied': applied,
+            if (!applied) 'pending_reason': 'channel_in_use',
+          });
         } catch (exception) {
           await _ack(
             command,
@@ -748,7 +811,10 @@ class ClientController extends ChangeNotifier {
 
       switch (root['type']) {
         case sessionStartedType:
-          conversationConfirmed = true;
+          // Serving, which is all this says. Whether it can hear is a separate
+          // fact with separate evidence — `_warmup_stages` does not abort on a
+          // dead STT, so a deaf agent reaches this line too.
+          conversationStanding = ConversationStanding.accepted;
           notifyListeners();
         case sessionEndType:
           final reason = root[sessionEndReasonField];
@@ -818,8 +884,17 @@ class ClientController extends ChangeNotifier {
       // not a device id, and certainly not the ANDROID_ID-derived install id
       // this used to compare against, which LiveKit never sees.
       final sessionIdentity = config?.session.identity ?? '';
-      final speaker = source == 'user' ||
-              (sessionIdentity.isNotEmpty && identityValue == sessionIdentity)
+      // Named rather than inlined because this one fact answers two
+      // questions: whose line to label, and whether the far end has proved it
+      // can hear. The identity path is the load-bearing one — LiveKit's
+      // forwarded transcript need not carry `source` — and it holds because
+      // the Provider mints the device token `.with_identity(spec.device_id)`
+      // and hands the client the same value, then resolves the runtime from
+      // that participant identity. If it ever drifted the session would fail
+      // loudly rather than mislabel a line.
+      final fromOwner = source == 'user' ||
+          (sessionIdentity.isNotEmpty && identityValue == sessionIdentity);
+      final speaker = fromOwner
           ? '你'
           // Not a name. Nothing on the wire tells a Body which Companion is
           // answering: the device token deliberately carries no companion_id,
@@ -829,6 +904,16 @@ class ClientController extends ChangeNotifier {
           // wrong with nothing failing.
           : 'Companion';
       final isFinal = root['final'] == true || root['is_final'] == true;
+      // The only evidence a Body ever gets that the far end can hear it.
+      // `session_started` does not carry it: `_warmup_stages` logs a dead STT
+      // and carries on, so a deaf agent confirms the session and then hears
+      // nothing. A far end already known to be gone is not resurrected by a
+      // late packet — its absence was the harder evidence.
+      if (fromOwner &&
+          isFinal &&
+          conversationStanding != ConversationStanding.farEndGone) {
+        conversationStanding = ConversationStanding.hearing;
+      }
       final segmentId = (root['segment_id'] ??
               root['stream_id'] ??
               root['id'] ??
@@ -1107,6 +1192,7 @@ class ClientController extends ChangeNotifier {
     _controlRecoveryTimer?.cancel();
     unawaited(_dataSubscription.cancel());
     unawaited(_stateSubscription.cancel());
+    unawaited(_presenceSubscription.cancel());
     unawaited(_videoSubscription.cancel());
     unawaited(_session.dispose());
     _hubClient.dispose();
