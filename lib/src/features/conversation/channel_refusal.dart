@@ -27,14 +27,24 @@ enum ChannelRefusal {
   /// change it.
   claimNotActive,
 
-  /// `STALE_GENERATION` or `MANIFEST_REVISION_CONFLICT` — what this phone
-  /// stored is behind what the Host now holds.
+  /// `STALE_GENERATION` or `MANIFEST_REVISION_CONFLICT` — the record this
+  /// phone presented is not the one the Host holds.
+  ///
+  /// It no longer means "behind", which is what it used to mean and the only
+  /// thing it ever said out loud. `configuration:pull` finds the Claim by
+  /// identity and answers with the ref the Authority holds, so a ref that fell
+  /// behind is corrected in the answer and re-pinned by
+  /// `MobileConversationProvisioner` — it never reaches this enum. What is left
+  /// under the tag is the Authority holding no Claim at this identity in this
+  /// Owner Domain.
   ///
   /// A fresh Enrollment is what aligns them. Note what this must *not*
   /// promise: [MobileBodyStanding.claimActiveWithoutChannel] has
   /// `canProposeItself == false`, so no propose act is offered here, and a
   /// sentence claiming this phone will register itself would be a promise with
-  /// no control behind it — the shape this file exists to remove.
+  /// no control behind it — the shape this file exists to remove. Nor may it
+  /// send anyone to remove the device: that is not the Host's precondition for
+  /// re-enrolling, and it costs the mount and the Owner's Companion binding.
   deviceFactsStale,
 
   /// No answer arrived: the request did not complete, or came back unreadable.

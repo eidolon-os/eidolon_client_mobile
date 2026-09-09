@@ -58,15 +58,20 @@ void main() {
         ),
       );
 
+  /// An answer, and [ref] is the ref the Authority says it holds.
+  ///
+  /// Defaulted rather than echoed, because the whole point of the member is
+  /// that it may differ from the one the request carried.
   Map<String, Object?> answer({
     required String nonce,
     String lifecycle = 'approved',
     List<Object?>? channels,
+    Map<String, Object?>? ref,
   }) =>
       <String, Object?>{
         'operation': 'device-control.configuration',
         'nonce': nonce,
-        'device_ref': deviceRef(),
+        'device_ref': ref ?? deviceRef(),
         'lifecycle_state': lifecycle,
         'manifest': null,
         'channels': channels ?? const <Object?>[],
@@ -102,7 +107,15 @@ void main() {
     final flow = client(
       MockClient((request) async {
         sent = jsonDecode(request.body) as Map<String, dynamic>;
-        return ok(answer(nonce: sent['nonce']! as String));
+        // About the device the request named. This test sends the proof
+        // vector's `device_ref` and the helper's default is the Claim Grant
+        // fixture's — a different `device_instance_id` — and an answer about
+        // another device is now refused, correctly, before any of the byte
+        // comparisons below could run.
+        return ok(answer(
+          nonce: sent['nonce']! as String,
+          ref: Map<String, Object?>.from(sent['device_ref']! as Map),
+        ));
       }),
       nonce: document['nonce']! as String,
     );
@@ -289,6 +302,131 @@ void main() {
 
     expect(configuration.claimStands, isTrue);
     expect(configuration.session, isNull);
+  });
+
+  test('the answered ref is the one the Authority holds, not the one asked with',
+      () async {
+    // The recovery this closes. A Body whose stored ref fell behind its own
+    // Claim — the Owner re-added an already-claimed device, so Admission
+    // upserted the Claim at the next `claim_generation` — used to match no
+    // Claim at all and be refused 409 forever: every retry carried the same
+    // stale ref, so nothing the device could do on its own ended it. The
+    // Authority finds the Claim by identity now and answers with the ref it
+    // actually holds, and this answer is the only place a phone can learn
+    // what moved.
+    final held = deviceRef()
+      ..['owner_domain_generation'] = 4
+      ..['claim_generation'] = 9
+      ..['trust_epoch'] = 5;
+    final flow = client(MockClient((request) async {
+      final nonce =
+          (jsonDecode(request.body) as Map<String, dynamic>)['nonce']! as String;
+      return ok(answer(nonce: nonce, ref: held));
+    }));
+
+    final configuration = await flow.pullConfiguration(
+      // Still the stale one. A device that knew the answer would not need it.
+      deviceRef: deviceRef(),
+      operationalPublicKey: 'p256-spki:AAAA',
+      sign: (_) async => 'x' * 86,
+    );
+
+    // Carried whole, because that is how it is stored and how the next ask is
+    // addressed: a ref rebuilt from the members this build happens to know
+    // would be a different document at the far end.
+    expect(configuration.deviceRef, held);
+    expect(configuration.claimStands, isTrue);
+  });
+
+  test('a revocation still says which ref it was about', () async {
+    // Revoked is an answer, and it answers with a ref like every other. The
+    // interesting part is that this one is not a correction to act on — the
+    // caller drops the record instead — so the member exists here without
+    // being a re-pin.
+    final flow = client(MockClient((request) async {
+      final nonce =
+          (jsonDecode(request.body) as Map<String, dynamic>)['nonce']! as String;
+      return ok(answer(nonce: nonce, lifecycle: 'revoked'));
+    }));
+
+    final configuration = await flow.pullConfiguration(
+      deviceRef: deviceRef(),
+      operationalPublicKey: 'p256-spki:AAAA',
+      sign: (_) async => 'x' * 86,
+    );
+
+    expect(configuration.claimStands, isFalse);
+    expect(configuration.deviceRef, deviceRef());
+  });
+
+  test('an answer about another device is not a correction', () async {
+    // A moved generation is a correction. A moved identity is a different
+    // device's configuration wearing this ask's nonce, and the two must not
+    // land in the same place: this one is refused the way an unreadable answer
+    // is, rather than written over the Claim this phone holds. Only the
+    // generations may move.
+    for (final foreign in <Map<String, Object?>>[
+      deviceRef()..['device_instance_id'] = 'device-instance-${'b' * 64}',
+      deviceRef()..['owner_domain_id'] = 'owner-domain_99',
+    ]) {
+      final flow = client(MockClient((request) async {
+        final nonce = (jsonDecode(request.body)
+            as Map<String, dynamic>)['nonce']! as String;
+        return ok(answer(nonce: nonce, ref: foreign));
+      }));
+
+      await expectLater(
+        flow.pullConfiguration(
+          deviceRef: deviceRef(),
+          operationalPublicKey: 'p256-spki:AAAA',
+          sign: (_) async => 'x' * 86,
+        ),
+        throwsA(
+          isA<DeviceControlRefusal>()
+              .having((error) => error.detail, 'detail', contains('another device'))
+              .having((error) => error.retryable, 'retryable', isFalse),
+        ),
+        reason: 'accepted an answer about ${foreign['device_instance_id']} '
+            'in ${foreign['owner_domain_id']}',
+      );
+    }
+  });
+
+  test('a ref this build cannot read is refused rather than stored', () async {
+    // The generations are the two members a stored Claim is only useful for,
+    // and `MobileBodyClaimRecord.fromJson` discards a record missing either —
+    // silently, on the next read. So an answer that cannot supply them is
+    // refused here: accepting it would have a phone forget a Claim it holds
+    // and present itself as never enrolled.
+    for (final unreadable in <Object?>[
+      null,
+      'device-instance-x',
+      deviceRef()..remove('claim_generation'),
+      deviceRef()..['trust_epoch'] = 'four',
+    ]) {
+      final flow = client(MockClient((request) async {
+        final nonce = (jsonDecode(request.body)
+            as Map<String, dynamic>)['nonce']! as String;
+        return ok(<String, Object?>{
+          'operation': 'device-control.configuration',
+          'nonce': nonce,
+          'device_ref': unreadable,
+          'lifecycle_state': 'approved',
+          'manifest': null,
+          'channels': const <Object?>[],
+        });
+      }));
+
+      await expectLater(
+        flow.pullConfiguration(
+          deviceRef: deviceRef(),
+          operationalPublicKey: 'p256-spki:AAAA',
+          sign: (_) async => 'x' * 86,
+        ),
+        throwsA(isA<DeviceControlRefusal>()),
+        reason: 'read $unreadable as a DeviceRef',
+      );
+    }
   });
 
   test('an answer to a different ask is refused', () async {

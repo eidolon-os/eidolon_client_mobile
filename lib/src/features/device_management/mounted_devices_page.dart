@@ -579,8 +579,28 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
             label: Text(_platformRemoved ? '已从平台移除' : '移除设备'),
           ),
           const SizedBox(height: 8),
+          // The second half of this note used to read 「它也是设备重新添加的
+          // 前提：主机不会为已经持有的设备重复登记。」 No such rule exists in
+          // the server, and it is the sentence that explained away a real
+          // incident: a Body whose stored DeviceRef fell behind its own Claim
+          // was refused 409 forever, and this copy told whoever read it that
+          // the only way out was a removal.
+          //
+          // What the Authority actually does, pinned by
+          // `tests/unit/admission/test_admission_authority.py::
+          // test_a_claimed_body_may_still_propose_itself_at_the_next_generation`
+          // in eidolon_hub: a Body holding an *active* Claim may propose itself
+          // again on its own enrolled base key, with no Controller and no
+          // commissioning code, and on the Owner's approval the Claim is
+          // upserted in place at the next generation. `requires_fresh_presence`
+          // fences a *rejected* Proposal or a *revoked* Claim — the two cases
+          // where the Owner has already said no. Removal was never the
+          // precondition; it is the thing that creates one.
           Text(
-            '移除后这台设备立即失去访问。它也是设备重新添加的前提：主机不会为已经持有的设备重复登记。',
+            '移除后这台设备立即失去访问，它的挂载被撤掉，你为它选的 Companion 绑定也随之失效。'
+            '这不是设备重新登记的前提：主机不要求先移除 —— 已归属的设备再登记一次，'
+            '主机会在原记录上更新，不会多出一台设备。'
+            '移除之后它反而回不来了 —— 要重新加入，得有人带着 Controller 再做一次现场确认。',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],

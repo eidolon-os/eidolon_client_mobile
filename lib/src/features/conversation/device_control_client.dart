@@ -43,6 +43,7 @@ class DeviceConfiguration {
   const DeviceConfiguration({
     required this.claimStands,
     required this.session,
+    required this.deviceRef,
   });
 
   /// Whether the Claim is still active.
@@ -59,6 +60,27 @@ class DeviceConfiguration {
   /// way, and a client that guessed which one it was would be inventing a
   /// reason.
   final RoomConfig? session;
+
+  /// The `DeviceRef` the Authority holds for this device, as it answered it.
+  ///
+  /// **Not necessarily the one the request carried.** The Authority finds the
+  /// Claim by identity — `device_instance_id` and `owner_domain_id` — and
+  /// answers with the ref on the row, so a Body whose stored ref fell behind
+  /// its own Claim is corrected here instead of refused. It used to be
+  /// refused: the lookup compared the whole five-member tuple, a re-granted
+  /// device matched nothing, and every retry carried the same stale ref, so
+  /// nothing the device could do on its own ended the 409.
+  ///
+  /// Carried whole, for the same reason `MobileBodyClaimStore` carries it
+  /// whole: it is what the next pull, the acknowledgement proof and a Manifest
+  /// assertion are stated *over*, and a copy rebuilt from the members this
+  /// build happens to know would be a different document at the far end.
+  ///
+  /// A caller holding a stored ref should write this one back when it differs.
+  /// The generations are all that may differ — the identity is checked against
+  /// what the request presented before this is handed back, because an answer
+  /// about another device is not a correction.
+  final Map<String, Object?> deviceRef;
 }
 
 /// Raised when the Authority refuses or answers unreadably.
@@ -203,6 +225,47 @@ class DeviceControlClient {
       );
     }
 
+    // The ref the Authority holds. Read after the two checks above and not
+    // before: an answer to another operation or another ask is not evidence
+    // about this device's generations either, and a re-pin taken from one
+    // would write a stale — or someone else's — ref over the Claim this phone
+    // holds.
+    final answered = decoded['device_ref'];
+    if (answered is! Map ||
+        answered['owner_domain_generation'] is! int ||
+        answered['claim_generation'] is! int ||
+        answered['trust_epoch'] is! int) {
+      // The generations are what a stored Claim is kept for, and
+      // `MobileBodyClaimRecord.fromJson` discards a record whose
+      // `claim_generation` or `trust_epoch` will not read as an integer —
+      // silently, on the next read. So an answer that cannot supply all three
+      // is refused rather than handed on to be stored: a phone that saved one
+      // would come back believing it had never enrolled.
+      throw DeviceControlRefusal(
+        detail: 'Device Control answered without a DeviceRef this build can '
+            'read',
+        status: response.statusCode,
+        retryable: false,
+      );
+    }
+    if (answered['device_instance_id'] != deviceRef['device_instance_id'] ||
+        answered['owner_domain_id'] != deviceRef['owner_domain_id']) {
+      // Only the generations may move. Identity is what the Claim was found
+      // by, so an answer naming a different device or a different Owner Domain
+      // is not this device's configuration — it is another one's, wearing this
+      // ask's nonce. Refused the way any unreadable answer is, because the one
+      // thing that must not happen is storing it: this phone cannot sign for
+      // that ref, and every later ask would be refused with no way back.
+      throw DeviceControlRefusal(
+        detail: 'Device Control answered about another device: '
+            '${answered['device_instance_id']} in '
+            '${answered['owner_domain_id']}',
+        status: response.statusCode,
+        retryable: false,
+      );
+    }
+    final held = Map<String, Object?>.from(answered);
+
     final lifecycle = decoded['lifecycle_state'];
     if (lifecycle != 'approved' && lifecycle != 'revoked') {
       throw DeviceControlRefusal(
@@ -213,12 +276,20 @@ class DeviceControlClient {
       );
     }
     if (lifecycle == 'revoked') {
-      return const DeviceConfiguration(claimStands: false, session: null);
+      return DeviceConfiguration(
+        claimStands: false,
+        session: null,
+        deviceRef: held,
+      );
     }
 
     final channels = decoded['channels'];
     if (channels is! List || channels.isEmpty) {
-      return const DeviceConfiguration(claimStands: true, session: null);
+      return DeviceConfiguration(
+        claimStands: true,
+        session: null,
+        deviceRef: held,
+      );
     }
     final channel = channels.first;
     if (channel is! Map<String, dynamic>) {
@@ -274,6 +345,7 @@ class DeviceControlClient {
     }
     return DeviceConfiguration(
       claimStands: true,
+      deviceRef: held,
       session: liveKitSessionFromBinding(
         bindingFormat: channel['binding_format'] as String? ?? '',
         opaqueBinding: binding,

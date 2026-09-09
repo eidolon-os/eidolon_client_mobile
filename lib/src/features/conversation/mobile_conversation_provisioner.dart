@@ -243,6 +243,34 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
         refusal: ChannelRefusal.hostUnanswered,
       );
     }
+    // The Authority answered with the ref it holds, which is not necessarily
+    // the one this ask carried: it finds the Claim by identity, so a ref that
+    // fell behind — the Owner re-added an already-claimed device, and Admission
+    // upserted the Claim at the next `claim_generation` — is corrected in the
+    // answer instead of refused. Reading the correction and not keeping it is
+    // what left a recovered phone permanently behind: the channel arrived, the
+    // conversation worked, and the stored ref stayed stale for every later
+    // surface that is still matched on the exact generation — a Manifest
+    // assertion, and the erase ACK that is a device's durable evidence it
+    // dropped what it held under one specific Claim.
+    //
+    // A correction to one fact. The Grant this Claim was opened with, the key
+    // it belongs to and the moment it was acknowledged all happened, and none
+    // of them moved — so they are copied rather than reissued, and the record's
+    // identity cannot be changed by this write even if the answer tried to.
+    // That it cannot is also checked where the answer is read, in
+    // `DeviceControlClient`: only the generations may move.
+    if (!_sameDeviceRef(configuration.deviceRef, claim.deviceRef)) {
+      await store.save(
+        MobileBodyClaimRecord(
+          deviceRef: configuration.deviceRef,
+          grantId: claim.grantId,
+          ownerDomainId: claim.ownerDomainId,
+          deviceInstanceId: claim.deviceInstanceId,
+          acknowledgedAt: claim.acknowledgedAt,
+        ),
+      );
+    }
     if (!configuration.claimStands) {
       // The Authority says this Body is no longer one. The local record is of
       // no further use and keeping it would let the next launch present a
@@ -317,6 +345,16 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
         bodyEnrollment: enrollment,
       );
 }
+
+/// Whether two `DeviceRef`s say the same thing.
+///
+/// Member by member rather than through the canonicaliser, which is the other
+/// obvious way to compare two of these: a ref read back from the store can
+/// hold a number `canonicalJsonEncode` refuses to render, and that would throw
+/// here — on the recovery path, after the Host had already answered.
+bool _sameDeviceRef(Map<String, Object?> answered, Map<String, Object?> held) =>
+    answered.length == held.length &&
+    answered.keys.every((member) => answered[member] == held[member]);
 
 /// Builds the Device Control client for one reading of the directory.
 typedef DeviceControlClientBuilder = DeviceControlClient Function(

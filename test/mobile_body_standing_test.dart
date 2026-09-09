@@ -148,6 +148,30 @@ void main() {
       }
     });
 
+    test('no refusal sends a person into a removal to escape it', () {
+      // 「在管理端的「设备」里移除这台设备，它下一次连接会自己重新提出登记」.
+      // Neither half was true. Removal is not the Host's precondition for
+      // re-enrolling — a Body holding an active Claim may propose itself again
+      // on its own base key, and the Claim is upserted in place at the next
+      // generation — and nothing in this app re-proposes by itself. Following
+      // the advice cost the mount, the Companion binding the Owner chose, and
+      // the device's own way back: a revoked identity needs someone physically
+      // present with a Controller.
+      for (final refusal in <ChannelRefusal?>[null, ...ChannelRefusal.values]) {
+        expect(
+          sentenceFor(refusal).detail,
+          isNot(contains('移除这台设备')),
+          reason: '$refusal still advises a removal',
+        );
+      }
+      // The one that used to say it now says what is actually true of the
+      // Host, because a deleted sentence leaves the same question standing.
+      expect(
+        sentenceFor(ChannelRefusal.deviceFactsStale).detail,
+        contains('并不要求先移除才能重新登记'),
+      );
+    });
+
     test('no refusal promises an act this standing does not offer', () {
       // `claimActiveWithoutChannel.canProposeItself` is false, so no propose
       // control is drawn here. A sentence saying this phone will register

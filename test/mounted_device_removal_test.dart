@@ -74,6 +74,38 @@ Future<void> _open(
 }
 
 void main() {
+  testWidgets('the note under the button does not invent a Host rule',
+      (tester) async {
+    // It used to say 「它也是设备重新添加的前提：主机不会为已经持有的设备重复
+    // 登记。」 The server has no such rule — eidolon_hub pins the opposite in
+    // `test_a_claimed_body_may_still_propose_itself_at_the_next_generation`:
+    // a Body holding an active Claim proposes itself again on its own base
+    // key, and approval upserts the Claim in place at the next generation.
+    // What the invented rule did was send whoever read it into a removal to
+    // fix a device that did not need one, which costs the mount, the Owner's
+    // Companion binding, and the device's own way back — a revoked identity
+    // needs someone physically present with a Controller.
+    await _open(tester, (_, __) async => _progress('done'));
+    // The note sits under the button at the end of a lazy list, so it is not
+    // built until it is on screen — which is also when a person reads it.
+    await tester.scrollUntilVisible(
+      find.textContaining('移除后这台设备立即失去访问'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    final note = tester
+        .widget<Text>(find.textContaining('移除后这台设备立即失去访问'))
+        .data!;
+
+    expect(note, isNot(contains('重新添加的前提')));
+    expect(note, isNot(contains('不会为已经持有的设备重复登记')));
+    // And says the true thing in its place, because deleting the sentence
+    // without replacing it leaves the same person with the same question.
+    expect(note, contains('不是设备重新登记的前提'));
+    expect(note, contains('Controller'));
+  });
+
   testWidgets('removal needs an explicit confirmation', (tester) async {
     var calls = 0;
     await _open(tester, (_, __) async {

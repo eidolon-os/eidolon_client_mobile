@@ -124,16 +124,22 @@ void main() {
         ),
       );
 
+  /// One answer from Device Control, with [ref] as the ref it says it holds.
+  ///
+  /// A parameter rather than an echo of the request, because the Authority
+  /// finds the Claim by identity and answers with its own ref — which is
+  /// exactly how a phone that fell behind learns that it did.
   http.Response configuration({
     required String nonce,
     String lifecycle = 'approved',
     bool withChannel = false,
+    Map<String, Object?>? ref,
   }) =>
       http.Response(
         jsonEncode(<String, Object?>{
           'operation': 'device-control.configuration',
           'nonce': nonce,
-          'device_ref': deviceRef(),
+          'device_ref': ref ?? deviceRef(),
           'lifecycle_state': lifecycle,
           'manifest': null,
           'channels': withChannel
@@ -244,6 +250,151 @@ void main() {
     });
   });
 
+  /// The client half of the stale-DeviceRef recovery.
+  ///
+  /// The Host stopped refusing a ref that fell behind: it finds the Claim by
+  /// identity and answers with the ref it holds. Without this group the phone
+  /// recovered its channel and its conversation on that answer and then threw
+  /// the correction away — so its stored ref stayed stale forever, and the two
+  /// surfaces that are still matched on the exact generation (a Manifest
+  /// assertion, and the erase ACK that is a device's durable evidence it
+  /// dropped what it held) would keep being addressed with a ref no Claim
+  /// carries.
+  group('the ref that comes back is pinned', () {
+    /// What the Authority holds: the same device, two generations on.
+    final held = <String, Object?>{
+      ...claimedDeviceRef,
+      'owner_domain_generation': 2,
+      'claim_generation': 3,
+      'trust_epoch': 2,
+    };
+
+    MockClient answering(
+      Map<String, Object?> ref, {
+      bool withChannel = true,
+      List<Map<String, Object?>>? asked,
+    }) =>
+        MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          asked?.add(Map<String, Object?>.from(body['device_ref']! as Map));
+          return configuration(
+            nonce: body['nonce']! as String,
+            ref: ref,
+            withChannel: withChannel,
+          );
+        });
+
+    test('the record ends up holding the ref the Host answered with', () async {
+      final claims = InMemoryMobileBodyClaimStore(claim());
+
+      final config = await provision(claims: claims, deviceControl: answering(held));
+
+      final stored = await claims.load();
+      expect(stored!.deviceRef, held);
+      expect(stored.claimGeneration, 3);
+      expect(stored.trustEpoch, 2);
+      // A correction to one fact, not a re-enrollment: the Grant this Claim
+      // was opened with, the key it belongs to and the moment it was
+      // acknowledged all happened, and none of them moved.
+      expect(stored.grantId, 'grant_01');
+      expect(stored.ownerDomainId, ownerDomainIdFixture);
+      expect(stored.deviceInstanceId, phoneDeviceInstanceId);
+      expect(stored.acknowledgedAt, DateTime.utc(2026, 9, 6, 12));
+      // And the answer was still an answer: the recovery is that this phone
+      // talks *and* stops being behind.
+      expect(config.status, HubConfigStatus.active);
+    });
+
+    test('the next ask is addressed to it', () async {
+      // The assertion the store one cannot make. A write nothing reads back is
+      // indistinguishable from no write at all, and the reason this re-pin
+      // exists is that the *next* request must not carry the stale ref.
+      final claims = InMemoryMobileBodyClaimStore(claim());
+      final asked = <Map<String, Object?>>[];
+      final transport = answering(held, asked: asked);
+
+      await provision(claims: claims, deviceControl: transport);
+      await provision(claims: claims, deviceControl: transport);
+
+      expect(
+        asked.map((ref) => ref['claim_generation']).toList(),
+        <int>[2, 3],
+        reason: 'the second ask still carried the stale generation',
+      );
+      expect(asked.last, held);
+    });
+
+    test('an answer that did not move is not written at all', () async {
+      // The ordinary case, which is every pull on a phone that is current —
+      // and on the five second activation poll, every five seconds.
+      //
+      // The one assertion here that counts a write rather than reading what
+      // the store holds, because for this property there is nothing else to
+      // read: an unconditional re-pin leaves the record byte-identical, so a
+      // content assertion passes whether the guard exists or not. What is
+      // being pinned is that a poll on a current phone does no storage write,
+      // and the count is that fact rather than a stand-in for it.
+      final claims = _CountingClaimStore(claim());
+
+      await provision(claims: claims, deviceControl: answering(deviceRef()));
+
+      expect((await claims.load())!.deviceRef, claimedDeviceRef);
+      expect(claims.writes, 0, reason: 'rewrote a record that had not moved');
+    });
+
+    test('a correction is one write, not one per member', () async {
+      final claims = _CountingClaimStore(claim());
+
+      await provision(claims: claims, deviceControl: answering(held));
+
+      expect((await claims.load())!.deviceRef, held);
+      expect(claims.writes, 1);
+    });
+
+    test('an answer about another device does not touch the record', () async {
+      // Not a correction: a different `device_instance_id` is a different
+      // device, and this phone cannot sign for it. Writing it would replace a
+      // usable Claim with one that is refused at every later ask — the failure
+      // this whole recovery exists to end, arriving from the other side.
+      final claims = InMemoryMobileBodyClaimStore(claim());
+
+      final config = await provision(
+        claims: claims,
+        deviceControl: answering(<String, Object?>{
+          ...held,
+          'device_instance_id': 'device-instance-${'b' * 64}',
+        }),
+      );
+
+      expect((await claims.load())!.deviceRef, claimedDeviceRef);
+      expect(config.status, HubConfigStatus.waitingBinding);
+      expect(config.bodyStanding, MobileBodyStanding.claimActiveWithoutChannel);
+    });
+
+    test('a revoked answer drops the record rather than re-pinning it',
+        () async {
+      // Both things are true at once — the ref moved and the Claim is gone —
+      // and only one of them matters. A re-pin here would leave a record whose
+      // whole purpose is to name a Claim that no longer exists.
+      final claims = InMemoryMobileBodyClaimStore(claim());
+
+      final config = await provision(
+        claims: claims,
+        deviceControl: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          return configuration(
+            nonce: body['nonce']! as String,
+            lifecycle: 'revoked',
+            ref: held,
+          );
+        }),
+      );
+
+      expect(await claims.load(), isNull);
+      expect(config.status, HubConfigStatus.revoked);
+    });
+  });
+
   test('a delivered channel makes this phone ready to talk', () async {
     final config = await provision(
       deviceControl: MockClient((request) async {
@@ -335,4 +486,33 @@ void main() {
 /// A request that does not complete, as distinct from a Host that refuses.
 class _NoAnswer implements Exception {
   const _NoAnswer();
+}
+
+/// The in-memory store, plus how many times it was written.
+///
+/// Only for the one property that is a write and not a state: whether a pull
+/// that corrected nothing touched storage at all.
+class _CountingClaimStore implements MobileBodyClaimStore {
+  _CountingClaimStore(MobileBodyClaimRecord record)
+      : _inner = InMemoryMobileBodyClaimStore(record);
+
+  final InMemoryMobileBodyClaimStore _inner;
+
+  int writes = 0;
+
+  @override
+  Future<MobileBodyClaimRecord?> load() => _inner.load();
+
+  @override
+  Future<MobileBodyClaimRecord?> loadFor(String operationalPublicKey) =>
+      _inner.loadFor(operationalPublicKey);
+
+  @override
+  Future<void> save(MobileBodyClaimRecord record) {
+    writes += 1;
+    return _inner.save(record);
+  }
+
+  @override
+  Future<void> clear() => _inner.clear();
 }

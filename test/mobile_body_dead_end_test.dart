@@ -176,9 +176,12 @@ void main() {
 
   test('a person can still re-check after a refusal tells them what to fix',
       () async {
-    // The refusal sentence sends them to the management end to remove the
-    // device; 「立即检查状态」 is how they find out it worked. Gating that on
-    // the same flag as the automatic poll drew a control that did nothing —
+    // The refusal sentence names what has to change before this converges —
+    // the Host collecting this device's enrollment again, and the Owner
+    // approving it — and 「立即检查状态」 is how they find out it happened. It
+    // no longer sends anyone to remove the device: that was never the Host's
+    // precondition. Gating the button on the same flag as the automatic poll
+    // drew a control that did nothing —
     // asserted by calling it, because asserting the flag instead is what let
     // that regression through the first time.
     final built = await connectWatched(
