@@ -16,6 +16,11 @@ abstract interface class DeviceProvisioningTransport {
 abstract interface class DeviceProvisioningSession {
   DeviceProvisioningDescriptor get descriptor;
 
+  /// Select the target before issuing its key-bound voucher. The device keeps
+  /// this candidate separate from the active identity until network commit.
+  Future<DeviceProvisioningDescriptor> prepareOwner(
+      DeviceOnboardingTarget target);
+
   Future<List<DeviceWifiNetwork>> scanNetworks();
 
   /// Configures only the device's network and onboarding destination.

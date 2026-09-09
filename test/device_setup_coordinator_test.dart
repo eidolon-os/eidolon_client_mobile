@@ -84,7 +84,8 @@ void main() {
     expect(result.encode(), isNot(contains('not-persisted')));
   });
 
-  test('the standing is carried into the handover, never fetched from inside it',
+  test(
+      'the standing is carried into the handover, never fetched from inside it',
       () async {
     // The device carries no identity material, so this voucher is the only
     // thing that makes its first Proposal possible — and it has to be signed
@@ -351,6 +352,11 @@ DeviceSetupCheckpoint _checkpoint(String setupId) => DeviceSetupCheckpoint(
     );
 
 class _Session implements DeviceProvisioningSession {
+  @override
+  Future<DeviceProvisioningDescriptor> prepareOwner(
+          DeviceOnboardingTarget target) async =>
+      descriptor;
+
   _Session(this.descriptor);
 
   @override
@@ -389,7 +395,6 @@ class _Session implements DeviceProvisioningSession {
       failureCode: null,
     );
   }
-
 
   @override
   Future<List<DeviceWifiNetwork>> scanNetworks() async => const [];

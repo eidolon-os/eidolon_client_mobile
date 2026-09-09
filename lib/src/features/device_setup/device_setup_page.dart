@@ -61,6 +61,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   String? _error;
   String? _progress;
   bool _busy = false;
+
   /// Live while the screen is showing an admission that has not finished.
   ///
   /// The spinner and this timer are one thing on purpose. The panel used to
@@ -160,7 +161,12 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   Future<void> _select(DeviceProvisioningCandidate candidate) => _run(() async {
         setState(() => _progress = '正在读取设备身份');
         final session = await widget.transport.open(candidate);
-        final descriptor = session.descriptor;
+        final target = _target;
+        if (target == null) {
+          await session.close();
+          throw Exception('还没有读到目标主机的信息。');
+        }
+        final descriptor = await session.prepareOwner(target);
         final networks = await session.scanNetworks();
         // Everything this device needs from the Host is asked for here, with
         // the device's access point left behind and before going back to it.
@@ -347,7 +353,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         final failure = checkpoint.failure;
         _refused = checkpoint.admissionState == DeviceAdmissionState.rejected ||
             (failure != null && !failure.retryable);
-        _progress = _refused ? null : _admissionProgress(checkpoint.admissionState);
+        _progress =
+            _refused ? null : _admissionProgress(checkpoint.admissionState);
         _error = checkpoint.failure?.message;
       }
     });

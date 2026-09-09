@@ -166,7 +166,48 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
   final MethodChannel _channel;
 
   @override
-  final DeviceProvisioningDescriptor descriptor;
+  DeviceProvisioningDescriptor descriptor;
+
+  @override
+  Future<DeviceProvisioningDescriptor> prepareOwner(
+      DeviceOnboardingTarget target) async {
+    final raw =
+        await _channel.invokeMethod<String>('provisioningHandOverTrust', {
+      'payloadJson': jsonEncode({
+        'contract_version': '1',
+        'prepare_only': true,
+        'owner_domain_id': target.ownerDomainId,
+        'owner_domain_descriptor': target.ownerDomainDescriptor.toJson(),
+        'owner_root_certificate': target.ownerRootCertificate,
+        'authority_signing_certificate': target.authoritySigningCertificate,
+      }),
+    });
+    final value = raw == null ? null : jsonDecode(raw);
+    if (value is! Map<String, dynamic> ||
+        value['contract_version'] != '1' ||
+        value['prepared'] != true ||
+        value['owner_domain_id'] != target.ownerDomainId ||
+        value['identity_fingerprint'] is! String ||
+        !RegExp(r'^sha256:[0-9a-f]{64}$')
+            .hasMatch(value['identity_fingerprint'] as String)) {
+      throw const DeviceProvisioningTransportException(
+          'owner_preparation_failed', '设备尚未完成归属准备，请保持配置连接后重试。');
+    }
+    final fingerprint = value['identity_fingerprint'] as String;
+    if (value['device_id'] != 'device-instance-${fingerprint.substring(7)}') {
+      throw const DeviceProvisioningTransportException(
+          'owner_preparation_invalid', '设备返回的身份与配置钥匙不一致。');
+    }
+    descriptor = DeviceProvisioningDescriptor(
+      setup: SetupDescriptorV1.fromJson({
+        ...descriptor.setup.toJson(),
+        'device_id': value['device_id'],
+        'identity_fingerprint': 'p256:${fingerprint.substring(7)}',
+      }),
+      expiresAt: descriptor.expiresAt,
+    );
+    return descriptor;
+  }
 
   @override
   Future<List<DeviceWifiNetwork>> scanNetworks() async {

@@ -39,6 +39,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(admission.sessionsOpenWhenAsked, [0]);
+    expect(admission.requestedKey, 'p256:${'a' * 64}');
+    expect(transport.sessions.single.prepared, isTrue);
     expect(transport.opened, 1);
     expect(transport.sessions.single.closed, isTrue);
   });
@@ -49,12 +51,14 @@ class _Admission implements DeviceAdmissionPort {
 
   final _Transport _transport;
   final List<int> sessionsOpenWhenAsked = [];
+  String? requestedKey;
 
   @override
   Future<CommissioningVoucher> issueCommissioningVoucher({
     required String operationalSpkiSha256,
   }) async {
     sessionsOpenWhenAsked.add(_transport.openSessions);
+    requestedKey = operationalSpkiSha256;
     return CommissioningVoucher(
       voucher: 'header.payload.signature',
       jti: 'jti-01',
@@ -118,6 +122,21 @@ class _Transport implements DeviceProvisioningTransport {
 }
 
 class _Session implements DeviceProvisioningSession {
+  bool prepared = false;
+  @override
+  Future<DeviceProvisioningDescriptor> prepareOwner(
+      DeviceOnboardingTarget target) async {
+    prepared = true;
+    return DeviceProvisioningDescriptor(
+      setup: SetupDescriptorV1.fromJson({
+        ...descriptor.setup.toJson(),
+        'device_id': 'device-instance-${'a' * 64}',
+        'identity_fingerprint': 'p256:${'a' * 64}',
+      }),
+      expiresAt: descriptor.expiresAt,
+    );
+  }
+
   bool closed = false;
 
   @override

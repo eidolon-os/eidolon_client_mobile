@@ -69,6 +69,65 @@ void main() {
         clock: () => now,
       );
 
+  test('prepares the selected Owner before obtaining a key-bound voucher',
+      () async {
+    final digest = 'a' * 64;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'openProvisioningSession') return descriptorJson();
+      if (call.method == 'provisioningHandOverTrust') {
+        final arguments = Map<String, dynamic>.from(call.arguments as Map);
+        final payload = jsonDecode(arguments['payloadJson'] as String) as Map;
+        expect(payload['prepare_only'], isTrue);
+        expect(payload['owner_domain_id'], target.ownerDomainId);
+        expect(payload.containsKey('commissioning_voucher'), isFalse);
+        return jsonEncode({
+          'contract_version': '1',
+          'prepared': true,
+          'owner_domain_id': target.ownerDomainId,
+          'device_id': 'device-instance-$digest',
+          'identity_fingerprint': 'sha256:$digest',
+        });
+      }
+      return null;
+    });
+    final session = await build().open(const DeviceProvisioningCandidate(
+      transportId: 'eidolon-7e2444',
+      displayName: 'eidolon-7e2444',
+      transportKind: 'softap',
+      trust: SetupDescriptorTrustV1.developmentTofu,
+    ));
+    final prepared = await session.prepareOwner(target);
+    expect(prepared.deviceId, 'device-instance-$digest');
+    expect(prepared.identityFingerprint, 'p256:$digest');
+    expect(session.descriptor, same(prepared));
+    expect(prepared.sessionId, 'setup_session_01');
+  });
+
+  test('refuses preparation responses from a different Owner or key', () async {
+    for (final wrongOwner in [true, false]) {
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'openProvisioningSession') return descriptorJson();
+        return jsonEncode({
+          'contract_version': '1',
+          'prepared': true,
+          'owner_domain_id': wrongOwner ? 'owner-other' : target.ownerDomainId,
+          'device_id': 'device-instance-${'b' * 64}',
+          'identity_fingerprint': 'sha256:${'a' * 64}',
+        });
+      });
+      final session = await build().open(const DeviceProvisioningCandidate(
+        transportId: 'eidolon-7e2444',
+        displayName: 'eidolon-7e2444',
+        transportKind: 'softap',
+        trust: SetupDescriptorTrustV1.developmentTofu,
+      ));
+      final before = session.descriptor;
+      await expectLater(session.prepareOwner(target),
+          throwsA(isA<DeviceProvisioningTransportException>()));
+      expect(session.descriptor, same(before));
+    }
+  });
+
   test('turns the window a device reports into the expiry the contract carries',
       () async {
     // A device being set up has no clock, so it says how long rather than when.
