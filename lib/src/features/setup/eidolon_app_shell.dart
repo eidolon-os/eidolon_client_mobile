@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../naming/ask_for_a_name.dart';
@@ -11,12 +13,14 @@ import 'change_network_page.dart';
 import 'controller_key_bridge.dart';
 import 'controller_recovery_page.dart';
 import 'host_registry.dart';
+import 'host_list_info.dart';
 import 'setup_wizard_page.dart';
 
 class EidolonAppShell extends StatefulWidget {
   const EidolonAppShell({
     super.key,
     this.registry,
+    this.hostInfoReader,
     this.setupTransport,
     this.controllerKeys,
     this.deviceProvisioning,
@@ -24,6 +28,7 @@ class EidolonAppShell extends StatefulWidget {
   });
 
   final HostRegistry? registry;
+  final HostListInfoReader? hostInfoReader;
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
   final DeviceProvisioningTransport? deviceProvisioning;
@@ -36,6 +41,8 @@ class EidolonAppShell extends StatefulWidget {
 class _EidolonAppShellState extends State<EidolonAppShell> {
   late final HostRegistry _registry;
   List<ManagedHost>? _hosts;
+  final Map<String, String> _hostStatuses = {};
+  final Set<String> _readingHosts = {};
 
   @override
   void initState() {
@@ -47,9 +54,52 @@ class _EidolonAppShellState extends State<EidolonAppShell> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool refreshInfo = true}) async {
     final hosts = await _registry.load();
-    if (mounted) setState(() => _hosts = hosts);
+    if (!mounted) return;
+    setState(() => _hosts = hosts);
+    if (refreshInfo) unawaited(_readHostInformation(hosts));
+  }
+
+  Future<void> _readHostInformation(List<ManagedHost> hosts) async {
+    for (final host in hosts) {
+      if (!mounted || ModalRoute.of(context)?.isCurrent == false) return;
+      if (!_readingHosts.add(host.hostId)) continue;
+      setState(() => _hostStatuses[host.hostId] = '正在确认连接');
+      try {
+        final result = await (widget.hostInfoReader ?? readHostListInfo)(host);
+        if (!mounted) return;
+        final current = await _registry.load();
+        final index = current.indexWhere((h) => h.hostId == host.hostId);
+        if (index < 0 || !mounted) continue;
+        final latest = current[index];
+        // A newer explicit connection wins over an older list request.
+        if (latest.lastConnectedAt != null &&
+            (result.host.lastConnectedAt == null ||
+                latest.lastConnectedAt!
+                    .isAfter(result.host.lastConnectedAt!))) {
+          setState(() => _hostStatuses[host.hostId] = '上次验证可连接');
+          continue;
+        }
+        final updated = latest.copyWith(
+          lastKnownBaseUrl: result.host.lastKnownBaseUrl,
+          machineInfo: result.host.machineInfo,
+          lastConnectedAt: result.host.lastConnectedAt,
+        );
+        await _registry.save(updated);
+        if (!mounted) return;
+        setState(() {
+          _hosts = _hosts
+              ?.map((h) => h.hostId == updated.hostId ? updated : h)
+              .toList();
+          _hostStatuses[host.hostId] = result.status;
+        });
+      } catch (_) {
+        if (mounted) setState(() => _hostStatuses[host.hostId] = '资料读取失败');
+      } finally {
+        _readingHosts.remove(host.hostId);
+      }
+    }
   }
 
   Future<void> _openSetup() async {
@@ -94,10 +144,11 @@ class _EidolonAppShellState extends State<EidolonAppShell> {
     }
     return _HostsPage(
       hosts: hosts,
+      statuses: _hostStatuses,
       onAdd: _openSetup,
       onHostUpdated: (host) async {
         await _registry.save(host);
-        await _load();
+        await _load(refreshInfo: false);
       },
       onRefresh: _load,
       onHostRemoved: (hostId) async {
@@ -167,6 +218,7 @@ class _WelcomePage extends StatelessWidget {
 class _HostsPage extends StatelessWidget {
   const _HostsPage({
     required this.hosts,
+    required this.statuses,
     required this.onAdd,
     required this.onHostUpdated,
     required this.onRefresh,
@@ -178,6 +230,7 @@ class _HostsPage extends StatelessWidget {
   });
 
   final List<ManagedHost> hosts;
+  final Map<String, String> statuses;
   final VoidCallback onAdd;
   final ManagedHostUpdater onHostUpdated;
   final Future<void> Function() onRefresh;
@@ -193,6 +246,10 @@ class _HostsPage extends StatelessWidget {
         appBar: AppBar(
           title: const Text('我的 Eidolon'),
           actions: [
+            IconButton(
+                onPressed: onRefresh,
+                tooltip: '更新主机资料',
+                icon: const Icon(Icons.refresh)),
             IconButton(
               key: const Key('add-another-host'),
               onPressed: onAdd,
@@ -212,7 +269,8 @@ class _HostsPage extends StatelessWidget {
                 contentPadding: const EdgeInsets.all(18),
                 leading: const CircleAvatar(child: Icon(Icons.memory)),
                 title: Text(host.displayName),
-                subtitle: const Text('主机已保存'),
+                subtitle: _HostIdentitySummary(
+                    host: host, status: statuses[host.hostId] ?? '待确认连接'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
                   await Navigator.of(context).push<void>(
@@ -328,7 +386,7 @@ class _HostDetailPageState extends State<_HostDetailPage> {
                             style: Theme.of(context).textTheme.headlineSmall,
                           ),
                           const SizedBox(height: 4),
-                          const Text('这台手机管理着它'),
+                          _HostIdentitySummary(host: host, status: '已保存的主机资料'),
                         ],
                       ),
                     ),
@@ -348,7 +406,10 @@ class _HostDetailPageState extends State<_HostDetailPage> {
                 MaterialPageRoute(
                   builder: (_) => HostLocalConnectionPage(
                     host: host,
-                    onHostUpdated: onHostUpdated,
+                    onHostUpdated: (updated) async {
+                      await onHostUpdated(updated);
+                      if (mounted) setState(() => host = updated);
+                    },
                     transport: setupTransport,
                     controllerKeys: controllerKeys,
                     deviceProvisioning: deviceProvisioning,
@@ -548,4 +609,42 @@ class _ManagementEntry extends StatelessWidget {
           onTap: _onTap,
         ),
       );
+}
+
+class _HostIdentitySummary extends StatelessWidget {
+  const _HostIdentitySummary({required this.host, required this.status});
+  final ManagedHost host;
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final info = host.machineInfo;
+    final address = Uri.tryParse(host.lastKnownBaseUrl ?? '')?.host;
+    final hardware = <String>[
+      if (info?.model?.isNotEmpty == true) info!.model!,
+      if (info?.cpuModel?.isNotEmpty == true && info!.cpuModel != info.model)
+        info.cpuModel!,
+      if ((info?.cpuCores ?? 0) > 0) '${info!.cpuCores} 核',
+      if ((info?.memoryBytes ?? 0) > 0)
+        '${(info!.memoryBytes! / (1024 * 1024 * 1024)).toStringAsFixed(0)} GiB 内存',
+    ];
+    final last = host.lastConnectedAt?.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(hardware.isEmpty ? '机型待主机提供' : hardware.join(' · ')),
+        if (info?.operatingSystem?.isNotEmpty == true)
+          Text(info!.operatingSystem!),
+        if (info?.hostname.isNotEmpty == true) Text('主机名：${info!.hostname}'),
+        Text(address?.isNotEmpty == true ? '上次连接地址：$address' : 'IP 尚未确认'),
+        const SizedBox(height: 6),
+        Text(status, style: Theme.of(context).textTheme.labelMedium),
+        if (last != null)
+          Text(
+              '最近连接：${last.year}-${two(last.month)}-${two(last.day)} ${two(last.hour)}:${two(last.minute)}',
+              style: Theme.of(context).textTheme.bodySmall),
+      ]),
+    );
+  }
 }

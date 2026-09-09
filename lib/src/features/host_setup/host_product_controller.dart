@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +10,7 @@ import '../device_setup/admission_projection.dart';
 import '../setup/commissioning_transport.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/host_registry.dart';
+import '../setup/host_list_info.dart';
 import '../setup/setup_models.dart';
 import '../setup/setup_trust.dart';
 import 'activity_models.dart';
@@ -233,7 +235,10 @@ class HostProductController extends ChangeNotifier {
           connectedHost.lastKnownBaseUrl != previous.lastKnownBaseUrl) {
         await _onHostUpdated(connectedHost);
       }
-      _host = connectedHost;
+      _host = connectedHost.copyWith(
+        machineInfo: _host.machineInfo, lastConnectedAt: DateTime.now(),
+      );
+      await _onHostUpdated(_host);
       _connection = _session.connection;
       _progress = null;
       await _loadProductState();
@@ -383,6 +388,16 @@ class HostProductController extends ChangeNotifier {
   /// How the machine is doing. Read when someone opens the page that shows
   /// it, not held here: a temperature from five minutes ago is not a
   /// temperature, and nothing else on this controller needs it.
+  Future<HostMonitorWire> hostMonitor() async {
+    final monitor = await _hostServicesRepository.monitor();
+    final info = machineInfoFromMonitor(monitor);
+    if (!_disposed && jsonEncode(_host.machineInfo?.toJson()) != jsonEncode(info.toJson())) {
+      _host = _host.copyWith(machineInfo: info);
+      await _onHostUpdated(_host);
+    }
+    return monitor;
+  }
+
   Future<HostVitals> hostVitals() => _hostServicesRepository.vitals();
 
   /// What has happened to this Owner's devices lately.

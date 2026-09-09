@@ -860,7 +860,7 @@ void main() {
     expect(find.byKey(const Key('no-companions-row')), findsNothing);
   });
 
-  testWidgets('Owner 就绪后只有两个入口：驾驶舱与主机运行状态', (tester) async {
+  testWidgets('Owner 就绪后只有两个入口：驾驶舱与主机监控', (tester) async {
     // 2026-08-27：四个变两个。原先这条测试的名字是「不取代运行驾驶舱」，理由是
     // 星图的运行 lane 还没有 producer，用一屏大部分「读不到」的图换掉一屏会应答
     // 的，是把退步装成进展。那个前提已经不成立（§7.9），所以替换发生了，而分法是
@@ -888,7 +888,7 @@ void main() {
     expect(find.byKey(const Key('open-constellation')), findsOneWidget);
     expect(find.text('驾驶舱'), findsOneWidget);
     expect(find.byKey(const Key('open-host-runtime-status')), findsOneWidget);
-    expect(find.text('主机运行状态'), findsOneWidget);
+    expect(find.text('主机监控'), findsOneWidget);
     // 那三块屏没了，它们的入口也不该留下。
     expect(find.byKey(const Key('open-runtime-cockpit')), findsNothing);
     expect(find.byKey(const Key('open-mission-control')), findsNothing);
@@ -1268,14 +1268,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('host-runtime-status-page')), findsOneWidget);
-    // Host IP 和 reset epoch 是抄给别人的，所以它们在「出问题时要引用的」里面，
-    // 默认收起 —— 这一屏顶上是判词，不是一堆标识符。
-    await tester.tap(find.byKey(const Key('host-for-quoting')));
-    await tester.pumpAndSettle();
-    expect(find.text('192.168.1.26'), findsOneWidget);
-    expect(find.text('Reset epoch'), findsOneWidget);
-    expect(find.text('已认领'), findsOneWidget);
-    expect(find.textContaining('发布、激活和回滚仍由 Ops'), findsOneWidget);
+    expect(find.textContaining('192.168.1.26'), findsOneWidget);
+    expect(find.text('主机监控'), findsOneWidget);
+    expect(find.text('每 10 秒刷新'), findsOneWidget);
+    expect(find.text('Reset epoch'), findsNothing);
+    expect(find.byKey(const Key('host-for-quoting')), findsNothing);
   });
 
   testWidgets('failed reauthentication invalidates the whole product session',
@@ -1506,7 +1503,7 @@ void main() {
     expect(find.byKey(const Key('host-runtime-status-page')), findsOneWidget);
     // Its verdict is the first thing on it, and it is drawn before anything
     // else has a chance to claim 正常.
-    expect(find.byKey(const Key('host-runtime-verdict')), findsOneWidget);
+    expect(find.text('主机监控'), findsOneWidget);
 
     await tester.pageBack();
     await tester.pumpAndSettle();

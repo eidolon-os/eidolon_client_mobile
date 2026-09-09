@@ -609,17 +609,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                   builder: (_) => HostRuntimeStatusPage(
                     host: _controller.host,
                     connection: connection,
-                    readVitals: _controller.hostVitals,
-                    listServices: _controller.listHostServices,
-                    changeService: _controller.changeHostService,
-                    loadActivity: _controller.activity,
-                    listControllers: _controller.listControllers,
-                    devices: _controller.devices,
-                    devicesError: _controller.devicesError,
-                    revokeRuntimeSessions: _controller.revokeRuntimeSessions,
-                    // A destructive action on a Host that cannot perform it is
-                    // the clearest case for saying so rather than offering it.
-                    sessionRevokeHold: _capabilityHold('session.revoke'),
+                    readMonitor: _controller.hostMonitor,
                   ),
                 ),
               ),
@@ -874,7 +864,7 @@ class _ConnectedHostCard extends StatelessWidget {
             key: const Key('open-host-runtime-status'),
             onPressed: onOpenSystem,
             icon: const Icon(Icons.monitor_heart_outlined),
-            label: const Text('主机运行状态'),
+            label: const Text('主机监控'),
           ),
         ],
       ),

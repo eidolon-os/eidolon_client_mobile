@@ -520,6 +520,12 @@ class HostServicesRepository {
     ),
   );
 
+  Future<HostMonitorWire> monitor() => _session.executeManagement(
+    (client, baseUri, accessToken) => client.fetchHostMonitor(
+      baseUri, accessToken: accessToken,
+    ),
+  );
+
   Future<HostServiceInventory> list() async => HostServiceInventory.fromView(
     await _session.executeManagement(
       (client, baseUri, accessToken) =>

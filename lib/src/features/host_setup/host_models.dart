@@ -179,3 +179,10 @@ HostNetworkState _parseNetwork(String value) => switch (value) {
       _ => throw FormatException('Unknown network state: $value'),
     };
 
+String networkLabel(HostNetworkState state) => switch (state) {
+      HostNetworkState.unconfigured => '未配置',
+      HostNetworkState.staging => '正在切换',
+      HostNetworkState.connected => '已连接',
+      HostNetworkState.degraded => '异常',
+      HostNetworkState.rollingBack => '正在恢复',
+    };

@@ -366,6 +366,23 @@ class ManagementClient {
   /// Already phrased and already judged by the Host — this app does no
   /// arithmetic on bytes and applies no thresholds of its own, because the same
   /// decision made in two places drifts.
+  Future<HostMonitorWire> fetchHostMonitor(
+    Uri baseUri, {
+    required String accessToken,
+  }) async {
+    final body = await _send(
+      'GET',
+      baseUri.resolve(ManagementV1.hostMonitorPath),
+      accessToken: accessToken,
+      what: '读取主机监控',
+    );
+    final snapshot = HostMonitorWire.fromJson(body);
+    if (DateTime.tryParse(snapshot.observedAt) == null) {
+      throw const FormatException('监控快照时间不可读');
+    }
+    return snapshot;
+  }
+
   Future<HostVitalsView> fetchHostVitals(
     Uri baseUri, {
     required String accessToken,

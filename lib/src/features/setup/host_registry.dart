@@ -14,6 +14,8 @@ class ManagedHost {
     required this.claimedAt,
     this.tlsSpkiFingerprint,
     this.lastKnownBaseUrl,
+    this.machineInfo,
+    this.lastConnectedAt,
   });
 
   factory ManagedHost.fromJson(Map<String, dynamic> value) => ManagedHost(
@@ -31,6 +33,12 @@ class ManagedHost {
           value['tls_spki_fingerprint'],
         ),
         lastKnownBaseUrl: _optionalBaseUrl(value['last_known_base_url']),
+        machineInfo: value['machine_info'] is Map
+            ? HostMachineInfo.fromJson(
+                Map<String, dynamic>.from(value['machine_info'] as Map))
+            : null,
+        lastConnectedAt:
+            DateTime.tryParse(value['last_connected_at'] as String? ?? ''),
       );
 
   final String hostId;
@@ -51,11 +59,15 @@ class ManagedHost {
   /// with nothing to try. This is a hint, never an authority: whatever answers
   /// still has to prove it is this Host before anything is said to it.
   final String? lastKnownBaseUrl;
+  final HostMachineInfo? machineInfo;
+  final DateTime? lastConnectedAt;
 
   ManagedHost copyWith({
     String? displayName,
     String? tlsSpkiFingerprint,
     String? lastKnownBaseUrl,
+    HostMachineInfo? machineInfo,
+    DateTime? lastConnectedAt,
   }) =>
       ManagedHost(
         hostId: hostId,
@@ -67,6 +79,8 @@ class ManagedHost {
         claimedAt: claimedAt,
         tlsSpkiFingerprint: tlsSpkiFingerprint ?? this.tlsSpkiFingerprint,
         lastKnownBaseUrl: lastKnownBaseUrl ?? this.lastKnownBaseUrl,
+        machineInfo: machineInfo ?? this.machineInfo,
+        lastConnectedAt: lastConnectedAt ?? this.lastConnectedAt,
       );
 
   Map<String, dynamic> toJson() => {
@@ -80,6 +94,9 @@ class ManagedHost {
         if (tlsSpkiFingerprint != null)
           'tls_spki_fingerprint': tlsSpkiFingerprint,
         if (lastKnownBaseUrl != null) 'last_known_base_url': lastKnownBaseUrl,
+        if (machineInfo != null) 'machine_info': machineInfo!.toJson(),
+        if (lastConnectedAt != null)
+          'last_connected_at': lastConnectedAt!.toUtc().toIso8601String(),
       };
 }
 
@@ -198,4 +215,39 @@ class InMemoryHostRegistry implements HostRegistry {
   Future<void> remove(String hostId) async {
     _hosts.removeWhere((item) => item.hostId == hostId);
   }
+}
+
+/// Identification only. No utilization samples or monitoring history are stored.
+class HostMachineInfo {
+  const HostMachineInfo(
+      {required this.hostname,
+      this.model,
+      this.cpuModel,
+      this.operatingSystem,
+      this.cpuCores,
+      this.memoryBytes});
+  final String hostname;
+  final String? model;
+  final String? cpuModel;
+  final String? operatingSystem;
+  final int? cpuCores;
+  final int? memoryBytes;
+
+  factory HostMachineInfo.fromJson(Map<String, dynamic> value) =>
+      HostMachineInfo(
+        hostname: value['hostname'] as String? ?? '',
+        model: value['model'] as String?,
+        cpuModel: value['cpu_model'] as String?,
+        operatingSystem: value['operating_system'] as String?,
+        cpuCores: value['cpu_cores'] as int?,
+        memoryBytes: value['memory_bytes'] as int?,
+      );
+  Map<String, dynamic> toJson() => {
+        'hostname': hostname,
+        'model': model,
+        'cpu_model': cpuModel,
+        'operating_system': operatingSystem,
+        'cpu_cores': cpuCores,
+        'memory_bytes': memoryBytes,
+      };
 }

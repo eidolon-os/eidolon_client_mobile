@@ -63,6 +63,7 @@ class ManagementV1 {
   static String devicesByDeviceIdRemovalPath(String deviceId) =>
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/removal';
   static const String homePath = '/api/management/v1/home';
+  static const String hostMonitorPath = '/api/management/v1/host/monitor';
   static const String hostServicesPath = '/api/management/v1/host/services';
   static String hostServicesByServiceIdByOperationPath(
     String serviceId,
@@ -1154,7 +1155,7 @@ class ForgetEntryView {
     return ForgetEntryView(
       entryId: value['entry_id'] as String,
       preview: value['preview'] as String?,
-      score: value['score'] as double,
+      score: (value['score'] as num).toDouble(),
     );
   }
 
@@ -1413,6 +1414,112 @@ class HomeView {
       'owner_revision': ownerRevision,
       if (runtimeUnavailable != null) 'runtime_unavailable': runtimeUnavailable,
       if (unavailable != null) 'unavailable': unavailable,
+    };
+  }
+}
+
+class HostMonitorWire {
+  const HostMonitorWire({
+    required this.cpu,
+    this.disks,
+    required this.hostname,
+    this.machineModel,
+    required this.memory,
+    this.npuUnavailableReason,
+    this.npus,
+    required this.observedAt,
+    this.operatingSystem,
+    this.operation,
+    this.services,
+    this.servicesUnavailableReason,
+    this.uptimeSeconds,
+  });
+
+  final MonitorProcessor cpu;
+
+  final List<MonitorDisk>? disks;
+
+  final String hostname;
+
+  final String? machineModel;
+
+  final MonitorMemory memory;
+
+  final String? npuUnavailableReason;
+
+  final List<MonitorProcessor>? npus;
+
+  final String observedAt;
+
+  final String? operatingSystem;
+
+  final String? operation;
+
+  final List<MonitorService>? services;
+
+  final String? servicesUnavailableReason;
+
+  final double? uptimeSeconds;
+
+  factory HostMonitorWire.fromJson(Map<String, dynamic> value) {
+    return HostMonitorWire(
+      cpu: MonitorProcessor.fromJson(value['cpu'] as Map<String, dynamic>),
+      disks: value['disks'] == null
+          ? null
+          : ((value['disks'] as List<dynamic>)
+                .map(
+                  (entry) =>
+                      MonitorDisk.fromJson(entry as Map<String, dynamic>),
+                )
+                .toList()),
+      hostname: value['hostname'] as String,
+      machineModel: value['machine_model'] as String?,
+      memory: MonitorMemory.fromJson(value['memory'] as Map<String, dynamic>),
+      npuUnavailableReason: value['npu_unavailable_reason'] as String?,
+      npus: value['npus'] == null
+          ? null
+          : ((value['npus'] as List<dynamic>)
+                .map(
+                  (entry) =>
+                      MonitorProcessor.fromJson(entry as Map<String, dynamic>),
+                )
+                .toList()),
+      observedAt: value['observed_at'] as String,
+      operatingSystem: value['operating_system'] as String?,
+      operation: value['operation'] as String?,
+      services: value['services'] == null
+          ? null
+          : ((value['services'] as List<dynamic>)
+                .map(
+                  (entry) =>
+                      MonitorService.fromJson(entry as Map<String, dynamic>),
+                )
+                .toList()),
+      servicesUnavailableReason:
+          value['services_unavailable_reason'] as String?,
+      uptimeSeconds: (value['uptime_seconds'] as num?)?.toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'cpu': cpu.toJson(),
+      if (disks != null)
+        'disks': disks?.map((entry) => entry.toJson()).toList(),
+      'hostname': hostname,
+      if (machineModel != null) 'machine_model': machineModel,
+      'memory': memory.toJson(),
+      if (npuUnavailableReason != null)
+        'npu_unavailable_reason': npuUnavailableReason,
+      if (npus != null) 'npus': npus?.map((entry) => entry.toJson()).toList(),
+      'observed_at': observedAt,
+      if (operatingSystem != null) 'operating_system': operatingSystem,
+      if (operation != null) 'operation': operation,
+      if (services != null)
+        'services': services?.map((entry) => entry.toJson()).toList(),
+      if (servicesUnavailableReason != null)
+        'services_unavailable_reason': servicesUnavailableReason,
+      if (uptimeSeconds != null) 'uptime_seconds': uptimeSeconds,
     };
   }
 }
@@ -1863,7 +1970,7 @@ class MemoryGraphEdgeView {
 
   factory MemoryGraphEdgeView.fromJson(Map<String, dynamic> value) {
     return MemoryGraphEdgeView(
-      confidence: value['confidence'] as double,
+      confidence: (value['confidence'] as num).toDouble(),
       edgeId: value['edge_id'] as String,
       object: value['object'] as String,
       predicate: value['predicate'] as String,
@@ -2139,6 +2246,342 @@ class MemoryWingView {
       'entry_count': entryCount,
       'rooms': rooms.map((entry) => entry.toJson()).toList(),
       'wing_id': wingId,
+    };
+  }
+}
+
+class MonitorCore {
+  const MonitorCore({
+    required this.coreId,
+    this.frequencyMhz,
+    this.model,
+    this.unavailableReason,
+    this.usagePercent,
+  });
+
+  final String coreId;
+
+  final double? frequencyMhz;
+
+  final String? model;
+
+  final String? unavailableReason;
+
+  final double? usagePercent;
+
+  factory MonitorCore.fromJson(Map<String, dynamic> value) {
+    return MonitorCore(
+      coreId: value['core_id'] as String,
+      frequencyMhz: (value['frequency_mhz'] as num?)?.toDouble(),
+      model: value['model'] as String?,
+      unavailableReason: value['unavailable_reason'] as String?,
+      usagePercent: (value['usage_percent'] as num?)?.toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'core_id': coreId,
+      if (frequencyMhz != null) 'frequency_mhz': frequencyMhz,
+      if (model != null) 'model': model,
+      if (unavailableReason != null) 'unavailable_reason': unavailableReason,
+      if (usagePercent != null) 'usage_percent': usagePercent,
+    };
+  }
+}
+
+class MonitorDisk {
+  const MonitorDisk({
+    this.availableBytes,
+    required this.path,
+    this.totalBytes,
+    this.unavailableReason,
+  });
+
+  final int? availableBytes;
+
+  final String path;
+
+  final int? totalBytes;
+
+  final String? unavailableReason;
+
+  factory MonitorDisk.fromJson(Map<String, dynamic> value) {
+    return MonitorDisk(
+      availableBytes: value['available_bytes'] as int?,
+      path: value['path'] as String,
+      totalBytes: value['total_bytes'] as int?,
+      unavailableReason: value['unavailable_reason'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (availableBytes != null) 'available_bytes': availableBytes,
+      'path': path,
+      if (totalBytes != null) 'total_bytes': totalBytes,
+      if (unavailableReason != null) 'unavailable_reason': unavailableReason,
+    };
+  }
+}
+
+class MonitorMemory {
+  const MonitorMemory({
+    this.availableBytes,
+    this.totalBytes,
+    this.unavailableReason,
+  });
+
+  final int? availableBytes;
+
+  final int? totalBytes;
+
+  final String? unavailableReason;
+
+  factory MonitorMemory.fromJson(Map<String, dynamic> value) {
+    return MonitorMemory(
+      availableBytes: value['available_bytes'] as int?,
+      totalBytes: value['total_bytes'] as int?,
+      unavailableReason: value['unavailable_reason'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (availableBytes != null) 'available_bytes': availableBytes,
+      if (totalBytes != null) 'total_bytes': totalBytes,
+      if (unavailableReason != null) 'unavailable_reason': unavailableReason,
+    };
+  }
+}
+
+class MonitorProcess {
+  const MonitorProcess({
+    this.command,
+    this.cpuPercent,
+    this.entryModule,
+    this.executable,
+    required this.name,
+    required this.parentPid,
+    required this.pid,
+    this.rssBytes,
+    this.sourcePath,
+    this.startedAt,
+    required this.state,
+    this.unavailableReason,
+    this.uptimeSeconds,
+    this.user,
+    this.workingDirectory,
+  });
+
+  final String? command;
+
+  final double? cpuPercent;
+
+  final String? entryModule;
+
+  final String? executable;
+
+  final String name;
+
+  final int parentPid;
+
+  final int pid;
+
+  final int? rssBytes;
+
+  final String? sourcePath;
+
+  final String? startedAt;
+
+  final String state;
+
+  final String? unavailableReason;
+
+  final double? uptimeSeconds;
+
+  final String? user;
+
+  final String? workingDirectory;
+
+  factory MonitorProcess.fromJson(Map<String, dynamic> value) {
+    return MonitorProcess(
+      command: value['command'] as String?,
+      cpuPercent: (value['cpu_percent'] as num?)?.toDouble(),
+      entryModule: value['entry_module'] as String?,
+      executable: value['executable'] as String?,
+      name: value['name'] as String,
+      parentPid: value['parent_pid'] as int,
+      pid: value['pid'] as int,
+      rssBytes: value['rss_bytes'] as int?,
+      sourcePath: value['source_path'] as String?,
+      startedAt: value['started_at'] as String?,
+      state: value['state'] as String,
+      unavailableReason: value['unavailable_reason'] as String?,
+      uptimeSeconds: (value['uptime_seconds'] as num?)?.toDouble(),
+      user: value['user'] as String?,
+      workingDirectory: value['working_directory'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (command != null) 'command': command,
+      if (cpuPercent != null) 'cpu_percent': cpuPercent,
+      if (entryModule != null) 'entry_module': entryModule,
+      if (executable != null) 'executable': executable,
+      'name': name,
+      'parent_pid': parentPid,
+      'pid': pid,
+      if (rssBytes != null) 'rss_bytes': rssBytes,
+      if (sourcePath != null) 'source_path': sourcePath,
+      if (startedAt != null) 'started_at': startedAt,
+      'state': state,
+      if (unavailableReason != null) 'unavailable_reason': unavailableReason,
+      if (uptimeSeconds != null) 'uptime_seconds': uptimeSeconds,
+      if (user != null) 'user': user,
+      if (workingDirectory != null) 'working_directory': workingDirectory,
+    };
+  }
+}
+
+class MonitorProcessor {
+  const MonitorProcessor({
+    this.cores,
+    required this.deviceId,
+    this.model,
+    this.temperatureCelsius,
+    this.unavailableReason,
+    this.usagePercent,
+  });
+
+  final List<MonitorCore>? cores;
+
+  final String deviceId;
+
+  final String? model;
+
+  final double? temperatureCelsius;
+
+  final String? unavailableReason;
+
+  final double? usagePercent;
+
+  factory MonitorProcessor.fromJson(Map<String, dynamic> value) {
+    return MonitorProcessor(
+      cores: value['cores'] == null
+          ? null
+          : ((value['cores'] as List<dynamic>)
+                .map(
+                  (entry) =>
+                      MonitorCore.fromJson(entry as Map<String, dynamic>),
+                )
+                .toList()),
+      deviceId: value['device_id'] as String,
+      model: value['model'] as String?,
+      temperatureCelsius: (value['temperature_celsius'] as num?)?.toDouble(),
+      unavailableReason: value['unavailable_reason'] as String?,
+      usagePercent: (value['usage_percent'] as num?)?.toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (cores != null)
+        'cores': cores?.map((entry) => entry.toJson()).toList(),
+      'device_id': deviceId,
+      if (model != null) 'model': model,
+      if (temperatureCelsius != null) 'temperature_celsius': temperatureCelsius,
+      if (unavailableReason != null) 'unavailable_reason': unavailableReason,
+      if (usagePercent != null) 'usage_percent': usagePercent,
+    };
+  }
+}
+
+class MonitorService {
+  const MonitorService({
+    this.configurationPath,
+    this.cpuPercent,
+    this.exitCode,
+    this.mainPid,
+    this.memoryBytes,
+    this.memoryKind,
+    this.processes,
+    required this.serviceId,
+    required this.state,
+    this.unavailableReason,
+    this.unit,
+    this.user,
+    this.workingDirectory,
+  });
+
+  final String? configurationPath;
+
+  final double? cpuPercent;
+
+  final int? exitCode;
+
+  final int? mainPid;
+
+  final int? memoryBytes;
+
+  final String? memoryKind;
+
+  final List<MonitorProcess>? processes;
+
+  final String serviceId;
+
+  final String state;
+
+  final String? unavailableReason;
+
+  final String? unit;
+
+  final String? user;
+
+  final String? workingDirectory;
+
+  factory MonitorService.fromJson(Map<String, dynamic> value) {
+    return MonitorService(
+      configurationPath: value['configuration_path'] as String?,
+      cpuPercent: (value['cpu_percent'] as num?)?.toDouble(),
+      exitCode: value['exit_code'] as int?,
+      mainPid: value['main_pid'] as int?,
+      memoryBytes: value['memory_bytes'] as int?,
+      memoryKind: value['memory_kind'] as String?,
+      processes: value['processes'] == null
+          ? null
+          : ((value['processes'] as List<dynamic>)
+                .map(
+                  (entry) =>
+                      MonitorProcess.fromJson(entry as Map<String, dynamic>),
+                )
+                .toList()),
+      serviceId: value['service_id'] as String,
+      state: value['state'] as String,
+      unavailableReason: value['unavailable_reason'] as String?,
+      unit: value['unit'] as String?,
+      user: value['user'] as String?,
+      workingDirectory: value['working_directory'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (configurationPath != null) 'configuration_path': configurationPath,
+      if (cpuPercent != null) 'cpu_percent': cpuPercent,
+      if (exitCode != null) 'exit_code': exitCode,
+      if (mainPid != null) 'main_pid': mainPid,
+      if (memoryBytes != null) 'memory_bytes': memoryBytes,
+      if (memoryKind != null) 'memory_kind': memoryKind,
+      if (processes != null)
+        'processes': processes?.map((entry) => entry.toJson()).toList(),
+      'service_id': serviceId,
+      'state': state,
+      if (unavailableReason != null) 'unavailable_reason': unavailableReason,
+      if (unit != null) 'unit': unit,
+      if (user != null) 'user': user,
+      if (workingDirectory != null) 'working_directory': workingDirectory,
     };
   }
 }
@@ -2441,10 +2884,10 @@ class PersonaTraitState {
 
   factory PersonaTraitState.fromJson(Map<String, dynamic> value) {
     return PersonaTraitState(
-      confidence: value['confidence'] as double?,
+      confidence: (value['confidence'] as num?)?.toDouble(),
       lastChangedAt: value['last_changed_at'] as String?,
       source: value['source'] as String?,
-      value: value['value'] as double?,
+      value: (value['value'] as num?)?.toDouble(),
     );
   }
 

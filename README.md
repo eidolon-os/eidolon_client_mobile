@@ -37,10 +37,12 @@ mDNS 发现 Hub -> P-256 签名注册 -> 审批/绑定 -> LiveKit control room
 - Controller/Owner-scoped `GET /api/local/v1/workspace/runtime`；只展示主 Companion、
   当前 Persona 版本和 Memory Workspace 的安全摘要，不把 raw Persona 或 runtime
   config 暴露给 Mobile。
-- 独立 System 页面展示 Host IP、运行模式、认领/网络/Workspace/恢复正交状态、
-  Reset epoch 与短期管理会话，并列出主机服务、支持重启单个服务。服务控制经
-  Local API -> Admin -> `eidolond`，与 Admin Web 是同一条路径和同一个权威；操作携带
-  屏幕上看到的 revision，过期视图会被拒绝而不是静默生效。日志与凭据仍不进入 Mobile。
+- 「主机监控」读取 Controller-authenticated `GET /api/management/v1/host/monitor`，
+  展示 CPU/NPU 型号与逐核占用、内存/磁盘、服务和进程资源，以及可展开的运行路径、
+  脱敏启动命令、PID、用户和启动时间。仅显示当前快照；代码常量默认每 10 秒刷新，
+  后台和路由不可见时暂停，不存历史数据。完整方案见 [主机监控计划](docs/host-monitor-plan.md)。
+  主机采集支持 Linux systemd/cgroup v2 和 macOS supervisord；NPU 使用 RKNPU 驱动提供的逐核读数，
+  不支持或无权限的指标明确显示不可用。旧 Host 需更新 SDK、Kernel 和 Admin 后端。
 - Host 产品会话统一承担 mDNS 重发现、Host pin/身份校验、Controller 认证和一次有界
   重新认证；IP 变化与会话失效不再由各业务页面重复处理。
 - Host 在 Workspace 前先保存；LAN/Admin/Data 暂不可用时只暂停后半段，不回滚
