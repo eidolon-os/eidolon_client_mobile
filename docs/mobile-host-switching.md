@@ -31,12 +31,16 @@ Controller 密钥、Host pin 和管理会话继续走原有管理链路。设备
 4. 其他 Owner 使用自己的新 operational key，按已有登记与 Owner 确认流程接入一次。不能把旧共享 DeviceInstance 的历史 Claim 伪装成新实例的 Claim；不自动删除远端历史设备。
 5. Android 偏好写入确认实际落盘后才向 Dart 返回成功。私钥仍留在 Keystore；handoff 私钥仍只在内存中，App 被杀后的恢复边维持原合同。
 
-## 已验证与剩余验收
+## 验证记录
 
 - Flutter 最终全套 **912 项通过、5 跳过**；静态检查通过；`git diff --check` 通过。
 - Android 原生单元测试 47 项通过；APK 构建通过。
 - 真机升级保留香橙派的原设备 `device-instance-08b2358f…`，Owner generation=3、Claim generation=1、trust epoch=1，ACK 时间仍是 2026-09-08T14:07:59.566036Z。
 - Mac 使用新 DeviceInstance `device-instance-c56a833e…`，走标准登记成功到达待批准；未把香橙派 Claim 发给 Mac。
 - Mac 待批准期间切到香橙派，直接恢复原伙伴 `mac` 的准备页，没有登记不匹配，也没有丢失香橙派 Claim。香橙派服务日志确认 00:28:41 以 `ptt` 接通原 Room `eidolon-device-5582b08fb6be2decd55a46c3` 并发送 `session_started`，00:29:49 空闲正常结束。
-- 2026-09-10 00:28 后 ADB 设备断开。**Mac 返回后继续领取、双方完成登记后的 A→B→A，以及 App 重启后的往返真机验收尚未完成**，不能记为全部验收通过。自动化已覆盖对应的作用域持久化、runtime 往返与延迟响应。
+- ADB 断开后已恢复连接，完成后续验收。第一次 Mac proposal 于 00:26:04 创建、00:41:04 到期，服务端 00:41:07 标记 expired，属于正常 15 分钟超时。随后 00:42:26 重新提出登记，完成“Mac 待批准 → 香橙派准备页 → Mac 待批准”往返，再于 00:44:12 成功批准／领取／ACK；证明临时密钥和登记运行状态在切换时保留。
+- 已登记后的 Mac → 香橙派 → Mac：分别于 **00:44:13、00:46:11、00:46:58** 收到服务端 `session_started`，全部使用 PTT。每次返回读取各自伙伴（Mac 的 `Eidolon`、香橙派的 `mac`），没有再次登记、恢复或不匹配提示。
+- 安装提交 `1bfdf1b` 的最终 APK，执行 App force-stop 后重新启动。冷启动后的 Mac → 香橙派 → Mac 分别于 **00:48:20、00:49:14、00:50:36** 收到 `session_started`。Mac 始终使用 Room `eidolon-device-d6d42f74715993602d36a388`，香橙派始终使用 Room `eidolon-device-5582b08fb6be2decd55a46c3`。
+- 对两个 Owner 的完整 Claim 文档进行排序 JSON 后 SHA-256 比较，重装覆盖、冷启动和两轮往返后与基线完全相同。DeviceInstance、DeviceRef、代际、Grant 和 ACK 记录均保留。最终已结束测试对话，停在准备页。
+- **本次 Host 切换真机验收通过**。这项结论针对登记隔离、未完成登记往返、接通、关闭及冷启动持久化，不等同于 ASR→LLM→TTS 全链路语音验收。
 - 本次没有改服务端或发布 Host；原先 LLM 2048-token 上下文限制不属于 Host 切换修复，未在这里改变。
