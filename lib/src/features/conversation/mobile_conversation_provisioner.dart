@@ -14,21 +14,9 @@ import 'channel_refusal.dart';
 typedef DeviceOnboardingTargetLoader = Future<DeviceOnboardingTarget>
     Function();
 
-/// Reads Mobile's Admission state without treating approval as ClaimActive.
-///
-/// Channel delivery is deliberately not reconstructed from Admission. Until a
-/// canonical Channel projection is available this returns waitingBinding after
-/// ClaimActive instead of reviving the removed synchronous handoff DTO.
-///
-/// What this reads is the whole Owner Domain's recovery list, and what it
-/// answers is one question about one device: where does *this* phone stand.
-/// Every stage is reported as itself — including the stage that is not a stage,
-/// [MobileBodyStanding.notEnrolled], which is where this phone has actually
-/// been the whole time. It only reads: proposing an Enrollment is the device's
-/// own act, performed by `device_setup/mobile_body_enrollment.dart` since
-/// 2026-09-06, and never by this projection. So `notEnrolled` here means the
-/// proposal has not been made — an act waiting on a person, not a claim in
-/// progress.
+/// Standard Device provisioning. A held Claim uses Device Control directly;
+/// Controller recovery reads are only needed to find unfinished admission or
+/// recover a missing local reference. Neither path makes management decisions.
 final class MobileConversationProvisioner implements ConversationProvisioner {
   MobileConversationProvisioner({
     required DeviceOnboardingTargetLoader loadTarget,
@@ -36,11 +24,15 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
     MobileBodyClaimStore? claims,
     DeviceControlClientBuilder? buildDeviceControl,
     PlatformBridge? platform,
+    String? Function()? currentEnrollmentId,
+    Future<bool> Function()? resumeAcknowledgement,
   })  : _loadTarget = loadTarget,
         _admission = admission,
         _claims = claims,
         _buildDeviceControl = buildDeviceControl,
-        _platform = platform ?? const PlatformBridge();
+        _platform = platform ?? const PlatformBridge(),
+        _currentEnrollmentId = currentEnrollmentId,
+        _resumeAcknowledgement = resumeAcknowledgement;
 
   final DeviceOnboardingTargetLoader _loadTarget;
   final DeviceAdmissionPort _admission;
@@ -61,6 +53,8 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
   final DeviceControlClientBuilder? _buildDeviceControl;
 
   final PlatformBridge _platform;
+  final String? Function()? _currentEnrollmentId;
+  final Future<bool> Function()? _resumeAcknowledgement;
 
   DeviceOnboardingTarget? _lastTarget;
 
@@ -90,25 +84,57 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
     // construction, so this phone could not have recognised its own record
     // even once one existed.
     final deviceInstanceId = identity.deviceInstanceId;
-    AdmissionListCursorV1? cursor;
-    EnrollmentRecoveryProjectionV1? found;
-    do {
-      final page = await _admission.listRecovery(after: cursor);
-      for (final projection in page.projections) {
-        // Find ours, then validate ours. Validating every projection on the
-        // way past made this device's conversation depend on the health of
-        // every other device in the Owner Domain: one unrelated record with a
-        // generation the phone disagreed with threw FormatException and took
-        // down a flow that had nothing to do with it. The record that is found
-        // is validated below, which is the one that has to be sound.
-        if (projection.proposal.json['device_instance_candidate_id'] ==
-            deviceInstanceId) {
-          found = projection;
-          break;
-        }
+    final held = await _claims?.loadFor(identity.operationalPublicKey);
+    if (held != null && held.ownerDomainId != target.ownerDomainId) {
+      return _empty(HubConfigStatus.waitingBinding, identity.fingerprint, null,
+          MobileBodyStanding.claimActiveWithoutChannel,
+          refusal: ChannelRefusal.ownerMismatch);
+    }
+    if (held?.ackPending == true) {
+      if (_resumeAcknowledgement == null) {
+        return _empty(HubConfigStatus.waitingBinding, identity.fingerprint,
+            null, MobileBodyStanding.claimActiveWithoutChannel,
+            refusal: ChannelRefusal.localClaimMissing);
       }
-      cursor = found == null ? page.nextCursor : null;
-    } while (cursor != null);
+      await _resumeAcknowledgement();
+    }
+    final enrollmentId = _currentEnrollmentId?.call();
+    // A claimed device asks Device Control directly. Controller availability
+    // and the Owner's historical approval queue are not device authorization.
+    if (held != null && enrollmentId == null) {
+      return _configuration(target, identity, null);
+    }
+    EnrollmentRecoveryProjectionV1? found;
+    if (enrollmentId != null) {
+      found = await _admission.recover(enrollmentId: enrollmentId);
+      if (found.proposal.json['device_instance_candidate_id'] !=
+          deviceInstanceId) {
+        throw const FormatException('Enrollment names another device');
+      }
+    } else {
+      AdmissionListCursorV1? cursor;
+      final matches = <EnrollmentRecoveryProjectionV1>[];
+      do {
+        final page = await _admission.listRecovery(after: cursor);
+        matches.addAll(page.projections.where((p) =>
+            p.proposal.json['device_instance_candidate_id'] ==
+            deviceInstanceId));
+        cursor = page.nextCursor;
+      } while (cursor != null);
+      // No active local operation: prefer an unfinished enrollment over a
+      // completed historical one, then the newest proposal in that group.
+      matches.sort((a, b) {
+        bool pending(EnrollmentRecoveryProjectionV1 p) => {
+              'pending_review',
+              'approved_awaiting_handoff',
+              'grant_delivered'
+            }.contains(p.proposal.json['state']);
+        if (pending(a) != pending(b)) return pending(a) ? -1 : 1;
+        return (b.proposal.json['created_at'] as String? ?? '')
+            .compareTo(a.proposal.json['created_at'] as String? ?? '');
+      });
+      found = matches.firstOrNull;
+    }
 
     if (found == null) {
       return _empty(
@@ -205,12 +231,9 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
     // device this phone can no longer sign for.
     final claim = await store.loadFor(identity.operationalPublicKey);
     if (claim == null) {
-      return _empty(
-        HubConfigStatus.waitingBinding,
-        identity.fingerprint,
-        enrollment,
-        MobileBodyStanding.claimActiveWithoutChannel,
-      );
+      return _empty(HubConfigStatus.waitingBinding, identity.fingerprint,
+          enrollment, MobileBodyStanding.claimActiveWithoutChannel,
+          refusal: ChannelRefusal.localClaimMissing);
     }
     final DeviceConfiguration configuration;
     try {
@@ -223,16 +246,22 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
       // The Host said why. Throwing that away and reporting 「还没有通道」 is
       // what made the screen tell a person the two cases were
       // indistinguishable, while the distinguishing tag sat in this exception.
-      // An unrecognised tag maps to null, and the sentence then says only that
-      // the Host refused — not which remedy to reach for.
+      // Unknown refusals remain refusals; they never become a pending channel.
       return _empty(
         HubConfigStatus.waitingBinding,
         identity.fingerprint,
         enrollment,
         MobileBodyStanding.claimActiveWithoutChannel,
-        refusal: ChannelRefusal.forDetail(refusal.detail),
+        refusal: refusal.invalidResponse
+            ? ChannelRefusal.invalidResponse
+            : refusal.status == 403
+                ? ChannelRefusal.proofRejected
+                : refusal.retryable
+                    ? ChannelRefusal.hostUnanswered
+                    : ChannelRefusal.forDetail(refusal.detail),
+        diagnostic: refusal.toString(),
       );
-    } on Exception {
+    } on Exception catch (error) {
       // Nothing was decided: the request did not complete, or came back
       // unreadable. Saying 「已经问过主机了」 here was false.
       return _empty(
@@ -241,6 +270,7 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
         enrollment,
         MobileBodyStanding.claimActiveWithoutChannel,
         refusal: ChannelRefusal.hostUnanswered,
+        diagnostic: error.toString(),
       );
     }
     // The Authority answered with the ref it holds, which is not necessarily
@@ -268,6 +298,7 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
           ownerDomainId: claim.ownerDomainId,
           deviceInstanceId: claim.deviceInstanceId,
           acknowledgedAt: claim.acknowledgedAt,
+          enrollmentId: claim.enrollmentId,
         ),
       );
     }
@@ -320,7 +351,8 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
       proposalRevision: revision,
       // A time this build cannot parse is left absent rather than guessed. The
       // screen says less; it does not say something else.
-      expiresAt: expiresAt is String ? DateTime.tryParse(expiresAt)?.toUtc() : null,
+      expiresAt:
+          expiresAt is String ? DateTime.tryParse(expiresAt)?.toUtc() : null,
     );
   }
 
@@ -330,10 +362,12 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
     MobileBodyEnrollmentRef? enrollment,
     MobileBodyStanding standing, {
     ChannelRefusal? refusal,
+    String diagnostic = '',
   }) =>
       HubConfig(
         status: status,
         channelRefusal: refusal,
+        diagnostic: diagnostic,
         session: const RoomConfig(
           serverUrl: '',
           token: '',

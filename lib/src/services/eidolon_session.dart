@@ -135,12 +135,15 @@ class EidolonSession {
 
   /// Say the conversation is over. The channel stays exactly as it is.
   Future<void> closeSession() async {
-    await _room?.localParticipant?.setMicrophoneEnabled(false);
-    _videoController.add(null);
-    await _publishSessionRequest(sessionCloseType);
-    // Cleared after the close is sent, not before: the close is about this
-    // conversation and has to carry its id.
-    _conversationId = null;
+    try {
+      await _room?.localParticipant?.setMicrophoneEnabled(false);
+      _videoController.add(null);
+      if (_conversationId != null) {
+        await _publishSessionRequest(sessionCloseType);
+      }
+    } finally {
+      _conversationId = null;
+    }
   }
 
   /// A conversation id in the shape the contract accepts.
@@ -151,7 +154,8 @@ class EidolonSession {
   /// install apart even inside the same millisecond.
   String _newConversationId() {
     _conversationSequence += 1;
-    String block() => _random.nextInt(0x100000000).toRadixString(16).padLeft(8, '0');
+    String block() =>
+        _random.nextInt(0x100000000).toRadixString(16).padLeft(8, '0');
     return 'mobile-${block()}-${block()}-'
         '${_conversationSequence.toRadixString(16).padLeft(8, '0')}';
   }
@@ -208,6 +212,7 @@ class EidolonSession {
       ..on<ParticipantConnectedEvent>((event) => _emitPresence())
       ..on<ParticipantDisconnectedEvent>((event) => _emitPresence())
       ..on<RoomDisconnectedEvent>((event) {
+        _conversationId = null;
         _stateController.add(const SessionState('disconnected'));
         _videoController.add(null);
       })
@@ -260,6 +265,7 @@ class EidolonSession {
   }
 
   Future<void> disconnect() async {
+    _conversationId = null;
     _videoController.add(null);
     _room?.unregisterTextStreamHandler(transcriptionTopic);
     _room?.unregisterTextStreamHandler(agentSessionTopic);

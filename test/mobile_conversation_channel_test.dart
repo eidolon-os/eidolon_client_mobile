@@ -39,10 +39,15 @@ final Map<String, Object?> claimedDeviceRef = <String, Object?>{
 };
 
 class _ClaimedAdmission implements DeviceAdmissionPort {
+  _ClaimedAdmission({this.forbidReads = false});
+  final bool forbidReads;
   @override
   Future<EnrollmentProposalPageV1> listRecovery({
     AdmissionListCursorV1? after,
   }) async {
+    if (forbidReads) {
+      throw StateError('Device must not read Controller admission queue');
+    }
     final projection = canonicalContractValue(
       'DF-PH2B0-RECOVERY-PROJECTION-VALID',
     );
@@ -163,10 +168,11 @@ void main() {
   Future<HubConfig> provision({
     required MockClient deviceControl,
     MobileBodyClaimStore? claims,
+    bool forbidManagement = false,
   }) {
     return MobileConversationProvisioner(
       loadTarget: () async => deviceOnboardingTargetFixture(),
-      admission: _ClaimedAdmission(),
+      admission: _ClaimedAdmission(forbidReads: forbidManagement),
       claims: claims ?? InMemoryMobileBodyClaimStore(claim()),
       buildDeviceControl: (target) => DeviceControlClient(
         authority: Uri.parse('https://hub.owner-domain.invalid'),
@@ -175,6 +181,40 @@ void main() {
       platform: FakePhonePlatform(),
     ).provision();
   }
+
+  test(
+      'held Claim obtains a channel with all Controller recovery reads forbidden',
+      () async {
+    final config = await provision(
+        forbidManagement: true,
+        deviceControl: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          return configuration(
+              nonce: body['nonce'] as String, withChannel: true);
+        }));
+    expect(config.status, HubConfigStatus.active);
+  });
+  test('another Owner never receives a signed request with the old Claim',
+      () async {
+    var reached = false;
+    final other = claim();
+    final config = await MobileConversationProvisioner(
+        loadTarget: () async => deviceOnboardingTargetFixture(),
+        admission: _ClaimedAdmission(forbidReads: true),
+        claims: InMemoryMobileBodyClaimStore(MobileBodyClaimRecord(
+            deviceRef: other.deviceRef,
+            grantId: other.grantId,
+            ownerDomainId: 'other-owner',
+            deviceInstanceId: other.deviceInstanceId,
+            acknowledgedAt: other.acknowledgedAt)),
+        platform: FakePhonePlatform(),
+        buildDeviceControl: (_) {
+          reached = true;
+          throw StateError('must not reach Device Control');
+        }).provision();
+    expect(config.channelRefusal, ChannelRefusal.ownerMismatch);
+    expect(reached, false);
+  });
 
   /// What the Host said about the channel, against what the screen told a
   /// person about it.
@@ -194,26 +234,27 @@ void main() {
               headers: const {'content-type': 'application/json'},
             ));
 
-    test('an inactive claim does not end by waiting',
-        () async {
-      final config = await provision(deviceControl: refusing('CLAIM_NOT_ACTIVE'));
+    test('an inactive claim does not end by waiting', () async {
+      final config =
+          await provision(deviceControl: refusing('CLAIM_NOT_ACTIVE'));
 
       expect(config.channelRefusal, ChannelRefusal.claimNotActive);
       expect(config.channelRefusal!.advances, isFalse);
     });
 
     test('a stale record does not end by waiting either', () async {
-      final config = await provision(deviceControl: refusing('STALE_GENERATION'));
+      final config =
+          await provision(deviceControl: refusing('STALE_GENERATION'));
 
       expect(config.channelRefusal, ChannelRefusal.deviceFactsStale);
       expect(config.channelRefusal!.advances, isFalse);
     });
 
-    test('a manifest conflict lands on the same remedy', () async {
-      final config =
-          await provision(deviceControl: refusing('MANIFEST_REVISION_CONFLICT'));
+    test('a manifest conflict does not offer device re-enrollment', () async {
+      final config = await provision(
+          deviceControl: refusing('MANIFEST_REVISION_CONFLICT'));
 
-      expect(config.channelRefusal, ChannelRefusal.deviceFactsStale);
+      expect(config.channelRefusal, ChannelRefusal.invalidResponse);
     });
 
     test('a tag this build does not know is not guessed at', () async {
@@ -223,7 +264,7 @@ void main() {
       final config =
           await provision(deviceControl: refusing('SOMETHING_ELSE_ENTIRELY'));
 
-      expect(config.channelRefusal, isNull);
+      expect(config.channelRefusal, ChannelRefusal.unknownRefusal);
     });
 
     test('a request that never completed is not the Host saying no', () async {
@@ -239,8 +280,8 @@ void main() {
       // waiting is honest advice.
       final config = await provision(
         deviceControl: MockClient((request) async {
-          final nonce = (jsonDecode(request.body) as Map<String, dynamic>)['nonce']!
-              as String;
+          final nonce = (jsonDecode(request.body)
+              as Map<String, dynamic>)['nonce']! as String;
           return configuration(nonce: nonce, withChannel: false);
         }),
       );
@@ -287,7 +328,8 @@ void main() {
     test('the record ends up holding the ref the Host answered with', () async {
       final claims = InMemoryMobileBodyClaimStore(claim());
 
-      final config = await provision(claims: claims, deviceControl: answering(held));
+      final config =
+          await provision(claims: claims, deviceControl: answering(held));
 
       final stored = await claims.load();
       expect(stored!.deviceRef, held);
@@ -398,8 +440,8 @@ void main() {
   test('a delivered channel makes this phone ready to talk', () async {
     final config = await provision(
       deviceControl: MockClient((request) async {
-        final nonce = (jsonDecode(request.body) as Map<String, dynamic>)['nonce']!
-            as String;
+        final nonce = (jsonDecode(request.body)
+            as Map<String, dynamic>)['nonce']! as String;
         return configuration(nonce: nonce, withChannel: true);
       }),
     );
@@ -414,8 +456,8 @@ void main() {
     // becoming a failure — the screen has a standing and a sentence for it.
     final config = await provision(
       deviceControl: MockClient((request) async {
-        final nonce = (jsonDecode(request.body) as Map<String, dynamic>)['nonce']!
-            as String;
+        final nonce = (jsonDecode(request.body)
+            as Map<String, dynamic>)['nonce']! as String;
         return configuration(nonce: nonce);
       }),
     );
@@ -433,8 +475,8 @@ void main() {
     final config = await provision(
       claims: claims,
       deviceControl: MockClient((request) async {
-        final nonce = (jsonDecode(request.body) as Map<String, dynamic>)['nonce']!
-            as String;
+        final nonce = (jsonDecode(request.body)
+            as Map<String, dynamic>)['nonce']! as String;
         return configuration(nonce: nonce, lifecycle: 'revoked');
       }),
     );

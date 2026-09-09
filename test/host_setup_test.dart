@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:eidolon_client_mobile/src/features/setup/eidolon_app_shell.dart';
 
 import 'package:eidolon_client_mobile/main.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_models.dart';
@@ -261,6 +262,36 @@ void main() {
     expect(find.text('发现并连接 Hub'), findsNothing);
   });
 
+  testWidgets('saved Host opens Device conversation before management connects',
+      (tester) async {
+    final host = ManagedHost(
+        hostId: validHostId,
+        hostPublicKey: validHostPublicKey,
+        hostFingerprint: validHostPublicKeyFingerprint,
+        bleServiceUuid: validBleServiceUuid,
+        controllerId: 'ectrl-0123456789abcdefabcd',
+        displayName: 'Direct Host',
+        claimedAt: DateTime.parse('2026-08-05T00:20:00Z'));
+    var opened = false;
+    await tester.pumpWidget(MaterialApp(
+        home: EidolonAppShell(
+            registry: InMemoryHostRegistry([host]),
+            conversationBuilder: (_, controller) {
+              opened = true;
+              expect(controller.connection, isNull);
+              return const Scaffold(body: Text('Device conversation entry'));
+            })));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Direct Host'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('open-device-conversation')));
+    await tester.pumpAndSettle();
+    expect(opened, true);
+    expect(find.text('Device conversation entry'), findsOneWidget);
+    Navigator.of(tester.element(find.text('Device conversation entry'))).pop();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('managed Host exposes only implemented management actions',
       (tester) async {
     final host = ManagedHost(
@@ -284,6 +315,8 @@ void main() {
     // Setting a device up hands it this Host's identity, which needs the
     // Owner session the shell does not have.
     expect(find.byKey(const Key('add-device-needs-session')), findsOneWidget);
+    await tester.scrollUntilVisible(
+        find.byKey(const Key('manage-controllers-needs-session')), 150);
     // Managing the phones that hold this Host needs that same session; the
     // Host itself has been able to answer for a while.
     expect(

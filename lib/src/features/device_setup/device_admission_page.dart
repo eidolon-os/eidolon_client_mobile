@@ -1,6 +1,3 @@
-import 'dart:convert';
-
-import 'package:cryptography/cryptography.dart';
 import 'package:flutter/material.dart';
 
 import '../../generated/device_foundation_v1.dart';
@@ -8,6 +5,7 @@ import '../host_setup/host_product_session.dart';
 import '../host_setup/local_api_client.dart';
 import '../host_setup/pinned_http_client.dart';
 import 'admission_projection.dart';
+import 'enrollment_decision_id.dart';
 
 typedef EnrollmentRecoveryLoader = Future<EnrollmentProposalPageV1> Function({
   AdmissionListCursorV1? after,
@@ -148,14 +146,10 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage>
   Future<String> _decisionRequestId(
     EnrollmentRecoveryProjectionV1 projection,
   ) async {
-    final proposal = projection.proposal.json;
-    final digest = await Sha256().hash(
-      utf8.encode(
-        '${widget.ownerDomainId}\n${widget.controllerId}\n'
-        '${proposal['enrollment_id']}\n${projection.proposalRevision}',
-      ),
-    );
-    return 'mobile-decision-${base64UrlEncode(digest.bytes).replaceAll('=', '')}';
+    return enrollmentDecisionId(
+        ownerDomainId: widget.ownerDomainId,
+        controllerId: widget.controllerId,
+        projection: projection);
   }
 
   String _message(Object error) => switch (error) {

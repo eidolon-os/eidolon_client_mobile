@@ -67,7 +67,7 @@ void main() {
         // W1 accepts on condition that it stays visible.
         expect(
           detail,
-          contains('批准'),
+          anyOf(contains('批准'), contains('确认接入')),
           reason: '$standing must say an approval still follows',
         );
       } else {
@@ -121,24 +121,24 @@ void main() {
       final detail = sentenceFor(ChannelRefusal.hostUnanswered).detail;
 
       expect(detail, isNot(contains('已经问过主机')));
-      expect(detail, contains('没有完成'));
+      expect(detail, contains('未能取得服务响应'));
     });
 
     test('each refusal reads as a different answer', () {
       final labels = <String>{
         for (final refusal in <ChannelRefusal?>[null, ...ChannelRefusal.values])
-          sentenceFor(refusal).connectionLabel,
+          sentenceFor(refusal).detail,
       };
 
       expect(
         labels.length,
-        4,
-        reason: 'four facts arrived here wearing one label',
+        ChannelRefusal.values.length + 1,
+        reason: 'distinct causes must explain distinct next steps',
       );
     });
 
     test('only the unrefused case advises waiting', () {
-      expect(sentenceFor(null).detail, contains('再问一次可能就有了'));
+      expect(sentenceFor(null).detail, contains('服务尚未提供原因'));
       for (final refusal in ChannelRefusal.values) {
         expect(
           sentenceFor(refusal).detail,
@@ -168,7 +168,7 @@ void main() {
       // Host, because a deleted sentence leaves the same question standing.
       expect(
         sentenceFor(ChannelRefusal.deviceFactsStale).detail,
-        contains('并不要求先移除才能重新登记'),
+        contains('无需先移除设备'),
       );
     });
 

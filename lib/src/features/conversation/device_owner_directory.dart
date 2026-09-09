@@ -1,0 +1,135 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
+import '../../generated/device_foundation_v1.dart';
+import '../../platform/app_preferences.dart';
+import '../device_setup/device_setup_models.dart';
+import '../device_setup/device_setup_ports.dart';
+import '../device_setup/owner_domain_directory_verifier.dart';
+import '../host_setup/pinned_http_client.dart';
+
+/// Public trust material installed at commissioning, independent of Controller
+/// credentials. Host ids only select a remembered Owner; they are not anchors.
+class DeviceOwnerDirectory {
+  DeviceOwnerDirectory(
+      {AppPreferences? preferences,
+      OwnerDomainDirectoryVerifier? verifier,
+      http.Client Function(DeviceOnboardingTarget)? transport})
+      : _preferences = preferences ?? PlatformAppPreferences(),
+        _verifier = verifier ?? PlatformOwnerDomainDirectoryVerifier(),
+        _transport = transport ??
+            ((t) => PlatformPinnedHttpClient.ownerDomain(
+                ownerRootCertificate: t.ownerRootCertificate));
+
+  final AppPreferences _preferences;
+  final OwnerDomainDirectoryVerifier _verifier;
+  final http.Client Function(DeviceOnboardingTarget) _transport;
+  static const _key = 'eidolon.device-owner-directory.v1';
+  final Map<String, DeviceOnboardingTarget> _targets = {};
+
+  Future<DeviceOnboardingTarget> open(
+      {required String hostId,
+      required Future<DeviceOnboardingTarget> Function() bootstrap}) async {
+    final raw = await _preferences.readString(_key);
+    final saved = raw == null || raw.isEmpty
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    final value = saved[hostId];
+    var target = value == null
+        ? await bootstrap()
+        : DeviceOnboardingTarget.fromJson(
+            Map<String, dynamic>.from(value as Map));
+    if (value != null) {
+      DeviceOnboardingTarget? candidate;
+      try {
+        candidate = await bootstrap().timeout(const Duration(seconds: 3));
+      } catch (_) {
+        // Management is an optional locator; installed Device trust survives
+        // a revoked or unavailable Controller login.
+      }
+      if (candidate != null) {
+        if (candidate.ownerDomainId != target.ownerDomainId ||
+            candidate.ownerRootCertificate != target.ownerRootCertificate) {
+          throw const FormatException('主机目录与本机已安装的 Owner 信任不一致');
+        }
+        try {
+          await _verifier.verify(candidate);
+          target = candidate;
+          saved[hostId] = _wire(target);
+          await _preferences.writeString(_key, jsonEncode(saved));
+        } on FormatException {
+          // A stale management projection cannot displace the installed
+          // directory. Its own validity is still checked below.
+        }
+      }
+    }
+    if (value == null) {
+      await _verifier.verify(target);
+      saved[hostId] = _wire(target);
+      await _preferences.writeString(_key, jsonEncode(saved));
+    }
+    _targets[target.ownerDomainId] = target;
+    return load(target.ownerDomainId);
+  }
+
+  Future<DeviceOnboardingTarget> load(String ownerDomainId) async {
+    final installed = _targets[ownerDomainId];
+    if (installed == null) throw StateError('尚未安装此 Owner 的可信目录');
+    DeviceOnboardingTarget target = installed;
+    final expires = DateTime.parse(target.ownerDomainDescriptor.expiresAt);
+    if (expires.difference(DateTime.now()) < const Duration(minutes: 5)) {
+      final client = _transport(target);
+      try {
+        final response = await client
+            .get(Uri.parse(target.ownerDomainDescriptor.descriptorUri))
+            .timeout(const Duration(seconds: 15));
+        if (response.statusCode != 200) {
+          throw StateError('无法更新 Owner 目录（HTTP ${response.statusCode}）');
+        }
+        final descriptor = OwnerDomainDescriptorV1.fromJson(
+            jsonDecode(utf8.decode(response.bodyBytes))
+                as Map<String, dynamic>);
+        if (descriptor.ownerDomainId != ownerDomainId) {
+          throw const FormatException('Owner directory identity mismatch');
+        }
+        final next = DeviceOnboardingTarget(
+            ownerDomainId: ownerDomainId,
+            ownerDomainDescriptor: descriptor,
+            ownerRootCertificate: target.ownerRootCertificate,
+            authoritySigningCertificate: target.authoritySigningCertificate);
+        await _verifier.verify(next);
+        target = next;
+        _targets[ownerDomainId] = target;
+        final raw = await _preferences.readString(_key);
+        final saved = raw == null
+            ? <String, dynamic>{}
+            : Map<String, dynamic>.from(jsonDecode(raw) as Map);
+        for (final key in saved.keys.toList()) {
+          if ((saved[key] as Map)['owner_domain_id'] == ownerDomainId) {
+            saved[key] = _wire(target);
+          }
+        }
+        await _preferences.writeString(_key, jsonEncode(saved));
+      } catch (_) {
+        if (!DateTime.now().isBefore(expires)) rethrow;
+        // Refresh is opportunistic while the installed descriptor is valid.
+        // Never use it past expiry; the final verifier remains authoritative.
+      } finally {
+        client.close();
+      }
+    }
+    // Revalidate expiry, signatures and anti-rollback even for cached content.
+    await _verifier.verify(target);
+    return target;
+  }
+
+  Map<String, Object?> _wire(DeviceOnboardingTarget t) => {
+        'operation': 'local.device-onboarding-target',
+        'contract_version': '1',
+        'owner_domain_id': t.ownerDomainId,
+        'owner_domain_descriptor': t.ownerDomainDescriptor.toJson(),
+        'owner_root_certificate': t.ownerRootCertificate,
+        'authority_signing_certificate': t.authoritySigningCertificate,
+      };
+}

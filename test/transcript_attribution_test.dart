@@ -48,7 +48,7 @@ void main() {
   ({ClientController controller, _TranscriptSession session}) build() {
     final session = _TranscriptSession();
     final controller = ClientController(
-      platform: FakePhonePlatform(),
+      platform: _MicGrantedPlatform(),
       session: session,
       conversationProvisioner: _FakeProvisioner(active()),
     );
@@ -76,6 +76,7 @@ void main() {
     // session would fail loudly rather than mislabel a line.
     final built = build();
     await built.controller.start();
+    await built.controller.join();
 
     built.session.emit(line(text: '你好', participantIdentity: deviceIdentity));
     await Future<void>.delayed(Duration.zero);
@@ -87,6 +88,7 @@ void main() {
   test('the far end is not given a name this client was never told', () async {
     final built = build();
     await built.controller.start();
+    await built.controller.join();
 
     built.session.emit(
       line(text: '在的', participantIdentity: 'agent-AJ_something'),
@@ -108,6 +110,7 @@ void main() {
     // is what this test exists to prevent.
     final built = build();
     await built.controller.start();
+    await built.controller.join();
 
     built.session.emit(line(text: '嗯'));
     await Future<void>.delayed(Duration.zero);
@@ -175,4 +178,9 @@ class _FakeProvisioner implements ConversationProvisioner {
 
   @override
   Future<HubConfig> provision({String sessionIntent = ''}) async => _config;
+}
+
+class _MicGrantedPlatform extends FakePhonePlatform {
+  @override
+  Future<bool> requestMicrophonePermission() async => true;
 }

@@ -63,7 +63,7 @@ MobileBodyEnrollmentSession buildMobileBodyEnrollment(
     buildAdmission: (target) => MobileBodyAdmission(
       // The Controller half: the one thing here only an Owner may do is have
       // the Host sign this device's standing.
-      controller: HostControllerDeviceAdmission(controller),
+      issueVoucher: HostControllerDeviceAdmission(controller).issueCommissioningVoucher,
       authority: AdmissionAuthorityClient(
         authority: admissionAuthorityFor(target),
         // Pinned to the Owner Domain's own root, not to the Host's TLS leaf.

@@ -91,12 +91,12 @@ void main() {
     expect(find.text('登记这台手机'), findsWidgets);
     expect(find.text('立即检查状态'), findsNothing);
     expect(find.text('正在检查…'), findsNothing);
-    expect(find.text('这台手机还不是一个身体'), findsWidgets);
+    expect(find.text('将本机接入对话'), findsWidgets);
     expect(find.textContaining('主机正在认领 Mobile'), findsNothing);
     expect(find.textContaining('自动向前推进'), findsNothing);
     // Proposing is the first of two acts by the same person, and the sentence
     // has to keep saying the second one is coming.
-    expect(find.textContaining('还需要你自己批准它'), findsWidgets);
+    expect(find.textContaining('再由你明确确认接入'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
@@ -197,7 +197,7 @@ void main() {
     // whether provisioning is unfinished or was refused. It does not — Device
     // Control tags its refusal — so the unrefused case says the one true thing
     // about itself: the Host did not refuse, and asking again may work.
-    expect(find.textContaining('主机没有拒绝'), findsWidgets);
+    expect(find.textContaining('服务尚未提供原因'), findsWidgets);
     expect(find.textContaining('分不出来'), findsNothing);
     expect(find.textContaining('当前版本'), findsNothing);
   });
@@ -336,7 +336,7 @@ Future<MobileBodyEnrollmentSession> _holdingSession() async {
   final session = MobileBodyEnrollmentSession(
     loadTarget: () async => deviceOnboardingTargetFixture(),
     buildAdmission: (_) => MobileBodyAdmission(
-      controller: _StubAdmissionController(),
+      issueVoucher: _StubAdmissionController().issueCommissioningVoucher,
       authority: AdmissionAuthorityClient(
         authority: Uri.parse('https://hub.owner-domain.invalid'),
         transport: MockClient(

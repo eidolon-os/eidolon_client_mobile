@@ -9,6 +9,7 @@ import 'package:livekit_client/livekit_client.dart';
 import '../avatar/avatar_stage.dart';
 import '../features/conversation/conversation_provisioner.dart';
 import '../features/conversation/conversation_standing.dart';
+import '../features/conversation/channel_refusal.dart';
 import '../features/conversation/mobile_body_standing.dart';
 import '../features/device_setup/mobile_body_enrollment_session.dart';
 import '../features/device_setup/mobile_body_manifest.dart';
@@ -32,12 +33,14 @@ class ClientController extends ChangeNotifier {
     Duration controlRecoveryRetry = const Duration(seconds: 2),
     ConversationProvisioner? conversationProvisioner,
     MobileBodyEnrollmentSession? enrollment,
+    Duration conversationConfirmationTimeout = const Duration(seconds: 20),
   })  : _platform = platform ?? const PlatformBridge(),
         _hubClient = hubClient ?? HubClient(platform: platform),
         _session = session ?? EidolonSession(),
         _vad = vad,
         _conversationProvisioner = conversationProvisioner,
         _enrollment = enrollment,
+        _conversationConfirmationTimeout = conversationConfirmationTimeout,
         _controlReconnectGrace = controlReconnectGrace,
         _controlRecoveryRetry = controlRecoveryRetry {
     _dataSubscription = _session.dataEvents.listen(_onSessionData);
@@ -75,6 +78,20 @@ class ClientController extends ChangeNotifier {
   /// Null means no control is drawn for any of it. A screen that offered acts
   /// nothing could perform would be worse than the silence it replaced.
   final MobileBodyEnrollmentSession? _enrollment;
+  final Duration _conversationConfirmationTimeout;
+  Timer? _confirmationTimer;
+  Timer? _expiryTimer;
+  final Set<String> _checkedExpiries = {};
+  int _activationAttempts = 0;
+  bool activationExhausted = false;
+  bool _disposed = false;
+  int _conversationEpoch = 0;
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
   final Duration _controlReconnectGrace;
   final Duration _controlRecoveryRetry;
 
@@ -238,11 +255,12 @@ class ClientController extends ChangeNotifier {
   ///
   /// Null standing is false. A screen with no Admission answer has not been
   /// told there is nothing, it has not been told anything.
-  bool get canProposeItself =>
-      config?.bodyStanding?.canProposeItself ?? false;
+  bool get canProposeItself => config?.bodyStanding?.canProposeItself ?? false;
 
   Future<void> start() async {
-    if (_busy) return;
+    if (_busy || _disposed) return;
+    _activationAttempts = 0;
+    activationExhausted = false;
     _busy = true;
     _activationTimer?.cancel();
     failure = null;
@@ -288,7 +306,9 @@ class ClientController extends ChangeNotifier {
     if (showRegistering) {
       _setPhase(ClientPhase.registering);
     }
+    if (_disposed) return false;
     var next = await _provisionConfig(sessionIntent: sessionIntent);
+    if (_disposed) return false;
     failure = null;
     // A standing is Admission's own answer about this one device, and it says
     // more than the five status values can carry. When there is one it decides
@@ -337,11 +357,35 @@ class ClientController extends ChangeNotifier {
     // in front of a collection nobody is performing and nobody can. That is the
     // exact shape this screen was rewritten to delete, arriving from the other
     // side.
+    if (_disposed) return false;
     config = next;
+    if (next.status != HubConfigStatus.active && _session.isConnected) {
+      _inConversation = false;
+      _confirmationTimer?.cancel();
+      _audioStateTimer?.cancel();
+      await _vad.stop();
+      await _session.disconnect();
+      microphoneState = MicrophoneState.inactive;
+    }
     final stalled = enrollmentAct == MobileBodyEnrollmentAct.abandon ||
         enrollmentAct == MobileBodyEnrollmentAct.waitForExpiry;
     if (standing != null && (!standing.advances || stalled)) {
       _activationTimer?.cancel();
+      _expiryTimer?.cancel();
+      final expires = next.bodyEnrollment?.expiresAt;
+      final expiryKey = '${next.bodyEnrollment?.enrollmentId}:$expires';
+      if (expires != null &&
+          !_checkedExpiries.contains(expiryKey) &&
+          enrollmentAct == MobileBodyEnrollmentAct.waitForExpiry) {
+        final delay = expires.difference(DateTime.now());
+        _expiryTimer = Timer(
+            delay.isNegative
+                ? const Duration(seconds: 5)
+                : delay + const Duration(seconds: 1), () {
+          _checkedExpiries.add(expiryKey);
+          unawaited(checkActivation());
+        });
+      }
       _setPhase(ClientPhase.bodyBlocked);
       return false;
     }
@@ -360,6 +404,10 @@ class ClientController extends ChangeNotifier {
         if (next.session.usable && !_session.isConnected) {
           _setPhase(ClientPhase.activating);
           await _session.connect(next.session);
+          if (_disposed) {
+            await _session.disconnect();
+            return false;
+          }
           applied = true;
         }
         if (_inConversation) {
@@ -391,8 +439,15 @@ class ClientController extends ChangeNotifier {
 
   void _scheduleActivationRefresh() {
     _activationTimer?.cancel();
+    if (_disposed || !pollsForActivation || activationExhausted) return;
     _activationTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-      if (_busy || !pollsForActivation) return;
+      if (_busy || !pollsForActivation || _disposed) return;
+      if (++_activationAttempts > 6) {
+        activationExhausted = true;
+        _activationTimer?.cancel();
+        notifyListeners();
+        return;
+      }
       _busy = true;
       notifyListeners();
       try {
@@ -411,19 +466,23 @@ class ClientController extends ChangeNotifier {
     String sessionIntent = sessionIntentUserInitiated,
   }) async {
     if (_busy ||
+        _disposed ||
         (phase != ClientPhase.ready && phase != ClientPhase.conversation)) {
       return;
     }
     _busy = true;
     failure = null;
+    final epoch = ++_conversationEpoch;
     microphoneState = MicrophoneState.requestingPermission;
     _setPhase(ClientPhase.joining);
     try {
       final allowed = await _platform.requestMicrophonePermission();
+      if (_disposed || epoch != _conversationEpoch) return;
       if (!allowed) throw StateError('需要麦克风权限才能开始对话');
       microphoneState = MicrophoneState.switching;
       notifyListeners();
       final fresh = await _provisionConfig(sessionIntent: sessionIntent);
+      if (_disposed || epoch != _conversationEpoch) return;
       config = fresh;
       if (fresh.status != HubConfigStatus.active) {
         throw StateError('设备当前不是 active 状态');
@@ -431,17 +490,40 @@ class ClientController extends ChangeNotifier {
       if (!_session.isConnected) {
         await _session.connect(fresh.session);
       }
-      // Asking is what starts a conversation now; the channel was already up.
-      await _session.openSession();
+      if (_disposed || epoch != _conversationEpoch) return;
+      transcript.clear();
       _inConversation = true;
-      await _vad.start();
-      microphoneState = MicrophoneState.enabled;
-      // Asked, and nothing has answered. `session_started` moves this to
-      // `accepted`; the far end proving it can hear moves it to `hearing`.
-      // Until then the screen says only what is true.
       conversationStanding = ConversationStanding.asked;
-      // Do not overwrite an early `listening` packet from channel with `idle`.
       agentTurn = AgentTurnState.listening;
+      await _session.openSession();
+      if (_disposed || epoch != _conversationEpoch || !_inConversation) {
+        await _session.closeSession();
+        return;
+      }
+      await _vad.start();
+      if (_disposed || epoch != _conversationEpoch || !_inConversation) {
+        await _vad.stop();
+        await _session.closeSession();
+        return;
+      }
+      microphoneState = MicrophoneState.enabled;
+      _confirmationTimer?.cancel();
+      if (conversationStanding == ConversationStanding.asked) {
+        _confirmationTimer = Timer(_conversationConfirmationTimeout, () async {
+          if (_disposed ||
+              epoch != _conversationEpoch ||
+              conversationStanding != ConversationStanding.asked) {
+            return;
+          }
+          await leave();
+          failure = const ClientFailure(
+              kind: ClientErrorKind.liveKit,
+              title: '暂时没有接通',
+              message: '未收到伙伴的接通确认。可以重新开始，或检查主机语音服务。',
+              technicalDetails: 'session_started timeout');
+          notifyListeners();
+        });
+      }
       _setPhase(ClientPhase.conversation);
       await _session.publishAudioState(
         muted: false,
@@ -458,6 +540,12 @@ class ClientController extends ChangeNotifier {
         );
       });
     } catch (exception) {
+      _confirmationTimer?.cancel();
+      _audioStateTimer?.cancel();
+      await _vad.stop();
+      try {
+        await _session.closeSession();
+      } catch (_) {}
       _inConversation = false;
       voiceConnection = ChannelConnectionState.disconnected;
       microphoneState = MicrophoneState.inactive;
@@ -471,21 +559,27 @@ class ClientController extends ChangeNotifier {
   }
 
   Future<void> leave() async {
+    ++_conversationEpoch;
+    _confirmationTimer?.cancel();
     _activationTimer?.cancel();
     _audioStateTimer?.cancel();
-    await _vad.stop();
-    // Leaving a conversation is something this client says, not somewhere it
-    // goes: the channel stays up so the next one can start by asking.
-    if (_inConversation) {
-      await _session.closeSession();
-      _inConversation = false;
+    final wasActive = _inConversation;
+    _inConversation = false;
+    try {
+      await _vad.stop();
+      if (wasActive) await _session.closeSession();
+    } catch (error) {
+      failure = _classifyFailure(error, liveKitContext: true);
+      // A failed close cannot leave an open microphone or reusable session.
+      await _session.disconnect();
+    } finally {
+      remoteVideoTrack = null;
+      videoState = VideoState.audioOnly;
+      agentTurn = AgentTurnState.idle;
+      microphoneState = MicrophoneState.inactive;
+      voiceConnection = ChannelConnectionState.disconnected;
+      _setPhase(ClientPhase.ready);
     }
-    remoteVideoTrack = null;
-    videoState = VideoState.audioOnly;
-    agentTurn = AgentTurnState.idle;
-    microphoneState = MicrophoneState.inactive;
-    voiceConnection = ChannelConnectionState.disconnected;
-    _setPhase(ClientPhase.ready);
   }
 
   Future<void> toggleMicrophone() async {
@@ -525,6 +619,7 @@ class ClientController extends ChangeNotifier {
   /// What is closed is the microphone: it is metered, and it was open for
   /// nobody. The exit the screen already has stays the way out.
   Future<void> _onFarEndGone() async {
+    _confirmationTimer?.cancel();
     conversationStanding = ConversationStanding.farEndGone;
     agentTurn = AgentTurnState.idle;
     _audioStateTimer?.cancel();
@@ -557,6 +652,8 @@ class ClientController extends ChangeNotifier {
     // both of which leave the channel untouched.
     if (event.state == 'disconnected') {
       if (_inConversation) {
+        ++_conversationEpoch;
+        _confirmationTimer?.cancel();
         _inConversation = false;
         voiceConnection = ChannelConnectionState.disconnected;
         _audioStateTimer?.cancel();
@@ -821,13 +918,16 @@ class ClientController extends ChangeNotifier {
       // Device Control nonce echo exists to prevent, one topic over.
       final about = root[sessionConversationIdField];
       final mine = _session.conversationId;
-      if (about is String && mine != null && about != mine) return;
+      if (!_inConversation || mine == null) return;
+      if (about != mine) return;
 
       switch (root['type']) {
         case sessionStartedType:
           // Serving, which is all this says. Whether it can hear is a separate
           // fact with separate evidence — `_warmup_stages` does not abort on a
           // dead STT, so a deaf agent reaches this line too.
+          if (conversationStanding == ConversationStanding.farEndGone) return;
+          _confirmationTimer?.cancel();
           conversationStanding = ConversationStanding.accepted;
           notifyListeners();
         case sessionEndType:
@@ -854,8 +954,16 @@ class ClientController extends ChangeNotifier {
   }
 
   void _handleUiState(String payload) {
+    if (!_inConversation ||
+        conversationStanding == ConversationStanding.farEndGone) {
+      return;
+    }
     try {
       final root = jsonDecode(payload) as Map<String, dynamic>;
+      if (root[sessionConversationIdField] != null &&
+          root[sessionConversationIdField] != _session.conversationId) {
+        return;
+      }
       final state = (root['state'] ?? root['phase'])?.toString() ?? '';
       final nextTurn = switch (state) {
         'listening' => AgentTurnState.listening,
@@ -882,8 +990,13 @@ class ClientController extends ChangeNotifier {
   }
 
   void _handleTranscription(String payload) {
+    if (!_inConversation) return;
     try {
       final root = jsonDecode(payload) as Map<String, dynamic>;
+      if (root[sessionConversationIdField] != null &&
+          root[sessionConversationIdField] != _session.conversationId) {
+        return;
+      }
       final text = (root['text'] ??
                   root['transcript'] ??
                   root['transcription'] ??
@@ -1023,7 +1136,10 @@ class ClientController extends ChangeNotifier {
   }
 
   Future<void> checkActivation() async {
-    if (_busy || hub == null || !isWaiting) return;
+    if (_busy || _disposed || hub == null) return;
+    if (!isWaiting && phase != ClientPhase.bodyBlocked) return;
+    _activationAttempts = 0;
+    activationExhausted = false;
     _busy = true;
     failure = null;
     notifyListeners();
@@ -1038,8 +1154,20 @@ class ClientController extends ChangeNotifier {
     }
   }
 
+  Future<void> recoverEnrollment() async {
+    final refusal = config?.channelRefusal;
+    if (refusal != ChannelRefusal.localClaimMissing &&
+        refusal != ChannelRefusal.deviceFactsStale) {
+      return;
+    }
+    enrollmentAct = MobileBodyEnrollmentAct.propose;
+    await proposeSelf();
+  }
+
   Future<void> retry() async {
-    if (_busy) return;
+    if (_busy || _disposed) return;
+    _activationAttempts = 0;
+    activationExhausted = false;
     if (hub == null) {
       await start();
       return;
@@ -1199,6 +1327,10 @@ class ClientController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    ++_conversationEpoch;
+    _confirmationTimer?.cancel();
+    _expiryTimer?.cancel();
     _activationTimer?.cancel();
     _audioStateTimer?.cancel();
     _noticeTimer?.cancel();

@@ -36,6 +36,7 @@ import '../conversation/mobile_conversation_provisioner.dart';
 import 'admission_authority_client.dart';
 import 'device_setup_models.dart';
 import 'mobile_body_enrollment.dart';
+import 'mobile_body_claim_store.dart';
 
 /// Builds the admission chain for one reading of the Owner Domain directory.
 ///
@@ -94,10 +95,14 @@ class MobileBodyEnrollmentSession {
     required DeviceOnboardingTargetLoader loadTarget,
     PlatformBridge platform = const PlatformBridge(),
     String Function()? newCommandId,
+    MobileBodyClaimStore? claims,
+    void Function(MobileBodyAdmission, DeviceOnboardingTarget)? rebindAdmission,
   })  : _buildAdmission = buildAdmission,
         _loadTarget = loadTarget,
         _platform = platform,
-        _newCommandId = newCommandId ?? _defaultCommandId;
+        _newCommandId = newCommandId ?? _defaultCommandId,
+        _claims = claims,
+        _rebindAdmission = rebindAdmission;
 
   final MobileBodyAdmissionBuilder _buildAdmission;
 
@@ -110,10 +115,58 @@ class MobileBodyEnrollmentSession {
   final PlatformBridge _platform;
   final String Function() _newCommandId;
 
+  final MobileBodyClaimStore? _claims;
+  final void Function(MobileBodyAdmission, DeviceOnboardingTarget)?
+      _rebindAdmission;
+  String? _directoryVersion;
+  MobileBodyAdmission? _admission;
+  String? _ownerDomainId;
+  String? _proposeCommand;
+  String? _collectCommand;
+  String? _ackCommand;
+  String? _abandonCommand;
+  String? _proposalTitle;
   MobileBodyProposal? _pending;
+
+  Future<MobileBodyAdmission> _client() async {
+    final target = await _loadTarget();
+    if (_ownerDomainId != null && _ownerDomainId != target.ownerDomainId) {
+      throw const MobileBodyEnrollmentUnavailable('不能把进行中的登记转到另一个 Owner。');
+    }
+    _ownerDomainId = target.ownerDomainId;
+    final version = '${target.ownerDomainDescriptor.toJson()}';
+    if (_admission != null && version != _directoryVersion) {
+      _rebindAdmission?.call(_admission!, target);
+    }
+    _directoryVersion = version;
+    return _admission ??= _buildAdmission(target);
+  }
+
+  Future<bool> resumeAcknowledgement() async {
+    final identity = await _platform.getDeviceIdentity();
+    final record = await _claims?.loadFor(identity.operationalPublicKey);
+    if (record == null || !record.ackPending) return false;
+    final target = await _loadTarget();
+    if (record.ownerDomainId != target.ownerDomainId) {
+      throw const MobileBodyEnrollmentUnavailable('本机凭证属于另一个 Owner。');
+    }
+    await (await _client()).resumeAcknowledgement(
+        correlationId: record.ackCommandId ?? _newCommandId());
+    _clearOperation();
+    return true;
+  }
+
+  void _clearOperation() {
+    _pending = null;
+    _proposeCommand = _collectCommand = _ackCommand = _abandonCommand = null;
+    _proposalTitle = null;
+    _admission = null;
+  }
 
   /// The proposal this session made, if it still has one.
   MobileBodyProposal? get pending => _pending;
+  bool get hasInFlightOperation =>
+      _pending != null || (_admission?.hasPreparedProposal ?? false);
 
   /// Whether an Enrollment in flight can still be carried to a Claim.
   ///
@@ -131,7 +184,17 @@ class MobileBodyEnrollmentSession {
   /// One decision in one place. Split across the screen and the controller it
   /// would be two, and the second one would eventually disagree.
   Future<MobileBodyEnrollmentAct> actFor(MobileBodyStanding standing) async {
-    if (standing.canProposeItself) return MobileBodyEnrollmentAct.propose;
+    if (_pending == null &&
+        _proposeCommand != null &&
+        await _platform.holdsHandoffKey()) {
+      // A lost create reply can be replayed with its original command, proof
+      // and key. Do not strand it merely because navigation rebuilt the page.
+      return MobileBodyEnrollmentAct.propose;
+    }
+    if (standing.canProposeItself) {
+      if (_pending != null) _clearOperation();
+      return MobileBodyEnrollmentAct.propose;
+    }
     switch (standing) {
       case MobileBodyStanding.pendingReview:
         // Withdrawable, so an unfinishable one has a way out.
@@ -161,21 +224,18 @@ class MobileBodyEnrollmentSession {
     required String title,
     String? correlationId,
   }) async {
-    if (await canFinish()) {
+    if (_pending != null) {
       throw const MobileBodyEnrollmentUnavailable(
         '这台手机已经提出过一次登记，还没有走完。先处理那一次，再提出新的。',
       );
     }
-    // An unfinishable leftover is dropped rather than carried: it cannot be
-    // completed, and keeping it would make `canFinish` answer about a proposal
-    // nobody can use.
-    _pending = null;
+    // An uncertain create retries the retained command and prepared evidence.
     final target = await _loadTarget();
-    final proposal = await _buildAdmission(target).propose(
+    final proposal = await (await _client()).propose(
       target: target,
-      title: title,
-      commandId: _newCommandId(),
-      correlationId: correlationId ?? _newCommandId(),
+      title: _proposalTitle ??= title,
+      commandId: _proposeCommand ??= _newCommandId(),
+      correlationId: correlationId ?? _proposeCommand!,
     );
     _pending = proposal;
     return proposal;
@@ -190,13 +250,13 @@ class MobileBodyEnrollmentSession {
         '它们已经不在了。任何一方都收不了这份凭证。',
       );
     }
-    final claim = await _buildAdmission(await _loadTarget()).completeAdmission(
+    final claim = await (await _client()).completeAdmission(
       proposal: proposal,
-      collectCommandId: _newCommandId(),
-      ackCommandId: _newCommandId(),
+      collectCommandId: _collectCommand ??= _newCommandId(),
+      ackCommandId: _ackCommand ??= _newCommandId(),
       correlationId: correlationId ?? _newCommandId(),
     );
-    _pending = null;
+    _clearOperation();
     return claim;
   }
 
@@ -215,13 +275,13 @@ class MobileBodyEnrollmentSession {
         '没有可撤回的登记。',
       );
     }
-    await _buildAdmission(await _loadTarget()).abandon(
+    await (await _client()).abandon(
       enrollmentId: enrollmentId,
-      commandId: _newCommandId(),
-      correlationId: correlationId ?? _newCommandId(),
+      commandId: _abandonCommand ??= _newCommandId(),
+      correlationId: correlationId ?? _abandonCommand!,
       reason: reason,
     );
-    _pending = null;
+    _clearOperation();
   }
 
   /// Forget an unfinishable proposal without asking the Authority anything.
@@ -230,7 +290,7 @@ class MobileBodyEnrollmentSession {
   /// of no further use, and keeping it would let a later `canFinish` speak
   /// about a proposal whose key is already gone.
   void forget() {
-    _pending = null;
+    _clearOperation();
   }
 }
 

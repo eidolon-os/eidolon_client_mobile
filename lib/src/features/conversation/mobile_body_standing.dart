@@ -1,4 +1,5 @@
 import 'channel_refusal.dart';
+
 /// Where this phone actually stands as a Body in the Owner Domain.
 ///
 /// One value per stage the Admission projection distinguishes, plus the stage
@@ -187,10 +188,8 @@ MobileBodySentence mobileBodySentence(
       fingerprint.isEmpty ? '' : '这台手机的密钥指纹是 $fingerprint。';
   return switch (standing) {
     MobileBodyStanding.notEnrolled => MobileBodySentence(
-        headline: '这台手机还不是一个身体',
-        detail: '它没有向主机提出过登记，所以不在「认领待接入设备」队列里 —— 队列是空的，'
-            '不是没轮到它。只有设备本人能替自己提出，而这一步现在可以做：'
-            '登记之后，还需要你自己批准它。$fingerprintClause',
+        headline: '将本机接入对话',
+        detail: '先登记这台虚拟设备，再由你明确确认接入。完成后即可选择伙伴开始对话。$fingerprintClause',
         connectionLabel: '未登记',
       ),
     MobileBodyStanding.pendingReview => MobileBodySentence(
@@ -213,58 +212,31 @@ MobileBodySentence mobileBodySentence(
     // Host's refusal carries a tag, and this phone was discarding it before
     // going on to tell the person the answers were indistinguishable. They are
     // not, and they differ in the only way that matters: who acts next.
-    MobileBodyStanding.claimActiveWithoutChannel => switch (refusal) {
-        ChannelRefusal.claimNotActive => MobileBodySentence(
-            headline: '主机不给这台手机通话通道',
-            detail: '主机说这台手机的归属现在不生效，所以不分配通道 —— 再问一次是'
-                '同样的答案，等下去不会变。这一步要在管理端处理：确认这台设备仍然'
-                '归属这个 Owner，并且指定了由谁应答。$fingerprintClause',
-            connectionLabel: '主机已拒绝',
-          ),
-        // Both halves of what this used to advise were false. 「在管理端的
-        // 「设备」里移除这台设备」 named a precondition the server does not
-        // have — a Body holding an active Claim may propose itself again on
-        // its own base key, and the Claim is then upserted in place at the
-        // next generation — and 「它下一次连接会自己重新提出登记」 promised an
-        // act nothing performs: `canProposeItself` is false for this standing,
-        // so no propose control is drawn and nothing re-proposes on its own.
-        // What the advice did cost was real: the mount, the Companion binding
-        // the Owner chose, and a way back that then needs someone physically
-        // present with a Controller.
-        //
-        // A ref that is merely *behind* no longer arrives here at all: the
-        // Authority finds the Claim by identity and answers with the ref it
-        // holds, and `MobileConversationProvisioner` re-pins it. So this
-        // sentence stopped being the drift case's sentence, and says only what
-        // the tag itself says.
-        ChannelRefusal.deviceFactsStale => MobileBodySentence(
-            headline: '主机不认这台手机存的那份记录',
-            detail: '主机认得这台设备，但它手上那份记录不是主机现在持有的那一份，所以'
-                '不按它分配通道 —— 带着同一份记录再问，答案一样，等下去不会变。'
-                '要对齐，得让主机重新收一次这台设备的登记，再由你批准；'
-                '这台手机不会自己去提，这个版本也没有把这一步放在这块屏上。'
-                '不要为此去移除它：主机并不要求先移除才能重新登记，而移除会撤掉它的挂载'
-                '和你为它选的 Companion 绑定，还会让它之后必须有人带着 Controller '
-                '到现场才能回来。$fingerprintClause',
-            connectionLabel: '记录对不上',
-          ),
-        ChannelRefusal.hostUnanswered => MobileBodySentence(
-            headline: '没能问到主机',
-            detail: '这一次请求没有完成，所以还不知道主机会不会给通道 —— 这和'
-                '「主机说没有」是两件事。通常是网络或者主机正忙，再试一次是有意义的。',
-            connectionLabel: '没问到主机',
-          ),
-        // Nothing was refused: the Host answered and had no channel to give.
-        // The one case where waiting is honest advice, and the only one this
-        // sentence was ever true for.
-        null => MobileBodySentence(
-            headline: '已归属这个 Owner，还没有通话通道',
-            detail: '归属这一步已经完成，这台手机也已经问过主机了 —— 主机没有拒绝，'
-                '只是现在没有通道给它。通道由主机在归属之后分配，所以再问一次'
-                '可能就有了。',
-            connectionLabel: '缺通话通道',
-          ),
-      },
+    MobileBodyStanding.claimActiveWithoutChannel => MobileBodySentence(
+        headline: switch (refusal) {
+          ChannelRefusal.claimNotActive => '本机的对话授权暂不可用',
+          ChannelRefusal.deviceFactsStale => '需要恢复本机接入',
+          ChannelRefusal.hostUnanswered => '暂时无法连接对话服务',
+          ChannelRefusal.proofRejected => '本机身份验证未通过',
+          ChannelRefusal.invalidResponse => '对话服务返回了无效配置',
+          ChannelRefusal.unknownRefusal => '对话服务拒绝了这次请求',
+          ChannelRefusal.localClaimMissing => '本机接入记录需要恢复',
+          ChannelRefusal.ownerMismatch => '本机已接入另一个 Owner',
+          null => '正在准备对话通道',
+        },
+        detail: switch (refusal) {
+          ChannelRefusal.claimNotActive => '请查看本机设备的授权状态，再继续对话。',
+          ChannelRefusal.deviceFactsStale => '主机未找到对应的归属记录。请检查本机接入；无需先移除设备。',
+          ChannelRefusal.hostUnanswered => '未能取得服务响应。请检查网络后重试，已完成的接入会保留。',
+          ChannelRefusal.proofRejected => '请检查设备授权或服务配置。重复登记不会自动解决身份验证失败。',
+          ChannelRefusal.invalidResponse => '配置未通过校验。请检查主机服务版本，具体原因可在诊断中查看。',
+          ChannelRefusal.unknownRefusal => '服务已拒绝请求，原因可在诊断中查看。请检查主机服务。',
+          ChannelRefusal.localClaimMissing => '本地缺少可用凭证引用。请恢复本机接入，等待不会补回记录。',
+          ChannelRefusal.ownerMismatch => '请选择原 Owner 的主机。更换归属需要完成标准设备转移或重新准入。',
+          null => '暂未取得通道，服务尚未提供原因。稍后仍未就绪时，可以检查主机服务。',
+        },
+        connectionLabel: refusal == null ? '准备通道' : '需要处理',
+      ),
     MobileBodyStanding.claimRevoked => MobileBodySentence(
         headline: '这台手机的归属已被撤销',
         detail: '要重新用它对话，得重新登记一次 —— 这一步这台手机自己就能提出，'

@@ -782,7 +782,7 @@ class _ConversationCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          const Text('这台移动设备使用独立 Device 身份连接 Hub。首次使用需要完成设备批准和 Companion 绑定。'),
+          const Text('使用这台手机与伙伴交谈，也可以随时更换本机应答伙伴。'),
           const SizedBox(height: 14),
           FilledButton.icon(
             key: const Key('open-conversation'),

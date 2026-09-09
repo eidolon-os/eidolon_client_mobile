@@ -75,6 +75,8 @@ class AdmissionAuthorityClient {
   final http.Client _transport;
   final Duration timeout;
 
+  void close() => _transport.close();
+
   static const _basePath = '/api/admission/v1';
 
   /// Propose this device for admission.

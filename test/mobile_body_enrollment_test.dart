@@ -130,8 +130,11 @@ class _FakeController implements DeviceAdmissionPort {
 void main() {
   final target = deviceOnboardingTargetFixture();
 
-  Map<String, dynamic> grantExample() =>
-      canonicalContractValue('DF-ADMISSION-CLAIM-GRANT-VALID');
+  Map<String, dynamic> grantExample() {
+    final grant = canonicalContractValue('DF-ADMISSION-CLAIM-GRANT-VALID');
+    (grant['device_ref'] as Map)['device_instance_id'] = phoneDeviceInstanceId;
+    return grant;
+  }
 
   Map<String, dynamic> envelopeFor(String keyId) {
     final envelope =
@@ -151,7 +154,7 @@ void main() {
     MobileBodyClaimStore? claims,
   }) =>
       MobileBodyAdmission(
-        controller: controller,
+        issueVoucher: controller.issueCommissioningVoucher,
         authority: AdmissionAuthorityClient(
           authority: Uri.parse('https://hub.owner-domain.invalid'),
           transport: transport,
@@ -287,13 +290,15 @@ void main() {
     );
 
     final claim = await flow.completeAdmission(
-      proposal: const MobileBodyProposal(
+      proposal: MobileBodyProposal(
+        ownerDomainId:
+            grantExample()['device_ref']['owner_domain_id'] as String,
         enrollmentId: 'enrollment_01',
         proposalRevision: 1,
         collectionChallenge: 'Y29sbGVjdGlvbi1jaGFsbGVuZ2U',
         handoffHandle: 'handle-1',
         handoffKeyId: _handoffKeyId,
-        deviceInstanceId: 'device-instance-x',
+        deviceInstanceId: phoneDeviceInstanceId,
         expiresAt: '2026-08-18T00:15:00Z',
       ),
       collectCommandId: 'command_02',
@@ -344,13 +349,15 @@ void main() {
     );
 
     await flow.completeAdmission(
-      proposal: const MobileBodyProposal(
+      proposal: MobileBodyProposal(
+        ownerDomainId:
+            grantExample()['device_ref']['owner_domain_id'] as String,
         enrollmentId: 'enrollment_01',
         proposalRevision: 1,
         collectionChallenge: 'Y29sbGVjdGlvbi1jaGFsbGVuZ2U',
         handoffHandle: 'handle-1',
         handoffKeyId: _handoffKeyId,
-        deviceInstanceId: 'device-instance-x',
+        deviceInstanceId: phoneDeviceInstanceId,
         expiresAt: '2026-08-18T00:15:00Z',
       ),
       collectCommandId: 'command_02',
@@ -385,13 +392,15 @@ void main() {
 
     await expectLater(
       flow.completeAdmission(
-        proposal: const MobileBodyProposal(
+        proposal: MobileBodyProposal(
+          ownerDomainId:
+              grantExample()['device_ref']['owner_domain_id'] as String,
           enrollmentId: 'enrollment_01',
           proposalRevision: 1,
           collectionChallenge: 'Y29sbGVjdGlvbi1jaGFsbGVuZ2U',
           handoffHandle: 'handle-1',
           handoffKeyId: _handoffKeyId,
-          deviceInstanceId: 'device-instance-x',
+          deviceInstanceId: phoneDeviceInstanceId,
           expiresAt: '2026-08-18T00:15:00Z',
         ),
         collectCommandId: 'command_02',
@@ -420,13 +429,15 @@ void main() {
 
     await expectLater(
       flow.completeAdmission(
-        proposal: const MobileBodyProposal(
+        proposal: MobileBodyProposal(
+          ownerDomainId:
+              grantExample()['device_ref']['owner_domain_id'] as String,
           enrollmentId: 'enrollment_01',
           proposalRevision: 1,
           collectionChallenge: 'Y29sbGVjdGlvbi1jaGFsbGVuZ2U',
           handoffHandle: 'handle-1',
           handoffKeyId: _handoffKeyId,
-          deviceInstanceId: 'device-instance-x',
+          deviceInstanceId: phoneDeviceInstanceId,
           expiresAt: '2026-08-18T00:15:00Z',
         ),
         collectCommandId: 'command_02',
@@ -440,6 +451,89 @@ void main() {
       ),
     );
     expect(platform.openedWith, isNull);
+  });
+
+  test('lost ACK reply resumes after restart with the saved command and proof',
+      () async {
+    final platform = _FakePlatform()..grantPlaintext = grantExample();
+    final claims = InMemoryMobileBodyClaimStore();
+    final acks = <Map<String, dynamic>>[];
+    final transport = MockClient((request) async {
+      if (request.url.path.endsWith(':ack')) {
+        final saved = await claims.load();
+        expect(saved?.ackPending, true);
+        expect(saved?.deviceRef, grantExample()['device_ref']);
+        acks.add(jsonDecode(request.body) as Map<String, dynamic>);
+        if (acks.length == 1) {
+          throw http.ClientException('reply lost after commit');
+        }
+        return ok(canonicalContractValue('DF-ADMISSION-ACK-RESULT-VALID'));
+      }
+      return ok({
+        ...canonicalContractValue('DF-ADMISSION-COLLECT-RESULT-VALID'),
+        'grant_id': grantExample()['grant_id'],
+        'wire_envelope': envelopeFor(_handoffKeyId)
+      });
+    });
+    final first = admission(
+        platform: platform,
+        controller: _FakeController(),
+        transport: transport,
+        claims: claims);
+    await expectLater(
+        first.completeAdmission(
+            proposal: MobileBodyProposal(
+                ownerDomainId:
+                    grantExample()['device_ref']['owner_domain_id'] as String,
+                enrollmentId: 'enrollment_01',
+                proposalRevision: 1,
+                collectionChallenge: 'Y29sbGVjdGlvbi1jaGFsbGVuZ2U',
+                handoffHandle: 'handle-1',
+                handoffKeyId: _handoffKeyId,
+                deviceInstanceId: phoneDeviceInstanceId,
+                expiresAt: '2026-08-18T00:15:00Z'),
+            collectCommandId: 'command_02',
+            ackCommandId: 'command_03',
+            correlationId: 'intent_01'),
+        throwsException);
+    final signedBefore = platform.signedWithOperationalKey.length;
+    final restarted = admission(
+        platform: platform,
+        controller: _FakeController(refuse: true),
+        transport: transport,
+        claims: claims);
+    expect(await restarted.resumeAcknowledgement(correlationId: 'intent_02'),
+        'active');
+    expect(acks[0]['command_id'], acks[1]['command_id']);
+    expect(acks[0]['operational_key_proof'], acks[1]['operational_key_proof']);
+    expect(platform.signedWithOperationalKey.length, signedBefore);
+    expect((await claims.load())!.ackPending, false);
+  });
+
+  test(
+      'a lost proposal reply retries identical evidence without replacing its key',
+      () async {
+    final platform = _FakePlatform();
+    final sent = <Map<String, dynamic>>[];
+    final flow = admission(
+        platform: platform,
+        controller: _FakeController(),
+        transport: MockClient((request) async {
+          sent.add(jsonDecode(request.body) as Map<String, dynamic>);
+          if (sent.length == 1) throw http.ClientException('reply lost');
+          return ok(
+              canonicalContractValue('DF-ADMISSION-CREATE-RESULT-VALID'), 201);
+        }));
+    Future<MobileBodyProposal> send() => flow.propose(
+        target: target,
+        title: 'Mobile',
+        commandId: 'command_01',
+        correlationId: 'intent_01');
+    await expectLater(send(), throwsException);
+    await send();
+    expect(sent[0], sent[1]);
+    expect(platform.issued, 1);
+    expect(platform.discarded, 0);
   });
 
   test('abandoning a proposal cancels it and forgets the key', () async {

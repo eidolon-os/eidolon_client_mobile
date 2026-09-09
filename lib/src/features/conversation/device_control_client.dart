@@ -89,8 +89,10 @@ class DeviceControlRefusal implements Exception {
     required this.detail,
     required this.status,
     required this.retryable,
+    this.invalidResponse = false,
   });
 
+  final bool invalidResponse;
   final String detail;
   final int status;
 
@@ -191,6 +193,7 @@ class DeviceControlClient {
       throw DeviceControlRefusal(
         detail: 'Device Control answered with a body that is not JSON',
         status: response.statusCode,
+        invalidResponse: true,
         retryable: false,
       );
     }
@@ -198,6 +201,7 @@ class DeviceControlClient {
       throw DeviceControlRefusal(
         detail: 'Device Control answered with something that is not an object',
         status: response.statusCode,
+        invalidResponse: true,
         retryable: false,
       );
     }
@@ -211,6 +215,7 @@ class DeviceControlClient {
         detail: 'Device Control answered a different operation: '
             '${decoded['operation']}',
         status: response.statusCode,
+        invalidResponse: true,
         retryable: false,
       );
     }
@@ -221,6 +226,7 @@ class DeviceControlClient {
       throw DeviceControlRefusal(
         detail: 'Device Control answered a different request',
         status: response.statusCode,
+        invalidResponse: true,
         retryable: false,
       );
     }
@@ -245,6 +251,7 @@ class DeviceControlClient {
         detail: 'Device Control answered without a DeviceRef this build can '
             'read',
         status: response.statusCode,
+        invalidResponse: true,
         retryable: false,
       );
     }
@@ -261,6 +268,7 @@ class DeviceControlClient {
             '${answered['device_instance_id']} in '
             '${answered['owner_domain_id']}',
         status: response.statusCode,
+        invalidResponse: true,
         retryable: false,
       );
     }
@@ -272,6 +280,7 @@ class DeviceControlClient {
         detail: 'Device Control reported a lifecycle state this build does '
             'not know: $lifecycle',
         status: response.statusCode,
+        invalidResponse: true,
         retryable: false,
       );
     }
@@ -296,6 +305,7 @@ class DeviceControlClient {
       throw DeviceControlRefusal(
         detail: 'Device Control delivered a channel this build cannot read',
         status: response.statusCode,
+        invalidResponse: true,
         retryable: false,
       );
     }
@@ -328,6 +338,7 @@ class DeviceControlClient {
       throw DeviceControlRefusal(
         detail: 'Device Control delivered a channel with no life in it',
         status: response.statusCode,
+        invalidResponse: true,
         retryable: false,
       );
     }
@@ -338,8 +349,10 @@ class DeviceControlClient {
       // `liveKitSessionFromBinding` and be reported as unreadable bytes, when
       // what happened is that the Authority sent none.
       throw DeviceControlRefusal(
-        detail: 'Device Control named a channel and delivered no binding for it',
+        detail:
+            'Device Control named a channel and delivered no binding for it',
         status: response.statusCode,
+        invalidResponse: true,
         retryable: false,
       );
     }

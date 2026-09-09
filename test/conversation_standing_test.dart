@@ -52,8 +52,7 @@ void main() {
   String started(String? conversationId) => jsonEncode(<String, Object?>{
         'schema_v': sessionControlSchemaVersion,
         'type': sessionStartedType,
-        if (conversationId != null)
-          sessionConversationIdField: conversationId,
+        if (conversationId != null) sessionConversationIdField: conversationId,
       });
 
   String transcript({
@@ -89,6 +88,7 @@ void main() {
     test('session_started confirms serving and nothing more', () async {
       final built = build();
       await built.controller.start();
+      await built.controller.join();
       built.session.emit(
         sessionControlTopic,
         started(built.session.conversationId),
@@ -111,6 +111,7 @@ void main() {
         () async {
       final built = build();
       await built.controller.start();
+      await built.controller.join();
       built.session.emit(
         sessionControlTopic,
         started(built.session.conversationId),
@@ -135,6 +136,7 @@ void main() {
       // coming back is exactly the evidence that must not count.
       final built = build();
       await built.controller.start();
+      await built.controller.join();
       built.session.emit(
         sessionControlTopic,
         started(built.session.conversationId),
@@ -155,6 +157,7 @@ void main() {
     test('an interim transcript is not yet evidence', () async {
       final built = build();
       await built.controller.start();
+      await built.controller.join();
       built.session.emit(
         sessionControlTopic,
         started(built.session.conversationId),

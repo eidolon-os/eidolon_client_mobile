@@ -76,7 +76,7 @@ void main() {
     controller.dispose();
   });
 
-  test('a stop does not poll', () async {
+  test('a stopped state allows an explicit manual check', () async {
     final provisioner = _FakeProvisioner(
       standing(MobileBodyStanding.notEnrolled, HubConfigStatus.unregistered),
     );
@@ -92,8 +92,8 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 120));
     await controller.checkActivation();
 
-    expect(provisioner.calls, afterStart,
-        reason: 'a state that cannot advance must not be re-asked');
+    expect(provisioner.calls, afterStart + 1,
+        reason: 'an explicit manual check remains available');
     controller.dispose();
   });
 
@@ -244,7 +244,7 @@ void main() {
 
     expect(controller.phase, ClientPhase.awaitingBinding);
     expect(controller.isWaiting, isTrue);
-    expect(controller.uiState.supportingText, contains('再问一次可能就有了'));
+    expect(controller.uiState.supportingText, contains('服务尚未提供原因'));
     expect(controller.uiState.supportingText, isNot(contains('分不出来')));
     expect(controller.uiState.supportingText, isNot(contains('当前版本')));
     controller.dispose();

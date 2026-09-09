@@ -26,13 +26,12 @@ library;
 import 'dart:convert';
 
 import '../../generated/device_foundation_v1.dart';
+import '../../models/hub_models.dart';
 import '../../platform/platform_bridge.dart';
 import 'admission_authority_client.dart';
 import 'admission_evidence.dart';
 import 'admission_proofs.dart';
-import 'device_instance_identity.dart';
 import 'device_setup_models.dart';
-import 'device_setup_ports.dart';
 import 'mobile_body_claim_store.dart';
 import 'mobile_body_manifest.dart';
 
@@ -51,6 +50,7 @@ class MobileBodyProposal {
     required this.handoffKeyId,
     required this.deviceInstanceId,
     required this.expiresAt,
+    required this.ownerDomainId,
   });
 
   final String enrollmentId;
@@ -60,6 +60,7 @@ class MobileBodyProposal {
   final String handoffKeyId;
   final String deviceInstanceId;
   final String expiresAt;
+  final String ownerDomainId;
 }
 
 /// A Claim this phone now holds, as the Grant it opened describes it.
@@ -78,13 +79,15 @@ class MobileBodyClaim {
 
 /// The admission chain, from this phone's side.
 class MobileBodyAdmission {
-  const MobileBodyAdmission({
-    required DeviceAdmissionPort controller,
+  MobileBodyAdmission({
+    required Future<CommissioningVoucher> Function(
+            {required String operationalSpkiSha256})
+        issueVoucher,
     required AdmissionAuthorityClient authority,
     required MobileBodyClaimStore claims,
     PlatformBridge platform = const PlatformBridge(),
     DateTime Function() clock = DateTime.now,
-  })  : _controller = controller,
+  })  : _issueVoucher = issueVoucher,
         _authority = authority,
         _claims = claims,
         _platform = platform,
@@ -92,9 +95,18 @@ class MobileBodyAdmission {
 
   /// The Controller surface, for the one thing only an Owner can do here:
   /// have the Host sign this device's standing.
-  final DeviceAdmissionPort _controller;
+  final Future<CommissioningVoucher> Function(
+      {required String operationalSpkiSha256}) _issueVoucher;
+  _PreparedProposal? _prepared;
+  bool get hasPreparedProposal => _prepared != null;
+  final Map<String, String> _collectionProofs = {};
 
-  final AdmissionAuthorityClient _authority;
+  AdmissionAuthorityClient _authority;
+
+  void useAuthority(AdmissionAuthorityClient authority) {
+    _authority.close();
+    _authority = authority;
+  }
 
   /// Where the Claim is remembered. Required rather than optional: a phone that
   /// forgot to persist would propose itself again on every launch, and the
@@ -115,65 +127,66 @@ class MobileBodyAdmission {
     required String commandId,
     required String correlationId,
   }) async {
-    final identity = await _platform.getDeviceIdentity();
-    final deviceInstanceId =
-        deriveDeviceInstanceId(identity.operationalPublicKey);
-
-    // The Host signs the standing first. If it refuses — no Workspace yet, no
-    // Controller session — nothing else here should have happened, and in
-    // particular no handoff key should have been minted and abandoned.
-    final voucher = await _controller.issueCommissioningVoucher(
-      operationalSpkiSha256: identity.fingerprint,
-    );
-
-    final handoff = await _platform.issueHandoffKey();
+    var prepared = _prepared;
+    if (prepared == null || prepared.commandId != commandId) {
+      final identity = await _platform.getDeviceIdentity();
+      final voucher =
+          await _issueVoucher(operationalSpkiSha256: identity.fingerprint);
+      final handoff = await _platform.issueHandoffKey();
+      final canonical =
+          admissionEvidenceCanonicalJson(admissionEvidenceDocument(
+        deviceBaseId: voucher.deviceBaseId,
+        deviceInstanceId: identity.deviceInstanceId,
+        operationalPublicKey: identity.operationalPublicKey,
+      ));
+      prepared = _PreparedProposal(
+        commandId: commandId,
+        identity: identity,
+        handoff: handoff,
+        evidence: signedAdmissionEvidence(
+                canonical: canonical,
+                signature:
+                    await _platform.signDeviceCanonicalDocument(canonical))
+            .toJson(),
+        proof: commissioningProof(voucher: voucher.voucher, jti: voucher.jti),
+      );
+      _prepared = prepared;
+    }
+    // Retain the exact proof and key across an uncertain response. A retry is
+    // the same command, not a new proposal under a replacement handoff key.
+    late CreateEnrollmentResultV1 result;
     try {
-      final canonical = admissionEvidenceCanonicalJson(
-        admissionEvidenceDocument(
-          // Not chosen here. The Host derived it from the Controller it has
-          // already accepted, and a Body that named its own base identity
-          // could choose its own lineage.
-          deviceBaseId: voucher.deviceBaseId,
-          deviceInstanceId: deviceInstanceId,
-          operationalPublicKey: identity.operationalPublicKey,
-        ),
-      );
-      final evidence = signedAdmissionEvidence(
-        canonical: canonical,
-        signature: await _platform.signDeviceCanonicalDocument(canonical),
-      );
-
-      final result = await _authority.createEnrollment(
+      result = await _authority.createEnrollment(
         commandId: commandId,
         correlationId: correlationId,
-        deviceInstanceCandidateId: deviceInstanceId,
+        deviceInstanceCandidateId: prepared.identity.deviceInstanceId,
         requestedOwnerDomainId: target.ownerDomainId,
-        hardwareIdentityEvidence: evidence.toJson(),
-        commissioningProof: commissioningProof(
-          voucher: voucher.voucher,
-          jti: voucher.jti,
-        ),
+        hardwareIdentityEvidence: prepared.evidence,
+        commissioningProof: prepared.proof,
         manifest: mobileBodyManifestRef(title: title),
-        handoffPublicKey: handoff.publicKey,
-        operationalPublicKey: identity.operationalPublicKey,
+        handoffPublicKey: prepared.handoff.publicKey,
+        operationalPublicKey: prepared.identity.operationalPublicKey,
       );
-
-      return MobileBodyProposal(
-        enrollmentId: result.json['enrollment_id']! as String,
-        proposalRevision: result.json['proposal_revision']! as int,
-        collectionChallenge: result.json['collection_challenge']! as String,
-        handoffHandle: handoff.handle,
-        handoffKeyId: handoff.keyId,
-        deviceInstanceId: deviceInstanceId,
-        expiresAt: result.json['expires_at']! as String,
-      );
-    } catch (_) {
-      // A key minted for a proposal that was never made is a secret nobody is
-      // watching, and it would also silently replace the key of a proposal
-      // that *is* still in flight.
-      await _platform.discardHandoffKey();
+    } on AdmissionRefusal catch (e) {
+      if (!e.retryable &&
+          e.status >= 400 &&
+          e.status < 500 &&
+          e.code == "INVALID_ARGUMENT") {
+        await _platform.discardHandoffKey();
+        _prepared = null;
+      }
       rethrow;
     }
+    return MobileBodyProposal(
+      ownerDomainId: target.ownerDomainId,
+      enrollmentId: result.json['enrollment_id']! as String,
+      proposalRevision: result.json['proposal_revision']! as int,
+      collectionChallenge: result.json['collection_challenge']! as String,
+      handoffHandle: prepared.handoff.handle,
+      handoffKeyId: prepared.handoff.keyId,
+      deviceInstanceId: prepared.identity.deviceInstanceId,
+      expiresAt: result.json['expires_at']! as String,
+    );
   }
 
   /// Collect the Grant, open it, and acknowledge it.
@@ -193,7 +206,8 @@ class MobileBodyAdmission {
       enrollmentId: proposal.enrollmentId,
       proposalRevision: proposal.proposalRevision,
       collectionChallenge: proposal.collectionChallenge,
-      handoffKeyProof: await _platform.signHandoffCanonicalDocument(
+      handoffKeyProof: _collectionProofs[proposal.enrollmentId] ??=
+          await _platform.signHandoffCanonicalDocument(
         handle: proposal.handoffHandle,
         document: claimGrantCollectionProof(
           enrollmentId: proposal.enrollmentId,
@@ -238,45 +252,69 @@ class MobileBodyAdmission {
       grant.json['device_ref']! as Map,
     );
 
-    final acknowledged = await _authority.ackClaimGrant(
-      commandId: ackCommandId,
-      correlationId: correlationId,
-      enrollmentId: proposal.enrollmentId,
+    final identity = await _platform.getDeviceIdentity();
+    if (deviceRef['device_instance_id'] != identity.deviceInstanceId ||
+        deviceRef['device_instance_id'] != proposal.deviceInstanceId) {
+      throw const FormatException('ClaimGrant names another device');
+    }
+    if (deviceRef['owner_domain_id'] != proposal.ownerDomainId) {
+      throw const FormatException('ClaimGrant names another Owner');
+    }
+    if (grant.json['grant_id'] != collected.json['grant_id']) {
+      throw const FormatException(
+          'ClaimGrant does not match the collected grant');
+    }
+    final stored = await _claims.loadFor(identity.operationalPublicKey);
+    if (stored?.ackPending == true) {
+      if (stored!.grantId != grant.json['grant_id'] ||
+          stored.enrollmentId != proposal.enrollmentId) {
+        throw const FormatException('Another grant acknowledgement is pending');
+      }
+      final state = await resumeAcknowledgement(correlationId: correlationId);
+      return MobileBodyClaim(grant: grant, claimState: state!);
+    }
+    // ACK attests to durable storage, so commit the reference before sending.
+    // This checkpoint contains no sealed secret and can resume without the
+    // one-shot handoff key if the process dies after the Host accepts ACK.
+    await _claims.save(MobileBodyClaimRecord(
+      deviceRef: deviceRef,
       grantId: grant.json['grant_id']! as String,
-      operationalKeyProof: await _platform.signDeviceCanonicalDocument(
-        claimGrantAckProof(
+      ownerDomainId: deviceRef['owner_domain_id']! as String,
+      deviceInstanceId: proposal.deviceInstanceId,
+      acknowledgedAt: _clock().toUtc(),
+      enrollmentId: proposal.enrollmentId,
+      ackCommandId: ackCommandId,
+      ackPending: true,
+      ackProof: await _platform.signDeviceCanonicalDocument(claimGrantAckProof(
           enrollmentId: proposal.enrollmentId,
           grantId: grant.json['grant_id']! as String,
-          deviceRef: deviceRef,
-        ),
-      ),
-      // Read out of the Grant this device actually opened, never out of what
-      // it expected to be given. The Authority refuses a mismatch, and that
-      // fence is only a fence if this side reports what it holds.
-      storedClaimGeneration: deviceRef['claim_generation']! as int,
-      storedTrustEpoch: deviceRef['trust_epoch']! as int,
-    );
+          deviceRef: deviceRef)),
+    ));
+    final state = await resumeAcknowledgement(correlationId: correlationId);
+    return MobileBodyClaim(grant: grant, claimState: state!);
+  }
 
-    // Remembered before the key is dropped, so a failure to write is a
-    // failure of this call rather than a Claim that exists at the Authority and
-    // nowhere here.
-    await _claims.save(
-      MobileBodyClaimRecord(
-        deviceRef: deviceRef,
-        grantId: grant.json['grant_id']! as String,
-        ownerDomainId: deviceRef['owner_domain_id']! as String,
-        deviceInstanceId: deviceRef['device_instance_id']! as String,
-        acknowledgedAt: _clock().toUtc(),
-      ),
+  Future<String?> resumeAcknowledgement({required String correlationId}) async {
+    final identity = await _platform.getDeviceIdentity();
+    final record = await _claims.loadFor(identity.operationalPublicKey);
+    if (record == null || !record.ackPending) return null;
+    final enrollmentId = record.enrollmentId;
+    final commandId = record.ackCommandId;
+    if (enrollmentId == null || commandId == null || record.ackProof == null) {
+      throw const FormatException('Stored grant acknowledgement is incomplete');
+    }
+    final answer = await _authority.ackClaimGrant(
+      commandId: commandId,
+      correlationId: correlationId,
+      enrollmentId: enrollmentId,
+      grantId: record.grantId,
+      operationalKeyProof: record.ackProof!,
+      storedClaimGeneration: record.claimGeneration,
+      storedTrustEpoch: record.trustEpoch,
     );
-
-    // One shot, spent.
+    await _claims.save(record.acknowledged(_clock().toUtc()));
     await _platform.discardHandoffKey();
-
-    return MobileBodyClaim(
-      grant: grant,
-      claimState: acknowledged.json['claim_state']! as String,
-    );
+    return answer.json['claim_state']! as String;
   }
 
   /// Abandon a proposal this phone can no longer finish.
@@ -299,4 +337,18 @@ class MobileBodyAdmission {
     );
     await _platform.discardHandoffKey();
   }
+}
+
+class _PreparedProposal {
+  const _PreparedProposal(
+      {required this.commandId,
+      required this.identity,
+      required this.handoff,
+      required this.evidence,
+      required this.proof});
+  final String commandId;
+  final DeviceIdentity identity;
+  final PlatformHandoffKey handoff;
+  final Map<String, Object?> evidence;
+  final Map<String, Object?> proof;
 }

@@ -94,13 +94,14 @@ void main() {
   }) {
     return MobileBodyEnrollmentSession(
       buildAdmission: (target) => MobileBodyAdmission(
-        controller: _StubController(),
+        issueVoucher: _StubController().issueCommissioningVoucher,
         authority: AdmissionAuthorityClient(
           authority: Uri.parse('https://hub.owner-domain.invalid'),
           transport: transport ??
               MockClient((_) async => http.Response(
                     jsonEncode(
-                      canonicalContractValue('DF-ADMISSION-CREATE-RESULT-VALID'),
+                      canonicalContractValue(
+                          'DF-ADMISSION-CREATE-RESULT-VALID'),
                     ),
                     201,
                     headers: const {'content-type': 'application/json'},
@@ -208,7 +209,7 @@ void main() {
     );
   });
 
-  test('an unfinishable leftover does not block a new proposal', () async {
+  test('an ended proposal permits a new proposal', () async {
     // The other side of the same rule: once the key is gone the old proposal
     // can never be used, so it must not stand in the way of a new one.
     final platform = _KeyedPlatform(holdsKey: false);
@@ -217,6 +218,7 @@ void main() {
       title: 'Eidolon Mobile',
     );
     platform.holdsKey = false;
+    await flow.actFor(MobileBodyStanding.admissionEnded);
 
     final again = await flow.propose(
       title: 'Eidolon Mobile',
@@ -266,7 +268,8 @@ void main() {
               as String,
         );
         return http.Response(
-          jsonEncode(canonicalContractValue('DF-ADMISSION-CREATE-RESULT-VALID')),
+          jsonEncode(
+              canonicalContractValue('DF-ADMISSION-CREATE-RESULT-VALID')),
           201,
           headers: const {'content-type': 'application/json'},
         );
@@ -275,6 +278,7 @@ void main() {
 
     for (var index = 0; index < 4; index += 1) {
       platform.holdsKey = false;
+      await flow.actFor(MobileBodyStanding.admissionEnded);
       await flow.propose(
         title: 'Eidolon Mobile',
       );

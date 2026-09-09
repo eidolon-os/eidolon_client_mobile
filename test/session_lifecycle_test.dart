@@ -41,7 +41,7 @@ void main() {
   ({ClientController controller, _LifecycleSession session}) build() {
     final session = _LifecycleSession();
     final controller = ClientController(
-      platform: FakePhonePlatform(),
+      platform: _MicGrantedPlatform(),
       session: session,
       conversationProvisioner: _FakeProvisioner(active()),
     );
@@ -52,14 +52,14 @@ void main() {
       jsonEncode(<String, Object?>{
         'schema_v': sessionControlSchemaVersion,
         'type': type,
-        if (conversationId != null)
-          sessionConversationIdField: conversationId,
+        if (conversationId != null) sessionConversationIdField: conversationId,
         if (reason != null) sessionEndReasonField: reason,
       });
 
   test('a conversation is not confirmed until the far end says so', () async {
     final built = build();
     await built.controller.start();
+    await built.controller.join();
 
     // Nothing has answered. This is the state the screen was calling
     // 「正在聆听」.
@@ -89,6 +89,7 @@ void main() {
     // mistake the Device Control nonce echo exists to prevent, one topic over.
     final built = build();
     await built.controller.start();
+    await built.controller.join();
 
     built.session.emit(
       packet(sessionStartedType, conversationId: 'mobile-someone-else-0001'),
@@ -109,6 +110,7 @@ void main() {
     // is what happened while the agent was crashing on startup.
     final built = build();
     await built.controller.start();
+    await built.controller.join();
     final id = built.session.conversationId;
 
     built.session.emit(
@@ -129,6 +131,7 @@ void main() {
     // to get the message ignored.
     final built = build();
     await built.controller.start();
+    await built.controller.join();
     final id = built.session.conversationId;
 
     built.session.emit(
@@ -155,7 +158,8 @@ class _LifecycleSession extends EidolonSession {
   @override
   String? get conversationId => 'mobile-0123abcd-4567ef89-00000001';
 
-  void emit(String payload) => _data.add(SessionData(sessionControlTopic, payload));
+  void emit(String payload) =>
+      _data.add(SessionData(sessionControlTopic, payload));
 
   @override
   Stream<SessionState> get stateEvents => _states.stream;
@@ -203,4 +207,9 @@ class _FakeProvisioner implements ConversationProvisioner {
 
   @override
   Future<HubConfig> provision({String sessionIntent = ''}) async => _config;
+}
+
+class _MicGrantedPlatform extends FakePhonePlatform {
+  @override
+  Future<bool> requestMicrophonePermission() async => true;
 }

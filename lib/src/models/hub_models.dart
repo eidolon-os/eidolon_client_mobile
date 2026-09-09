@@ -83,6 +83,7 @@ class HubConfig {
     this.bodyStanding,
     this.bodyEnrollment,
     this.channelRefusal,
+    this.diagnostic = '',
   });
 
   /// Why there is no channel, when Device Control refused to say.
@@ -91,6 +92,7 @@ class HubConfig {
   /// Host answered and simply had no channel yet. See [ChannelRefusal] for why
   /// this is its own field rather than more [bodyStanding] values.
   final ChannelRefusal? channelRefusal;
+  final String diagnostic;
 
   final HubConfigStatus status;
   final RoomConfig session;

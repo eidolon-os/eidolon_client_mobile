@@ -10,11 +10,12 @@ import 'src/avatar/idle_clip_cache.dart';
 import 'src/avatar/avatar_stage.dart';
 import 'src/controller/client_controller.dart';
 import 'src/features/conversation/conversation_provisioner.dart';
-import 'src/features/conversation/mobile_conversation_provisioner.dart';
-import 'src/features/device_setup/device_admission_queue.dart';
-import 'src/features/device_setup/mobile_body_claim_store.dart';
+import 'src/features/conversation/conversation_flow.dart';
+import 'src/features/conversation/mobile_device_runtime.dart';
+import 'src/features/conversation/product_conversation_page.dart';
+import 'src/features/device_management/mounted_devices_page.dart';
+import 'src/features/host_setup/host_runtime_status_page.dart';
 import 'src/features/device_setup/mobile_body_enrollment_session.dart';
-import 'src/features/device_setup/mobile_body_enrollment_wiring.dart';
 import 'src/features/device_setup/device_setup_ports.dart';
 import 'src/features/device_setup/host_controller_device_admission.dart';
 import 'src/features/setup/eidolon_app_shell.dart';
@@ -26,7 +27,7 @@ void main() {
   runApp(const EidolonMobileApp());
 }
 
-class EidolonMobileApp extends StatelessWidget {
+class EidolonMobileApp extends StatefulWidget {
   const EidolonMobileApp({
     super.key,
     this.hostRegistry,
@@ -35,6 +36,13 @@ class EidolonMobileApp extends StatelessWidget {
 
   final HostRegistry? hostRegistry;
   final DeviceProvisioningTransport? deviceProvisioning;
+
+  @override
+  State<EidolonMobileApp> createState() => _EidolonMobileAppState();
+}
+
+class _EidolonMobileAppState extends State<EidolonMobileApp> {
+  late final MobileDeviceRuntime _deviceRuntime = MobileDeviceRuntime();
 
   @override
   Widget build(BuildContext context) {
@@ -50,19 +58,60 @@ class EidolonMobileApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: EidolonAppShell(
-        registry: hostRegistry,
-        deviceProvisioning: deviceProvisioning,
-        conversationBuilder: (_, controller) => ClientPage(
-          provisioner: MobileConversationProvisioner(
-            loadTarget: controller.fetchDeviceOnboardingTarget,
-            admission: HostControllerDeviceAdmission(controller),
-            claims: PlatformMobileBodyClaimStore(),
-            buildDeviceControl: deviceControlClientBuilder(),
-          ),
-          enrollment: buildMobileBodyEnrollment(controller),
-          onApproveThisPhone: (context) =>
-              openDeviceAdmissionQueue(context, controller),
-        ),
+        registry: widget.hostRegistry,
+        deviceProvisioning: widget.deviceProvisioning,
+        conversationBuilder: (_, controller) {
+          Future<void>? preparing;
+          Future<void> prepareManagement() {
+            if (controller.workspace?.isReady == true) {
+              return Future<void>.value();
+            }
+            return preparing ??=
+                controller.connect().whenComplete(() => preparing = null);
+          }
+
+          return ProductConversationPage(
+            hostName: controller.host.displayName,
+            createFlow: () => _deviceRuntime.open(
+                hostId: controller.host.hostId,
+                hostName: controller.host.displayName,
+                bootstrap: () async {
+                  await prepareManagement();
+                  return controller.fetchDeviceOnboardingTarget();
+                },
+                management: ConversationManagement(
+                    controllerId: controller.host.controllerId,
+                    admission: HostControllerDeviceAdmission(controller),
+                    roster: ({cursor}) async {
+                      await prepareManagement();
+                      return controller.roster(cursor: cursor);
+                    },
+                    device: (id) async {
+                      await prepareManagement();
+                      await controller.refreshDevices();
+                      if (controller.devicesError != null) {
+                        throw StateError(controller.devicesError!);
+                      }
+                      return controller.devices?.devices
+                          .where((d) => d.deviceId == id)
+                          .firstOrNull;
+                    },
+                    assign: controller.setDeviceCompanion)),
+            openDevices: (context) => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                    builder: (_) =>
+                        MountedDevicesPage(controller: controller))),
+            openHostStatus: (context) async {
+              final connection = controller.connection;
+              if (connection == null) throw StateError('请先连接主机管理服务');
+              await Navigator.of(context).push<void>(MaterialPageRoute(
+                  builder: (_) => HostRuntimeStatusPage(
+                      host: controller.host,
+                      connection: connection,
+                      readMonitor: controller.hostMonitor)));
+            },
+          );
+        },
       ),
     );
   }
@@ -227,7 +276,7 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
                   child: _Actions(
                     controller: controller,
                     onApproveThisPhone: widget.onApproveThisPhone,
-                    ),
+                  ),
                 ),
               ],
             ),
@@ -264,7 +313,7 @@ class _ClientPageState extends State<ClientPage> with WidgetsBindingObserver {
             child: _Actions(
               controller: controller,
               onApproveThisPhone: widget.onApproveThisPhone,
-              ),
+            ),
           ),
         ],
       ];
@@ -1113,13 +1162,13 @@ class _Actions extends StatelessWidget {
       // one-shot key and challenge the Enrollment needs. `enrollmentAct` is
       // that pair already resolved — see `mobile_body_enrollment_session.dart`.
       ClientPhase.bodyBlocked => _EnrollmentAction(controller: controller),
-      ClientPhase.awaitingApproval when controller.awaitsThisControllersApproval
-              && onApproveThisPhone != null =>
+      ClientPhase.awaitingApproval
+          when controller.awaitsThisControllersApproval &&
+              onApproveThisPhone != null =>
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed:
-                state.busy ? null : () => onApproveThisPhone!(context),
+            onPressed: state.busy ? null : () => onApproveThisPhone!(context),
             icon: const Icon(Icons.verified_user_rounded),
             label: const Padding(
               padding: EdgeInsets.symmetric(vertical: 13),
@@ -1133,7 +1182,8 @@ class _Actions extends StatelessWidget {
       // the only thing on screen while a Grant sat waiting to be redeemed. The
       // controller now redeems it by itself; this is what a person is left with
       // when that attempt failed.
-      ClientPhase.awaitingApproval || ClientPhase.awaitingBinding
+      ClientPhase.awaitingApproval ||
+      ClientPhase.awaitingBinding
           when controller.enrollmentAct != MobileBodyEnrollmentAct.none &&
               !(controller.phase == ClientPhase.awaitingApproval &&
                   controller.awaitsThisControllersApproval) =>

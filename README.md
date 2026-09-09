@@ -9,13 +9,19 @@ Mobile Setup -> BLE GATT -> pinned TLS -> bootstrapd -> NetworkManager
              -> LAN pinned HTTPS -> Local API -> Admin -> Data Workspace Authority
 ```
 
-现有 Hub/LiveKit/Audio Demo 保留在同一 codebase，但已退出默认启动流程，等主机
-初始化和管理闭环稳定后再重新接入：
+Mobile 同时作为标准虚拟 Device，通过已选主机的「打开对话」进入对话页。
+首次接入在页内分两次明确操作：登记本机、核对身份后确认接入；随后沿标准
+Admission → collect → ACK → Device Control → Channel 流程准备。
 
 ```text
-mDNS 发现 Hub -> P-256 签名注册 -> 审批/绑定 -> LiveKit control room
-                                            -> voice room + AEC 对话
+Owner 可信目录 + operational key + Claim → Device Control → LiveKit Channel
+                                                       → session_open / close
+Controller 管理能力 → 明确批准本机提案 / 选择本机应答伙伴（标准 BodyAssignment）
 ```
+
+已接入设备直接使用保存并校验的 Owner 目录和 Claim 查询配置，不依赖管理审批
+列表。伙伴选择沿用到后续对话；对话中切换会结束旧会话、确认绑定后开启新会话。
+原音频开发页保留用于兼容测试，不是产品默认入口。
 
 ## 已实现
 

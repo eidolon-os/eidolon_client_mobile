@@ -18,7 +18,8 @@
 ///
 /// A `DeviceRef` is not one. The operational key that makes it usable stays in
 /// the Android Keystore and is never written anywhere, and the handoff key that
-/// opened the Grant is gone by the time this is saved. The checkpoint rule this
+/// opened the Grant is discarded after ACK. A pending checkpoint retains only
+/// the public reference and a proof scoped to that exact ACK. The checkpoint rule this
 /// app already follows — no Wi-Fi passwords, no pairing material, no Controller
 /// credentials — is intact.
 ///
@@ -43,6 +44,10 @@ class MobileBodyClaimRecord {
     required this.ownerDomainId,
     required this.deviceInstanceId,
     required this.acknowledgedAt,
+    this.enrollmentId,
+    this.ackCommandId,
+    this.ackProof,
+    this.ackPending = false,
   });
 
   /// The reference the Authority sealed into the Grant, carried whole.
@@ -64,6 +69,19 @@ class MobileBodyClaimRecord {
   final String deviceInstanceId;
 
   final DateTime acknowledgedAt;
+  final String? enrollmentId;
+  final String? ackCommandId;
+  final String? ackProof;
+  final bool ackPending;
+
+  MobileBodyClaimRecord acknowledged(DateTime at) => MobileBodyClaimRecord(
+        deviceRef: deviceRef,
+        grantId: grantId,
+        ownerDomainId: ownerDomainId,
+        deviceInstanceId: deviceInstanceId,
+        acknowledgedAt: at,
+        enrollmentId: enrollmentId,
+      );
 
   int get claimGeneration => deviceRef['claim_generation']! as int;
 
@@ -100,6 +118,10 @@ class MobileBodyClaimRecord {
       ownerDomainId: ownerDomainId,
       deviceInstanceId: instanceId,
       acknowledgedAt: DateTime.parse(acknowledgedAt).toUtc(),
+      enrollmentId: value['enrollment_id'] as String?,
+      ackCommandId: value['ack_command_id'] as String?,
+      ackProof: value['ack_proof'] as String?,
+      ackPending: value['ack_pending'] == true,
     );
   }
 
@@ -109,6 +131,10 @@ class MobileBodyClaimRecord {
         'owner_domain_id': ownerDomainId,
         'device_instance_id': deviceInstanceId,
         'acknowledged_at': acknowledgedAt.toUtc().toIso8601String(),
+        if (enrollmentId != null) 'enrollment_id': enrollmentId,
+        if (ackCommandId != null) 'ack_command_id': ackCommandId,
+        if (ackProof != null) 'ack_proof': ackProof,
+        'ack_pending': ackPending,
       };
 }
 

@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import '../device_setup/device_setup_ports.dart';
 import '../../management/management_client.dart';
 import '../host_setup/host_local_connection_page.dart';
+import '../host_setup/host_product_controller.dart';
 import 'commissioning_transport.dart';
 import 'change_network_page.dart';
 import 'controller_key_bridge.dart';
@@ -331,6 +332,29 @@ class _HostDetailPageState extends State<_HostDetailPage> {
   Future<void> Function(String hostId) get onHostRemoved =>
       widget.onHostRemoved;
 
+  bool _openingConversation = false;
+
+  Future<void> _openConversation() async {
+    final builder = conversationBuilder;
+    if (builder == null || _openingConversation) return;
+    _openingConversation = true;
+    final controller = HostProductController(
+        host: host,
+        transport: setupTransport,
+        controllerKeys: controllerKeys,
+        onHostUpdated: (updated) async {
+          await onHostUpdated(updated);
+          if (mounted) setState(() => host = updated);
+        });
+    try {
+      await Navigator.of(context).push<void>(MaterialPageRoute(
+          builder: (context) => builder(context, controller)));
+    } finally {
+      controller.dispose();
+      _openingConversation = false;
+    }
+  }
+
   /// What this Host is called is this phone's to decide.
   ///
   /// A Host names itself after its own identifier, so a second one looks like
@@ -395,6 +419,16 @@ class _HostDetailPageState extends State<_HostDetailPage> {
               ),
             ),
             const SizedBox(height: 20),
+            if (conversationBuilder != null) ...[
+              _ManagementEntry.available(
+                key: const Key('open-device-conversation'),
+                icon: Icons.graphic_eq_rounded,
+                title: '开始对话',
+                subtitle: '将本机作为虚拟设备，与这台主机上的伙伴交谈',
+                onTap: _openConversation,
+              ),
+              const SizedBox(height: 20),
+            ],
             Text('主机管理', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             _ManagementEntry.available(
