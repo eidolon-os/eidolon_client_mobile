@@ -35,8 +35,6 @@ class PlatformOwnerDomainDirectoryVerifier
   final AppPreferences _preferences;
   final OwnerDomainSignatureVerifierPort _signatureVerifier;
 
-  static Future<void> _acceptQueue = Future<void>.value();
-
   @override
   Future<void> verify(DeviceOnboardingTarget target) async {
     final canonical = canonicalOwnerDomainDescriptorSigningJson(target);
@@ -45,9 +43,8 @@ class PlatformOwnerDomainDirectoryVerifier
       target: target,
       canonicalSigningDocument: canonical,
     );
-    final result = _acceptQueue.then((_) => _acceptVerified(target, canonical));
-    _acceptQueue = result.then<void>((_) {}, onError: (_, __) {});
-    return result;
+    return PreferenceWrites.run(
+        _preferences, _preferenceKey, () => _acceptVerified(target, canonical));
   }
 
   void _validateWindow(DeviceOnboardingTarget target) {

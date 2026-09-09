@@ -123,6 +123,10 @@ abstract interface class HostRegistry {
 
   Future<void> save(ManagedHost host);
 
+  /// An asynchronous observation cannot recreate a forgotten Host or replace
+  /// a newer registration, name, trust pin, or connection result.
+  Future<ManagedHost?> updateObservation(ManagedHost observed);
+
   /// Forget a Host on this phone. Nothing is asked of the Host: it may be
   /// gone, or replaced by a reinstall, and either way this list is the only
   /// place the entry exists.
@@ -137,7 +141,6 @@ class PlatformHostRegistry implements HostRegistry {
       : _preferences = preferences ?? PlatformAppPreferences();
 
   final AppPreferences _preferences;
-  Future<void> _writeQueue = Future<void>.value();
 
   @override
   Future<List<ManagedHost>> load() async {
@@ -165,7 +168,7 @@ class PlatformHostRegistry implements HostRegistry {
 
   @override
   Future<void> save(ManagedHost host) {
-    final result = _writeQueue.then((_) async {
+    return PreferenceWrites.run(_preferences, _key, () async {
       final current = await load();
       final next = [
         host,
@@ -176,13 +179,25 @@ class PlatformHostRegistry implements HostRegistry {
         jsonEncode(next.map((item) => item.toJson()).toList()),
       );
     });
-    _writeQueue = result.then<void>((_) {}, onError: (_, __) {});
-    return result;
   }
 
   @override
+  Future<ManagedHost?> updateObservation(ManagedHost observed) =>
+      PreferenceWrites.run(_preferences, _key, () async {
+        final current = await load();
+        final index = current.indexWhere((h) => h.hostId == observed.hostId);
+        if (index < 0) return null;
+        final updated = _mergeObservation(current[index], observed);
+        if (updated == null) return null;
+        current[index] = updated;
+        await _preferences.writeString(
+            _key, jsonEncode(current.map((h) => h.toJson()).toList()));
+        return updated;
+      });
+
+  @override
   Future<void> remove(String hostId) {
-    final result = _writeQueue.then((_) async {
+    return PreferenceWrites.run(_preferences, _key, () async {
       final current = await load();
       final next = current.where((item) => item.hostId != hostId);
       await _preferences.writeString(
@@ -190,8 +205,6 @@ class PlatformHostRegistry implements HostRegistry {
         jsonEncode(next.map((item) => item.toJson()).toList()),
       );
     });
-    _writeQueue = result.then<void>((_) {}, onError: (_, __) {});
-    return result;
   }
 }
 
@@ -209,6 +222,15 @@ class InMemoryHostRegistry implements HostRegistry {
     _hosts
       ..removeWhere((item) => item.hostId == host.hostId)
       ..insert(0, host);
+  }
+
+  @override
+  Future<ManagedHost?> updateObservation(ManagedHost observed) async {
+    final index = _hosts.indexWhere((h) => h.hostId == observed.hostId);
+    if (index < 0) return null;
+    final updated = _mergeObservation(_hosts[index], observed);
+    if (updated != null) _hosts[index] = updated;
+    return updated;
   }
 
   @override
@@ -250,4 +272,22 @@ class HostMachineInfo {
         'cpu_cores': cpuCores,
         'memory_bytes': memoryBytes,
       };
+}
+
+ManagedHost? _mergeObservation(ManagedHost current, ManagedHost observed) {
+  if (current.hostPublicKey != observed.hostPublicKey ||
+      current.controllerId != observed.controllerId ||
+      current.claimedAt != observed.claimedAt ||
+      current.tlsSpkiFingerprint != observed.tlsSpkiFingerprint) {
+    return null;
+  }
+  if (current.lastConnectedAt != null &&
+      (observed.lastConnectedAt == null ||
+          current.lastConnectedAt!.isAfter(observed.lastConnectedAt!))) {
+    return current;
+  }
+  return current.copyWith(
+      lastKnownBaseUrl: observed.lastKnownBaseUrl,
+      machineInfo: observed.machineInfo,
+      lastConnectedAt: observed.lastConnectedAt);
 }

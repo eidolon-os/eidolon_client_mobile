@@ -5,13 +5,22 @@ import 'package:flutter/services.dart';
 import '../models/hub_models.dart';
 
 class PlatformBridge {
-  const PlatformBridge();
+  const PlatformBridge({this.deviceScope});
+
+  /// Immutable virtual Device selection; never a mutable globally selected Host.
+  final String? deviceScope;
+
+  PlatformBridge forDevice(String scope) => PlatformBridge(deviceScope: scope);
+
+  Map<String, Object?> get _deviceArguments =>
+      {if (deviceScope != null) 'deviceScope': deviceScope};
 
   static const _channel = MethodChannel('live.eidolon.mobile/platform');
 
   Future<DeviceIdentity> getDeviceIdentity() async {
     final result = await _channel.invokeMapMethod<Object?, Object?>(
       'getDeviceIdentity',
+      _deviceArguments,
     );
     if (result == null) {
       throw StateError('Platform did not return a device identity');
@@ -26,7 +35,12 @@ class PlatformBridge {
   }) async {
     final result = await _channel.invokeMapMethod<Object?, Object?>(
       'signRequest',
-      {'method': method, 'pathQuery': pathQuery, 'body': body},
+      {
+        ..._deviceArguments,
+        'method': method,
+        'pathQuery': pathQuery,
+        'body': body
+      },
     );
     if (result == null) {
       throw StateError('Platform did not return signed headers');
@@ -41,13 +55,12 @@ class PlatformBridge {
   /// implementation lives and where the vectors that pin it are applied. The
   /// platform signs the bytes it is given and never re-encodes them.
   ///
-  /// Which key signs is deliberately not a parameter: the operational key and
-  /// the Controller key say different things to a Host, and a caller that could
-  /// pick between them could sign an enrollment with the Controller's identity.
+  /// The immutable Device scope selects only an operational key. Controller
+  /// keys remain a separate platform capability and cannot be selected here.
   Future<String> signDeviceCanonicalDocument(String document) async {
     final signature = await _channel.invokeMethod<String>(
       'signDeviceCanonicalDocument',
-      {'document': document},
+      {..._deviceArguments, 'document': document},
     );
     if (signature == null || signature.isEmpty) {
       throw StateError('Platform did not return a signature');
@@ -63,6 +76,7 @@ class PlatformBridge {
   Future<PlatformHandoffKey> issueHandoffKey() async {
     final result = await _channel.invokeMapMethod<Object?, Object?>(
       'issueHandoffKey',
+      _deviceArguments,
     );
     if (result == null) {
       throw StateError('Platform did not return a handoff key');
@@ -90,6 +104,7 @@ class PlatformBridge {
     final plaintext = await _channel.invokeMethod<String>(
       'openClaimGrant',
       {
+        ..._deviceArguments,
         'handle': handle,
         'encapsulatedKey': encapsulatedKey,
         'aad': base64Url.encode(utf8.encode(aad)).replaceAll('=', ''),
@@ -118,7 +133,7 @@ class PlatformBridge {
   }) async {
     final signature = await _channel.invokeMethod<String>(
       'signHandoffCanonicalDocument',
-      {'handle': handle, 'document': document},
+      {..._deviceArguments, 'handle': handle, 'document': document},
     );
     if (signature == null || signature.isEmpty) {
       throw StateError('Platform did not return a handoff key proof');
@@ -134,11 +149,12 @@ class PlatformBridge {
   /// be opened — by this phone or anyone. A screen that cannot ask this would
   /// keep saying 「正在领取归属凭证」 about a collection that is not happening.
   Future<bool> holdsHandoffKey() async =>
-      await _channel.invokeMethod<bool>('holdsHandoffKey') ?? false;
+      await _channel.invokeMethod<bool>('holdsHandoffKey', _deviceArguments) ??
+      false;
 
   /// Forget the handoff key once its one shot is spent, or abandoned.
   Future<void> discardHandoffKey() async {
-    await _channel.invokeMethod<bool>('discardHandoffKey');
+    await _channel.invokeMethod<bool>('discardHandoffKey', _deviceArguments);
   }
 
   Future<bool> requestMicrophonePermission() async =>

@@ -23,12 +23,8 @@
 /// app already follows — no Wi-Fi passwords, no pairing material, no Controller
 /// credentials — is intact.
 ///
-/// ## Why it is one slot
-///
-/// This phone is one Body. Two records for one device instance id is not a case
-/// to carry; a second Claim means the first was replaced, and the record should
-/// say the current thing rather than accumulate history the Authority already
-/// keeps.
+/// Each virtual Device has one Claim. The App may host independent Devices
+/// for different Owner Domains; their keys and records must never be shared.
 library;
 
 import 'dart:convert';
@@ -161,13 +157,16 @@ abstract interface class MobileBodyClaimStore {
 }
 
 class PlatformMobileBodyClaimStore implements MobileBodyClaimStore {
-  PlatformMobileBodyClaimStore({AppPreferences? preferences})
+  PlatformMobileBodyClaimStore(
+      {AppPreferences? preferences, this.ownerDomainId})
       : _preferences = preferences ?? PlatformAppPreferences();
 
-  static const _key = 'eidolon.mobile-body-claim.v1';
+  final String? ownerDomainId;
+  String get _key => ownerDomainId == null
+      ? 'eidolon.mobile-body-claim.v1'
+      : 'eidolon.mobile-body-claim.v1.${Uri.encodeComponent(ownerDomainId!)}';
 
   final AppPreferences _preferences;
-  Future<void> _writeQueue = Future<void>.value();
 
   @override
   Future<MobileBodyClaimRecord?> load() async {
@@ -200,20 +199,22 @@ class PlatformMobileBodyClaimStore implements MobileBodyClaimStore {
 
   @override
   Future<void> save(MobileBodyClaimRecord record) {
-    final result = _writeQueue.then((_) async {
+    if (ownerDomainId != null &&
+        (record.ownerDomainId != ownerDomainId ||
+            record.deviceRef['owner_domain_id'] != ownerDomainId)) {
+      throw const FormatException(
+          'Claim belongs to another virtual Device scope');
+    }
+    return PreferenceWrites.run(_preferences, _key, () async {
       await _preferences.writeString(_key, jsonEncode(record.toJson()));
     });
-    _writeQueue = result.then<void>((_) {}, onError: (_, __) {});
-    return result;
   }
 
   @override
   Future<void> clear() {
-    final result = _writeQueue.then((_) async {
+    return PreferenceWrites.run(_preferences, _key, () async {
       await _preferences.writeString(_key, '');
     });
-    _writeQueue = result.then<void>((_) {}, onError: (_, __) {});
-    return result;
   }
 }
 

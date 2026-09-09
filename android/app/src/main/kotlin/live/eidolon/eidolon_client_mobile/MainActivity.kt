@@ -61,7 +61,16 @@ class MainActivity : FlutterActivity() {
     private var setupScanResult: MethodChannel.Result? = null
     private var commissioningManager: BleCommissioningManager? = null
     /** This enrollment's handoff key. In memory only; see HandoffKeyHolder. */
-    private val handoffKeys = HandoffKeyHolder()
+    private val handoffKeys = mutableMapOf<String, HandoffKeyHolder>()
+
+    private fun deviceKeyAlias(call: MethodCall): String {
+        val scope = call.argument<String>("deviceScope") ?: return KEY_ALIAS
+        require(scope.isNotBlank() && scope.length <= 256) { "Invalid Device scope" }
+        return "$KEY_ALIAS-${hex(sha256(scope.toByteArray(StandardCharsets.UTF_8)))}"
+    }
+
+    private fun handoffKeys(call: MethodCall): HandoffKeyHolder =
+        handoffKeys.getOrPut(deviceKeyAlias(call)) { HandoffKeyHolder() }
 
     private val pinnedHttpsClient by lazy { PinnedHttpsClient(mainHandler) }
     private val deviceProvisioning by lazy {
@@ -81,7 +90,7 @@ class MainActivity : FlutterActivity() {
                     call.argument<Int>("timeoutMs") ?: 5000,
                     result,
                 )
-                "getDeviceIdentity" -> result.success(deviceIdentity())
+                "getDeviceIdentity" -> result.success(deviceIdentity(call))
                 "signRequest" -> result.success(signRequest(call))
                 "verifyOwnerDomainDescriptor" ->
                     result.success(verifyOwnerDomainDescriptor(call))
@@ -89,13 +98,13 @@ class MainActivity : FlutterActivity() {
                 "signControllerChallenge" -> result.success(signControllerChallenge(call))
                 "signDeviceCanonicalDocument" ->
                     result.success(signDeviceCanonicalDocument(call))
-                "issueHandoffKey" -> result.success(issueHandoffKey())
+                "issueHandoffKey" -> result.success(issueHandoffKey(call))
                 "openClaimGrant" -> result.success(openClaimGrant(call))
                 "signHandoffCanonicalDocument" ->
                     result.success(signHandoffCanonicalDocument(call))
-                "holdsHandoffKey" -> result.success(handoffKeys.holdsKey())
+                "holdsHandoffKey" -> result.success(handoffKeys(call).holdsKey())
                 "discardHandoffKey" -> {
-                    handoffKeys.discard()
+                    handoffKeys.remove(deviceKeyAlias(call))?.discard()
                     result.success(true)
                 }
                 "pinnedHttpsRequest" -> pinnedHttpsClient.request(call, result)
@@ -159,13 +168,14 @@ class MainActivity : FlutterActivity() {
                     ),
                 )
                 "writeAppPreference" -> {
-                    getSharedPreferences("eidolon-mobile", Context.MODE_PRIVATE)
+                    val saved = getSharedPreferences("eidolon-mobile", Context.MODE_PRIVATE)
                         .edit()
                         .putString(
                             call.argument<String>("key") ?: error("key is required"),
                             call.argument<String>("value") ?: error("value is required"),
                         )
-                        .apply()
+                        .commit()
+                    check(saved) { "App preference could not be persisted" }
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -207,8 +217,8 @@ class MainActivity : FlutterActivity() {
         return keyStore.getEntry(alias, null) as KeyStore.PrivateKeyEntry
     }
 
-    private fun deviceIdentity(): Map<String, String> {
-        val publicDer = ensureKeyEntry().certificate.publicKey.encoded
+    private fun deviceIdentity(call: MethodCall): Map<String, String> {
+        val publicDer = ensureKeyEntry(deviceKeyAlias(call)).certificate.publicKey.encoded
         return mapOf(
             // Kept, and no longer offered as this device's identity to anything
             // that talks to Hub. It names the install, which is all ANDROID_ID
@@ -273,11 +283,9 @@ class MainActivity : FlutterActivity() {
      * every Eidolon contract states ES256 that way, and
      * `golden/es256-vectors.json` is the authority for it.
      *
-     * The key is not a parameter. `signRequest` and `signControllerChallenge`
-     * each imply theirs the same way, and for good reason: which key speaks for
-     * this device is an application fact, not something a caller should be able
-     * to choose — the operational key and the Controller key mean different
-     * things to a Host and must never be interchangeable from up there.
+     * Device scope selects an operational key within the dedicated Device
+     * namespace. It cannot select the separate Controller key alias. The
+     * caller binds scope once, rather than following a mutable current Host.
      */
     /**
      * Mint the one-shot key this enrollment's ClaimGrant will be sealed to.
@@ -286,8 +294,8 @@ class MainActivity : FlutterActivity() {
      * put in the proposal, the id the envelope will name, and an opaque handle
      * to present when the Grant comes back.
      */
-    private fun issueHandoffKey(): Map<String, String> {
-        val issued = handoffKeys.issue()
+    private fun issueHandoffKey(call: MethodCall): Map<String, String> {
+        val issued = handoffKeys(call).issue()
         return mapOf(
             "handle" to issued.handle,
             "publicKey" to issued.publicKeySpki,
@@ -304,7 +312,7 @@ class MainActivity : FlutterActivity() {
         val handle = call.argument<String>("handle") ?: error("handle is required")
         val document = call.argument<String>("document") ?: error("document is required")
         require(document.isNotEmpty()) { "document cannot be empty" }
-        return handoffKeys.sign(handle, document.toByteArray(StandardCharsets.UTF_8))
+        return handoffKeys(call).sign(handle, document.toByteArray(StandardCharsets.UTF_8))
     }
 
     /**
@@ -321,7 +329,7 @@ class MainActivity : FlutterActivity() {
             val value = call.argument<String>(name) ?: error("$name is required")
             return Base64.decode(value, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
         }
-        val plaintext = handoffKeys.open(
+        val plaintext = handoffKeys(call).open(
             handle = handle,
             encapsulatedKey = bytes("encapsulatedKey"),
             aad = bytes("aad"),
@@ -335,7 +343,7 @@ class MainActivity : FlutterActivity() {
             ?: error("document is required")
         require(document.isNotEmpty()) { "document cannot be empty" }
         val signer = Signature.getInstance("SHA256withECDSA")
-        signer.initSign(ensureKeyEntry().privateKey)
+        signer.initSign(ensureKeyEntry(deviceKeyAlias(call)).privateKey)
         signer.update(document.toByteArray(StandardCharsets.UTF_8))
         return base64Url(EcdsaSignatureEncoding.derToP1363(signer.sign()))
     }
@@ -344,7 +352,7 @@ class MainActivity : FlutterActivity() {
         val method = call.argument<String>("method") ?: error("method is required")
         val pathQuery = call.argument<String>("pathQuery") ?: error("pathQuery is required")
         val body = call.argument<String>("body") ?: ""
-        val entry = ensureKeyEntry()
+        val entry = ensureKeyEntry(deviceKeyAlias(call))
         val nonceBytes = ByteArray(16).also(SecureRandom()::nextBytes)
         val nonce = base64Url(nonceBytes)
         val timestamp = (System.currentTimeMillis() / 1000L).toString()

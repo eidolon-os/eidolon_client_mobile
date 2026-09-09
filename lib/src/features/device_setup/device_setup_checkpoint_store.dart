@@ -28,19 +28,16 @@ class PersistentDeviceSetupCheckpointStore
 
   final AppPreferences _preferences;
   final int maximumEntries;
-  Future<void> _writeQueue = Future<void>.value();
 
   @override
   Future<DeviceSetupCheckpoint?> load(String setupId) async {
     _validateSetupId(setupId);
-    await _writeQueue;
     final entries = await _readEntries();
     return entries.where((item) => item.setupId == setupId).firstOrNull;
   }
 
   @override
   Future<List<DeviceSetupCheckpoint>> list() async {
-    await _writeQueue;
     final entries = await _readEntries();
     entries.sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
     return List.unmodifiable(entries);
@@ -112,9 +109,7 @@ class PersistentDeviceSetupCheckpointStore
       );
 
   Future<void> _enqueueWrite(Future<void> Function() operation) {
-    final result = _writeQueue.then((_) => operation());
-    _writeQueue = result.then<void>((_) {}, onError: (_, __) {});
-    return result;
+    return PreferenceWrites.run(_preferences, _preferenceKey, operation);
   }
 
   void _validateSetupId(String setupId) {

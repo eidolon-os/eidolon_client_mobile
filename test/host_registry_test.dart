@@ -54,4 +54,38 @@ void main() {
     expect(loaded.first.hostId, 'ehost-00000000000000000002');
     expect(loaded.first.claimedAt.minute, 5);
   });
+  test('different registry instances serialize writes to the same preferences',
+      () async {
+    final prefs = InMemoryAppPreferences();
+    await Future.wait([
+      PlatformHostRegistry(preferences: prefs).save(_host('1')),
+      PlatformHostRegistry(preferences: prefs).save(_host('2')),
+    ]);
+    expect(await PlatformHostRegistry(preferences: prefs).load(), hasLength(2));
+  });
+
+  test(
+      'late Host observations cannot undo rename, newer route, removal or reclaim',
+      () async {
+    final registry =
+        PlatformHostRegistry(preferences: InMemoryAppPreferences());
+    final original = _host('1');
+    await registry.save(original);
+    final newer = original.copyWith(
+        displayName: '我的主机',
+        lastKnownBaseUrl: 'https://192.0.2.2',
+        lastConnectedAt: DateTime.utc(2026, 9, 10));
+    await registry.save(newer);
+    final result = await registry.updateObservation(original.copyWith(
+        lastKnownBaseUrl: 'https://192.0.2.1',
+        lastConnectedAt: DateTime.utc(2026, 9, 9)));
+    expect(result!.displayName, '我的主机');
+    expect(result.lastKnownBaseUrl, 'https://192.0.2.2');
+    await registry.remove(original.hostId);
+    expect(await registry.updateObservation(original), isNull);
+    expect(await registry.load(), isEmpty);
+    await registry.save(_host('1', minute: 4));
+    expect(await registry.updateObservation(original), isNull);
+    expect((await registry.load()).single.claimedAt.minute, 4);
+  });
 }

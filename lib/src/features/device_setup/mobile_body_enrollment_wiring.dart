@@ -12,16 +12,10 @@
 /// `mobile_body_enrollment.dart`.
 library;
 
-import '../host_setup/host_product_controller.dart';
 import '../host_setup/pinned_http_client.dart';
 import '../conversation/device_control_client.dart';
 import '../conversation/mobile_conversation_provisioner.dart';
-import 'admission_authority_client.dart';
 import 'device_setup_models.dart';
-import 'host_controller_device_admission.dart';
-import 'mobile_body_claim_store.dart';
-import 'mobile_body_enrollment.dart';
-import 'mobile_body_enrollment_session.dart';
 import 'owner_domain_endpoints.dart';
 
 /// Raised when the directory names no endpoint for an authority this app needs.
@@ -46,39 +40,6 @@ class MissingOwnerDomainAuthority implements Exception {
   @override
   String toString() =>
       'Owner Domain $ownerDomainId publishes no $authority authority';
-}
-
-/// The Enrollment session for the Host this Controller is connected to.
-///
-/// Returns null when the Controller has no Owner Domain yet. That is not an
-/// error: a phone cannot propose itself to an Owner Domain that does not exist,
-/// and a null session draws no control rather than a failing one.
-MobileBodyEnrollmentSession buildMobileBodyEnrollment(
-  HostProductController controller, {
-  MobileBodyClaimStore? claims,
-}) {
-  final store = claims ?? PlatformMobileBodyClaimStore();
-  return MobileBodyEnrollmentSession(
-    loadTarget: controller.fetchDeviceOnboardingTarget,
-    buildAdmission: (target) => MobileBodyAdmission(
-      // The Controller half: the one thing here only an Owner may do is have
-      // the Host sign this device's standing.
-      issueVoucher:
-          HostControllerDeviceAdmission(controller).issueCommissioningVoucher,
-      authority: AdmissionAuthorityClient(
-        authority: admissionAuthorityFor(target),
-        // Pinned to the Owner Domain's own root, not to the Host's TLS leaf.
-        // The Host is where the Controller session lives; the Authority is a
-        // different party, and reaching it on the Host's pin would be trusting
-        // the Host to speak for Hub.
-        transport: PlatformPinnedHttpClient.ownerDomain(
-          ownerRootCertificate: target.ownerRootCertificate,
-          addressHints: target.addressHints,
-        ),
-      ),
-      claims: store,
-    ),
-  );
 }
 
 /// Where this Owner Domain says its Admission authority answers.

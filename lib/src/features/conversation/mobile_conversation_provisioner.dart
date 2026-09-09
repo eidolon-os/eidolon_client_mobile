@@ -76,6 +76,10 @@ final class MobileConversationProvisioner
     final target = await _loadTarget();
     final identity = await _platform.getDeviceIdentity();
     final held = await store.loadFor(identity.operationalPublicKey);
+    if (held != null && held.ownerDomainId != target.ownerDomainId) {
+      throw const ConversationRecoveryUnavailable(
+          '设备记录属于另一个 Owner，不能通过恢复更换设备归属。');
+    }
     if (held?.ackPending == true || _currentEnrollmentId?.call() != null) {
       throw const ConversationRecoveryUnavailable('请先完成正在进行的设备登记');
     }

@@ -137,4 +137,89 @@ void main() {
     expect(requested, true);
     expect(result.ownerDomainDescriptor.directoryRevision, 8);
   });
+  test('same Owner through another Host adopts the selected route', () async {
+    final prefs = InMemoryAppPreferences();
+    final directory = DeviceOwnerDirectory(
+        preferences: prefs,
+        verifier: const AcceptingOwnerDomainDirectoryVerifier());
+    await directory.open(
+        hostId: 'host-a',
+        bootstrap: () async =>
+            deviceOnboardingTargetFixture().reachedAt('192.0.2.1'));
+    final b = await directory.open(
+        hostId: 'host-b',
+        bootstrap: () async =>
+            deviceOnboardingTargetFixture().reachedAt('192.0.2.2'));
+    expect(b.hostAddress, '192.0.2.2');
+    final a = await directory.open(
+        hostId: 'host-a', bootstrap: () async => throw StateError('offline'));
+    expect(a.hostAddress, '192.0.2.1');
+  });
+
+  test('older Host lookup cannot undo a newer selected route', () async {
+    final directory = DeviceOwnerDirectory(
+        preferences: InMemoryAppPreferences(),
+        verifier: const AcceptingOwnerDomainDirectoryVerifier());
+    await directory.open(
+        hostId: 'a',
+        bootstrap: () async =>
+            deviceOnboardingTargetFixture().reachedAt('192.0.2.1'));
+    final old = Completer<DeviceOnboardingTarget>();
+    final opening = directory.open(hostId: 'a', bootstrap: () => old.future);
+    await Future<void>.delayed(Duration.zero);
+    await directory.open(
+        hostId: 'b',
+        bootstrap: () async =>
+            deviceOnboardingTargetFixture().reachedAt('192.0.2.2'));
+    old.complete(deviceOnboardingTargetFixture().reachedAt('192.0.2.9'));
+    await opening;
+    expect(
+        (await directory.load(ownerDomainIdFixture)).hostAddress, '192.0.2.2');
+  });
+
+  test('concurrent directory saves retain both Hosts across instances',
+      () async {
+    final prefs = InMemoryAppPreferences();
+    DeviceOwnerDirectory directory() => DeviceOwnerDirectory(
+        preferences: prefs,
+        verifier: const AcceptingOwnerDomainDirectoryVerifier());
+    await Future.wait([
+      directory().open(
+          hostId: 'a',
+          bootstrap: () async =>
+              deviceOnboardingTargetFixture().reachedAt('192.0.2.1')),
+      directory().open(
+          hostId: 'b',
+          bootstrap: () async =>
+              deviceOnboardingTargetFixture().reachedAt('192.0.2.2')),
+    ]);
+    for (final host in ['a', 'b']) {
+      final restored = await directory().open(
+          hostId: host,
+          bootstrap: () => throw StateError('must use saved trust'));
+      expect(restored.hostAddress, host == 'a' ? '192.0.2.1' : '192.0.2.2');
+    }
+  });
+  test('switching to a cached Host keeps the newest accepted Owner descriptor',
+      () async {
+    final directory = DeviceOwnerDirectory(
+        preferences: InMemoryAppPreferences(),
+        verifier: const AcceptingOwnerDomainDirectoryVerifier());
+    await directory.open(
+        hostId: 'a',
+        bootstrap: () async =>
+            deviceOnboardingTargetFixture().reachedAt('192.0.2.1'));
+    final latest = DeviceOnboardingTarget(
+        ownerDomainId: ownerDomainIdFixture,
+        ownerRootCertificate: ownerRootCertificateFixture,
+        authoritySigningCertificate: authoritySigningCertificateFixture,
+        ownerDomainDescriptor: OwnerDomainDescriptorV1.fromJson(
+            {...ownerDomainDescriptorJsonFixture, 'directory_revision': 9}),
+        hostAddress: '192.0.2.2');
+    await directory.open(hostId: 'b', bootstrap: () async => latest);
+    final a = await directory.open(
+        hostId: 'a', bootstrap: () => throw StateError('offline Controller'));
+    expect(a.ownerDomainDescriptor.directoryRevision, 9);
+    expect(a.hostAddress, '192.0.2.1');
+  });
 }

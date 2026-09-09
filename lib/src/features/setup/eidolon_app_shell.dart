@@ -70,24 +70,8 @@ class _EidolonAppShellState extends State<EidolonAppShell> {
       try {
         final result = await (widget.hostInfoReader ?? readHostListInfo)(host);
         if (!mounted) return;
-        final current = await _registry.load();
-        final index = current.indexWhere((h) => h.hostId == host.hostId);
-        if (index < 0 || !mounted) continue;
-        final latest = current[index];
-        // A newer explicit connection wins over an older list request.
-        if (latest.lastConnectedAt != null &&
-            (result.host.lastConnectedAt == null ||
-                latest.lastConnectedAt!
-                    .isAfter(result.host.lastConnectedAt!))) {
-          setState(() => _hostStatuses[host.hostId] = '上次验证可连接');
-          continue;
-        }
-        final updated = latest.copyWith(
-          lastKnownBaseUrl: result.host.lastKnownBaseUrl,
-          machineInfo: result.host.machineInfo,
-          lastConnectedAt: result.host.lastConnectedAt,
-        );
-        await _registry.save(updated);
+        final updated = await _registry.updateObservation(result.host);
+        if (updated == null) continue;
         if (!mounted) return;
         setState(() {
           _hosts = _hosts

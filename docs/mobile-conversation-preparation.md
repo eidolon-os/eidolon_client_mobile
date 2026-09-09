@@ -6,6 +6,8 @@
 
 Host 的 Controller 连接、Device 的 Claim、逻辑 Channel 与 LiveKit Room 各自保留原有职责。退出 Room 不撤销登记，不修改设备归属，不删除逻辑 Channel。设备声明模式，服务端按声明配置既有 pipeline。
 
+2026-09-10 的 Host 切换后续修正将 App 内的虚拟 Device 按 Owner Domain 隔离；每个实例仍使用本页的标准流程。迁移、数据作用域和验收见 [Mobile Host 切换](mobile-host-switching.md)。
+
 ## 执行流程
 
 1. 连接 Host，读取设备配置与伙伴列表，展示已绑定伙伴；不连接 Room，不打开麦克风。

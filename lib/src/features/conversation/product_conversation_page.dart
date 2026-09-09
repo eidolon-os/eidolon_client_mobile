@@ -7,7 +7,6 @@ import '../device_setup/mobile_body_enrollment_session.dart';
 import 'channel_refusal.dart';
 import 'conversation_flow.dart';
 import 'conversation_standing.dart';
-import 'mobile_device_runtime.dart';
 
 class ProductConversationPage extends StatefulWidget {
   const ProductConversationPage(
@@ -31,7 +30,6 @@ class _ProductConversationPageState extends State<ProductConversationPage>
   String? _error;
   String? _technicalError;
   bool _loading = true;
-  bool _ownerConflict = false;
   bool _leaving = false;
   bool _allowPop = false;
   final _detailsScroll = ScrollController();
@@ -49,7 +47,6 @@ class _ProductConversationPageState extends State<ProductConversationPage>
       _loading = true;
       _error = null;
       _technicalError = null;
-      _ownerConflict = false;
     });
     try {
       final flow = await widget.createFlow();
@@ -64,15 +61,12 @@ class _ProductConversationPageState extends State<ProductConversationPage>
       if (mounted) {
         setState(() {
           _loading = false;
-          _ownerConflict = e is MobileDeviceOwnerConflict;
           _technicalError = e.toString();
-          _error = _ownerConflict
-              ? e.toString()
-              : e is TimeoutException
-                  ? '主机暂未响应。请确认主机已开机并与本机处于同一网络，然后重试。'
-                  : e is FormatException
-                      ? '主机身份或目录未通过校验，请在诊断中查看原因。'
-                      : '暂未完成对话准备。请重试，或在诊断中检查主机服务。';
+          _error = e is TimeoutException
+              ? '主机暂未响应。请确认主机已开机并与本机处于同一网络，然后重试。'
+              : e is FormatException
+                  ? '主机身份或目录未通过校验，请在诊断中查看原因。'
+                  : '暂未完成对话准备。请重试，或在诊断中检查主机服务。';
         });
       }
     }
@@ -383,14 +377,10 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                           padding: const EdgeInsets.all(28),
                           child:
                               Column(mainAxisSize: MainAxisSize.min, children: [
-                            Icon(
-                                _ownerConflict
-                                    ? Icons.devices_other_rounded
-                                    : Icons.cloud_off_rounded,
-                                size: 40,
-                                color: Colors.white54),
+                            const Icon(Icons.cloud_off_rounded,
+                                size: 40, color: Colors.white54),
                             const SizedBox(height: 16),
-                            Text(_ownerConflict ? '另一次登记尚未结束' : '暂时无法连接',
+                            Text('暂时无法连接',
                                 style: Theme.of(context).textTheme.titleLarge),
                             const SizedBox(height: 12),
                             ConstrainedBox(
@@ -402,8 +392,7 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                                         color: Colors.white60, height: 1.6))),
                             const SizedBox(height: 20),
                             FilledButton(
-                                onPressed: _ownerConflict ? _back : _load,
-                                child: Text(_ownerConflict ? '返回选择主机' : '重新连接'))
+                                onPressed: _load, child: const Text('重新连接'))
                           ])))
                   : _body(flow!),
         ));

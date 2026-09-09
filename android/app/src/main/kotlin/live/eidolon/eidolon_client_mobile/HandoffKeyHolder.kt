@@ -9,8 +9,8 @@ import java.util.Base64
  * The one-shot key a ClaimGrant is sealed to, for as long as one enrollment is
  * in flight.
  *
- * One slot, not a registry. This phone proposes itself as a Body, and it is one
- * Body: two enrollments in flight for a single device instance id is not a case
+ * One slot per virtual Device. The platform owns one holder for each Device
+ * scope: two enrollments in flight for a single device instance id is not a case
  * to support, it is a case to notice. Starting a second proposal replaces the
  * first key and orphans the first enrollment, and the orphan then has to be
  * cancelled rather than quietly forgotten.

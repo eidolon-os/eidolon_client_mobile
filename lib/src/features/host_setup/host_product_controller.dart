@@ -229,6 +229,7 @@ class HostProductController extends ChangeNotifier {
           _notify();
         },
       );
+      if (_disposed) return;
       // The address it answered on is worth keeping for the same reason the
       // fingerprint is: next time, it is one less thing that has to be found.
       if (connectedHost.tlsSpkiFingerprint != previous.tlsSpkiFingerprint ||
@@ -239,6 +240,7 @@ class HostProductController extends ChangeNotifier {
         machineInfo: _host.machineInfo, lastConnectedAt: DateTime.now(),
       );
       await _onHostUpdated(_host);
+      if (_disposed) return;
       _connection = _session.connection;
       _progress = null;
       await _loadProductState();

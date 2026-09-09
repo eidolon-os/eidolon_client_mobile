@@ -64,7 +64,7 @@ void main() {
       'MainActivity.kt',
     ).readAsStringSync();
     final body = kotlin.substring(
-      kotlin.indexOf('private fun deviceIdentity()'),
+      kotlin.indexOf('private fun deviceIdentity('),
     );
     final answered = RegExp('"([a-zA-Z]+)" to')
         .allMatches(body.substring(0, body.indexOf('\n    }')))

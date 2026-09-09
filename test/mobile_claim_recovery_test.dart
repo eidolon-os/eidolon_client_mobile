@@ -6,6 +6,7 @@ import 'package:eidolon_client_mobile/src/features/conversation/device_control_c
 import 'package:eidolon_client_mobile/src/features/conversation/device_owner_directory.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/mobile_conversation_provisioner.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/mobile_device_runtime.dart';
+import 'package:eidolon_client_mobile/src/features/conversation/mobile_device_contexts.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_ports.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/admission_projection.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/mobile_body_claim_store.dart';
@@ -39,17 +40,18 @@ class _Admission implements DeviceAdmissionPort {
       'Unexpected Admission operation: ${invocation.memberName}');
 }
 
-MobileBodyClaimRecord oldClaim({bool ackPending = false}) =>
+MobileBodyClaimRecord oldClaim(
+        {bool ackPending = false, String owner = ownerDomainIdFixture}) =>
     MobileBodyClaimRecord(
         deviceRef: {
           'device_instance_id': phoneDeviceInstanceId,
-          'owner_domain_id': 'owner-previous',
+          'owner_domain_id': owner,
           'owner_domain_generation': 3,
           'claim_generation': 1,
           'trust_epoch': 1,
         },
         grantId: 'grant_previous',
-        ownerDomainId: 'owner-previous',
+        ownerDomainId: owner,
         deviceInstanceId: phoneDeviceInstanceId,
         acknowledgedAt: DateTime.utc(2026, 9, 8),
         ackPending: ackPending);
@@ -115,6 +117,7 @@ void main() {
 
   test('ordinary open preserves foreign reference and never signs for it',
       () async {
+    await store.save(oldClaim(owner: 'owner-previous'));
     final before = (await store.load())!.toJson();
     final config = await provisioner.provision();
     expect(config.channelRefusal, ChannelRefusal.ownerMismatch);
@@ -142,6 +145,15 @@ void main() {
     await provisioner.provision();
     expect(admission.reads, 1);
     expect(requests.length, 2);
+  });
+
+  test('recovery cannot repurpose a foreign Claim into an Owner switch',
+      () async {
+    await store.save(oldClaim(owner: 'owner-previous'));
+    await expectLater(provisioner.recoverClaim(), throwsA(isA<Exception>()));
+    expect(requests, isEmpty);
+    expect(admission.reads, 0);
+    expect((await store.load())!.ownerDomainId, 'owner-previous');
   });
 
   test('missing local reference uses the same recovery without re-enrollment',
@@ -219,11 +231,15 @@ void main() {
   }
 
   test(
-      'runtime opens a recovery-capable page rather than rejecting a cached Owner mismatch',
+      'runtime migrates an old Owner claim without offering it to the selected Owner',
       () async {
+    await store.save(oldClaim(owner: 'owner-previous'));
+    final prefs = InMemoryAppPreferences();
     final runtime = MobileDeviceRuntime(
-        platform: FakePhonePlatform(),
-        claims: store,
+        contexts: MobileDeviceContexts(
+            preferences: prefs,
+            platform: FakePhonePlatform(),
+            legacyClaims: store),
         directory: DeviceOwnerDirectory(
             preferences: InMemoryAppPreferences(),
             verifier: const AcceptingOwnerDomainDirectoryVerifier()));
@@ -243,7 +259,13 @@ void main() {
                     required expectedRevision}) =>
                 throw StateError('not called')));
     expect(flow.ownerDomainId, ownerDomainIdFixture);
-    expect((await store.load())!.ownerDomainId, 'owner-previous');
+    expect(await store.load(), isNull);
+    expect(
+        (await PlatformMobileBodyClaimStore(
+                    preferences: prefs, ownerDomainId: 'owner-previous')
+                .load())!
+            .ownerDomainId,
+        'owner-previous');
     flow.dispose();
   });
 }

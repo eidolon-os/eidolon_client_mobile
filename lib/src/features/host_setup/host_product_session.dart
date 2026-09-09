@@ -231,6 +231,7 @@ class HostProductSession {
             endpoint,
             winner.overview,
           );
+          _ensureOpen();
           _endpoint = endpoint;
           _overview = winner.overview;
           _controllerSession = controllerSession;

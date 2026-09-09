@@ -121,6 +121,7 @@ class ConversationFlow extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    if (_disposed || _closing) return;
     // Read-only management data may fail independently of the Device channel.
     await Future.wait([client.start(), refreshManagement()]);
     if (device == null && client.identity != null && !_disposed) {
@@ -247,6 +248,7 @@ class ConversationFlow extends ChangeNotifier {
     final current = identity == null
         ? null
         : await management.device(identity.deviceInstanceId);
+    if (_disposed || _closing) return;
     if (current == null) throw StateError('暂未读到本机挂载，请稍后重试');
     if (current.attachedCompanionId != companionId) {
       var attempt = _assignment;
@@ -326,10 +328,11 @@ class ConversationFlow extends ChangeNotifier {
       .replaceFirst('Bad state: ', '')
       .replaceFirst('FormatException: ', '');
 
-  Future<void> close() async {
+  Future<void>? _closeFuture;
+  Future<void> close() {
     _closing = true;
     _startWhenReady = false;
-    await client.leave();
+    return _closeFuture ??= client.leave();
   }
 
   @override
@@ -337,7 +340,7 @@ class ConversationFlow extends ChangeNotifier {
     _disposed = true;
     _startWhenReady = false;
     client.removeListener(_changed);
-    client.dispose();
+    unawaited(close().whenComplete(client.dispose));
     super.dispose();
   }
 }

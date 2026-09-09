@@ -81,7 +81,7 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
                 },
                 management: ConversationManagement(
                     controllerId: controller.host.controllerId,
-                    admission: HostControllerDeviceAdmission(controller),
+                    admission: HostControllerDeviceAdmission(controller, prepare: prepareManagement),
                     roster: ({cursor}) async {
                       await prepareManagement();
                       return controller.roster(cursor: cursor);

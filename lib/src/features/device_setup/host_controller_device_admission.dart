@@ -14,28 +14,37 @@ import 'device_setup_ports.dart';
 /// the Owner's workspace's, which is the controller's to know and not something
 /// the setup flow should be told to pass along.
 class HostControllerDeviceAdmission implements DeviceAdmissionPort {
-  const HostControllerDeviceAdmission(this._controller);
+  const HostControllerDeviceAdmission(this._controller, {this.prepare});
+
+  /// The conversation may restore Device trust before Controller startup
+  /// finishes. Only management operations wait for the shared Host readiness.
+  final Future<void> Function()? prepare;
 
   final HostProductController _controller;
 
   @override
   Future<CommissioningVoucher> issueCommissioningVoucher({
     required String operationalSpkiSha256,
-  }) => _controller.issueCommissioningVoucher(
-        operationalSpkiSha256: operationalSpkiSha256,
-      );
+  }) async {
+    await prepare?.call();
+    return _controller.issueCommissioningVoucher(
+        operationalSpkiSha256: operationalSpkiSha256);
+  }
 
   @override
   Future<EnrollmentProposalPageV1> listRecovery({
     AdmissionListCursorV1? after,
-  }) =>
-      _controller.listEnrollmentRecovery(after: after);
+  }) async {
+    await prepare?.call();
+    return _controller.listEnrollmentRecovery(after: after);
+  }
 
   @override
   Future<EnrollmentRecoveryProjectionV1> recover({
     required String enrollmentId,
   }) async {
     try {
+      await prepare?.call();
       return await _controller.recoverEnrollment(enrollmentId: enrollmentId);
     } on LocalApiRequestException catch (error) {
       throw enrollmentRecoveryRefusal(error) ?? error;
@@ -47,14 +56,15 @@ class HostControllerDeviceAdmission implements DeviceAdmissionPort {
     required String requestId,
     required EnrollmentRecoveryProjectionV1 projection,
     String? initialCompanionId,
-  }) =>
-      _controller.decideEnrollment(
-        requestId: requestId,
-        projection: projection,
-        initialCompanionId: initialCompanionId,
-      );
+  }) async {
+    await prepare?.call();
+    return _controller.decideEnrollment(
+      requestId: requestId,
+      projection: projection,
+      initialCompanionId: initialCompanionId,
+    );
+  }
 }
-
 
 /// Grade a refused Enrollment recovery, or return null to let it through.
 ///
@@ -67,7 +77,8 @@ class HostControllerDeviceAdmission implements DeviceAdmissionPort {
 ///
 /// Everything else stays ungraded on purpose: a 503 or a dropped connection is
 /// exactly the transient the retry exists for.
-DeviceSetupException? enrollmentRecoveryRefusal(LocalApiRequestException error) {
+DeviceSetupException? enrollmentRecoveryRefusal(
+    LocalApiRequestException error) {
   if (error.statusCode != 404) return null;
   return DeviceSetupException(
     code: 'enrollment_gone',
