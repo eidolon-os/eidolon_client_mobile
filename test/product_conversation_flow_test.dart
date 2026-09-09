@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/conversation_flow.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/conversation_provisioner.dart';
+import 'package:eidolon_client_mobile/src/features/conversation/channel_refusal.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/product_conversation_page.dart';
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_device_models.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_ports.dart';
@@ -82,7 +83,33 @@ class _Session extends EidolonSession {
   }
 }
 
+class _RecoveryProvisioner extends _Provisioner
+    implements RecoverableConversationProvisioner {
+  int recoveryCalls = 0;
+  bool reject = false;
+  bool recovered = false;
+  @override
+  Future<HubConfig> provision({String sessionIntent = ''}) async => recovered
+      ? super.provision(sessionIntent: sessionIntent)
+      : const HubConfig(
+          status: HubConfigStatus.waitingBinding,
+          session:
+              RoomConfig(serverUrl: '', token: '', identity: '', roomName: ''),
+          deviceFingerprint: phoneFingerprint,
+          bodyStanding: MobileBodyStanding.claimActiveWithoutChannel,
+          channelRefusal: ChannelRefusal.ownerMismatch);
+  @override
+  Future<void> recoverClaim() async {
+    recoveryCalls++;
+    if (reject) {
+      throw const ConversationRecoveryUnavailable('此主机没有可恢复的已完成登记。原记录已保留。');
+    }
+    recovered = true;
+  }
+}
+
 class _Harness {
+  ConversationProvisioner? provisioner;
   final events = <String>[];
   String companion = 'c_a';
   int revision = 3;
@@ -158,7 +185,7 @@ class _Harness {
             revision++;
             events.add('assign-$companion');
           }),
-      provisioner: _Provisioner(),
+      provisioner: provisioner ?? _Provisioner(),
       platform: _Platform(),
       session: session);
 }
@@ -185,6 +212,50 @@ void main() {
       await icons.load();
     }
   });
+  testWidgets(
+      'Owner conflict offers explicit recovery, cancel is inert and failure remains actionable',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final provisioner = _RecoveryProvisioner();
+    final h = _Harness()..provisioner = provisioner;
+    await tester.pumpWidget(MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
+        home: ProductConversationPage(
+            hostName: '工作室', createFlow: () async => h.flow)));
+    await tester.pumpAndSettle();
+    expect(find.text('恢复已有登记'), findsOneWidget);
+    expect(provisioner.recoveryCalls, 0);
+    await tester.tap(find.text('恢复已有登记'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('工作室'), findsWidgets);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(provisioner.recoveryCalls, 0);
+    provisioner.reject = true;
+    await tester.tap(find.text('恢复已有登记'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('核验并恢复'));
+    await tester.pumpAndSettle();
+    expect(provisioner.recoveryCalls, 1);
+    expect(find.textContaining('原记录已保留'), findsOneWidget);
+    expect(find.text('恢复已有登记'), findsOneWidget);
+    provisioner.reject = false;
+    await tester.tap(find.text('恢复已有登记'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('核验并恢复'));
+    await tester.pumpAndSettle();
+    expect(provisioner.recoveryCalls, 2);
+    expect(find.text('开始对话'), findsOneWidget);
+    expect(h.events, isEmpty);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
   test('A to B to A uses one Device and closes before binding and reopening',
       () async {
     final h = _Harness();

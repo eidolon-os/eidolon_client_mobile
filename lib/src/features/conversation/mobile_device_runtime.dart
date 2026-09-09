@@ -38,12 +38,9 @@ class MobileDeviceRuntime {
       required Future<DeviceOnboardingTarget> Function() bootstrap,
       required ConversationManagement management}) async {
     final target = await directory.open(hostId: hostId, bootstrap: bootstrap);
-    final identity = await _platform.getDeviceIdentity();
-    final held = await claims.loadFor(identity.operationalPublicKey);
-    if (held != null && held.ownerDomainId != target.ownerDomainId) {
-      throw const MobileDeviceOwnerConflict(
-          '本机属于另一位 Owner，请返回并选择原主机。若要更换归属，需要先完成标准设备转移。');
-    }
+    // A cached Claim is a recovery hint, not a current ownership decision.
+    // The provisioner blocks its use with another Owner and exposes explicit
+    // recovery through Admission projection + Device Control proof.
     var scope = _scope;
     if (scope != null &&
         scope.ownerDomainId != target.ownerDomainId &&
@@ -62,7 +59,8 @@ class MobileDeviceRuntime {
               AdmissionAuthorityClient(
                   authority: admissionAuthorityFor(t),
                   transport: PlatformPinnedHttpClient.ownerDomain(
-                      ownerRootCertificate: t.ownerRootCertificate))),
+                      ownerRootCertificate: t.ownerRootCertificate,
+                      addressHints: t.addressHints))),
           platform: _platform,
           buildAdmission: (t) => MobileBodyAdmission(
               issueVoucher: ({required operationalSpkiSha256}) =>
@@ -71,7 +69,8 @@ class MobileDeviceRuntime {
               authority: AdmissionAuthorityClient(
                   authority: admissionAuthorityFor(t),
                   transport: PlatformPinnedHttpClient.ownerDomain(
-                      ownerRootCertificate: t.ownerRootCertificate)),
+                      ownerRootCertificate: t.ownerRootCertificate,
+                      addressHints: t.addressHints)),
               claims: claims,
               platform: _platform));
     } else {

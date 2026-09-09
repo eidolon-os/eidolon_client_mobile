@@ -45,6 +45,9 @@ flutter {
 
 dependencies {
     testImplementation(kotlin("test"))
+    // Use the existing HTTP library for address hints without rewriting URLs
+    // or implementing TLS/SNI/hostname verification in the application.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.github.espressif:esp-idf-provisioning-android:lib-2.4.4")
     // Espressif publishes its generated prov-config messages with the protobuf
     // runtime at runtime scope. Eidolon's adapter deliberately uses those

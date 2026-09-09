@@ -687,9 +687,22 @@ class ClientController extends ChangeNotifier {
   }
 
   void _scheduleControlRecovery(Duration delay) {
-    if (config?.status != HubConfigStatus.active ||
+    if (_disposed ||
+        config?.status != HubConfigStatus.active ||
         _session.isConnected ||
         _controlRecoveryInFlight) {
+      return;
+    }
+    if (_controlRecoveryAttempt >= 3) {
+      _controlRecoveryTimer?.cancel();
+      controlConnection = ChannelConnectionState.disconnected;
+      failure = ClientFailure(
+        kind: failure?.kind ?? ClientErrorKind.network,
+        title: '对话通道暂时无法连接',
+        message: '自动重试已停止。请检查主机服务和网络，然后点击“重新检查”。',
+        technicalDetails: failure?.technicalDetails ?? 'Control recovery exhausted',
+      );
+      _setPhase(ClientPhase.error);
       return;
     }
     if (_controlRecoveryTimer?.isActive == true) {
@@ -703,7 +716,8 @@ class ClientController extends ChangeNotifier {
   }
 
   Future<void> _recoverControl() async {
-    if (_controlRecoveryInFlight ||
+    if (_disposed ||
+        _controlRecoveryInFlight ||
         config?.status != HubConfigStatus.active ||
         _session.isConnected) {
       return;
@@ -1155,17 +1169,47 @@ class ClientController extends ChangeNotifier {
   }
 
   Future<void> recoverEnrollment() async {
+    if (_busy || _disposed) return;
     final refusal = config?.channelRefusal;
     if (refusal != ChannelRefusal.localClaimMissing &&
-        refusal != ChannelRefusal.deviceFactsStale) {
+        refusal != ChannelRefusal.deviceFactsStale &&
+        refusal != ChannelRefusal.ownerMismatch) {
       return;
     }
-    enrollmentAct = MobileBodyEnrollmentAct.propose;
-    await proposeSelf();
+    _busy = true;
+    failure = null;
+    notifyListeners();
+    var restored = false;
+    try {
+      final provisioner = _conversationProvisioner;
+      if (provisioner is! RecoverableConversationProvisioner) {
+        throw const ConversationRecoveryUnavailable('当前连接不支持恢复已有登记');
+      }
+      await provisioner.recoverClaim();
+      restored = true;
+      if (!_disposed) await _registerAndApply();
+    } catch (exception) {
+      if (!_disposed) {
+        failure = ClientFailure(
+            kind: ClientErrorKind.protocol,
+            title: '未能恢复已有登记',
+            message: restored
+                ? '登记已恢复，对话准备尚未完成。请重新检查主机服务。'
+                : exception is ConversationRecoveryUnavailable
+                    ? exception.message
+                    : '登记核验未通过，原记录已保留。请重新检查，或在诊断中查看原因。',
+            technicalDetails: exception.toString());
+        notifyListeners();
+      }
+    } finally {
+      _busy = false;
+      if (!_disposed) notifyListeners();
+    }
   }
 
   Future<void> retry() async {
     if (_busy || _disposed) return;
+    _controlRecoveryAttempt = 0;
     _activationAttempts = 0;
     activationExhausted = false;
     if (hub == null) {

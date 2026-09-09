@@ -21,6 +21,34 @@ void main() {
     messenger.setMockMethodCallHandler(channel, null);
   });
 
+  test(
+      'Owner address hint leaves signed URL and root intact and is scoped to its hostname',
+      () async {
+    final calls = <Map>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call.arguments as Map);
+      return {
+        'protocolVersion': 1,
+        'statusCode': 200,
+        'headers': {},
+        'bodyBase64': base64Encode(utf8.encode('{}'))
+      };
+    });
+    final client = PlatformPinnedHttpClient.ownerDomain(
+        ownerRootCertificate: 'owner-root',
+        addressHints: {'hub.local': '192.0.2.10'},
+        channel: channel);
+    await client.get(Uri.parse(
+        'https://hub.local:8443/api/device-control/v1/configuration:pull'));
+    await client.get(Uri.parse(
+        'https://remote.example/api/device-control/v1/configuration:pull'));
+    expect(calls.first['url'], startsWith('https://hub.local:8443/'));
+    expect(calls.first['ownerRootCertificate'], 'owner-root');
+    expect(calls.first['connectionAddress'], '192.0.2.10');
+    expect(calls.last.containsKey('connectionAddress'), false);
+    expect(calls.every((c) => !c.containsKey('tlsSpkiFingerprint')), true);
+  });
+
   test('carries every unary Local API method through one transport contract',
       () async {
     final calls = <MethodCall>[];

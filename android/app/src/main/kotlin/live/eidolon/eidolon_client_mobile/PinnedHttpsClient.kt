@@ -7,17 +7,14 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.net.Inet4Address
-import java.net.InetAddress
 import java.net.URL
-import java.security.SecureRandom
 import java.security.KeyStore
 import java.security.cert.CertificateFactory
 import java.util.concurrent.Executors
-import javax.net.ssl.HostnameVerifier
-import javax.net.ssl.HttpsURLConnection
-import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import javax.net.ssl.TrustManagerFactory
 
 internal class PinnedHttpsClient(private val mainHandler: Handler) {
@@ -53,56 +50,47 @@ internal class PinnedHttpsClient(private val mainHandler: Handler) {
                     .associate { it.key.toString() to it.value.toString() }
                 validatePinnedHttpHeaders(headers)
 
-                val sslContext = SSLContext.getInstance("TLS")
-                val trustManagers = if (expected != null) {
-                    arrayOf<TrustManager>(PinnedSpkiTrustManager(expected))
+                val trustManager = if (expected != null) {
+                    PinnedSpkiTrustManager(expected)
                 } else {
                     ownerDomainTrustManagers(ownerRootCertificate!!)
+                        .filterIsInstance<X509TrustManager>().single()
                 }
-                sslContext.init(null, trustManagers, SecureRandom())
-                val connectionUrl =
-                    if (expected != null) preferIpv4WhenAvailable(url) else url
-                val connection = connectionUrl.openConnection() as HttpsURLConnection
+                val address = call.argument<String>("connectionAddress")
+                require(address == null || (expected == null && url.host.endsWith(".local"))) {
+                    "Address hints are only valid for a local Owner Authority"
+                }
+                val client = buildPinnedHttpsClient(
+                    trustManager,
+                    if (address == null) emptyMap() else mapOf(url.host to address),
+                    hostSpkiPinned = expected != null,
+                )
                 try {
-                    connection.sslSocketFactory = sslContext.socketFactory
-                    // Local discovery returns an IP address, while the self-signed
-                    // certificate is identified by the Host-signed SPKI pin. The
-                    // pin is the endpoint authority; DNS hostname matching is not.
-                    if (expected != null) {
-                        connection.hostnameVerifier = HostnameVerifier { _, _ -> true }
-                    }
-                    connection.instanceFollowRedirects = false
-                    connection.connectTimeout = 8000
-                    connection.readTimeout = 8000
-                    connection.requestMethod = method
-                    for ((name, value) in headers) connection.setRequestProperty(name, value)
-                    if (body.isNotEmpty()) {
-                        connection.doOutput = true
-                        connection.outputStream.use {
-                            it.write(body)
+                    val request = Request.Builder().url(url.toString())
+                    for ((name, value) in headers) request.header(name, value)
+                    val requestBody = if (body.isNotEmpty() || method in setOf("POST", "PUT", "PATCH")) {
+                        body.toRequestBody()
+                    } else null
+                    request.method(method, requestBody)
+                    client.newCall(request.build()).execute().use { response ->
+                        val responseBody = response.body?.byteStream()?.use { readBounded(it) }
+                            ?: ByteArray(0)
+                        val responseHeaders = response.headers.toMultimap()
+                            .mapValues { it.value.joinToString(",") }
+                        mainHandler.post {
+                            result.success(
+                                mapOf(
+                                    "protocolVersion" to PINNED_HTTPS_PROTOCOL_VERSION,
+                                    "statusCode" to response.code,
+                                    "headers" to responseHeaders,
+                                    "bodyBase64" to Base64.encodeToString(responseBody, Base64.NO_WRAP),
+                                ),
+                            )
                         }
                     }
-                    val statusCode = connection.responseCode
-                    val stream = if (statusCode >= 400) connection.errorStream else connection.inputStream
-                    val responseBody = stream?.use { readBounded(it) } ?: ByteArray(0)
-                    val responseHeaders = connection.headerFields
-                        .filterKeys { it != null }
-                        .mapValues { it.value.joinToString(",") }
-                    mainHandler.post {
-                        result.success(
-                            mapOf(
-                                "protocolVersion" to PINNED_HTTPS_PROTOCOL_VERSION,
-                                "statusCode" to statusCode,
-                                "headers" to responseHeaders,
-                                "bodyBase64" to Base64.encodeToString(
-                                    responseBody,
-                                    Base64.NO_WRAP,
-                                ),
-                            ),
-                        )
-                    }
                 } finally {
-                    connection.disconnect()
+                    client.connectionPool.evictAll()
+                    client.dispatcher.executorService.shutdown()
                 }
             } catch (error: Exception) {
                 val message = error.message?.take(180) ?: "Pinned HTTPS request failed"
@@ -132,26 +120,6 @@ internal class PinnedHttpsClient(private val mainHandler: Handler) {
         val factory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
         factory.init(keyStore)
         return factory.trustManagers
-    }
-
-    /**
-     * Dial by address where one can be found, and by name where it cannot.
-     *
-     * The pin is the endpoint authority rather than the name, so preferring an
-     * address costs nothing. It is only a preference: a name that will not
-     * resolve here is left for the connection to attempt, because failing to
-     * find an address is not itself a reason to fail the request.
-     */
-    private fun preferIpv4WhenAvailable(url: URL): URL {
-        val addresses = try {
-            InetAddress.getAllByName(url.host).toList()
-        } catch (error: Exception) {
-            Log.w("EidolonPinnedHttps", "Could not resolve ${url.host}: ${error.javaClass.simpleName}")
-            emptyList()
-        }
-        val ipv4 = addresses.firstOrNull { it is Inet4Address } ?: return url
-        val address = ipv4.hostAddress ?: return url
-        return replacePinnedHttpsHost(url, address)
     }
 
     private fun readBounded(stream: java.io.InputStream): ByteArray {

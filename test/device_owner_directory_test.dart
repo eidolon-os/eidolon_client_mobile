@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -9,6 +10,46 @@ import 'package:eidolon_client_mobile/src/platform/app_preferences.dart';
 import 'support/owner_domain_fixtures.dart';
 
 void main() {
+  test(
+      'cached address survives restart and lost Controller without changing signed directory',
+      () async {
+    final prefs = InMemoryAppPreferences();
+    DeviceOwnerDirectory directory() => DeviceOwnerDirectory(
+        preferences: prefs,
+        verifier: const AcceptingOwnerDomainDirectoryVerifier());
+    final original = deviceOnboardingTargetFixture().reachedAt('192.0.2.10');
+    await directory().open(hostId: 'host', bootstrap: () async => original);
+    final restored = await directory().open(
+        hostId: 'host',
+        bootstrap: () async => throw StateError('Controller unavailable'));
+    expect(restored.hostAddress, '192.0.2.10');
+    expect(restored.ownerDomainDescriptor.toJson(),
+        original.ownerDomainDescriptor.toJson());
+    expect(restored.ownerRootCertificate, original.ownerRootCertificate);
+    expect(restored.addressHints.keys.every((host) => host.endsWith('.local')),
+        true);
+  });
+
+  testWidgets(
+      'a locator completing after startup timeout still updates device routes',
+      (tester) async {
+    final directory = DeviceOwnerDirectory(
+        preferences: InMemoryAppPreferences(),
+        verifier: const AcceptingOwnerDomainDirectoryVerifier());
+    await directory.open(
+        hostId: 'host', bootstrap: () async => deviceOnboardingTargetFixture());
+    final locator = Completer<DeviceOnboardingTarget>();
+    final opening =
+        directory.open(hostId: 'host', bootstrap: () => locator.future);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+    expect((await opening).hostAddress, isNull);
+    locator.complete(deviceOnboardingTargetFixture().reachedAt('192.0.2.10'));
+    await tester.pump();
+    expect(
+        (await directory.load(ownerDomainIdFixture)).hostAddress, '192.0.2.10');
+  });
+
   test('installed Owner directory works after Controller authorization is gone',
       () async {
     final prefs = InMemoryAppPreferences();

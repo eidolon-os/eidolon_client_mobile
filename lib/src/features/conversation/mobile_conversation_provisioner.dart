@@ -1,5 +1,6 @@
 import '../../generated/device_foundation_v1.dart';
 import '../../models/hub_models.dart';
+import '../../protocol/canonical_json.dart';
 import '../../platform/platform_bridge.dart';
 import '../device_setup/admission_projection.dart';
 import '../device_setup/device_setup_models.dart';
@@ -17,7 +18,8 @@ typedef DeviceOnboardingTargetLoader = Future<DeviceOnboardingTarget>
 /// Standard Device provisioning. A held Claim uses Device Control directly;
 /// Controller recovery reads are only needed to find unfinished admission or
 /// recover a missing local reference. Neither path makes management decisions.
-final class MobileConversationProvisioner implements ConversationProvisioner {
+final class MobileConversationProvisioner
+    implements RecoverableConversationProvisioner {
   MobileConversationProvisioner({
     required DeviceOnboardingTargetLoader loadTarget,
     required DeviceAdmissionPort admission,
@@ -39,10 +41,9 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
 
   /// The Claim this phone holds, if it has been remembered.
   ///
-  /// Needed because the `DeviceRef` a configuration pull is addressed to lives
-  /// in the Grant this device opened, and nowhere in the Admission projection
-  /// this class reads. Null wiring means the channel is never asked for, which
-  /// leaves `claimActiveWithoutChannel` — still true, just older.
+  /// Normal configuration pulls use the reference saved from the acknowledged
+  /// Grant. Explicit recovery can locate it in an Admission projection, but
+  /// must prove the operational key through Device Control before saving it.
   final MobileBodyClaimStore? _claims;
 
   /// Builds the Device Control client for one reading of the directory.
@@ -57,6 +58,88 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
   final Future<bool> Function()? _resumeAcknowledgement;
 
   DeviceOnboardingTarget? _lastTarget;
+
+  /// Recover only a registration already approved and acknowledged at the
+  /// selected, verified Authority. A management projection locates a public
+  /// reference; it cannot authorize a session. Device Control still checks
+  /// the operational key and returns the current Claim before we save anything.
+  /// In particular, never rewrite the Owner field of a cached foreign ref.
+  @override
+  Future<void> recoverClaim() async {
+    final store = _claims;
+    final build = _buildDeviceControl;
+    if (store == null || build == null) {
+      throw const ConversationRecoveryUnavailable('当前连接不支持恢复设备记录');
+    }
+    final target = await _loadTarget();
+    final identity = await _platform.getDeviceIdentity();
+    final held = await store.loadFor(identity.operationalPublicKey);
+    if (held?.ackPending == true || _currentEnrollmentId?.call() != null) {
+      throw const ConversationRecoveryUnavailable('请先完成正在进行的设备登记');
+    }
+    final matches = await _matchingEnrollments(identity.deviceInstanceId);
+    EnrollmentRecoveryProjectionV1? recovered;
+    for (final candidate in matches) {
+      final stage = candidate.validateForOwner(target.ownerDomainId,
+          ownerDomainGeneration:
+              target.ownerDomainDescriptor.ownerDomainGeneration);
+      if (stage == AdmissionProjectionStage.claimActive &&
+          candidate.proposal.json['state'] == 'grant_acknowledged' &&
+          candidate.grantDelivery?.json['acknowledged_at'] != null &&
+          candidate.approvalDecision != null) {
+        recovered = candidate;
+        break;
+      }
+    }
+    if (recovered == null) {
+      throw const ConversationRecoveryUnavailable('此主机没有可恢复的已完成登记。请返回选择原主机，'
+          '或在设备管理中核对本机归属；原记录已保留。');
+    }
+    final reference =
+        Map<String, Object?>.from(recovered.claim!.json['device_ref']! as Map);
+    final configuration = await build(target).pullConfiguration(
+        deviceRef: reference,
+        operationalPublicKey: identity.operationalPublicKey,
+        sign: _platform.signDeviceCanonicalDocument);
+    if (!configuration.claimStands) {
+      throw const ConversationRecoveryUnavailable('此主机上的登记已撤销，无法恢复。原记录已保留。');
+    }
+    if (configuration.deviceRef['owner_domain_generation'] !=
+        target.ownerDomainDescriptor.ownerDomainGeneration) {
+      throw const ConversationRecoveryUnavailable('主机归属代际在核验期间发生变化，请重新检查');
+    }
+    // Do not overwrite a concurrent admission/ACK or an identity replacement.
+    final now = await _platform.getDeviceIdentity();
+    final latest = await store.loadFor(now.operationalPublicKey);
+    if (now.deviceInstanceId != identity.deviceInstanceId ||
+        canonicalJsonEncode(latest?.toJson()) !=
+            canonicalJsonEncode(held?.toJson())) {
+      throw const ConversationRecoveryUnavailable('本机登记在核验期间发生变化，请重新检查');
+    }
+    final delivery = recovered.grantDelivery!.json;
+    await store.save(MobileBodyClaimRecord(
+        deviceRef: configuration.deviceRef,
+        grantId: delivery['grant_id']! as String,
+        ownerDomainId: target.ownerDomainId,
+        deviceInstanceId: identity.deviceInstanceId,
+        acknowledgedAt: DateTime.parse(delivery['acknowledged_at']! as String),
+        enrollmentId: recovered.proposal.json['enrollment_id']! as String));
+  }
+
+  Future<List<EnrollmentRecoveryProjectionV1>> _matchingEnrollments(
+      String deviceInstanceId) async {
+    AdmissionListCursorV1? cursor;
+    final matches = <EnrollmentRecoveryProjectionV1>[];
+    do {
+      final page = await _admission.listRecovery(after: cursor);
+      matches.addAll(page.projections.where((p) =>
+          p.proposal.json['device_instance_candidate_id'] == deviceInstanceId));
+      cursor = page.nextCursor;
+    } while (cursor != null);
+    matches.sort((a, b) => (b.proposal.json['created_at'] as String? ?? '')
+        .compareTo(a.proposal.json['created_at'] as String? ?? ''));
+    return matches;
+  }
 
   @override
   String get serviceName => _lastTarget?.ownerDomainId ?? 'Eidolon Hub';
@@ -112,15 +195,7 @@ final class MobileConversationProvisioner implements ConversationProvisioner {
         throw const FormatException('Enrollment names another device');
       }
     } else {
-      AdmissionListCursorV1? cursor;
-      final matches = <EnrollmentRecoveryProjectionV1>[];
-      do {
-        final page = await _admission.listRecovery(after: cursor);
-        matches.addAll(page.projections.where((p) =>
-            p.proposal.json['device_instance_candidate_id'] ==
-            deviceInstanceId));
-        cursor = page.nextCursor;
-      } while (cursor != null);
+      final matches = await _matchingEnrollments(deviceInstanceId);
       // No active local operation: prefer an unfinished enrollment over a
       // completed historical one, then the newest proposal in that group.
       matches.sort((a, b) {

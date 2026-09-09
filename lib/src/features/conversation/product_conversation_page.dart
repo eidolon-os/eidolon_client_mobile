@@ -125,6 +125,30 @@ class _ProductConversationPageState extends State<ProductConversationPage>
     });
   }
 
+  Future<void> _recoverRegistration() async {
+    final flow = _flow;
+    if (flow == null) return;
+    final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+              title: const Text('恢复已有设备登记'),
+              content: Text('核验本机在「${widget.hostName}」上已完成的登记。'
+                  '验证成功后，本机将使用该登记继续对话。\n\n'
+                  '验证失败会保留原记录，不会自动重新登记或更换设备归属。'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('取消')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('核验并恢复')),
+              ],
+            ));
+    if (confirmed == true && mounted && identical(flow, _flow)) {
+      await flow.client.recoverEnrollment();
+    }
+  }
+
   Future<void> _pickCompanion() async {
     final flow = _flow!;
     await flow.refreshManagement();
@@ -288,7 +312,7 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                                 size: 40,
                                 color: Colors.white54),
                             const SizedBox(height: 16),
-                            Text(_ownerConflict ? '请返回原主机' : '暂时无法连接',
+                            Text(_ownerConflict ? '另一次登记尚未结束' : '暂时无法连接',
                                 style: Theme.of(context).textTheme.titleLarge),
                             const SizedBox(height: 12),
                             ConstrainedBox(
@@ -310,6 +334,10 @@ class _ProductConversationPageState extends State<ProductConversationPage>
   Widget _body(ConversationFlow flow) =>
       LayoutBuilder(builder: (context, constraints) {
         final wide = constraints.maxWidth >= 850;
+        final error = flow.error ?? flow.client.failure?.message;
+        final errorShownInStatus = !flow.client.canJoin &&
+            !flow.client.canLeave &&
+            error == flow.client.uiState.supportingText;
         final content = <Widget>[
           _partner(flow),
           const SizedBox(height: 22),
@@ -318,9 +346,9 @@ class _ProductConversationPageState extends State<ProductConversationPage>
             const SizedBox(height: 18),
             _approval(flow)
           ],
-          if (flow.error != null || flow.client.failure != null) ...[
+          if (error != null && !errorShownInStatus) ...[
             const SizedBox(height: 16),
-            _notice(flow.error ?? flow.client.failure!.message, error: true)
+            _notice(error, error: true)
           ],
           if (flow.client.activationExhausted) ...[
             const SizedBox(height: 16),
@@ -580,8 +608,9 @@ class _ProductConversationPageState extends State<ProductConversationPage>
     }
     final refusal = c.config?.channelRefusal;
     if (refusal == ChannelRefusal.localClaimMissing ||
-        refusal == ChannelRefusal.deviceFactsStale) {
-      return button('恢复本机接入', c.recoverEnrollment, Icons.link_rounded);
+        refusal == ChannelRefusal.deviceFactsStale ||
+        refusal == ChannelRefusal.ownerMismatch) {
+      return button('恢复已有登记', _recoverRegistration, Icons.link_rounded);
     }
     if (busy) {
       return const SizedBox(

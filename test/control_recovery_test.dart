@@ -24,6 +24,32 @@ void main() {
     registerUrl: 'http://hub.local/api/device/register',
   );
 
+  test(
+      'failed channel recovery stops and manual retry can resume without re-enrollment',
+      () async {
+    final session = _FakeSession()..failConnect = true;
+    final hubClient = _FakeHubClient(active);
+    final controller = ClientController(
+        hubClient: hubClient,
+        session: session,
+        controlRecoveryRetry: const Duration(milliseconds: 10))
+      ..hub = hub
+      ..config = active
+      ..phase = ClientPhase.ready;
+    session.emit(const SessionState('disconnected'));
+    await _waitUntil(() => controller.phase == ClientPhase.error);
+    expect(session.connectCalls, 3);
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(session.connectCalls, 3);
+    expect(controller.isBusy, false);
+    expect(controller.failure, isNotNull);
+    session.failConnect = false;
+    await controller.retry();
+    expect(controller.phase, ClientPhase.ready);
+    expect(session.connectCalls, 4);
+    controller.dispose();
+  });
+
   test('control reconnect watchdog refreshes config without waiting for SDK',
       () async {
     final session = _FakeSession();
@@ -139,6 +165,7 @@ class _FakeSession extends EidolonSession {
   final _states = StreamController<SessionState>.broadcast();
   bool _connected = false;
   int connectCalls = 0;
+  bool failConnect = false;
 
   @override
   Stream<SessionState> get stateEvents => _states.stream;
@@ -153,6 +180,7 @@ class _FakeSession extends EidolonSession {
   @override
   Future<void> connect(RoomConfig config) async {
     connectCalls += 1;
+    if (failConnect) throw TimeoutException('unreachable room');
     _connected = true;
     emit(const SessionState('connected'));
   }

@@ -5,9 +5,49 @@ import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
-import java.net.URL
 import java.util.Locale
 import javax.net.ssl.SSLException
+
+import java.net.InetAddress
+import java.net.Inet4Address
+import java.security.SecureRandom
+import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLContext
+import javax.net.ssl.X509TrustManager
+import okhttp3.Dns
+import okhttp3.OkHttpClient
+
+/** Address discovery changes only DNS. URL, Host, SNI and TLS name checking
+ * remain tied to the original Authority; a wrong address cannot authenticate.
+ */
+internal fun buildPinnedHttpsClient(
+    trustManager: X509TrustManager,
+    addressHints: Map<String, String> = emptyMap(),
+    hostSpkiPinned: Boolean = false,
+    resolver: Dns = Dns.SYSTEM,
+): OkHttpClient {
+    val context = SSLContext.getInstance("TLS")
+    context.init(null, arrayOf(trustManager), SecureRandom())
+    val builder = OkHttpClient.Builder()
+        .sslSocketFactory(context.socketFactory, trustManager)
+        .dns(object : Dns {
+          override fun lookup(hostname: String): List<InetAddress> {
+            val address = addressHints[hostname]
+            val resolved = if (address == null) resolver.lookup(hostname)
+                else listOf(InetAddress.getByName(address))
+            return resolved.sortedBy { it !is Inet4Address }
+          }
+        })
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .retryOnConnectionFailure(false)
+    // Controller TLS is identified by its signed SPKI. Owner-domain TLS must
+    // retain the library's standard hostname verifier as well as its root CA.
+    if (hostSpkiPinned) builder.hostnameVerifier { _, _ -> true }
+    return builder.build()
+}
 
 internal const val PINNED_HTTPS_PROTOCOL_VERSION = 1
 internal const val PINNED_HTTPS_MAX_BODY_BYTES = 1024 * 1024
@@ -36,17 +76,6 @@ internal fun validatePinnedHttpHeaders(headers: Map<String, String>) {
         require('\r' !in value && '\n' !in value) { "HTTP header value is invalid" }
     }
 }
-
-/**
- * Dials a discovered address without changing the already-encoded request target.
- *
- * Rebuilding a [URL] through the multi-component `URI` constructor treats `%`
- * in its query as plain text and escapes it again. A query containing an ISO
- * timestamp would therefore arrive as `%253A` instead of `%3A`. The four-arg
- * [URL] constructor accepts the original `file` (path plus query) verbatim.
- */
-internal fun replacePinnedHttpsHost(url: URL, host: String): URL =
-    URL(url.protocol, host, url.port, url.file)
 
 internal fun pinnedHttpsErrorCode(error: Exception): String = when (error) {
     is IllegalArgumentException -> "PINNED_HTTPS_INVALID_REQUEST"

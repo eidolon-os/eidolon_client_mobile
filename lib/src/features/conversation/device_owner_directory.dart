@@ -20,7 +20,8 @@ class DeviceOwnerDirectory {
         _verifier = verifier ?? PlatformOwnerDomainDirectoryVerifier(),
         _transport = transport ??
             ((t) => PlatformPinnedHttpClient.ownerDomain(
-                ownerRootCertificate: t.ownerRootCertificate));
+                ownerRootCertificate: t.ownerRootCertificate,
+                addressHints: t.addressHints));
 
   final AppPreferences _preferences;
   final OwnerDomainDirectoryVerifier _verifier;
@@ -40,37 +41,57 @@ class DeviceOwnerDirectory {
         ? await bootstrap()
         : DeviceOnboardingTarget.fromJson(
             Map<String, dynamic>.from(value as Map));
+    if (value is Map && value['last_reached_address'] is String) {
+      target = target.reachedAt(value['last_reached_address'] as String);
+    }
     if (value != null) {
-      DeviceOnboardingTarget? candidate;
-      try {
-        candidate = await bootstrap().timeout(const Duration(seconds: 3));
-      } catch (_) {
-        // Management is an optional locator; installed Device trust survives
-        // a revoked or unavailable Controller login.
-      }
-      if (candidate != null) {
-        if (candidate.ownerDomainId != target.ownerDomainId ||
-            candidate.ownerRootCertificate != target.ownerRootCertificate) {
-          throw const FormatException('主机目录与本机已安装的 Owner 信任不一致');
-        }
-        try {
-          await _verifier.verify(candidate);
-          target = candidate;
-          saved[hostId] = _wire(target);
-          await _preferences.writeString(_key, jsonEncode(saved));
-        } on FormatException {
-          // A stale management projection cannot displace the installed
-          // directory. Its own validity is still checked below.
-        }
-      }
+      // Startup may continue on installed trust after three seconds, but the
+      // locator result must not be discarded when Controller setup takes longer.
+      // A later verified result updates the same directory used by Device reads.
+      target = await _refreshFromHost(hostId, bootstrap, target)
+          .timeout(const Duration(seconds: 3), onTimeout: () => target);
     }
     if (value == null) {
       await _verifier.verify(target);
       saved[hostId] = _wire(target);
       await _preferences.writeString(_key, jsonEncode(saved));
     }
-    _targets[target.ownerDomainId] = target;
+    _targets.putIfAbsent(target.ownerDomainId, () => target);
     return load(target.ownerDomainId);
+  }
+
+  Future<DeviceOnboardingTarget> _refreshFromHost(
+      String hostId,
+      Future<DeviceOnboardingTarget> Function() bootstrap,
+      DeviceOnboardingTarget installed) async {
+    final DeviceOnboardingTarget candidate;
+    try {
+      candidate = await bootstrap();
+    } catch (_) {
+      // Optional management location cannot revoke installed Device trust.
+      return installed;
+    }
+    if (candidate.ownerDomainId != installed.ownerDomainId ||
+        candidate.ownerRootCertificate != installed.ownerRootCertificate) {
+      throw const FormatException('主机目录与本机已安装的 Owner 信任不一致');
+    }
+    try {
+      await _verifier.verify(candidate);
+    } on FormatException {
+      return installed;
+    }
+    final target =
+        candidate.hostAddress == null && installed.hostAddress != null
+            ? candidate.reachedAt(installed.hostAddress!)
+            : candidate;
+    final raw = await _preferences.readString(_key);
+    final saved = raw == null || raw.isEmpty
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    saved[hostId] = _wire(target);
+    await _preferences.writeString(_key, jsonEncode(saved));
+    _targets[target.ownerDomainId] = target;
+    return target;
   }
 
   Future<DeviceOnboardingTarget> load(String ownerDomainId) async {
@@ -97,7 +118,8 @@ class DeviceOwnerDirectory {
             ownerDomainId: ownerDomainId,
             ownerDomainDescriptor: descriptor,
             ownerRootCertificate: target.ownerRootCertificate,
-            authoritySigningCertificate: target.authoritySigningCertificate);
+            authoritySigningCertificate: target.authoritySigningCertificate,
+            hostAddress: target.hostAddress);
         await _verifier.verify(next);
         target = next;
         _targets[ownerDomainId] = target;
@@ -127,6 +149,7 @@ class DeviceOwnerDirectory {
   Map<String, Object?> _wire(DeviceOnboardingTarget t) => {
         'operation': 'local.device-onboarding-target',
         'contract_version': '1',
+        if (t.hostAddress != null) 'last_reached_address': t.hostAddress,
         'owner_domain_id': t.ownerDomainId,
         'owner_domain_descriptor': t.ownerDomainDescriptor.toJson(),
         'owner_root_certificate': t.ownerRootCertificate,

@@ -63,7 +63,8 @@ MobileBodyEnrollmentSession buildMobileBodyEnrollment(
     buildAdmission: (target) => MobileBodyAdmission(
       // The Controller half: the one thing here only an Owner may do is have
       // the Host sign this device's standing.
-      issueVoucher: HostControllerDeviceAdmission(controller).issueCommissioningVoucher,
+      issueVoucher:
+          HostControllerDeviceAdmission(controller).issueCommissioningVoucher,
       authority: AdmissionAuthorityClient(
         authority: admissionAuthorityFor(target),
         // Pinned to the Owner Domain's own root, not to the Host's TLS leaf.
@@ -72,6 +73,7 @@ MobileBodyEnrollmentSession buildMobileBodyEnrollment(
         // the Host to speak for Hub.
         transport: PlatformPinnedHttpClient.ownerDomain(
           ownerRootCertificate: target.ownerRootCertificate,
+          addressHints: target.addressHints,
         ),
       ),
       claims: store,
@@ -92,13 +94,14 @@ Uri admissionAuthorityFor(DeviceOnboardingTarget target) {
 /// Same rule as the Admission one, and for the same reason: the authority's
 /// address and the trust anchor that reaches it are two facts from one signed
 /// descriptor, and taken from separate readings they can disagree.
-DeviceControlClientBuilder deviceControlClientBuilder() => (target) =>
-    DeviceControlClient(
-      authority: deviceControlAuthorityFor(target),
-      transport: PlatformPinnedHttpClient.ownerDomain(
-        ownerRootCertificate: target.ownerRootCertificate,
-      ),
-    );
+DeviceControlClientBuilder deviceControlClientBuilder() =>
+    (target) => DeviceControlClient(
+          authority: deviceControlAuthorityFor(target),
+          transport: PlatformPinnedHttpClient.ownerDomain(
+            ownerRootCertificate: target.ownerRootCertificate,
+            addressHints: target.addressHints,
+          ),
+        );
 
 /// Where this Owner Domain says its Device Control authority answers.
 Uri deviceControlAuthorityFor(DeviceOnboardingTarget target) {

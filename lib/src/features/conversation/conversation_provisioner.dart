@@ -11,3 +11,18 @@ abstract interface class ConversationProvisioner {
 
   Future<HubConfig> provision({String sessionIntent = ''});
 }
+
+/// Restores an existing registration after an explicit user action. This is
+/// not enrollment: implementations must prove the Device identity before
+/// replacing a local reference, and must never create or approve a Claim.
+abstract interface class RecoverableConversationProvisioner
+    implements ConversationProvisioner {
+  Future<void> recoverClaim();
+}
+
+class ConversationRecoveryUnavailable implements Exception {
+  const ConversationRecoveryUnavailable(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}

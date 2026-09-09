@@ -342,3 +342,53 @@ APK SHA-256：`e674c0aa48ff0563eb0f2b8213cf9f23b946a8b6d1d5f1489a9f067b0bb95e01`
 当前 `Eidolon-6b1f15`（192.168.1.32）目录给出的 Owner 为 `owner-0342958c2e259f177f43`，与本机 Claim 不同，因此停止跨域接入，未清身份、未重新铸造设备、未改数据库。[最终版本的真机归属冲突页面](review/mobile-conversation/owner-conflict.png)。另一已保存主机 `Eidolon-0a7989`（192.168.1.33）的管理连接可建立，但本次对话目录读取超时；没有据此推断其 Owner。
 
 因此本轮尚不能宣称真实语音应答、真实 A → B → A、多轮中断和全新 Device 的整条准入已通过真机验收。需要现有 Claim 对应的原 Owner 服务可用后继续这些场景；旧截图中的成功记录不作为本轮证据。Hub/Channel 当前运行版本也未作为本轮语音验收版本登记。
+
+## 9. 2026-09-09「主机不匹配」恢复修正
+
+### 已核对的原因
+
+第 8 节记录的是 639dd54 的验收状态。后续只读检查当前 .32 主机的运行数据库发现：同一平板 DeviceInstance 已有 active Claim，Owner 为 `owner-0342958c2e259f177f43`、claim generation 4，且有 2026-09-07 完成的 Grant ACK。本地保存的却是另一个 Owner 的历史引用。不能据此断言另一 Owner 的 Claim 当前仍有效，也不能直接把本地 Owner 字段替换成当前主机。
+
+原实现存在两处缺口：Runtime 在读取本地历史引用后直接拒绝打开页面；“恢复本机接入”调用的是重新提案，而不是恢复已有记录。提示去做尚未实现的设备转移进一步造成死路。
+
+### 修正边界
+
+- Runtime 允许打开页面并说明记录冲突，provisioner 仍禁止把旧 Owner 的引用发给当前主机。进入页面、刷新和取消确认都不修改引用。
+- 用户明确点击“恢复已有登记 → 核验并恢复”后，复用标准 Enrollment recovery projection，限定本机 DeviceInstance、当前可信 Owner/代际、已批准且已完成 ACK 的登记。
+- 从该记录读取完整 DeviceRef，使用现有 Device Control `configuration:pull` 与本机 operational key 签名；管理端投影只能提供查询线索，不能提供会话授权。
+- 只有 Device Control 验证身份并确认 Claim 有效、响应身份/nonce/Owner 代际正确，且本地登记没有并发变化后，才保存返回的引用。下一次普通连接仍直接走 Device Control，不依赖 Controller recovery 查询。
+- 缺少本地引用与 Owner 不一致共用这一恢复动作；失败保留原记录和可重试入口，不创建 Enrollment、不签 voucher、不批准、不修改远端 Claim、Mount 或设备密钥。
+
+这是对已存在且已完成授权的登记恢复本地引用，不是为未准入的 Owner 增加接管能力，也不是完整 Owner transfer。若目标 Authority 没有有效登记，此动作不能继续；真正的归属变更仍属于标准设备生命周期。V1 仍只有一个本地 Device 身份和一个当前引用，不增加按 Host 分配的身份或多 Owner Claim 列表。
+
+### 验证范围
+
+新增 `mobile_claim_recovery_test.dart` 覆盖正常打开无副作用、既有登记恢复、缺失引用、错误设备/Owner、未 ACK、ACK 待续、403、撤销、错误 nonce、并发变更，以及 Runtime 不再提前关闭恢复入口。产品页测试覆盖 320 像素屏幕上的确认/取消、失败保留操作和成功后回到“开始对话”。实际设备验收结果另记于本节后续记录，不能由模拟测试推定。
+
+### 真机发现的传输断点
+
+第一次恢复已经读到准入记录，但 `configuration:pull` 因 Android 无法解析 Authority 的 `.local` 名字失败。现有 `DeviceOnboardingTarget.reachedAt` 提供了已连接 Host 的地址，原 Device 传输却没有使用；缓存目录还会在启动等待 3 秒超时后丢弃晚到的地址。
+
+修正复用已依赖的 OkHttp 4.12（现在显式声明依赖），在共用 pinned HTTPS 传输中仅覆写匹配 Authority 主机名的 DNS 地址，原 URL、Host、SNI、Owner 根证书和默认主机名校验保留。重定向与隐式连接重试关闭，应用的幂等边界不变。地址作为独立的本地定位线索保存，不写进签名 descriptor；可选 Controller 查询超时不阻塞启动，晚到且验签通过的结果仍更新 Device 目录。准入 session 在地址变化时也重建传输，保留原 command 和证明。
+
+原生测试以仅用于测试的 PKCS12 证书启动 loopback TLS server，验证正确名字可连接、错误名字拒绝、错误信任根拒绝；该 fixture 不含运行环境密钥。另验证地址不影响其他 Authority、查询编码不变和 Controller/Owner 两种 TLS 模式保持隔离。
+
+### 主机部署与重试体验
+
+恢复后实际下发的旧通道凭据仍带 `.local` LiveKit 地址。Ops 源码已有统一的动态地址配置：未显式声明 LAN IP 时写入 `ws://:7880`，Channel Provider 在签发 binding 时选取当前路由地址。运行配置未同步这项既有机制；本次使用 `host_cli --config config/hosts/mac.toml debug prepare` 更新，再通过 HostController 的标准 supervisor 入口仅重启 channel-provider。没有在 Mobile 改写 opaque binding，没有修改 Hub/Channel 源码或数据库。
+
+标准 prepare 首次被输入目录校验阻止：HostAgent 合约允许的可选 `factory_setup_code` 被私有输入校验当成了未知文件。Ops 的小范围修正直接复用 `OPTIONAL_INSTALL_INPUTS`，保留必需文件、未知文件、权限与 symlink 的原有检查；没有删除已有配置。相关测试 38 项通过，ruff 检查通过。该改动位于相邻 `eidolon_ops` 仓库，需要与 Mobile 修正分别提交。
+
+客户端复用原重连计数，自动尝试三次后停止，显示可手动重新检查的错误状态；手动重试重置计数，成功连接后恢复原状态。页面不再重复显示同一句错误，也不再在停止自动重试后声称还会继续尝试。
+
+### 本次实测记录
+
+平板 `df331f93` 上已完成恢复：本地引用现在是 .32 的 Owner、owner generation 1、claim generation 4、trust epoch 1，DeviceInstance 未变。只读对照运行数据库，远端 Claim 的更新时间仍为 `2026-09-07 13:02:18.065312`，此设备的 Enrollment 总数仍为 4、最新创建时间仍为 `2026-09-07 13:01:19.500756`。这是恢复已有记录的实证，不是重新登记。
+
+自动化验证：Flutter 全套 890 项通过、5 项跳过；最后的状态文案/重复提示调整后相关 14 项重跑通过，analyze 无问题；Android 原生 47 项通过；debug APK 构建成功。后续连接验收结果补记如下。
+
+17:16 后，标准续期签发的 binding 已为 `ws://192.168.1.32:7880`，平板从普通入口进入“设备在线，可以开始对话”。随后完成 Eidolon → Aria → Eidolon 三次实际开始/结束，前两次页面进入“正在回复”，切回后显示“已接通，可以开始说话”。Channel worker 分别在 17:17:30、17:20:34、17:23:16 记录同一个 Device room 的 `session_started`，见 [脱敏会话日志](review/mobile-conversation/claim-recovery-sessions.txt)。结束后回到就绪页，麦克风关闭，选择保留为 Eidolon。
+
+真机截图：[恢复后普通入口就绪](review/mobile-conversation/claim-recovered-ready.png)、[Eidolon 回复状态](review/mobile-conversation/claim-recovered-eidolon.png)、[Aria 回复状态](review/mobile-conversation/claim-recovered-aria.png)、[切回 Eidolon 接通](review/mobile-conversation/claim-recovered-eidolon-return.png)。本轮验证了真实入链、会话确认和伙伴切换；没有进行人工多轮口语、音质或打断延迟测量，也没有用这些结果替代全新设备准入验收。
+
+最终安装的 debug APK SHA-256：`a0862bb64d90c926cefa2a453939d85e8cff2177c71048130e276b76f7de7e09`。本节修复在 `639dd54` 之后单独提交，Mobile 与 Ops 分属各自仓库。

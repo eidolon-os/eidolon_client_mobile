@@ -171,10 +171,21 @@ class DeviceOnboardingTarget {
 
   /// The address the Host answered on when it handed this target over.
   ///
-  /// Deliberately absent from the wire and from the checkpoint: it describes
+  /// Absent from the wire and commissioning checkpoint: it describes
   /// one client's route to a deployment at one moment, not the Owner Domain.
   /// The signed descriptor is the durable fact.
   final String? hostAddress;
+
+  /// A dial hint for the local Authority named by this descriptor. It never
+  /// replaces a signed URI, TLS hostname or trust root, and cannot route a
+  /// different (for example remote) Authority through the selected Host.
+  Map<String, String> get addressHints {
+    final host = Uri.parse(ownerDomainDescriptor.descriptorUri).host;
+    final address = hostAddress;
+    return address != null && host.endsWith('.local')
+        ? {host: address}
+        : const {};
+  }
 
   /// This target, carrying the standing the Host just signed for one device.
   DeviceOnboardingTarget withCommissioningVoucher(String voucher) =>

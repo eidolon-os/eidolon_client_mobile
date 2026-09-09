@@ -57,11 +57,13 @@ class PlatformPinnedHttpClient extends http.BaseClient {
     required this.tlsSpkiFingerprint,
     MethodChannel? channel,
   })  : ownerRootCertificate = null,
+        addressHints = const {},
         _channel =
             channel ?? const MethodChannel('live.eidolon.mobile/platform');
 
   PlatformPinnedHttpClient.ownerDomain({
     required this.ownerRootCertificate,
+    this.addressHints = const {},
     MethodChannel? channel,
   })  : tlsSpkiFingerprint = null,
         _channel =
@@ -72,6 +74,7 @@ class PlatformPinnedHttpClient extends http.BaseClient {
 
   final String? tlsSpkiFingerprint;
   final String? ownerRootCertificate;
+  final Map<String, String> addressHints;
   final MethodChannel _channel;
 
   @override
@@ -106,6 +109,8 @@ class PlatformPinnedHttpClient extends http.BaseClient {
           'protocolVersion': _protocolVersion,
           'url': request.url.toString(),
           'method': request.method,
+          if (addressHints[request.url.host] != null)
+            'connectionAddress': addressHints[request.url.host],
           'headers': request.headers,
           'bodyBase64': base64Encode(bodyBytes),
           if (tlsSpkiFingerprint != null)
