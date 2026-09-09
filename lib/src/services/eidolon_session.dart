@@ -7,17 +7,15 @@ import 'package:livekit_client/livekit_client.dart';
 
 import '../avatar/avatar_stage.dart';
 import '../models/hub_models.dart';
+import '../models/conversation_mode.dart';
 import '../protocol/eidolon_protocol.dart';
 
-/// One channel, held for as long as this client is enrolled.
-///
-/// There used to be two rooms: a control room the client lived in and a voice
-/// room it joined to have a conversation. Connecting was therefore how it asked
-/// to be heard, and disconnecting was how it stopped — which meant every
-/// conversation began by building a room and ended by tearing one down. Now the
-/// connection stands still and the client says which it wants.
+/// RTC transport for one conversation. Disconnecting does not revoke the
+/// device's Claim or its logical Channel binding at the Host.
 class EidolonSession {
   Room? _room;
+  ConversationMode mode = ConversationMode.fullDuplex;
+  bool pttHeld = false;
   EventsListener<RoomEvent>? _listener;
 
   /// The conversation this client is currently asking to have, readable so the
@@ -127,10 +125,32 @@ class EidolonSession {
     // firmware's shape (`current_conversation_id_`), because `session_open`
     // and `session_close` are statements about the same conversation and the
     // far end correlates them by this value.
+    // The existing Channel worker is WorkerType.PUBLISHER. It cannot be
+    // assigned to a device with no published track, even after session_open.
+    // Publish a muted track first; no microphone audio is sent while waiting
+    // for confirmation or for a PTT press. Keep the standard publisher flow.
+    final room = _room;
+    final participant = room?.localParticipant;
+    if (room == null || participant == null) {
+      throw StateError('Channel is not connected');
+    }
+    if (participant.getTrackPublicationBySource(TrackSource.microphone) ==
+        null) {
+      final track = await LocalAudioTrack.create(_capture);
+      try {
+        await track.start();
+        await track.mute(stopOnMute: false);
+        if (!identical(_room, room)) {
+          throw StateError('Conversation was closed');
+        }
+        await participant.publishAudioTrack(track);
+      } catch (_) {
+        await track.dispose();
+        rethrow;
+      }
+    }
     _conversationId ??= _newConversationId();
     await _publishSessionRequest(sessionOpenType);
-    await _room?.localParticipant
-        ?.setMicrophoneEnabled(true, audioCaptureOptions: _capture);
   }
 
   /// Say the conversation is over. The channel stays exactly as it is.
@@ -245,11 +265,11 @@ class EidolonSession {
       'schema_v': 1,
       'type': clientAudioStateType,
       'seq': ++_audioStateSequence,
-      'input_mode': 'auto',
+      'input_mode': mode == ConversationMode.ptt ? 'ptt' : 'auto',
       'playback_state':
           agentSpeaking ? playbackStateAgentSpeaking : playbackStateIdle,
       'mic_muted': muted,
-      'ptt': false,
+      'ptt': pttHeld,
       'rms': 0,
       'client_ts_ms': DateTime.now().millisecondsSinceEpoch,
     });
@@ -265,6 +285,7 @@ class EidolonSession {
   }
 
   Future<void> disconnect() async {
+    pttHeld = false;
     _conversationId = null;
     _videoController.add(null);
     _room?.unregisterTextStreamHandler(transcriptionTopic);

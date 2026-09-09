@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../models/conversation_mode.dart';
 import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
 
@@ -101,7 +102,11 @@ class _ProductConversationPageState extends State<ProductConversationPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _flow?.client.onAppResumed();
+    if (state == AppLifecycleState.resumed) {
+      _flow?.client.onAppResumed();
+    } else {
+      unawaited(_flow?.client.setPttHeld(false));
+    }
   }
 
   @override
@@ -170,8 +175,8 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                       const SizedBox(height: 8),
                       Text(
                           flow.client.canLeave
-                              ? '后续对话沿用这个选择。切换会结束当前对话，并开始一段新对话。'
-                              : '后续对话沿用这个选择。选好后，点击开始对话。',
+                              ? '更换伙伴会结束当前对话，返回准备页。'
+                              : '选好伙伴和对话方式后，点击开始对话。',
                           style: TextStyle(color: Colors.white60, height: 1.5)),
                       const SizedBox(height: 16),
                       if (flow.companions.isEmpty)
@@ -189,7 +194,7 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                                     _initial(c.displayName ?? c.companionId))),
                             title: Text(c.displayName ?? c.companionId),
                             subtitle: flow.client.canLeave
-                                ? const Text('切换并开始新对话')
+                                ? const Text('结束当前对话并更换')
                                 : null,
                             trailing: c.companionId == flow.selectedCompanionId
                                 ? const Icon(Icons.check_circle_rounded,
@@ -198,8 +203,81 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                             onTap: () => Navigator.pop(context, c.companionId)),
                     ]))));
     if (chosen != null && mounted) {
-      await flow.choose(chosen, restart: flow.client.canLeave);
+      if (chosen != flow.selectedCompanionId && await _confirmChange()) {
+        await flow.choose(chosen);
+      }
     }
+  }
+
+  Future<bool> _confirmChange() async {
+    if (!mounted) return false;
+    if (_flow?.client.canLeave != true) return true;
+    return await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+                  title: const Text('结束当前对话？'),
+                  content: const Text('更换后将回到准备页，点击开始对话即可接通。'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('继续对话')),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('结束并更换')),
+                  ],
+                )) ==
+        true;
+  }
+
+  Widget _modes(ConversationFlow f) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('对话方式',
+              style: TextStyle(color: Colors.white60, fontSize: 12)),
+          const SizedBox(height: 10),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final mode in ConversationMode.values)
+              ChoiceChip(
+                  key: ValueKey('mode-${mode.wireValue}'),
+                  label: Text(mode.label),
+                  selected: f.selectedMode == mode,
+                  onSelected: f.busy || f.client.isBusy
+                      ? null
+                      : (_) async {
+                          if (mode != f.selectedMode &&
+                              await _confirmChange()) {
+                            await f.chooseMode(mode);
+                          }
+                        }),
+          ]),
+          const SizedBox(height: 8),
+          Text(f.selectedMode?.description ?? '请选择一种对话方式',
+              style: const TextStyle(
+                  color: Colors.white54, fontSize: 12, height: 1.5)),
+        ],
+      );
+
+  Widget _pttButton(ConversationFlow f) {
+    final c = f.client;
+    final enabled = !f.busy && !c.isBusy && c.conversationStanding.answered;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: '按住说话，松开发送',
+      child: Listener(
+        onPointerDown: enabled ? (_) => unawaited(c.setPttHeld(true)) : null,
+        onPointerUp: (_) => unawaited(c.setPttHeld(false)),
+        onPointerCancel: (_) => unawaited(c.setPttHeld(false)),
+        child: FilledButton.tonalIcon(
+          style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(54),
+              backgroundColor: c.pttHeld ? const Color(0xff358e79) : null),
+          onPressed: enabled ? () {} : null,
+          icon: const Icon(Icons.mic_rounded),
+          label: Text(c.pttHeld ? '松开发送' : '按住说话'),
+        ),
+      ),
+    );
   }
 
   void _diagnostics() {
@@ -341,6 +419,8 @@ class _ProductConversationPageState extends State<ProductConversationPage>
         final content = <Widget>[
           _partner(flow),
           const SizedBox(height: 22),
+          _modes(flow),
+          const SizedBox(height: 22),
           _status(flow),
           if (flow.client.enrollmentAct == MobileBodyEnrollmentAct.approve) ...[
             const SizedBox(height: 18),
@@ -461,20 +541,41 @@ class _ProductConversationPageState extends State<ProductConversationPage>
 
   Widget _status(ConversationFlow f) {
     final c = f.client;
+    final active = c.canLeave && c.conversationStanding.answered;
+    final headline = active && c.mode == ConversationMode.ptt
+        ? c.pttHeld
+            ? '正在收音…'
+            : c.agentSpeaking
+                ? '伙伴正在说话'
+                : '按住按钮说话'
+        : active &&
+                c.mode == ConversationMode.halfDuplex &&
+                c.agentSpeaking &&
+                !c.userMuted
+            ? '伙伴正在说话'
+            : c.uiState.headline;
     return Column(children: [
-      Text(c.activationExhausted ? '对话尚未就绪' : c.uiState.headline,
+      Text(
+          c.activationExhausted
+              ? '对话尚未就绪'
+              : c.canJoin
+                  ? '准备开始对话'
+                  : headline,
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w500)),
       const SizedBox(height: 8),
       Text(
           c.canJoin
-              ? '点击下方按钮开始。准备期间麦克风保持关闭。'
+              ? '选好伙伴和对话方式后再接通。准备期间麦克风关闭。'
               : c.canLeave
                   ? (c.conversationStanding == ConversationStanding.farEndGone
                       ? '伙伴已离开，麦克风已关闭。可以重新开始。'
                       : c.conversationStanding == ConversationStanding.asked
-                          ? '正在等待伙伴接通，麦克风已开启。'
-                          : '自然地说话，随时可以打断或静音。')
+                          ? '正在等待伙伴接通，麦克风保持静音。'
+                          : c.mode == ConversationMode.halfDuplex &&
+                                  c.agentSpeaking
+                              ? '伙伴正在说话，结束后将恢复聆听。'
+                              : c.mode.description)
                   : c.uiState.supportingText,
           textAlign: TextAlign.center,
           style: const TextStyle(
@@ -555,14 +656,18 @@ class _ProductConversationPageState extends State<ProductConversationPage>
         c.conversationStanding != ConversationStanding.farEndGone) {
       return Row(children: [
         Expanded(
-            child: FilledButton.tonalIcon(
-                style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(54)),
-                onPressed: busy ? null : c.toggleMicrophone,
-                icon: Icon(c.microphoneEnabled
-                    ? Icons.mic_rounded
-                    : Icons.mic_off_rounded),
-                label: Text(c.microphoneEnabled ? '静音' : '解除静音'))),
+            child: c.mode == ConversationMode.ptt
+                ? _pttButton(f)
+                : FilledButton.tonalIcon(
+                    style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(54)),
+                    onPressed: busy || !c.conversationStanding.answered
+                        ? null
+                        : c.toggleMicrophone,
+                    icon: Icon(c.microphoneEnabled
+                        ? Icons.mic_rounded
+                        : Icons.mic_off_rounded),
+                    label: Text(c.userMuted ? '解除静音' : '静音'))),
         const SizedBox(width: 12),
         Expanded(
             child: FilledButton.icon(
@@ -578,10 +683,13 @@ class _ProductConversationPageState extends State<ProductConversationPage>
       return button('重新开始对话', f.startConversation, Icons.refresh_rounded);
     }
     if (c.canJoin) {
-      if (f.device != null && f.device!.attachedCompanionId == null) {
+      if (f.selectedCompanionId == null) {
         return button('选择应答伙伴', _pickCompanion, Icons.person_add_alt_rounded);
       }
-      return button('开始对话', f.startConversation, Icons.graphic_eq_rounded);
+      return button(
+          f.selectedMode == null ? '先选择对话方式' : '开始对话',
+          f.hasSelection ? f.startConversation : null,
+          Icons.graphic_eq_rounded);
     }
     if (c.enrollmentAct == MobileBodyEnrollmentAct.propose) {
       return button('登记本机', f.propose, Icons.add_link_rounded);
@@ -592,9 +700,11 @@ class _ProductConversationPageState extends State<ProductConversationPage>
               ? '选择应答伙伴'
               : f.reviewedProposal == null
                   ? '重新核对本机'
-                  : '确认接入并开始对话',
+                  : f.selectedMode == null
+                      ? '先选择对话方式'
+                      : '确认接入并开始对话',
           f.reviewedProposal != null && f.selectedCompanionId != null
-              ? f.approveAndStart
+              ? (f.hasSelection ? f.approveAndStart : null)
               : f.selectedCompanionId == null
                   ? _pickCompanion
                   : f.loadReview,

@@ -1,3 +1,4 @@
+import 'package:eidolon_client_mobile/src/models/conversation_mode.dart';
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -93,7 +94,7 @@ class _Provisioner implements ConversationProvisioner {
   @override
   Uri get serviceUri => Uri.parse('https://owner.test/descriptor');
   @override
-  Future<HubConfig> provision({String sessionIntent = ''}) async => HubConfig(
+  Future<HubConfig> provision({String sessionIntent = '', ConversationMode? mode}) async => HubConfig(
       status: enrollment.pending == null
           ? HubConfigStatus.unregistered
           : HubConfigStatus.pendingApproval,
@@ -181,6 +182,7 @@ void main() {
     await flow.client.checkActivation();
     await settle();
     expect(h.admission.decisions, 0);
+    await flow.chooseMode(ConversationMode.ptt);
     await flow.approveAndStart();
     expect(h.admission.decisions, 1);
     expect(h.admission.selected, 'c_a');
@@ -215,6 +217,7 @@ void main() {
     await settle();
     await flow.choose('c_a');
     expect(flow.reviewedProposal, isNull);
+    await flow.chooseMode(ConversationMode.ptt);
     await flow.approveAndStart();
     expect(h.admission.decisions, 0);
     expect(flow.error, isNotNull);

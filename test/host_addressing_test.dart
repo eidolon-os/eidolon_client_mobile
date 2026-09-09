@@ -1,3 +1,4 @@
+import 'package:eidolon_client_mobile/src/models/conversation_mode.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_locator.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_candidate_sources.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_discovery.dart';
@@ -254,7 +255,7 @@ class _ThrowingProvisioner implements ConversationProvisioner {
   Uri get serviceUri => Uri.parse('https://hub.example/admission');
 
   @override
-  Future<HubConfig> provision({String sessionIntent = ''}) async => throw error;
+  Future<HubConfig> provision({String sessionIntent = '', ConversationMode? mode}) async => throw error;
 }
 
 class _Session extends EidolonSession {

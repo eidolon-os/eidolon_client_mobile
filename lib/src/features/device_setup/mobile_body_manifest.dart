@@ -8,12 +8,11 @@
 ///
 /// The firmware states the same rule from the other side: "a camera that claims
 /// a microphone is granted one and is assigned a voice agent that waits forever
-/// for audio" (`hub_onboarding_protocol.cc`). Everything here is a fact about
-/// this build.
+/// for audio" (`hub_onboarding_protocol.cc`). The selected mode is a fact about how this device will operate.
 ///
 /// ## Where the authority is
 ///
-/// Not here. The document below must equal the contract's own vector,
+/// Not here. The default enrollment document equals the contract's own vector,
 /// `DF-MANIFEST-SOFTWARE-BODY-DOCUMENT-VALID` in
 /// `examples/valid/common.json`, and `test/mobile_body_manifest_test.dart`
 /// asserts exactly that against the vendored copy.
@@ -37,6 +36,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 import '../../protocol/canonical_json.dart';
+import '../../models/conversation_mode.dart';
 import '../../protocol/eidolon_protocol.dart';
 
 /// The manifest id this phone declares.
@@ -49,21 +49,12 @@ import '../../protocol/eidolon_protocol.dart';
 /// than trying to pass as something already registered somewhere.
 const mobileBodyManifestId = 'eidolon-mobile-android';
 
-/// How many times this build's declaration has changed.
-///
-/// Not a version of the app. It orders a device's successive accounts of
-/// itself, and the Authority uses it to decide whether an incoming assertion is
-/// newer than the one it accepted. It moves when the members below move, and
-/// at no other time.
+/// Initial declaration revision. Later assertions advance the Authority's
+/// accepted revision; content can change back to an earlier mode without
+/// reusing that earlier assertion's revision.
 const mobileBodyManifestRevision = 1;
 
-/// Turn-taking, as a fact about this build rather than a preference.
-///
-/// `full_duplex` because the client turns on WebRTC echo cancellation, noise
-/// suppression and gain control explicitly when it publishes the microphone.
-/// A build that stopped doing that would have to change this, and would be
-/// wrong not to: the Provider hands the mode to the agent, which uses it to
-/// decide whether it may speak while listening.
+/// Default enrollment vector. Room entry always uses an explicit mode choice.
 const mobileBodyInteractionMode = interactionModeFullDuplex;
 
 /// What this phone calls itself until the Owner renames it.
@@ -79,7 +70,9 @@ const defaultMobileBodyTitle = 'Eidolon Mobile';
 ///
 /// [title] is what the Owner sees; the Authority reads it as the device's
 /// display name on first Claim.
-Map<String, Object?> mobileBodyManifestDocument({required String title}) {
+Map<String, Object?> mobileBodyManifestDocument(
+    {required String title,
+    ConversationMode mode = ConversationMode.fullDuplex}) {
   final named = title.trim();
   if (named.isEmpty || named.length > 128) {
     throw const FormatException(
@@ -106,14 +99,14 @@ Map<String, Object?> mobileBodyManifestDocument({required String title}) {
         'kind': 'video',
       },
     ],
-    'properties': const <Object?>[
+    'properties': <Object?>[
       <String, Object?>{
         'name': 'interaction_mode',
         'observable': false,
         // A `const` schema is the device stating a fact about itself rather
         // than offering a choice. The Provider reads exactly this shape.
         'schema': <String, Object?>{
-          'const': mobileBodyInteractionMode,
+          'const': mode.wireValue,
           'type': 'string',
         },
         'writable': false,
@@ -129,12 +122,15 @@ Map<String, Object?> mobileBodyManifestDocument({required String title}) {
 /// The digest is over the canonical document, and the Authority recomputes it
 /// before accepting the proposal (`hub/admission/application.py`) — so it is
 /// checked on arrival rather than trusted.
-Map<String, Object?> mobileBodyManifestRef({required String title}) {
-  final document = mobileBodyManifestDocument(title: title);
+Map<String, Object?> mobileBodyManifestRef(
+    {required String title,
+    ConversationMode mode = ConversationMode.fullDuplex,
+    int revision = mobileBodyManifestRevision}) {
+  final document = mobileBodyManifestDocument(title: title, mode: mode);
   final canonical = canonicalJsonEncode(document);
   return <String, Object?>{
     'manifest_id': mobileBodyManifestId,
-    'revision': mobileBodyManifestRevision,
+    'revision': revision,
     'digest': 'sha256:${sha256.convert(utf8.encode(canonical))}',
     'document': document,
   };

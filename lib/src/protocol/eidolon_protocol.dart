@@ -98,6 +98,8 @@ const clientAudioStateType = 'client.audio_state';
 /// the Manifest and `mobileInteractionMode` in the Hub client — which is one
 /// wire value with two spellings and two places to change it. It is one now,
 /// here, where the mirror can see it.
+const interactionModePtt = 'ptt';
+const interactionModeHalfDuplex = 'half_duplex';
 const interactionModeFullDuplex = 'full_duplex';
 
 /// What the far end is doing with the floor, reported on the audio-state

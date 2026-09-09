@@ -1,3 +1,4 @@
+import 'package:eidolon_client_mobile/src/models/conversation_mode.dart';
 import 'dart:async';
 
 import 'package:eidolon_client_mobile/src/controller/client_controller.dart';
@@ -24,77 +25,25 @@ void main() {
     registerUrl: 'http://hub.local/api/device/register',
   );
 
-  test(
-      'failed channel recovery stops and manual retry can resume without re-enrollment',
-      () async {
-    final session = _FakeSession()..failConnect = true;
-    final hubClient = _FakeHubClient(active);
-    final controller = ClientController(
-        hubClient: hubClient,
-        session: session,
-        controlRecoveryRetry: const Duration(milliseconds: 10))
-      ..hub = hub
-      ..config = active
-      ..phase = ClientPhase.ready;
-    session.emit(const SessionState('disconnected'));
-    await _waitUntil(() => controller.phase == ClientPhase.error);
-    expect(session.connectCalls, 3);
-    await Future<void>.delayed(const Duration(milliseconds: 80));
-    expect(session.connectCalls, 3);
-    expect(controller.isBusy, false);
-    expect(controller.failure, isNotNull);
-    session.failConnect = false;
-    await controller.retry();
-    expect(controller.phase, ClientPhase.ready);
-    expect(session.connectCalls, 4);
-    controller.dispose();
-  });
-
-  test('control reconnect watchdog refreshes config without waiting for SDK',
-      () async {
-    final session = _FakeSession();
-    final hubClient = _FakeHubClient(active);
-    final controller = ClientController(
-      hubClient: hubClient,
-      session: session,
-      controlReconnectGrace: Duration.zero,
-      controlRecoveryRetry: const Duration(milliseconds: 10),
-    )
-      ..hub = hub
-      ..config = active
-      ..phase = ClientPhase.ready;
-
-    session.emit(const SessionState('reconnecting'));
-    await _waitUntil(() => session.connectCalls == 1);
-
-    expect(hubClient.registerCalls, 1);
-    expect(session.connectCalls, 1);
-    expect(controller.controlConnection, ChannelConnectionState.connected);
-    expect(controller.phase, ClientPhase.ready);
-
-    controller.dispose();
-  });
-
-  test('foreground resume immediately recovers a disconnected control room',
-      () async {
-    final session = _FakeSession();
-    final hubClient = _FakeHubClient(active);
-    final controller = ClientController(
-      hubClient: hubClient,
-      session: session,
-    )
-      ..hub = hub
-      ..config = active
-      ..phase = ClientPhase.ready;
-
-    controller.onAppResumed();
-    await _waitUntil(() => session.connectCalls == 1);
-
-    expect(hubClient.registerCalls, 1);
-    expect(controller.controlConnection, ChannelConnectionState.connected);
-
-    controller.dispose();
-  });
+  for (final event in ['disconnected', 'reconnecting']) {
+    test('standby $event never opens a Room, including resume and retry',
+        () async {
+      final session = _FakeSession();
+      final hubClient = _FakeHubClient(active);
+      final controller =
+          ClientController(hubClient: hubClient, session: session)
+            ..hub = hub
+            ..config = active
+            ..phase = ClientPhase.ready;
+      session.emit(SessionState(event));
+      controller.onAppResumed();
+      await Future<void>.delayed(Duration.zero);
+      await controller.retry();
+      expect(session.connectCalls, 0);
+      expect(controller.phase, ClientPhase.ready);
+      controller.dispose();
+    });
+  }
 
   test('product conversation uses authenticated provisioner, not legacy URL',
       () async {
@@ -111,17 +60,9 @@ void main() {
     expect(provisioner.calls, 1);
     expect(controller.hub?.api, 'device-onboarding-v1');
     expect(controller.phase, ClientPhase.ready);
-    expect(session.connectCalls, 1);
+    expect(session.connectCalls, 0);
     controller.dispose();
   });
-}
-
-Future<void> _waitUntil(bool Function() condition) async {
-  for (var attempt = 0; attempt < 50; attempt += 1) {
-    if (condition()) return;
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-  }
-  fail('Condition was not reached before timeout');
 }
 
 class _FakeHubClient extends HubClient {
@@ -153,7 +94,8 @@ class _FakeProvisioner implements ConversationProvisioner {
   Uri get serviceUri => Uri.parse('https://hub.example/descriptor');
 
   @override
-  Future<HubConfig> provision({String sessionIntent = ''}) async {
+  Future<HubConfig> provision(
+      {String sessionIntent = '', ConversationMode? mode}) async {
     calls += 1;
     return response;
   }

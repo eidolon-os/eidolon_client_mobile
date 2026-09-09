@@ -1,3 +1,4 @@
+import 'package:eidolon_client_mobile/src/models/conversation_mode.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -39,7 +40,7 @@ class _Provisioner implements ConversationProvisioner {
   Uri get serviceUri => Uri.parse('https://owner.test/descriptor');
   @override
   Future<HubConfig> provision(
-          {String sessionIntent = ''}) async =>
+          {String sessionIntent = '', ConversationMode? mode}) async =>
       const HubConfig(
           status: HubConfigStatus.active,
           session: RoomConfig(
@@ -57,8 +58,21 @@ class _Session extends EidolonSession {
   int sequence = 0;
   @override
   Stream<SessionData> get dataEvents => data.stream;
+  bool connected = false;
+  int connections = 0;
   @override
-  bool get isConnected => true;
+  bool get isConnected => connected;
+  @override
+  Future<void> connect(RoomConfig config) async {
+    connected = true;
+    connections++;
+  }
+
+  @override
+  Future<void> disconnect() async {
+    connected = false;
+  }
+
   @override
   String? get conversationId => 'conversation-$sequence';
   @override
@@ -89,15 +103,17 @@ class _RecoveryProvisioner extends _Provisioner
   bool reject = false;
   bool recovered = false;
   @override
-  Future<HubConfig> provision({String sessionIntent = ''}) async => recovered
-      ? super.provision(sessionIntent: sessionIntent)
-      : const HubConfig(
-          status: HubConfigStatus.waitingBinding,
-          session:
-              RoomConfig(serverUrl: '', token: '', identity: '', roomName: ''),
-          deviceFingerprint: phoneFingerprint,
-          bodyStanding: MobileBodyStanding.claimActiveWithoutChannel,
-          channelRefusal: ChannelRefusal.ownerMismatch);
+  Future<HubConfig> provision(
+          {String sessionIntent = '', ConversationMode? mode}) async =>
+      recovered
+          ? super.provision(sessionIntent: sessionIntent)
+          : const HubConfig(
+              status: HubConfigStatus.waitingBinding,
+              session: RoomConfig(
+                  serverUrl: '', token: '', identity: '', roomName: ''),
+              deviceFingerprint: phoneFingerprint,
+              bodyStanding: MobileBodyStanding.claimActiveWithoutChannel,
+              channelRefusal: ChannelRefusal.ownerMismatch);
   @override
   Future<void> recoverClaim() async {
     recoveryCalls++;
@@ -249,11 +265,42 @@ void main() {
     await tester.tap(find.text('核验并恢复'));
     await tester.pumpAndSettle();
     expect(provisioner.recoveryCalls, 2);
-    expect(find.text('开始对话'), findsOneWidget);
+    expect(find.text('先选择对话方式'), findsOneWidget);
     expect(h.events, isEmpty);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await tester.pumpAndSettle();
+  });
+
+  test(
+      'selection is required, refresh preserves drafts, mode change only returns to preparation',
+      () async {
+    final h = _Harness();
+    await h.flow.initialize();
+    await h.flow.startConversation();
+    await settle();
+    expect(h.session.connections, 0);
+    expect(h.flow.error, contains('对话方式'));
+    await h.flow.choose('c_b');
+    await h.flow.refreshManagement();
+    expect(h.flow.selectedCompanionId, 'c_b');
+    expect(h.companion, 'c_a');
+    await h.flow.chooseMode(ConversationMode.ptt);
+    await h.flow.startConversation();
+    await settle();
+    expect(h.session.connections, 1);
+    expect(h.flow.client.mode, ConversationMode.ptt);
+    await h.flow.chooseMode(ConversationMode.halfDuplex);
+    await settle();
+    expect(h.flow.client.canJoin, true);
+    expect(h.session.connected, false);
+    expect(h.session.connections, 1);
+    await h.flow.startConversation();
+    await settle();
+    expect(h.session.connections, 2);
+    expect(h.flow.client.mode, ConversationMode.halfDuplex);
+    await h.flow.close();
+    h.flow.dispose();
   });
 
   test('A to B to A uses one Device and closes before binding and reopening',
@@ -261,11 +308,15 @@ void main() {
     final h = _Harness();
     await h.flow.initialize();
     expect(h.events, isEmpty);
+    await h.flow.chooseMode(ConversationMode.fullDuplex);
     await h.flow.startConversation();
     await settle();
-    await h.flow.choose('c_b', restart: true);
+    await h.flow.choose('c_b');
+    expect(h.flow.client.canLeave, false);
+    await h.flow.startConversation();
     await settle();
-    await h.flow.choose('c_a', restart: true);
+    await h.flow.choose('c_a');
+    await h.flow.startConversation();
     await settle();
     expect(h.events, [
       'open-1',
@@ -284,26 +335,35 @@ void main() {
       () async {
     final h = _Harness();
     await h.flow.initialize();
+    await h.flow.chooseMode(ConversationMode.ptt);
     h.loseWriteReply = true;
     await h.flow.choose('c_b');
-    await h.flow.choose('c_b');
+    expect(h.requests, isEmpty);
+    await h.flow.startConversation();
+    await settle();
+    await h.flow.startConversation();
+    await settle();
     expect(h.requests, hasLength(2));
     expect(h.requests[0], h.requests[1]);
-    expect(h.flow.selectedCompanionId, 'c_a');
+    expect(h.flow.selectedCompanionId, 'c_b');
     expect(h.events, isEmpty);
     h.loseWriteReply = false;
-    await h.flow.choose('c_b');
+    await h.flow.startConversation();
+    await settle();
     expect(h.requests[2], h.requests[0]);
     expect(h.flow.selectedCompanionId, 'c_b');
+    await h.flow.close();
     h.flow.dispose();
   });
-  test('Controller outage does not block an authorized Device conversation',
+  test('unavailable companion selection cannot silently start a conversation',
       () async {
     final h = _Harness()..unavailable = true;
     await h.flow.initialize();
+    await h.flow.chooseMode(ConversationMode.fullDuplex);
     await h.flow.startConversation();
     await settle();
-    expect(h.events, ['open-1']);
+    expect(h.events, isEmpty);
+    expect(h.session.connections, 0);
     expect(h.flow.managementError, isNotNull);
     await h.flow.close();
     h.flow.dispose();
@@ -312,6 +372,7 @@ void main() {
       () async {
     final h = _Harness();
     await h.flow.initialize();
+    await h.flow.chooseMode(ConversationMode.fullDuplex);
     await h.flow.startConversation();
     await settle();
     await h.flow.close();
@@ -338,7 +399,7 @@ void main() {
         conversationConfirmationTimeout: const Duration(seconds: 2));
     await c.start();
     await c.join();
-    expect(c.microphoneEnabled, true);
+    expect(c.microphoneEnabled, false);
     await tester.pump(const Duration(seconds: 3));
     expect(c.microphoneEnabled, false);
     expect(c.canLeave, false);
@@ -404,7 +465,7 @@ void main() {
           rendered.dispose();
         });
       }
-      expect(find.text('开始对话'), findsOneWidget);
+      expect(find.text('先选择对话方式'), findsOneWidget);
       expect(find.text('Eidolon'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('Eidolon'));
@@ -413,8 +474,10 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('Aria'));
       await tester.pumpAndSettle();
-      expect(h.companion, 'c_b');
-      expect(h.events, ['assign-c_b']);
+      expect(h.companion, 'c_a');
+      expect(h.flow.selectedCompanionId, 'c_b');
+      expect(h.events, isEmpty);
+      expect(h.session.connections, 0);
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
     });
@@ -424,7 +487,8 @@ void main() {
 class _WaitingProvisioner extends _Provisioner {
   int calls = 0;
   @override
-  Future<HubConfig> provision({String sessionIntent = ''}) async {
+  Future<HubConfig> provision(
+      {String sessionIntent = '', ConversationMode? mode}) async {
     calls++;
     return const HubConfig(
         status: HubConfigStatus.waitingBinding,

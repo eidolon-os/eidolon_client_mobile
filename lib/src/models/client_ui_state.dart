@@ -199,7 +199,7 @@ class ClientUiState {
             : '设备在线，可以开始对话',
       ClientPhase.joining => microphone == MicrophoneState.requestingPermission
           ? '等待麦克风授权…'
-          : '正在建立全双工语音连接…',
+          : '正在接通对话…',
       ClientPhase.conversation => _conversationHeadline,
       ClientPhase.error => '连接失败',
     };
@@ -255,7 +255,7 @@ class ClientUiState {
         ClientPhase.bodyBlocked => '这台手机在这个 Owner 域里还没有可以对话的身份',
         ClientPhase.activating => '授权已完成，正在接入这台主机的通道',
         ClientPhase.ready => '通道保持在线，点击下方按钮开始对话',
-        ClientPhase.joining => '正在刷新会话凭据并启用 WebRTC AEC',
+        ClientPhase.joining => '正在准备本次连接，请稍候',
         ClientPhase.conversation => _conversationSupportingText,
         ClientPhase.error => failure?.message ?? '请检查网络后重试',
       };
@@ -275,8 +275,7 @@ class ClientUiState {
     }
     if (microphone == MicrophoneState.muted) return '解除静音后才能继续说话';
     return switch (agentTurn) {
-      AgentTurnState.listening when !conversationStanding.hearsUs =>
-        '直接说话就可以',
+      AgentTurnState.listening when !conversationStanding.hearsUs => '直接说话就可以',
       AgentTurnState.listening => '请直接说话，AEC 会抑制扬声器回声',
       // Not a name, for the same reason the transcript no longer uses one:
       // nothing tells a Body which Companion is answering it.

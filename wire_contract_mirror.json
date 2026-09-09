@@ -119,10 +119,10 @@
       "dart": "playbackStateIdle"
     },
     "INTERACTION_MODE_HALF_DUPLEX": {
-      "not_mirrored": "this Body declares interaction_mode as a pinned full_duplex const in its Manifest and never offers the half-duplex alternative; zero occurrences in lib/"
+      "dart": "interactionModeHalfDuplex"
     },
     "INTERACTION_MODE_PTT": {
-      "not_mirrored": "push to talk is a mode this client does not offer; the value 'ptt' is too short to search for reliably, so this is reasoning rather than a measurement"
+      "dart": "interactionModePtt"
     },
     "INPUT_MODE_AUTO": {
       "not_mirrored": "input mode is a board-side capture concept; this client publishes through livekit_client, which owns its own capture. The value 'auto' is too short to search for reliably"

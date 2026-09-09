@@ -1,3 +1,4 @@
+import 'package:eidolon_client_mobile/src/models/conversation_mode.dart';
 import 'dart:async';
 
 import 'package:eidolon_client_mobile/src/controller/client_controller.dart';
@@ -365,7 +366,7 @@ class _FakeProvisioner implements ConversationProvisioner {
   Uri get serviceUri => Uri.parse('https://hub.example/descriptor');
 
   @override
-  Future<HubConfig> provision({String sessionIntent = ''}) async {
+  Future<HubConfig> provision({String sessionIntent = '', ConversationMode? mode}) async {
     calls += 1;
     return response;
   }

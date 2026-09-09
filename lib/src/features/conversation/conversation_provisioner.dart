@@ -1,4 +1,5 @@
 import '../../models/hub_models.dart';
+import '../../models/conversation_mode.dart';
 
 /// Produces short-lived channel bindings for the current Mobile body.
 ///
@@ -9,7 +10,8 @@ abstract interface class ConversationProvisioner {
 
   Uri get serviceUri;
 
-  Future<HubConfig> provision({String sessionIntent = ''});
+  Future<HubConfig> provision(
+      {String sessionIntent = '', ConversationMode? mode});
 }
 
 /// Restores an existing registration after an explicit user action. This is

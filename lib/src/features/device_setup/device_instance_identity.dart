@@ -116,3 +116,8 @@ List<int> _operationalPublicKeyBytes(String operationalPublicKey) {
   }
   return raw;
 }
+
+/// Bare base64url SPKI used by Device Foundation manifest assertions.
+String operationalPublicKeySpki(String key) => base64Url
+    .encode(_requireP256Spki(_operationalPublicKeyBytes(key)))
+    .replaceAll('=', '');

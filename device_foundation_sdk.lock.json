@@ -95,6 +95,11 @@
       "source": "contracts/device_foundation/v1/golden/device-control-configuration-response.json",
       "target": "test/fixtures/device_foundation/device-control-configuration-response.json",
       "sha256": "f3ba335ae394f61124b06381cd97e620ee01c65f2b645aa9e0c373b6574ec01d"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/device-control-manifest-assertion-proof.json",
+      "target": "test/fixtures/device_foundation/device-control-manifest-assertion-proof.json",
+      "sha256": "29e31d28b3ccbe5cbc077f7804f0c24cc62ff30fd30f56774e2baebfe1e54fd5"
     }
   ]
 }

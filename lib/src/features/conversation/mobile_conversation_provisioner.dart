@@ -1,5 +1,7 @@
 import '../../generated/device_foundation_v1.dart';
 import '../../models/hub_models.dart';
+import '../../models/conversation_mode.dart';
+import '../device_setup/mobile_body_manifest.dart';
 import '../../protocol/canonical_json.dart';
 import '../../platform/platform_bridge.dart';
 import '../device_setup/admission_projection.dart';
@@ -156,7 +158,8 @@ final class MobileConversationProvisioner
   }
 
   @override
-  Future<HubConfig> provision({String sessionIntent = ''}) async {
+  Future<HubConfig> provision(
+      {String sessionIntent = '', ConversationMode? mode}) async {
     final target = await _loadTarget();
     _lastTarget = target;
     final identity = await _platform.getDeviceIdentity();
@@ -185,7 +188,7 @@ final class MobileConversationProvisioner
     // A claimed device asks Device Control directly. Controller availability
     // and the Owner's historical approval queue are not device authorization.
     if (held != null && enrollmentId == null) {
-      return _configuration(target, identity, null);
+      return _configuration(target, identity, null, mode: mode);
     }
     EnrollmentRecoveryProjectionV1? found;
     if (enrollmentId != null) {
@@ -255,6 +258,7 @@ final class MobileConversationProvisioner
           target,
           identity,
           enrollment,
+          mode: mode,
         ),
       AdmissionProjectionStage.claimRevoked => _empty(
           HubConfigStatus.revoked,
@@ -290,8 +294,9 @@ final class MobileConversationProvisioner
   Future<HubConfig> _configuration(
     DeviceOnboardingTarget target,
     DeviceIdentity identity,
-    MobileBodyEnrollmentRef? enrollment,
-  ) async {
+    MobileBodyEnrollmentRef? enrollment, {
+    ConversationMode? mode,
+  }) async {
     final store = _claims;
     final build = _buildDeviceControl;
     if (store == null || build == null) {
@@ -310,13 +315,40 @@ final class MobileConversationProvisioner
           enrollment, MobileBodyStanding.claimActiveWithoutChannel,
           refusal: ChannelRefusal.localClaimMissing);
     }
-    final DeviceConfiguration configuration;
+    DeviceConfiguration configuration;
     try {
-      configuration = await build(target).pullConfiguration(
+      final control = build(target);
+      configuration = await control.pullConfiguration(
         deviceRef: claim.deviceRef,
         operationalPublicKey: identity.operationalPublicKey,
         sign: _platform.signDeviceCanonicalDocument,
       );
+      if (mode != null && configuration.claimStands) {
+        final accepted = configuration.manifest;
+        if (accepted == null) {
+          throw const FormatException('主机未提供已接受的设备声明，请更新主机后重试');
+        }
+        final desired = mobileBodyManifestRef(
+            title: defaultMobileBodyTitle,
+            mode: mode,
+            revision: accepted.revision + 1);
+        if (accepted.manifestId != desired['manifest_id'] ||
+            accepted.digest != desired['digest']) {
+          await control.assertManifest(
+              deviceRef: configuration.deviceRef,
+              manifest: desired,
+              operationalPublicKey: identity.operationalPublicKey,
+              sign: _platform.signDeviceCanonicalDocument);
+          configuration = await control.pullConfiguration(
+              deviceRef: configuration.deviceRef,
+              operationalPublicKey: identity.operationalPublicKey,
+              sign: _platform.signDeviceCanonicalDocument);
+          if (configuration.manifest?.digest != desired['digest'] ||
+              configuration.manifest?.revision != desired['revision']) {
+            throw const FormatException('设备声明在准备期间发生变化，请重试');
+          }
+        }
+      }
     } on DeviceControlRefusal catch (refusal) {
       // The Host said why. Throwing that away and reporting 「还没有通道」 is
       // what made the screen tell a person the two cases were

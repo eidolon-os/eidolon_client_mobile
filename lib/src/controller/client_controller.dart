@@ -18,6 +18,7 @@ import '../models/hub_models.dart';
 import '../platform/platform_bridge.dart';
 import '../protocol/eidolon_protocol.dart';
 import '../services/eidolon_session.dart';
+import '../models/conversation_mode.dart';
 import '../services/hub_client.dart';
 import '../services/vad_processor.dart';
 
@@ -29,8 +30,6 @@ class ClientController extends ChangeNotifier {
     HubClient? hubClient,
     EidolonSession? session,
     VadProcessor vad = const NoOpVadProcessor(),
-    Duration controlReconnectGrace = const Duration(seconds: 2),
-    Duration controlRecoveryRetry = const Duration(seconds: 2),
     ConversationProvisioner? conversationProvisioner,
     MobileBodyEnrollmentSession? enrollment,
     Duration conversationConfirmationTimeout = const Duration(seconds: 20),
@@ -40,9 +39,7 @@ class ClientController extends ChangeNotifier {
         _vad = vad,
         _conversationProvisioner = conversationProvisioner,
         _enrollment = enrollment,
-        _conversationConfirmationTimeout = conversationConfirmationTimeout,
-        _controlReconnectGrace = controlReconnectGrace,
-        _controlRecoveryRetry = controlRecoveryRetry {
+        _conversationConfirmationTimeout = conversationConfirmationTimeout {
     _dataSubscription = _session.dataEvents.listen(_onSessionData);
     _stateSubscription = _session.stateEvents.listen(_onSessionState);
     _presenceSubscription = _session.farEndPresent.listen((present) {
@@ -92,9 +89,6 @@ class ClientController extends ChangeNotifier {
     if (!_disposed) super.notifyListeners();
   }
 
-  final Duration _controlReconnectGrace;
-  final Duration _controlRecoveryRetry;
-
   late final StreamSubscription<SessionData> _dataSubscription;
   late final StreamSubscription<SessionState> _stateSubscription;
   late final StreamSubscription<bool> _presenceSubscription;
@@ -103,12 +97,16 @@ class ClientController extends ChangeNotifier {
   Timer? _audioStateTimer;
   Timer? _noticeTimer;
   Timer? _attentionTimer;
-  Timer? _controlRecoveryTimer;
   bool _busy = false;
-  // Whether a conversation is under way. The channel is up either way, so this
-  // is no longer something that can be read off a connection.
+  // Session intent is separate from the RTC transport connection.
   bool _inConversation = false;
-  bool _controlRecoveryInFlight = false;
+  bool _leaving = false;
+  ConversationMode mode = ConversationMode.fullDuplex;
+  bool _userMuted = false;
+  bool _pttHeld = false;
+  Future<void> _audioUpdate = Future<void>.value();
+  bool get pttHeld => _pttHeld;
+  bool get userMuted => _userMuted;
 
   /// Guards the one step this controller takes without being asked.
   ///
@@ -116,7 +114,6 @@ class ClientController extends ChangeNotifier {
   /// decision again; without this the second pass would try to collect a Grant
   /// that has already been collected.
   bool _collecting = false;
-  int _controlRecoveryAttempt = 0;
 
   ClientPhase phase = ClientPhase.idle;
   ChannelConnectionState controlConnection =
@@ -292,13 +289,8 @@ class ClientController extends ChangeNotifier {
   ///
   /// Returns whether the live session is now running the configuration this
   /// call fetched. It is `false` whenever the channel was already up: the
-  /// channel is deliberately long-lived and is not torn down to adopt a
-  /// refreshed config, which is correct — nothing per-conversation travels in
-  /// it, and the Host resolves who answers at every `session_open`. The caller
-  /// that acks `config.refresh` needs the distinction, so it is reported here
-  /// rather than re-derived from the guard below; a copy of that condition
-  /// would go stale the moment the guard changed, and the ack would resume
-  /// claiming a config was in force when it was not.
+  /// fetched configuration is applied when the next conversation connects.
+  /// Refreshing device authorization never opens a Room on its own.
   Future<bool> _registerAndApply({
     String sessionIntent = '',
     bool showRegistering = true,
@@ -400,32 +392,23 @@ class ClientController extends ChangeNotifier {
         return false;
       case HubConfigStatus.active:
         _activationTimer?.cancel();
-        var applied = false;
-        if (next.session.usable && !_session.isConnected) {
-          _setPhase(ClientPhase.activating);
-          await _session.connect(next.session);
-          if (_disposed) {
-            await _session.disconnect();
-            return false;
-          }
-          applied = true;
-        }
         if (_inConversation) {
           _setPhase(ClientPhase.conversation);
         } else {
           _setPhase(ClientPhase.ready);
         }
-        return applied;
+        return false;
       case HubConfigStatus.revoked:
       case HubConfigStatus.unregistered:
         throw StateError('设备授权已撤销，请在管理端重新批准');
     }
   }
 
-  Future<HubConfig> _provisionConfig({String sessionIntent = ''}) {
+  Future<HubConfig> _provisionConfig(
+      {String sessionIntent = '', ConversationMode? mode}) {
     final provisioner = _conversationProvisioner;
     if (provisioner != null) {
-      return provisioner.provision(sessionIntent: sessionIntent);
+      return provisioner.provision(sessionIntent: sessionIntent, mode: mode);
     }
     final currentHub = hub;
     if (currentHub == null) {
@@ -463,16 +446,20 @@ class ClientController extends ChangeNotifier {
   }
 
   Future<void> join({
+    ConversationMode mode = ConversationMode.fullDuplex,
     String sessionIntent = sessionIntentUserInitiated,
   }) async {
-    if (_busy ||
-        _disposed ||
-        (phase != ClientPhase.ready && phase != ClientPhase.conversation)) {
+    if (_busy || _disposed || phase != ClientPhase.ready) {
       return;
     }
     _busy = true;
     failure = null;
     final epoch = ++_conversationEpoch;
+    this.mode = mode;
+    _session.mode = mode;
+    _userMuted = false;
+    _pttHeld = false;
+    _session.pttHeld = false;
     microphoneState = MicrophoneState.requestingPermission;
     _setPhase(ClientPhase.joining);
     try {
@@ -481,7 +468,8 @@ class ClientController extends ChangeNotifier {
       if (!allowed) throw StateError('需要麦克风权限才能开始对话');
       microphoneState = MicrophoneState.switching;
       notifyListeners();
-      final fresh = await _provisionConfig(sessionIntent: sessionIntent);
+      final fresh =
+          await _provisionConfig(sessionIntent: sessionIntent, mode: mode);
       if (_disposed || epoch != _conversationEpoch) return;
       config = fresh;
       if (fresh.status != HubConfigStatus.active) {
@@ -490,7 +478,10 @@ class ClientController extends ChangeNotifier {
       if (!_session.isConnected) {
         await _session.connect(fresh.session);
       }
-      if (_disposed || epoch != _conversationEpoch) return;
+      if (_disposed || epoch != _conversationEpoch) {
+        await _session.disconnect();
+        return;
+      }
       transcript.clear();
       _inConversation = true;
       conversationStanding = ConversationStanding.asked;
@@ -498,15 +489,18 @@ class ClientController extends ChangeNotifier {
       await _session.openSession();
       if (_disposed || epoch != _conversationEpoch || !_inConversation) {
         await _session.closeSession();
+        await _session.disconnect();
         return;
       }
       await _vad.start();
       if (_disposed || epoch != _conversationEpoch || !_inConversation) {
         await _vad.stop();
         await _session.closeSession();
+        await _session.disconnect();
         return;
       }
-      microphoneState = MicrophoneState.enabled;
+      microphoneState = MicrophoneState.muted;
+      await _applyAudioState();
       _confirmationTimer?.cancel();
       if (conversationStanding == ConversationStanding.asked) {
         _confirmationTimer = Timer(_conversationConfirmationTimeout, () async {
@@ -526,7 +520,7 @@ class ClientController extends ChangeNotifier {
       }
       _setPhase(ClientPhase.conversation);
       await _session.publishAudioState(
-        muted: false,
+        muted: !microphoneEnabled,
         agentSpeaking: agentSpeaking,
         reliable: true,
       );
@@ -547,10 +541,11 @@ class ClientController extends ChangeNotifier {
         await _session.closeSession();
       } catch (_) {}
       _inConversation = false;
+      await _session.disconnect();
       voiceConnection = ChannelConnectionState.disconnected;
       microphoneState = MicrophoneState.inactive;
       failure = _classifyFailure(exception, liveKitContext: true);
-      phase = _session.isConnected ? ClientPhase.ready : ClientPhase.error;
+      phase = ClientPhase.ready;
       notifyListeners();
     } finally {
       _busy = false;
@@ -559,52 +554,96 @@ class ClientController extends ChangeNotifier {
   }
 
   Future<void> leave() async {
+    if (_leaving) return;
+    _leaving = true;
+    final wasBusy = _busy;
+    _busy = true;
+    notifyListeners();
     ++_conversationEpoch;
     _confirmationTimer?.cancel();
     _activationTimer?.cancel();
     _audioStateTimer?.cancel();
     final wasActive = _inConversation;
     _inConversation = false;
+    _pttHeld = false;
     try {
+      await _audioUpdate;
       await _vad.stop();
       if (wasActive) await _session.closeSession();
     } catch (error) {
       failure = _classifyFailure(error, liveKitContext: true);
-      // A failed close cannot leave an open microphone or reusable session.
-      await _session.disconnect();
+      // The finally block disconnects even if session_close failed.
     } finally {
+      await _session.disconnect();
+      controlConnection = ChannelConnectionState.disconnected;
       remoteVideoTrack = null;
       videoState = VideoState.audioOnly;
       agentTurn = AgentTurnState.idle;
       microphoneState = MicrophoneState.inactive;
       voiceConnection = ChannelConnectionState.disconnected;
+      _leaving = false;
+      _busy = wasBusy;
       _setPhase(ClientPhase.ready);
     }
   }
 
   Future<void> toggleMicrophone() async {
-    if (phase != ClientPhase.conversation ||
-        microphoneState == MicrophoneState.switching) {
+    if (!_inConversation || mode == ConversationMode.ptt) return;
+    _userMuted = !_userMuted;
+    await _applyAudioState();
+  }
+
+  Future<void> setPttHeld(bool held) async {
+    if (!_inConversation ||
+        mode != ConversationMode.ptt ||
+        !conversationStanding.answered ||
+        _pttHeld == held) {
       return;
     }
-    final wasEnabled = microphoneState == MicrophoneState.enabled;
-    microphoneState = MicrophoneState.switching;
+    _pttHeld = held;
     notifyListeners();
-    try {
-      await _session.setMicrophoneEnabled(!wasEnabled);
+    await _applyAudioState();
+  }
+
+  /// Serialize microphone and reliable PTT edges, including a release that
+  /// arrives while Android is still opening the microphone. Leave invalidates
+  /// queued work and waits for the in-flight operation before disconnecting.
+  Future<void> _applyAudioState() {
+    final epoch = _conversationEpoch;
+    final held = _pttHeld;
+    final enabled = conversationStanding.answered &&
+        (mode == ConversationMode.ptt
+            ? held
+            : !_userMuted &&
+                (mode != ConversationMode.halfDuplex || !agentSpeaking));
+    _audioUpdate = _audioUpdate.then((_) async {
+      if (_disposed || epoch != _conversationEpoch || !_inConversation) return;
+      if (enabled && mode == ConversationMode.ptt) {
+        _session.pttHeld = held;
+        await _session.publishAudioState(
+            muted: false, agentSpeaking: agentSpeaking, reliable: true);
+      }
+      await _session.setMicrophoneEnabled(enabled);
+      if (_disposed || epoch != _conversationEpoch || !_inConversation) return;
+      _session.pttHeld = held;
       microphoneState =
-          wasEnabled ? MicrophoneState.muted : MicrophoneState.enabled;
+          enabled ? MicrophoneState.enabled : MicrophoneState.muted;
       await _session.publishAudioState(
-        muted: wasEnabled,
-        agentSpeaking: agentSpeaking,
-        reliable: true,
-      );
-    } catch (exception) {
-      microphoneState =
-          wasEnabled ? MicrophoneState.enabled : MicrophoneState.muted;
-      failure = _classifyFailure(exception, liveKitContext: true);
-    }
-    notifyListeners();
+          muted: !enabled, agentSpeaking: agentSpeaking, reliable: true);
+      notifyListeners();
+    }).catchError((Object e) async {
+      if (epoch != _conversationEpoch || _disposed) return;
+      _pttHeld = false;
+      _session.pttHeld = false;
+      _userMuted = true;
+      try {
+        await _session.setMicrophoneEnabled(false);
+      } catch (_) {}
+      microphoneState = MicrophoneState.muted;
+      failure = _classifyFailure(e, liveKitContext: true);
+      notifyListeners();
+    });
+    return _audioUpdate;
   }
 
   /// The far end left without saying so.
@@ -637,19 +676,10 @@ class ClientController extends ChangeNotifier {
       _ => ChannelConnectionState.disconnected,
     };
     controlConnection = connection;
-    if (event.state == 'connected') {
-      _controlRecoveryTimer?.cancel();
-      _controlRecoveryTimer = null;
-      _controlRecoveryAttempt = 0;
-    } else if (event.state == 'reconnecting' &&
-        config?.status == HubConfigStatus.active) {
-      _scheduleControlRecovery(_controlReconnectGrace);
-    }
-
     // Losing the channel is the one thing that still ends a conversation
     // without anyone saying so — there is nothing left to carry it. A
     // conversation that ends normally does so via session_end or leave(),
-    // both of which leave the channel untouched.
+    // both of which close RTC while preserving the logical Channel binding.
     if (event.state == 'disconnected') {
       if (_inConversation) {
         ++_conversationEpoch;
@@ -661,12 +691,8 @@ class ClientController extends ChangeNotifier {
         agentTurn = AgentTurnState.idle;
         microphoneState = MicrophoneState.inactive;
         videoState = VideoState.audioOnly;
-        _showNotice('连接已断开，正在重新连接');
+        _showNotice('对话连接已断开，请重新开始。');
         _setPhase(ClientPhase.ready);
-      }
-      if (config?.status == HubConfigStatus.active) {
-        controlConnection = ChannelConnectionState.reconnecting;
-        _scheduleControlRecovery(Duration.zero);
       }
     } else {
       voiceConnection = _inConversation ? connection : voiceConnection;
@@ -674,95 +700,9 @@ class ClientController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Re-check the control plane immediately when Android returns the app to
-  /// the foreground. LiveKit's built-in retry policy can otherwise spend
-  /// close to a minute exhausting its backoff sequence after a Wi-Fi pause.
-  void onAppResumed() {
-    if (config?.status != HubConfigStatus.active || _session.isConnected) {
-      return;
-    }
-    controlConnection = ChannelConnectionState.reconnecting;
-    notifyListeners();
-    _scheduleControlRecovery(Duration.zero);
-  }
-
-  void _scheduleControlRecovery(Duration delay) {
-    if (_disposed ||
-        config?.status != HubConfigStatus.active ||
-        _session.isConnected ||
-        _controlRecoveryInFlight) {
-      return;
-    }
-    if (_controlRecoveryAttempt >= 3) {
-      _controlRecoveryTimer?.cancel();
-      controlConnection = ChannelConnectionState.disconnected;
-      failure = ClientFailure(
-        kind: failure?.kind ?? ClientErrorKind.network,
-        title: '对话通道暂时无法连接',
-        message: '自动重试已停止。请检查主机服务和网络，然后点击“重新检查”。',
-        technicalDetails: failure?.technicalDetails ?? 'Control recovery exhausted',
-      );
-      _setPhase(ClientPhase.error);
-      return;
-    }
-    if (_controlRecoveryTimer?.isActive == true) {
-      if (delay > Duration.zero) return;
-      _controlRecoveryTimer?.cancel();
-    }
-    _controlRecoveryTimer = Timer(delay, () {
-      _controlRecoveryTimer = null;
-      unawaited(_recoverControl());
-    });
-  }
-
-  Future<void> _recoverControl() async {
-    if (_disposed ||
-        _controlRecoveryInFlight ||
-        config?.status != HubConfigStatus.active ||
-        _session.isConnected) {
-      return;
-    }
-    if (_busy) {
-      _scheduleControlRecovery(const Duration(milliseconds: 250));
-      return;
-    }
-
-    _controlRecoveryInFlight = true;
-    _busy = true;
-    _controlRecoveryAttempt += 1;
-    final stopwatch = Stopwatch()..start();
-    debugPrint(
-      'Control recovery attempt=$_controlRecoveryAttempt started',
-    );
-    notifyListeners();
-    var retry = false;
-    try {
-      await _registerAndApply(showRegistering: false);
-      if (!_session.isConnected) {
-        retry = true;
-      } else {
-        failure = null;
-        debugPrint(
-          'Control recovery succeeded in ${stopwatch.elapsedMilliseconds}ms',
-        );
-      }
-    } catch (exception) {
-      retry = true;
-      failure = _classifyFailure(exception);
-      debugPrint(
-        'Control recovery failed in ${stopwatch.elapsedMilliseconds}ms: '
-        '$exception',
-      );
-    } finally {
-      stopwatch.stop();
-      _controlRecoveryInFlight = false;
-      _busy = false;
-      notifyListeners();
-    }
-    if (retry && !_session.isConnected) {
-      _scheduleControlRecovery(_controlRecoveryRetry);
-    }
-  }
+  /// LiveKit owns reconnecting an active Room. Returning to this page never
+  /// creates a new Room or starts a conversation without another Start.
+  void onAppResumed() => notifyListeners();
 
   Future<void> _onSessionData(SessionData event) async {
     switch (event.topic) {
@@ -789,6 +729,7 @@ class ClientController extends ChangeNotifier {
       case controlOpRoomJoin:
         await _ack(command, 'accepted', 'OK');
         await join(
+          mode: mode,
           sessionIntent: roomJoinSessionIntent(command.payload),
         );
         if (phase == ClientPhase.conversation) {
@@ -805,7 +746,10 @@ class ClientController extends ChangeNotifier {
           // config it can see acknowledged.
           await _ack(command, 'completed', 'OK', result: {
             'config_applied': applied,
-            if (!applied) 'pending_reason': 'channel_in_use',
+            if (!applied)
+              'pending_reason': _session.isConnected
+                  ? 'channel_in_use'
+                  : 'awaiting_conversation',
           });
         } catch (exception) {
           await _ack(
@@ -943,6 +887,7 @@ class ClientController extends ChangeNotifier {
           if (conversationStanding == ConversationStanding.farEndGone) return;
           _confirmationTimer?.cancel();
           conversationStanding = ConversationStanding.accepted;
+          await _applyAudioState();
           notifyListeners();
         case sessionEndType:
           final reason = root[sessionEndReasonField];
@@ -989,13 +934,7 @@ class ClientController extends ChangeNotifier {
       if (nextTurn == null) return;
       agentTurn = nextTurn;
       if (phase == ClientPhase.conversation) {
-        unawaited(
-          _session.publishAudioState(
-            muted: !microphoneEnabled,
-            agentSpeaking: agentSpeaking,
-            reliable: true,
-          ),
-        );
+        unawaited(_applyAudioState());
       }
       notifyListeners();
     } catch (_) {
@@ -1209,7 +1148,6 @@ class ClientController extends ChangeNotifier {
 
   Future<void> retry() async {
     if (_busy || _disposed) return;
-    _controlRecoveryAttempt = 0;
     _activationAttempts = 0;
     activationExhausted = false;
     if (hub == null) {
@@ -1349,7 +1287,7 @@ class ClientController extends ChangeNotifier {
       return ClientFailure(
         kind: ClientErrorKind.network,
         title: liveKitContext ? '语音连接中断' : '无法连接到 Hub',
-        message: '请检查局域网连接，应用会在可恢复状态下继续尝试',
+        message: '请检查局域网连接，然后重新开始对话',
         technicalDetails: details,
       );
     }
@@ -1357,7 +1295,7 @@ class ClientController extends ChangeNotifier {
       return ClientFailure(
         kind: ClientErrorKind.liveKit,
         title: '无法开始这次对话',
-        message: '通道仍然在线，可以再次尝试开始对话',
+        message: '未能接通。请重试，或在诊断中查看主机服务。',
         technicalDetails: details,
       );
     }
@@ -1379,7 +1317,6 @@ class ClientController extends ChangeNotifier {
     _audioStateTimer?.cancel();
     _noticeTimer?.cancel();
     _attentionTimer?.cancel();
-    _controlRecoveryTimer?.cancel();
     unawaited(_dataSubscription.cancel());
     unawaited(_stateSubscription.cancel());
     unawaited(_presenceSubscription.cancel());

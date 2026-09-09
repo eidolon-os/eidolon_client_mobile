@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../controller/client_controller.dart';
+import '../../models/conversation_mode.dart';
 import '../../generated/device_foundation_v1.dart';
 import '../../generated/management_v1.dart';
 import '../../platform/platform_bridge.dart';
@@ -64,9 +65,12 @@ class ConversationFlow extends ChangeNotifier {
   MountedDevice? device;
   EnrollmentRecoveryProjectionV1? reviewedProposal;
   String? selectedCompanionId;
+  ConversationMode? selectedMode;
+  bool get hasSelection => selectedCompanionId != null && selectedMode != null;
   String? error;
   String? managementError;
-  bool busy = false;
+  bool _working = false;
+  bool get busy => _working || _continuing;
   bool _disposed = false;
   bool _closing = false;
   String? _decisionCompanion;
@@ -99,7 +103,6 @@ class ConversationFlow extends ChangeNotifier {
 
   void _changed() {
     if (_disposed || _closing) return;
-    _notify();
     if (client.enrollmentAct == MobileBodyEnrollmentAct.approve &&
         reviewedProposal == null &&
         !_loadingReview) {
@@ -114,6 +117,7 @@ class ConversationFlow extends ChangeNotifier {
       _startWhenReady = false;
       unawaited(_continueConversation());
     }
+    _notify();
   }
 
   Future<void> initialize() async {
@@ -146,7 +150,7 @@ class ConversationFlow extends ChangeNotifier {
       if (identity != null) {
         device = await management.device(identity.deviceInstanceId);
         if (device?.attachedCompanionId != null) {
-          selectedCompanionId = device!.attachedCompanionId;
+          selectedCompanionId ??= device!.attachedCompanionId;
         }
       }
       managementError = null;
@@ -193,8 +197,8 @@ class ConversationFlow extends ChangeNotifier {
 
   Future<void> approveAndStart() => _run(() async {
         final projection = reviewedProposal;
-        if (projection == null || selectedCompanionId == null) {
-          throw StateError('请先核对本机提案并选择应答伙伴');
+        if (projection == null || !hasSelection) {
+          throw StateError('请先核对本机提案，选择伙伴和对话方式');
         }
         final pending = enrollment.pending;
         if (pending == null ||
@@ -218,67 +222,61 @@ class ConversationFlow extends ChangeNotifier {
         await client.checkActivation();
       });
 
-  Future<void> choose(String companionId, {bool restart = false}) =>
-      _run(() async {
+  Future<void> choose(String companionId) => _run(() async {
         if (_decisionCompanion != null && _decisionCompanion != companionId) {
-          throw StateError('上次确认结果尚未收到，请先重新检查或重试确认，再更换伙伴');
+          throw StateError('上次确认结果尚未收到，请先重试确认');
         }
         if (!companions.any((c) => c.companionId == companionId)) {
           throw StateError('这位伙伴目前不可选，请刷新伙伴列表');
         }
-        if (companionId == selectedCompanionId &&
-            !restart &&
-            _assignment == null) {
-          return;
-        }
-        if (client.enrollmentAct == MobileBodyEnrollmentAct.propose ||
-            client.enrollmentAct == MobileBodyEnrollmentAct.approve) {
-          selectedCompanionId = companionId;
-          return;
-        }
-        final identity = client.identity;
-        final current = identity == null
-            ? null
-            : await management.device(identity.deviceInstanceId);
-        if (current == null) {
-          if (client.canJoin || client.canLeave) {
-            throw StateError('暂未读到本机挂载，请稍后重试');
-          }
-          selectedCompanionId = companionId;
-          return;
-        }
+        if (selectedCompanionId == companionId) return;
         _startWhenReady = false;
         if (client.canLeave) await client.leave();
-        if (current.attachedCompanionId != companionId) {
-          var attempt = _assignment;
-          if (attempt == null ||
-              attempt.deviceId != current.deviceId ||
-              attempt.companionId != companionId ||
-              attempt.revision != current.revision) {
-            attempt = (
-              deviceId: current.deviceId,
-              companionId: companionId,
-              revision: current.revision,
-              commandId: 'body-choice-${DateTime.now().microsecondsSinceEpoch}'
-            );
-            _assignment = attempt;
-          }
-          await management.assign(
-              deviceId: attempt.deviceId,
-              requestId: attempt.commandId,
-              companionId: attempt.companionId,
-              expectedRevision: attempt.revision);
-        }
-        device = await management.device(current.deviceId);
-        selectedCompanionId = device?.attachedCompanionId;
-        if (selectedCompanionId != companionId) {
-          throw StateError('主机尚未确认这次伙伴选择，请重新读取本机绑定');
-        }
-        _assignment = null;
-        if (restart) _startWhenReady = true;
+        selectedCompanionId = companionId;
       });
 
+  Future<void> chooseMode(ConversationMode mode) => _run(() async {
+        if (selectedMode == mode) return;
+        _startWhenReady = false;
+        if (client.canLeave) await client.leave();
+        selectedMode = mode;
+      });
+
+  Future<void> _confirmCompanion(String companionId) async {
+    final identity = client.identity;
+    final current = identity == null
+        ? null
+        : await management.device(identity.deviceInstanceId);
+    if (current == null) throw StateError('暂未读到本机挂载，请稍后重试');
+    if (current.attachedCompanionId != companionId) {
+      var attempt = _assignment;
+      if (attempt == null ||
+          attempt.deviceId != current.deviceId ||
+          attempt.companionId != companionId ||
+          attempt.revision != current.revision) {
+        attempt = (
+          deviceId: current.deviceId,
+          companionId: companionId,
+          revision: current.revision,
+          commandId: 'body-choice-${DateTime.now().microsecondsSinceEpoch}'
+        );
+        _assignment = attempt;
+      }
+      await management.assign(
+          deviceId: attempt.deviceId,
+          requestId: attempt.commandId,
+          companionId: attempt.companionId,
+          expectedRevision: attempt.revision);
+    }
+    device = await management.device(current.deviceId);
+    if (device?.attachedCompanionId != companionId) {
+      throw StateError('主机尚未确认这次伙伴选择，请重新读取本机绑定');
+    }
+    _assignment = null;
+  }
+
   Future<void> startConversation() => _run(() async {
+        if (!hasSelection) throw StateError('请选择应答伙伴和对话方式');
         _startWhenReady = true;
         if (client.canLeave) await client.leave();
         if (!client.canJoin) await client.retry();
@@ -286,26 +284,11 @@ class ConversationFlow extends ChangeNotifier {
 
   Future<void> _continueConversation() async {
     try {
-      try {
-        final identity = client.identity;
-        if (identity != null) {
-          device = await management
-              .device(identity.deviceInstanceId)
-              .timeout(const Duration(seconds: 3));
-          selectedCompanionId =
-              device?.attachedCompanionId ?? selectedCompanionId;
-        }
-      } catch (_) {
-        // Controller availability does not decide Device authorization.
-        device = null;
-      }
-      // Assignment is management projection, not a prerequisite to an already
-      // authorized Device opening a session. A confirmed empty assignment is
-      // actionable; unavailable management data is not proof of an empty one.
-      if (device != null && device!.attachedCompanionId == null) {
-        throw StateError('请先为本机选择应答伙伴');
-      }
-      if (!_disposed && !_closing) await client.join();
+      final companion = selectedCompanionId;
+      final mode = selectedMode;
+      if (companion == null || mode == null) throw StateError('请选择应答伙伴和对话方式');
+      await _confirmCompanion(companion);
+      if (!_disposed && !_closing) await client.join(mode: mode);
     } catch (e) {
       error = _message(e);
     } finally {
@@ -324,7 +307,7 @@ class ConversationFlow extends ChangeNotifier {
 
   Future<void> _run(Future<void> Function() action) async {
     if (busy || _disposed || _closing) return;
-    busy = true;
+    _working = true;
     error = null;
     _notify();
     try {
@@ -333,7 +316,7 @@ class ConversationFlow extends ChangeNotifier {
       _startWhenReady = false;
       error = _message(e);
     } finally {
-      busy = false;
+      _working = false;
       _changed();
     }
   }

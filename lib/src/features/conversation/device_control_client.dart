@@ -34,6 +34,8 @@ import 'package:http/http.dart' as http;
 import '../../protocol/canonical_json.dart';
 import '../../protocol/livekit_session_binding.dart';
 import '../../models/hub_models.dart';
+import '../device_setup/device_instance_identity.dart';
+import '../../generated/device_foundation_v1.dart';
 
 /// The operation the Authority verifies this device's signature against.
 const deviceControlConfigurationOperation = 'device-control.configuration';
@@ -44,6 +46,7 @@ class DeviceConfiguration {
     required this.claimStands,
     required this.session,
     required this.deviceRef,
+    this.manifest,
   });
 
   /// Whether the Claim is still active.
@@ -51,6 +54,7 @@ class DeviceConfiguration {
   /// False means revoked, which is an answer rather than a failure — and the
   /// one thing a phone must never learn from its own records.
   final bool claimStands;
+  final ManifestRefV1? manifest;
 
   /// The room this device may join, when the Authority delivered one.
   ///
@@ -274,6 +278,10 @@ class DeviceControlClient {
     }
     final held = Map<String, Object?>.from(answered);
 
+    final manifest = decoded['manifest'] == null
+        ? null
+        : ManifestRefV1.fromJson(
+            Map<String, dynamic>.from(decoded['manifest'] as Map));
     final lifecycle = decoded['lifecycle_state'];
     if (lifecycle != 'approved' && lifecycle != 'revoked') {
       throw DeviceControlRefusal(
@@ -289,6 +297,7 @@ class DeviceControlClient {
         claimStands: false,
         session: null,
         deviceRef: held,
+        manifest: manifest,
       );
     }
 
@@ -298,6 +307,7 @@ class DeviceControlClient {
         claimStands: true,
         session: null,
         deviceRef: held,
+        manifest: manifest,
       );
     }
     final channel = channels.first;
@@ -359,11 +369,74 @@ class DeviceControlClient {
     return DeviceConfiguration(
       claimStands: true,
       deviceRef: held,
+      manifest: manifest,
       session: liveKitSessionFromBinding(
         bindingFormat: channel['binding_format'] as String? ?? '',
         opaqueBinding: binding,
       ),
     );
+  }
+
+  /// Standard Device Foundation assertion; the device signs its own document
+  /// digest. This neither approves a Claim nor assigns a Companion.
+  Future<void> assertManifest({
+    required Map<String, Object?> deviceRef,
+    required Map<String, Object?> manifest,
+    required String operationalPublicKey,
+    required Future<String> Function(String canonicalDocument) sign,
+  }) async {
+    const operation = 'device-control.manifest-assert';
+    final nonce = _nonce();
+    final signature = await sign(canonicalJsonEncode({
+      'device_ref': deviceRef,
+      'manifest_digest': manifest['digest'],
+      'nonce': nonce,
+      'operation_type': operation,
+    }));
+    final response = await _transport
+        .post(
+          authority.resolve('/api/device-control/v1/manifest:assert'),
+          headers: const {
+            'accept': 'application/json',
+            'content-type': 'application/json'
+          },
+          body: jsonEncode({
+            'contract': 'eidolon.device-foundation.manifest-assertion',
+            'contract_version': '1.0',
+            'device_ref': deviceRef,
+            'manifest': manifest,
+            'nonce': nonce,
+            'public_key_spki': operationalPublicKeySpki(operationalPublicKey),
+            'device_signature': signature,
+          }),
+        )
+        .timeout(timeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw DeviceControlRefusal(
+          detail: _detailOf(response),
+          status: response.statusCode,
+          retryable: response.statusCode >= 500);
+    }
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+    final expected = {
+      for (final k in ['manifest_id', 'revision', 'digest']) k: manifest[k]
+    };
+    if (decoded is! Map ||
+        decoded['contract'] !=
+            'eidolon.device-foundation.manifest-acceptance' ||
+        decoded['contract_version'] != '1.0' ||
+        decoded['nonce'] != nonce ||
+        !['accepted', 'unchanged'].contains(decoded['outcome']) ||
+        canonicalJsonEncode(decoded['device_ref']) !=
+            canonicalJsonEncode(deviceRef) ||
+        canonicalJsonEncode(decoded['accepted']) !=
+            canonicalJsonEncode(expected)) {
+      throw DeviceControlRefusal(
+          detail: '主机未确认本次设备声明',
+          status: response.statusCode,
+          retryable: false,
+          invalidResponse: true);
+    }
   }
 
   /// A fresh nonce, in the shape the contract accepts.

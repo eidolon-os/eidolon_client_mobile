@@ -1,3 +1,5 @@
+import 'package:eidolon_client_mobile/src/features/device_setup/mobile_body_manifest.dart';
+import 'package:eidolon_client_mobile/src/models/conversation_mode.dart';
 import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/features/conversation/device_control_client.dart';
@@ -139,6 +141,7 @@ void main() {
     String lifecycle = 'approved',
     bool withChannel = false,
     Map<String, Object?>? ref,
+    Map<String, Object?>? manifest,
   }) =>
       http.Response(
         jsonEncode(<String, Object?>{
@@ -146,7 +149,7 @@ void main() {
           'nonce': nonce,
           'device_ref': ref ?? deviceRef(),
           'lifecycle_state': lifecycle,
-          'manifest': null,
+          'manifest': manifest,
           'channels': withChannel
               ? <Object?>[
                   <String, Object?>{
@@ -169,6 +172,7 @@ void main() {
     required MockClient deviceControl,
     MobileBodyClaimStore? claims,
     bool forbidManagement = false,
+    ConversationMode? mode,
   }) {
     return MobileConversationProvisioner(
       loadTarget: () async => deviceOnboardingTargetFixture(),
@@ -179,8 +183,92 @@ void main() {
         transport: deviceControl,
       ),
       platform: FakePhonePlatform(),
-    ).provision();
+    ).provision(mode: mode);
   }
+
+  test(
+      'mode assertion reuses Claim, cycles revisions and recovers a lost acceptance',
+      () async {
+    final claims = InMemoryMobileBodyClaimStore(claim());
+    final originalClaim = await claims.loadFor(phoneOperationalPublicKey);
+    var document = mobileBodyManifestRef(title: defaultMobileBodyTitle);
+    final revisions = <int>[];
+    var loseReply = true;
+    final transport = MockClient((request) async {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(body['device_ref'], claimedDeviceRef);
+      if (request.url.path.endsWith('manifest:assert')) {
+        expect(body['public_key_spki'], isNot(startsWith('p256-spki:')));
+        final next = Map<String, Object?>.from(body['manifest'] as Map);
+        expect(next['revision'], (document['revision']! as int) + 1);
+        document = next;
+        revisions.add(next['revision']! as int);
+        if (loseReply) {
+          loseReply = false;
+          throw const FormatException('reply lost after commit');
+        }
+        return http.Response(
+            jsonEncode({
+              'contract': 'eidolon.device-foundation.manifest-acceptance',
+              'contract_version': '1.0',
+              'device_ref': claimedDeviceRef,
+              'nonce': body['nonce'],
+              'outcome': 'accepted',
+              'accepted': {
+                for (final key in ['manifest_id', 'revision', 'digest'])
+                  key: document[key]
+              },
+            }),
+            200);
+      }
+      return configuration(
+          nonce: body['nonce'] as String,
+          withChannel: true,
+          manifest: {
+            for (final key in ['manifest_id', 'revision', 'digest'])
+              key: document[key]
+          });
+    });
+    final lost = await provision(
+        deviceControl: transport,
+        claims: claims,
+        forbidManagement: true,
+        mode: ConversationMode.ptt);
+    expect(lost.status, HubConfigStatus.waitingBinding);
+    for (final mode in [
+      ConversationMode.ptt,
+      ConversationMode.halfDuplex,
+      ConversationMode.fullDuplex,
+      ConversationMode.ptt
+    ]) {
+      final result = await provision(
+          deviceControl: transport,
+          claims: claims,
+          forbidManagement: true,
+          mode: mode);
+      expect(result.status, HubConfigStatus.active);
+      expect(
+          document['digest'],
+          mobileBodyManifestRef(
+              title: defaultMobileBodyTitle, mode: mode)['digest']);
+    }
+    expect(revisions, [2, 3, 4, 5]);
+    expect((await claims.loadFor(phoneOperationalPublicKey))?.toJson(),
+        originalClaim?.toJson());
+  });
+
+  test('missing accepted Manifest blocks mode preparation without asserting',
+      () async {
+    final result = await provision(
+        mode: ConversationMode.ptt,
+        deviceControl: MockClient((r) async {
+          expect(r.url.path, endsWith('configuration:pull'));
+          return configuration(
+              nonce: (jsonDecode(r.body) as Map)['nonce'] as String,
+              withChannel: true);
+        }));
+    expect(result.status, HubConfigStatus.waitingBinding);
+  });
 
   test(
       'held Claim obtains a channel with all Controller recovery reads forbidden',

@@ -1,3 +1,4 @@
+import 'package:eidolon_client_mobile/src/models/conversation_mode.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -177,7 +178,7 @@ class _FakeProvisioner implements ConversationProvisioner {
   Uri get serviceUri => Uri.parse('https://hub.example/descriptor');
 
   @override
-  Future<HubConfig> provision({String sessionIntent = ''}) async => _config;
+  Future<HubConfig> provision({String sessionIntent = '', ConversationMode? mode}) async => _config;
 }
 
 class _MicGrantedPlatform extends FakePhonePlatform {

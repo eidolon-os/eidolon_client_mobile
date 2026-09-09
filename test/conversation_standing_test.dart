@@ -1,3 +1,4 @@
+import 'package:eidolon_client_mobile/src/models/conversation_mode.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -283,7 +284,7 @@ void main() {
       built.controller.dispose();
     });
 
-    test('a refresh that does build the channel is acked as in force',
+    test('a standby refresh waits for explicit conversation start',
         () async {
       final built = build();
       await built.controller.start();
@@ -297,8 +298,8 @@ void main() {
       await settle();
 
       final ack = built.session.published.last;
-      expect(ack, contains('"config_applied":true'));
-      expect(ack, isNot(contains('pending_reason')));
+      expect(ack, contains('"config_applied":false'));
+      expect(ack, contains('awaiting_conversation'));
       built.controller.dispose();
     });
   });
@@ -397,5 +398,5 @@ class _FakeProvisioner implements ConversationProvisioner {
   Uri get serviceUri => Uri.parse('https://hub.example/descriptor');
 
   @override
-  Future<HubConfig> provision({String sessionIntent = ''}) async => _config;
+  Future<HubConfig> provision({String sessionIntent = '', ConversationMode? mode}) async => _config;
 }

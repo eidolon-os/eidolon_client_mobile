@@ -35,6 +35,50 @@ Map<String, dynamic> _vector() => jsonDecode(
     ) as Map<String, dynamic>;
 
 void main() {
+  test('Manifest assertion signing bytes match the SDK golden', () async {
+    final golden = jsonDecode(File(
+            'test/fixtures/device_foundation/device-control-manifest-assertion-proof.json')
+        .readAsStringSync()) as Map;
+    final signing = golden['document'] as Map;
+    final ref = Map<String, Object?>.from(signing['device_ref'] as Map);
+    final manifest = <String, Object?>{
+      'manifest_id': 'vector',
+      'revision': 2,
+      'digest': signing['manifest_digest'],
+      'document': <String, Object?>{}
+    };
+    final client = DeviceControlClient(
+        authority: Uri.parse('https://host.invalid'),
+        newNonce: () => signing['nonce'] as String,
+        transport: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map;
+          expect(body['device_signature'], golden['signature']);
+          expect(body['public_key_spki'], golden['public_key_spki']);
+          expect(body['manifest'], manifest);
+          return http.Response(
+              jsonEncode({
+                'contract': 'eidolon.device-foundation.manifest-acceptance',
+                'contract_version': '1.0',
+                'nonce': body['nonce'],
+                'device_ref': ref,
+                'outcome': 'accepted',
+                'accepted': {
+                  for (final k in ['manifest_id', 'revision', 'digest'])
+                    k: manifest[k]
+                },
+              }),
+              200);
+        }));
+    await client.assertManifest(
+        deviceRef: ref,
+        manifest: manifest,
+        operationalPublicKey: 'p256-spki:${golden['public_key_spki']}',
+        sign: (document) async {
+          expect(document, golden['canonical_utf8']);
+          return golden['signature'] as String;
+        });
+  });
+
   Map<String, Object?> deviceRef() => Map<String, Object?>.from(
         canonicalContractValue('DF-ADMISSION-CLAIM-GRANT-VALID')['device_ref']!
             as Map,
@@ -149,8 +193,7 @@ void main() {
     });
   });
 
-  test('every member the vector says must not move is in the signed bytes',
-      () {
+  test('every member the vector says must not move is in the signed bytes', () {
     // A dropped member is invisible to the byte comparison above, which passes
     // for the vector's own values; it is only visible as an absence.
     final vector = _vector();
@@ -177,14 +220,18 @@ void main() {
     final vector = _responses();
     final expected = <String, ({bool stands, bool session})>{
       'DF-DEVICE-CONTROL-CONFIGURATION-ACTIVE': (stands: true, session: true),
-      'DF-DEVICE-CONTROL-CONFIGURATION-APPROVED-AWAITING-CHANNEL':
-          (stands: true, session: false),
-      'DF-DEVICE-CONTROL-CONFIGURATION-REVOKED':
-          (stands: false, session: false),
+      'DF-DEVICE-CONTROL-CONFIGURATION-APPROVED-AWAITING-CHANNEL': (
+        stands: true,
+        session: false
+      ),
+      'DF-DEVICE-CONTROL-CONFIGURATION-REVOKED': (
+        stands: false,
+        session: false
+      ),
     };
 
-    for (final entry in (vector['cases']! as List<Object?>)
-        .cast<Map<String, dynamic>>()) {
+    for (final entry
+        in (vector['cases']! as List<Object?>).cast<Map<String, dynamic>>()) {
       final caseId = entry['case_id']! as String;
       final want = expected[caseId];
       expect(want, isNotNull, reason: 'the vector grew a case: $caseId');
@@ -209,8 +256,8 @@ void main() {
     // withholds is different, and the point of the set is that a Body cannot
     // pass by getting one right.
     final vector = _responses();
-    final refusals = (vector['must_refuse']! as List<Object?>)
-        .cast<Map<String, dynamic>>();
+    final refusals =
+        (vector['must_refuse']! as List<Object?>).cast<Map<String, dynamic>>();
 
     expect(refusals, hasLength(4));
     // The vector publishes the rule now, and it is the one this client uses.
@@ -236,8 +283,8 @@ void main() {
 
   test('a delivered channel becomes a room this device may join', () async {
     final flow = client(MockClient((request) async {
-      final nonce =
-          (jsonDecode(request.body) as Map<String, dynamic>)['nonce']! as String;
+      final nonce = (jsonDecode(request.body) as Map<String, dynamic>)['nonce']!
+          as String;
       return ok(answer(nonce: nonce, channels: <Object?>[
         <String, Object?>{
           'channel_id': 'channel_01',
@@ -258,7 +305,8 @@ void main() {
     );
 
     expect(configuration.claimStands, isTrue);
-    expect(configuration.session!.serverUrl, 'wss://livekit.owner-domain.invalid');
+    expect(
+        configuration.session!.serverUrl, 'wss://livekit.owner-domain.invalid');
     expect(configuration.session!.usable, isTrue);
   });
 
@@ -268,8 +316,8 @@ void main() {
     // a client that raised here would turn the one delivery of that news into
     // an error to be retried.
     final flow = client(MockClient((request) async {
-      final nonce =
-          (jsonDecode(request.body) as Map<String, dynamic>)['nonce']! as String;
+      final nonce = (jsonDecode(request.body) as Map<String, dynamic>)['nonce']!
+          as String;
       return ok(answer(nonce: nonce, lifecycle: 'revoked'));
     }));
 
@@ -289,8 +337,8 @@ void main() {
     // Authority returns the same thing either way, so this side must not
     // invent which.
     final flow = client(MockClient((request) async {
-      final nonce =
-          (jsonDecode(request.body) as Map<String, dynamic>)['nonce']! as String;
+      final nonce = (jsonDecode(request.body) as Map<String, dynamic>)['nonce']!
+          as String;
       return ok(answer(nonce: nonce));
     }));
 
@@ -304,7 +352,8 @@ void main() {
     expect(configuration.session, isNull);
   });
 
-  test('the answered ref is the one the Authority holds, not the one asked with',
+  test(
+      'the answered ref is the one the Authority holds, not the one asked with',
       () async {
     // The recovery this closes. A Body whose stored ref fell behind its own
     // Claim — the Owner re-added an already-claimed device, so Admission
@@ -319,8 +368,8 @@ void main() {
       ..['claim_generation'] = 9
       ..['trust_epoch'] = 5;
     final flow = client(MockClient((request) async {
-      final nonce =
-          (jsonDecode(request.body) as Map<String, dynamic>)['nonce']! as String;
+      final nonce = (jsonDecode(request.body) as Map<String, dynamic>)['nonce']!
+          as String;
       return ok(answer(nonce: nonce, ref: held));
     }));
 
@@ -344,8 +393,8 @@ void main() {
     // caller drops the record instead — so the member exists here without
     // being a re-pin.
     final flow = client(MockClient((request) async {
-      final nonce =
-          (jsonDecode(request.body) as Map<String, dynamic>)['nonce']! as String;
+      final nonce = (jsonDecode(request.body) as Map<String, dynamic>)['nonce']!
+          as String;
       return ok(answer(nonce: nonce, lifecycle: 'revoked'));
     }));
 
@@ -383,7 +432,8 @@ void main() {
         ),
         throwsA(
           isA<DeviceControlRefusal>()
-              .having((error) => error.detail, 'detail', contains('another device'))
+              .having(
+                  (error) => error.detail, 'detail', contains('another device'))
               .having((error) => error.retryable, 'retryable', isFalse),
         ),
         reason: 'accepted an answer about ${foreign['device_instance_id']} '
@@ -432,7 +482,8 @@ void main() {
   test('an answer to a different ask is refused', () async {
     // The nonce comes back so this can be checked. An answer about an older
     // ask could report a Claim that has since been revoked.
-    final flow = client(MockClient((_) async => ok(answer(nonce: 'somebody-elses-nonce'))));
+    final flow = client(
+        MockClient((_) async => ok(answer(nonce: 'somebody-elses-nonce'))));
 
     await expectLater(
       flow.pullConfiguration(
@@ -498,8 +549,8 @@ void main() {
     // one ask, so a repeat would defeat the check above.
     final seen = <String>{};
     final flow = client(MockClient((request) async {
-      final nonce =
-          (jsonDecode(request.body) as Map<String, dynamic>)['nonce']! as String;
+      final nonce = (jsonDecode(request.body) as Map<String, dynamic>)['nonce']!
+          as String;
       seen.add(nonce);
       expect(RegExp(r'^[A-Za-z0-9_-]{16,128}$').hasMatch(nonce), isTrue);
       return ok(answer(nonce: nonce));
