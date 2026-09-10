@@ -36,7 +36,11 @@ class HostIdentitySummary extends StatelessWidget {
         if (!compact && info?.operatingSystem?.isNotEmpty == true)
           Text(info!.operatingSystem!),
         if (!compact && info?.hostname.isNotEmpty == true)
-          Text('主机名：${info!.hostname}'),
+          Text('系统主机名：${info!.hostname}'),
+        if (!compact &&
+            !host.hasCustomDisplayName &&
+            host.readableName != host.displayName)
+          Text('设备标识：${host.displayName}'),
         if (showAddress)
           Text(currentAddress != null
               ? 'Host IP：$currentAddress'

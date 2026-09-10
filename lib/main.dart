@@ -81,10 +81,10 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
           }
 
           return ProductConversationPage(
-            hostName: controller.host.displayName,
+            hostName: controller.host.readableName,
             createFlow: () => _deviceRuntime.open(
                 hostId: controller.host.hostId,
-                hostName: controller.host.displayName,
+                hostName: controller.host.readableName,
                 bootstrap: () async {
                   await prepareManagement();
                   return controller.fetchDeviceOnboardingTarget();

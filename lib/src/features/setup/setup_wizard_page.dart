@@ -725,7 +725,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
             : '添加';
     final description = item.lan != null ? '主机已联网' : '附近发现';
     final displayName =
-        item.known?.displayName ?? item.lan?.displayName ?? ble!.host.name;
+        item.known?.readableName ?? item.lan?.displayName ?? ble!.host.name;
     return Card(
       key: ValueKey(
           'discovered-host-${item.lan?.endpoint.hostId ?? ble!.host.address}'),
@@ -985,7 +985,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           Text('主机接入已完成', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
           Text(
-            '${_completedHost!.displayName} 已接入，'
+            '${_completedHost!.readableName} 已接入，'
             '这台手机已取得 Host Admin 权限。主机已可恢复保存，下一步会通过局域网创建 Workspace。',
           ),
           const SizedBox(height: 24),

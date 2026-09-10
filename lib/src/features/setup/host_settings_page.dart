@@ -56,9 +56,9 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
   Future<void> _renameHost() async {
     final name = await askForAName(
       context,
-      question: '这台主机叫什么？',
-      hint: '比如「书房那台」',
-      current: host.displayName,
+      question: '设置主机备注（仅本机）',
+      hint: '比如「书房的 Mac」，不修改系统主机名或主人称呼',
+      current: host.hasCustomDisplayName ? host.displayName : '',
       dialogKey: const Key('rename-host-dialog'),
       fieldKey: const Key('host-name-field'),
       confirmKey: const Key('confirm-host-name'),
@@ -89,7 +89,7 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
                 IconButton(
                   key: const Key('rename-host'),
                   onPressed: _renameHost,
-                  tooltip: '改名',
+                  tooltip: '修改主机备注',
                   icon: const Icon(Icons.edit_outlined),
                 ),
               ],
@@ -110,7 +110,7 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                host.displayName,
+                                host.readableName,
                                 style:
                                     Theme.of(context).textTheme.headlineSmall,
                               ),
@@ -135,10 +135,10 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
                 ListTile(
                   key: const Key('settings-owner-name'),
                   leading: const Icon(Icons.person_outline),
-                  title: const Text('我的称呼'),
+                  title: const Text('主人称呼'),
                   subtitle: Text(widget.controller.workspace?.owner == null
                       ? '连接并读取主人资料后可用'
-                      : '伙伴如何称呼你'),
+                      : '${widget.controller.workspace!.owner!.displayName} · 伙伴如何称呼你'),
                   onTap: widget.controller.workspace?.owner == null
                       ? null
                       : widget.onRenameOwner,
@@ -256,7 +256,7 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         key: const Key('confirm-forget-host'),
-        title: Text('移除 ${host.displayName}？'),
+        title: Text('移除 ${host.readableName}？'),
         content: const Text(
           '这只会让这台手机忘记它。主机上的 Owner、设备和数据都不受影响；'
           '如果它还在，可以重新设置一次把它加回来。',

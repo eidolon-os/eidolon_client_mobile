@@ -40,7 +40,7 @@ class ControllerRecoveryPage extends StatelessWidget {
                 Text('让这台主机重新接受一台手机', style: theme.textTheme.headlineSmall),
                 const SizedBox(height: 12),
                 Text(
-                  '${host.displayName} 只认它已经授权过的管理手机。'
+                  '${host.readableName} 只认它已经授权过的管理手机。'
                   '如果那台手机丢了、坏了，或者这台手机重装过 App 导致管理凭据被清空，'
                   '主机会正确地拒绝它 —— 这时需要在主机那一侧重新开一次认领窗口。',
                 ),

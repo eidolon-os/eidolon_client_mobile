@@ -1287,7 +1287,7 @@ void main() {
 
     expect(initialized, isTrue);
     expect(find.byKey(const Key('workspace-ready')), findsOneWidget);
-    expect(find.text('你好，Manson。'), findsOneWidget);
+    expect(find.text('主人：Manson'), findsOneWidget);
     expect(find.byKey(const Key('home-error')), findsOneWidget);
     expect(find.textContaining('概览暂时读不到'), findsOneWidget);
     overviewAvailable = true;
@@ -1512,7 +1512,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('你好，Manson。'), findsOneWidget);
+    expect(find.text('主人：Manson'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('rename-owner')));
     await tester.pumpAndSettle();
@@ -1526,7 +1526,7 @@ void main() {
     expect(ownerName.written, ['曼森']);
     // Shown because the Host said so afterwards, not because the screen
     // assumed the write took.
-    expect(find.text('你好，曼森。'), findsOneWidget);
+    expect(find.text('主人：曼森'), findsOneWidget);
   });
 
   testWidgets('cancelling and clearing the box both leave a person named', (
@@ -1569,7 +1569,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(ownerName.written, isEmpty);
-    expect(find.text('你好，Manson。'), findsOneWidget);
+    expect(find.text('主人：Manson'), findsOneWidget);
   });
 
   testWidgets('both entries are reachable, not merely built', (tester) async {

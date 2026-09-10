@@ -630,7 +630,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       key: const Key('host-local-connection-page'),
       appBar: AppBar(
         title: Text(
-          _controller.host.displayName,
+          _controller.host.readableName,
         ),
         actions: [
           if (widget.onHostSaved != null &&
@@ -1110,7 +1110,7 @@ class _WorkspaceCard extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(child: Text('你好，${workspace.owner!.displayName}。')),
+                Expanded(child: Text('主人：${workspace.owner!.displayName}')),
                 if (onRenameOwner != null)
                   IconButton(
                     key: const Key('rename-owner'),

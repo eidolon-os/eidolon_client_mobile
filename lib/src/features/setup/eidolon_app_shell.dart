@@ -374,7 +374,7 @@ class _HostsPage extends StatelessWidget {
               child: ListTile(
                 contentPadding: const EdgeInsets.all(18),
                 leading: const CircleAvatar(child: Icon(Icons.memory)),
-                title: Text(host.displayName),
+                title: Text(host.readableName),
                 subtitle: HostIdentitySummary(
                     host: host,
                     showAddress: true,

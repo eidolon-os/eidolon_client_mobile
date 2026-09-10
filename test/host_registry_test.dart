@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:eidolon_client_mobile/src/features/setup/host_identity.dart';
 
 import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
 import 'package:eidolon_client_mobile/src/platform/app_preferences.dart';
@@ -20,6 +21,39 @@ ManagedHost _host(String suffix, {int minute = 0}) => ManagedHost(
     );
 
 void main() {
+  test('readable names use Host facts without changing notes or identity', () {
+    final original = _host('1');
+    final generated =
+        original.copyWith(displayName: defaultHostDisplayName(original.hostId));
+    final observed = generated.copyWith(
+        machineInfo: const HostMachineInfo(
+            hostname: 'study-mac.local', model: 'MacBook Pro'));
+    final json = observed.toJson();
+    expect(observed.readableName, 'study-mac');
+    expect(observed.toJson(), json);
+    expect(observed.displayName, generated.displayName);
+    expect(observed.copyWith(displayName: '客厅的电脑').readableName, '客厅的电脑');
+    expect(observed.copyWith(displayName: 'Eidolon 工作站').readableName,
+        'Eidolon 工作站');
+    expect(
+        generated
+            .copyWith(
+                machineInfo: const HostMachineInfo(
+                    hostname: 'localhost', model: 'Raspberry Pi 5'))
+            .readableName,
+        'Raspberry Pi 5');
+    expect(
+        generated
+            .copyWith(
+                machineInfo: HostMachineInfo(
+                    hostname: generated.displayName, model: 'RK3588'))
+            .readableName,
+        'RK3588');
+    expect(generated.readableName, generated.displayName);
+    expect(ManagedHost.fromJson(observed.toJson()).readableName, 'study-mac');
+    expect(observed.hostId, original.hostId);
+  });
+
   test(
       'renaming and observations preserve each other and never revive a removed Host',
       () async {

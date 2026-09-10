@@ -60,7 +60,7 @@ class HostDiscoveryDetails extends StatelessWidget {
       if (info?.operatingSystem?.trim().isNotEmpty == true)
         '系统：${info!.operatingSystem!.trim()}',
       if (info?.hostname.trim().isNotEmpty == true)
-        '主机名：${info!.hostname.trim()}',
+        '系统主机名：${info!.hostname.trim()}',
       if (serviceName != null &&
           serviceName.isNotEmpty &&
           serviceName != displayName &&

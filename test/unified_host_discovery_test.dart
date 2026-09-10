@@ -206,7 +206,7 @@ void main() {
     expect(find.textContaining('MacBook Pro · Apple M3 Pro'), findsOneWidget);
     await tester.tap(find.text('识别详情'));
     await tester.pumpAndSettle();
-    expect(find.text('主机名：study-macbook.local'), findsOneWidget);
+    expect(find.text('系统主机名：study-macbook.local'), findsOneWidget);
     expect(find.text('发现方式：局域网 + 蓝牙 · 信号 -40 dBm'), findsOneWidget);
     expect(find.text('局域网地址：192.168.1.25:9002'), findsOneWidget);
     expect(find.textContaining('192.168.1.99'), findsNothing);

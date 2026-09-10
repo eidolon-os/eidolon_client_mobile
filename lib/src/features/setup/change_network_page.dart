@@ -60,7 +60,7 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
 
   Future<void> _scan() async {
     await _run(() async {
-      setState(() => _progress = '正在寻找 ${widget.host.displayName}');
+      setState(() => _progress = '正在寻找 ${widget.host.readableName}');
       if (!await _transport.requestPermission()) {
         throw const CommissioningRequestException(
           'permission_denied',
@@ -235,7 +235,7 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
         body: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text(widget.host.displayName,
+            Text(widget.host.readableName,
                 style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 8),
             const Text(

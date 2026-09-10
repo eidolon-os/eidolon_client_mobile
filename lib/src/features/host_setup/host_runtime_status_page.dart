@@ -146,7 +146,7 @@ class _HostRuntimeStatusPageState extends State<HostRuntimeStatusPage>
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(20),
           children: [
-            Text(widget.host.displayName,
+            Text(widget.host.readableName,
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 6),
             Text(

@@ -200,3 +200,13 @@
 - 截图：[首页](screenshots/my-eidolon-ux-home.png)、[设置](screenshots/my-eidolon-ux-settings.png)、[监控](screenshots/my-eidolon-ux-monitor.png)、[对话准备](screenshots/my-eidolon-ux-conversation.png)。
 
 端到端破坏性恢复、全新物理设备配网/准入、三种模式实际音频和主机换网后的 Room 恢复需要独立测试环境，本轮不会清除用户现有身份或重置主机来制造条件。上述场景不能以单测或只读导航检查替代；因此当前为可验收的本地实现，尚不声明通过全部发布验收。本轮未 push 或部署 Host 服务。
+
+## 11. 主机可读名称（2026-09-10）
+
+- 已管理主机统一按“用户设置的本机备注 → 系统主机名 → 机型 → 原设备标签”显示。系统主机名只在标题中去掉 `.local` 后缀；`localhost`、本机自动生成的标签和完整 Host ID 不作为可读系统名称。未取得主机资料时继续使用原标签。
+- 通过 `ManagedHost.readableName` 复用同一规则，覆盖主机列表、已管理主机发现项、接入完成页、首页、对话入口及 Runtime 显示名、监控、设置、换网与恢复说明。机型、IP 和技术身份信息保留。
+- `displayName` 仍保存本机备注；读取可读名称不会修改任何记录。识别自动生成标签时只匹配该 Host 对应的标签，用户设置的“Eidolon 工作站”等名字不会被当成默认值。没有增加请求、缓存或存储字段，也不改变 Host ID、Owner ID、凭据和连接逻辑。
+- 设置入口明确为“主机备注（仅本机）”；Owner 的名字另标为“主人称呼”，首页显示“主人：Manson”，避免同一 Owner 的多台主机使用同一个主人名字作为标题。
+- 本轮全量 Flutter 测试 961 项通过、5 项跳过；静态分析无问题。补齐接入完成页后，发现流程 6 项测试通过，最终 Debug APK 构建成功。
+- 真机已验证列表分别显示 `eidolon-pi5`、`orangepi5-max`、`mansondeMacBook-Pro`，原三台主机记录保留；Mac 首页安全连接成功，首页和设置标题一致，Owner 独立显示。只验证浏览和显示，未改动实际备注、主人名字或授权。
+- 真机列表截图：[可读主机名称](screenshots/my-eidolon-readable-hosts.png)。

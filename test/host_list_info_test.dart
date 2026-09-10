@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:eidolon_client_mobile/src/features/setup/host_identity.dart';
 
 import 'package:eidolon_client_mobile/src/features/setup/eidolon_app_shell.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_list_info.dart';
@@ -26,6 +27,28 @@ const info = HostMachineInfo(
     memoryBytes: 36 * 1024 * 1024 * 1024);
 
 void main() {
+  testWidgets(
+      'list and home share a readable Host title without saving it as a note',
+      (tester) async {
+    final saved = host().copyWith(
+        displayName: defaultHostDisplayName(host().hostId), machineInfo: info);
+    final registry = InMemoryHostRegistry([saved]);
+    await tester.pumpWidget(MaterialApp(
+        home: EidolonAppShell(
+      registry: registry,
+      hostInfoReader: (h) async => HostListInfo(h, '待确认连接'),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('study'), findsOneWidget);
+    expect(find.text('上次连接地址：192.168.1.32'), findsOneWidget);
+    await tester.tap(find.text('study'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('host-local-connection-page')), findsOneWidget);
+    expect(find.text('study'), findsOneWidget);
+    expect((await registry.load()).single.displayName, saved.displayName);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
       'network change refreshes the original card and rejects the old in-flight result',
       (tester) async {
@@ -98,7 +121,7 @@ void main() {
         '上次验证可连接'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Apple M3 Pro'), findsOneWidget);
-    expect(find.text('主机名：study.local'), findsOneWidget);
+    expect(find.text('系统主机名：study.local'), findsOneWidget);
     expect(find.text('上次验证可连接'), findsOneWidget);
     expect((await registry.load()).single.machineInfo!.cpuCores, 12);
     expect(tester.takeException(), isNull);

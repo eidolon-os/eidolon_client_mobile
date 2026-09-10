@@ -20,3 +20,11 @@ String normalizeHostDisplayName(String hostId, String displayName) {
   final legacyGeneratedName = 'Eidolon ${hostId.substring(6, 12)}';
   return displayName == legacyGeneratedName ? canonicalName : displayName;
 }
+
+/// Recognize only this Host's generated labels; a user label is never inferred
+/// from a broad "Eidolon" prefix. This is presentation, not identity matching.
+bool isGeneratedHostDisplayName(String hostId, String name) {
+  if (!_hostIdPattern.hasMatch(hostId)) return false;
+  return normalizeHostDisplayName(hostId, name.trim()).toLowerCase() ==
+      defaultHostDisplayName(hostId).toLowerCase();
+}

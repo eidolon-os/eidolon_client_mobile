@@ -49,6 +49,31 @@ class ManagedHost {
   final String bleServiceUuid;
   final String controllerId;
   final String displayName;
+
+  /// The local note stays separate from Host facts. Resolving a title never
+  /// writes it back or changes the Host/Owner identity.
+  bool get hasCustomDisplayName =>
+      displayName.trim().isNotEmpty &&
+      !isGeneratedHostDisplayName(hostId, displayName);
+
+  String get readableName {
+    if (hasCustomDisplayName) return displayName.trim();
+    var hostname = machineInfo?.hostname.trim() ?? '';
+    if (hostname.toLowerCase().endsWith('.local')) {
+      hostname = hostname.substring(0, hostname.length - 6);
+    }
+    if (hostname.isNotEmpty &&
+        !{'localhost', 'localhost.localdomain'}
+            .contains(hostname.toLowerCase()) &&
+        !isGeneratedHostDisplayName(hostId, hostname) &&
+        hostname != hostId) {
+      return hostname;
+    }
+    final model = machineInfo?.model?.trim() ?? '';
+    if (model.isNotEmpty) return model;
+    return displayName.trim().isNotEmpty ? displayName.trim() : hostId;
+  }
+
   final DateTime claimedAt;
   final String? tlsSpkiFingerprint;
 
