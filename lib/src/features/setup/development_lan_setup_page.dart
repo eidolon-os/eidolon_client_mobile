@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../host_setup/local_api_discovery.dart';
 import 'development_lan_commissioning.dart';
 import 'host_registry.dart';
+import 'host_discovery_sections.dart';
 import 'setup_models.dart';
 
 class DevelopmentLanSetupPage extends StatefulWidget {
@@ -42,11 +43,18 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
   Future<void> _discover() async {
     await _run(() async {
       setState(
-        () => _progress = '正在同时用 mDNS 服务浏览、主机名解析和本网段探测查找开发 Host',
+        () {
+          _hosts = const [];
+          _selected = null;
+          _setupCode.clear();
+          _progress = '正在同时用 mDNS 服务浏览、主机名解析和本网段探测查找开发 Host';
+        },
       );
       _knownHosts = await widget.registry?.load() ?? [];
+      if (!mounted) return;
       final discovered =
           await widget.commissioning.discover(knownHosts: _knownHosts);
+      if (!mounted) return;
       // The report already knows which of the several ways this can come up
       // empty happened, and what to do about each; the page must not flatten
       // that back into one sentence.
@@ -134,26 +142,25 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
                 icon: const Icon(Icons.lan_outlined),
                 label: const Text('查找开发 Host'),
               ),
-            for (final host in _hosts)
-              Card(
-                child: ListTile(
-                  selected: identical(_selected, host),
-                  onTap: _busy ? null : () => _select(host),
-                  leading: Icon(
-                    identical(_selected, host)
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_off,
-                  ),
-                  title: Text(_known(host)?.displayName ?? host.displayName),
-                  trailing: _known(host) == null
-                      ? null
-                      : const Chip(label: Text('已添加')),
-                  subtitle: Text(
-                    '${host.endpoint.hostId}\n${host.localApi.baseUrl}'
-                    '（${host.candidate.origin.label}）',
-                  ),
-                ),
+            HostDiscoverySections(
+              available: [
+                for (final host in _hosts)
+                  if (_known(host) == null) _buildHost(host),
+              ],
+              added: [
+                for (final host in _hosts)
+                  if (_known(host) != null) _buildHost(host),
+              ],
+            ),
+            if (_hosts.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                key: const Key('rescan-development-lan-hosts'),
+                onPressed: _busy ? null : _discover,
+                icon: const Icon(Icons.refresh),
+                label: const Text('重新扫描'),
               ),
+            ],
             if (_selected != null) ...[
               const SizedBox(height: 16),
               TextField(
@@ -221,4 +228,28 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
           ],
         ),
       );
+
+  Widget _buildHost(DevelopmentLanHost host) {
+    final known = _known(host);
+    return Card(
+      child: ListTile(
+        selected: identical(_selected, host),
+        onTap: _busy ? null : () => _select(host),
+        leading: const Icon(Icons.memory),
+        title: Text(known?.displayName ?? host.displayName),
+        trailing: TextButton(
+          onPressed: _busy ? null : () => _select(host),
+          child: Text(known == null ? '添加' : '连接'),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (known != null) const Text('已添加'),
+            Text('${host.endpoint.hostId}\n${host.localApi.baseUrl}'
+                '（${host.candidate.origin.label}）'),
+          ],
+        ),
+      ),
+    );
+  }
 }

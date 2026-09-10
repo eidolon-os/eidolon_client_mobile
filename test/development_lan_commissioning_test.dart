@@ -156,6 +156,11 @@ void main() {
     await tester.tap(find.byKey(const Key('discover-development-lan-hosts')));
     await tester.pumpAndSettle();
     expect(find.text('已添加'), findsOneWidget);
+    expect(find.text('已添加的主机'), findsOneWidget);
+    expect(find.text('发现 1 台已添加主机，未发现新的主机。'), findsOneWidget);
+    expect(find.text('可添加的主机'), findsNothing);
+    expect(find.text('连接'), findsOneWidget);
+    expect(find.text('重新扫描'), findsOneWidget);
     expect(find.byKey(const Key('development-lan-setup-code')), findsNothing);
     await tester.tap(find.text('书房 Mac'));
     await tester.pumpAndSettle();

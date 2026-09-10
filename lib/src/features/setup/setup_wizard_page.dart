@@ -11,10 +11,18 @@ import 'development_lan_commissioning.dart';
 import 'development_lan_setup_page.dart';
 import 'host_registry.dart';
 import 'host_identity.dart';
+import 'host_discovery_sections.dart';
 import 'setup_models.dart';
 import 'setup_trust.dart';
 
 enum _SetupStage { nearby, code, wifi, configuring, complete }
+
+typedef _NearbyHost = ({
+  NearbyEidolonHost host,
+  CommissioningEndpoint? endpoint,
+  ManagedHost? known,
+  String? error,
+});
 
 class SetupWizardPage extends StatefulWidget {
   const SetupWizardPage({
@@ -51,7 +59,8 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   _SetupStage _stage = _SetupStage.nearby;
   CommissioningEndpoint? _endpoint;
   NearbyEidolonHost? _selectedNearbyHost;
-  List<NearbyEidolonHost> _nearby = const [];
+  List<_NearbyHost> _nearby = const [];
+  bool _identifyingNearby = false;
   List<WifiNetwork> _networks = const [];
   WifiNetwork? _selectedNetwork;
   bool _canKeepCurrentNetwork = false;
@@ -60,7 +69,6 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   String? _progress;
   bool _busy = false;
   ManagedHost? _completedHost;
-  bool _alreadyAdded = false;
   late String _networkOperationId = _uuidV4();
 
   @override
@@ -100,9 +108,12 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         .where((item) => item.hostId == host.hostId)
         .firstOrNull;
     if (!mounted) return;
+    if (known != null) {
+      widget.onComplete(known);
+      return;
+    }
     setState(() {
-      _alreadyAdded = known != null;
-      _completedHost = known ?? host;
+      _completedHost = host;
       _stage = _SetupStage.complete;
       _progress = null;
       _error = null;
@@ -110,17 +121,24 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   }
 
   Future<void> _scanNearbyInternal() async {
-    setState(() => _progress = '正在获取蓝牙权限');
+    setState(() {
+      _nearby = const [];
+      _progress = '正在获取蓝牙权限';
+    });
+    await _transport.close();
+    if (!mounted) return;
     if (!await _transport.requestPermission()) {
       throw const CommissioningRequestException(
         'permission_denied',
         '需要“附近设备”权限才能发现未联网的 Eidolon 主机。你可以在系统设置中重新允许。',
       );
     }
+    if (!mounted) return;
     setState(() => _progress = '正在寻找附近的 Eidolon 主机');
     final discovered = await _transport.scan(
       serviceUuid: CommissioningEndpoint.defaultServiceUuid,
     );
+    if (!mounted) return;
     final nearby = discovered.toList()
       ..sort((left, right) => right.rssi.compareTo(left.rssi));
     if (nearby.isEmpty) {
@@ -130,9 +148,73 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       );
     }
     setState(() {
-      _nearby = nearby;
-      _progress = null;
+      _nearby = nearby
+          .map((host) => (host: host, endpoint: null, known: null, error: null))
+          .toList();
+      _identifyingNearby = true;
+      _progress = '正在识别附近主机';
     });
+    try {
+      final knownHosts = await widget.registry?.load() ?? <ManagedHost>[];
+      final seen = <String>{};
+      // The native transport owns one GATT link. Inspect and close candidates
+      // sequentially; advertisements alone must never select a saved identity.
+      for (final host in nearby) {
+        if (!mounted) return;
+        _NearbyHost identified;
+        try {
+          final raw = await _transport
+              .open(
+                address: host.address,
+                serviceUuid: CommissioningEndpoint.defaultServiceUuid,
+              )
+              .timeout(const Duration(seconds: 12));
+          if (!mounted) return;
+          final endpoint =
+              await CommissioningEndpoint.parseAndVerifyDiscovered(raw);
+          identified = (
+            host: host,
+            endpoint: endpoint,
+            known: knownHostForEndpoint(knownHosts, endpoint),
+            error: null,
+          );
+        } on Object catch (error) {
+          identified = (
+            host: host,
+            endpoint: null,
+            known: null,
+            error: error is SetupTrustException
+                ? '主机身份未通过验证，请重试确认'
+                : '暂时无法识别，请靠近主机后重试',
+          );
+        } finally {
+          // dispose already closes our link. A late completion must not close
+          // a link that a newly opened page may now own.
+          if (mounted) await _transport.close();
+        }
+        if (!mounted) return;
+        final id = identified.endpoint?.hostId;
+        setState(() {
+          if (id != null && !seen.add(id)) {
+            _nearby = _nearby
+                .where((item) => item.host.address != host.address)
+                .toList();
+          } else {
+            _nearby = _nearby
+                .map((item) =>
+                    item.host.address == host.address ? identified : item)
+                .toList();
+          }
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _identifyingNearby = false;
+          _progress = null;
+        });
+      }
+    }
   }
 
   Future<void> _selectHost(NearbyEidolonHost host) async {
@@ -150,12 +232,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       if (known != null) {
         await _transport.close();
         if (!mounted) return;
-        setState(() {
-          _completedHost = known;
-          _alreadyAdded = true;
-          _stage = _SetupStage.complete;
-          _progress = null;
-        });
+        widget.onComplete(known);
         return;
       }
       setState(() => _progress = '正在建立加密 Setup 通道');
@@ -515,7 +592,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
               '还需要一个 Setup 码：请有人在主机上执行 `eidolon-ops commissioning-code` 取一个，'
               '首次设置也要用它。'),
           const SizedBox(height: 8),
-          const Text('附近列表可能同时包含待设置和已认领主机；选择后 App 才会验证 Host 身份和当前权限。'),
+          const Text('找到主机后会自动识别；已添加的主机会单独列出，可以直接连接。'),
           if (kDebugMode) ...[
             const SizedBox(height: 12),
             const _Notice(
@@ -540,16 +617,22 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
               icon: const Icon(Icons.bluetooth_searching),
               label: const Text('查找附近 Eidolon 主机'),
             ),
-          for (final host in _nearby)
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.memory),
-                title: Text(host.name),
-                subtitle: Text('距离信号 ${host.rssi} dBm'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: _busy ? null : () => _selectHost(host),
-              ),
-            ),
+          HostDiscoverySections(
+            identifying: _identifyingNearby,
+            available: [
+              for (final item in _nearby)
+                if (item.endpoint != null && item.known == null)
+                  _buildNearbyHost(item),
+            ],
+            added: [
+              for (final item in _nearby)
+                if (item.known != null) _buildNearbyHost(item),
+            ],
+            unidentified: [
+              for (final item in _nearby)
+                if (item.endpoint == null) _buildNearbyHost(item),
+            ],
+          ),
           if (_progress != null) _BusyNotice(text: _progress!),
           if (_nearby.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -561,6 +644,45 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           ],
         ],
       );
+
+  Widget _buildNearbyHost(_NearbyHost item) {
+    final identifying = item.endpoint == null && item.error == null;
+    final action = item.known != null
+        ? '连接'
+        : item.error != null
+            ? '重试识别'
+            : '添加';
+    return Card(
+      key: ValueKey('nearby-host-${item.host.address}'),
+      child: ListTile(
+        leading: const Icon(Icons.memory),
+        title: Text(item.known?.displayName ?? item.host.name),
+        subtitle: Text(identifying
+            ? '正在识别…'
+            : item.error ??
+                '${item.known != null ? '已添加 · ' : ''}距离信号 ${item.host.rssi} dBm'),
+        trailing: identifying
+            ? const SizedBox.square(
+                dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
+            : TextButton(
+                onPressed: _busy ? null : () => _openNearbyHost(item),
+                child: Text(action),
+              ),
+        onTap: _busy ? null : () => _openNearbyHost(item),
+      ),
+    );
+  }
+
+  void _openNearbyHost(_NearbyHost item) {
+    final known = item.known;
+    if (known != null) {
+      // The scan verified this identity. The normal connection flow checks
+      // current Controller authority; discovery grants no new permissions.
+      widget.onComplete(known);
+    } else {
+      unawaited(_selectHost(item.host));
+    }
+  }
 
   Widget _buildSetupCode() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -730,20 +852,17 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         children: [
           const Icon(Icons.check_circle, size: 72, color: Colors.green),
           const SizedBox(height: 16),
-          Text(_alreadyAdded ? '这台主机已添加' : '主机接入已完成',
-              style: Theme.of(context).textTheme.headlineSmall),
+          Text('主机接入已完成', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
           Text(
-            _alreadyAdded
-                ? '已找到 ${_completedHost!.displayName}，继续连接即可。原有名称和授权记录会保留。'
-                : '${_completedHost!.displayName} 已连接 Wi-Fi，'
-                    '这台手机已取得 Host Admin 权限。主机已可恢复保存，下一步会通过局域网创建 Workspace。',
+            '${_completedHost!.displayName} 已连接 Wi-Fi，'
+            '这台手机已取得 Host Admin 权限。主机已可恢复保存，下一步会通过局域网创建 Workspace。',
           ),
           const SizedBox(height: 24),
           FilledButton(
             key: const Key('finish-setup'),
             onPressed: () => widget.onComplete(_completedHost!),
-            child: Text(_alreadyAdded ? '连接已有主机' : '继续创建我的 Eidolon'),
+            child: const Text('继续创建我的 Eidolon'),
           ),
         ],
       );

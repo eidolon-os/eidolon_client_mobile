@@ -197,11 +197,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('scan-nearby-hosts')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Eidolon-4c0285'));
-    await tester.pumpAndSettle();
-    expect(find.text('这台主机已添加'), findsOneWidget);
+    expect(find.text('已添加的主机'), findsOneWidget);
+    expect(find.text('发现 1 台已添加主机，未发现新的主机。'), findsOneWidget);
+    expect(find.text('书房 Mac'), findsOneWidget);
+    expect(find.text('可添加的主机'), findsNothing);
+    expect(find.text('已连接'), findsNothing);
     expect(transport.operations, isEmpty);
-    await tester.tap(find.byKey(const Key('finish-setup')));
+    await tester.tap(find.text('连接'));
     await tester.pumpAndSettle();
     expect(identical(selected, saved), isTrue);
     expect((await registry.load()).single.displayName, '书房 Mac');
