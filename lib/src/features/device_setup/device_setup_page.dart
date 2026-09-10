@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import 'device_setup_coordinator.dart';
+import 'admission_observation.dart';
 import 'device_setup_models.dart';
 import 'device_setup_ports.dart';
 import 'owner_domain_directory_verifier.dart';
@@ -52,7 +53,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   _Step _step = _Step.introduction;
   List<DeviceProvisioningCandidate> _candidates = const [];
   DeviceProvisioningCandidate? _candidate;
-  DeviceProvisioningSession? _session;
+  late final DeviceSetupCoordinator _coordinator;
+  late final AdmissionObservation _admissionObservation;
   DeviceProvisioningDescriptor? _descriptor;
   CommissioningVoucher? _voucher;
   List<DeviceWifiNetwork> _networks = const [];
@@ -61,16 +63,6 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   String? _error;
   String? _progress;
   bool _busy = false;
-
-  /// Live while the screen is showing an admission that has not finished.
-  ///
-  /// The spinner and this timer are one thing on purpose. The panel used to
-  /// render "已批准，等待设备领取 Grant" beside a spinner and then never ask
-  /// again — the Host converged eight seconds later and the screen kept the
-  /// snapshot for as long as the operator stood there. A spinner is a claim
-  /// that something is in progress, so the only honest way to show one is to
-  /// be asking.
-  Timer? _admissionWatch;
 
   /// A resumed setup the Host has already finished refusing.
   ///
@@ -93,20 +85,32 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   @override
   void initState() {
     super.initState();
+    _coordinator = DeviceSetupCoordinator(
+      transport: widget.transport,
+      admission: widget.admission,
+      checkpoints: widget.checkpoints,
+      ownerDirectoryVerifier: PlatformOwnerDomainDirectoryVerifier(),
+      allowDevelopmentTrust: widget.allowDevelopmentTrust,
+      onCheckpoint: _showCheckpoint,
+    );
+    _admissionObservation = AdmissionObservation(_resumePersistedAdmission);
     WidgetsBinding.instance.addObserver(this);
     unawaited(_autoResumePersistedAdmission());
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && !_busy) {
-      unawaited(_autoResumePersistedAdmission());
+    if (state == AppLifecycleState.resumed) {
+      _admissionObservation.resume();
+      if (!_busy) unawaited(_autoResumePersistedAdmission());
+    } else {
+      _admissionObservation.pause();
     }
   }
 
   @override
   void dispose() {
-    _keepAskingWhileWaiting(waiting: false);
+    _admissionObservation.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _password.dispose();
     _hiddenSsid.dispose();
@@ -166,8 +170,14 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           await session.close();
           throw Exception('还没有读到目标主机的信息。');
         }
-        final descriptor = await session.prepareOwner(target);
-        final networks = await session.scanNetworks();
+        late final DeviceProvisioningDescriptor descriptor;
+        late final List<DeviceWifiNetwork> networks;
+        try {
+          descriptor = await session.prepareOwner(target);
+          networks = await session.scanNetworks();
+        } finally {
+          await session.close();
+        }
         // Everything this device needs from the Host is asked for here, with
         // the device's access point left behind and before going back to it.
         // Not an ordering preference: a phone joins that access point with the
@@ -176,12 +186,12 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         // the platform listed the device's network as the only network the
         // phone had. So this is two visits, and the standing the device will
         // present is signed between them, for the key it just showed us.
-        await session.close();
+        if (!mounted) return;
         setState(() => _progress = '正在向主机取得这台设备的准入凭据');
         final voucher = await _issueVoucher(descriptor);
+        if (!mounted) return;
         setState(() {
           _candidate = candidate;
-          _session = null;
           _descriptor = descriptor;
           _voucher = voucher;
           _networks = networks;
@@ -215,12 +225,12 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   }
 
   Future<void> _finish() async {
+    if (_busy) return;
     final ssid = (_network?.ssid ?? _hiddenSsid.text).trim();
     if (ssid.isEmpty) {
       setState(() => _error = '请选择 Wi-Fi,或输入隐藏网络名称');
       return;
     }
-    var networkCommitted = false;
     await _run(() async {
       setState(() {
         _step = _Step.working;
@@ -236,14 +246,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
       }
       _activeSetupId ??= _uuidV4();
       _activeRequestId ??= _uuidV4();
-      // Back onto the device's access point, now carrying everything the Host
-      // had to say.
-      final session = _session ?? await widget.transport.open(_candidate!);
-      _session = session;
-      final coordinator = _coordinator(
-        transport: _OpenSessionTransport(widget.transport, session),
-      );
-      final checkpoint = await coordinator.provisionAndAdmit(
+      await _coordinator.provisionAndAdmit(
         setupId: _activeSetupId!,
         requestId: _activeRequestId!,
         candidate: _candidate!,
@@ -252,36 +255,15 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         onboardingTarget: target,
         voucher: voucher,
       );
-      networkCommitted = checkpoint.provisioningState ==
-          DeviceProvisioningState.networkConfigured;
-      _showCheckpoint(checkpoint);
-      if (checkpoint.failure != null && !networkCommitted) {
-        throw Exception(checkpoint.failure!.message);
-      }
     });
-    // Returning to the network form answers the network step failing, and
-    // nothing else. Once the device has committed the network there is nothing
-    // left to choose here and Admission owns the screen. Rewinding on anything
-    // short of completion left the Wi-Fi form standing — password filled,
-    // button live — beneath a progress line that had already moved on to Grant
-    // collection, so the page stated two incompatible things at once.
-    if (mounted && _step != _Step.complete && !networkCommitted) {
-      setState(() => _step = _Step.choosingNetwork);
-    }
   }
 
-  DeviceSetupCoordinator _coordinator(
-          {DeviceProvisioningTransport? transport}) =>
-      DeviceSetupCoordinator(
-        transport: transport ?? widget.transport,
-        admission: widget.admission,
-        checkpoints: widget.checkpoints,
-        ownerDirectoryVerifier: PlatformOwnerDomainDirectoryVerifier(),
-        allowDevelopmentTrust: widget.allowDevelopmentTrust,
-      );
-
   Future<void> _autoResumePersistedAdmission() async {
-    if (_resumeDismissed) return;
+    if (_activeSetupId == null &&
+        (_resumeDismissed || _step != _Step.introduction)) {
+      return;
+    }
+    if (_activeSetupId != null && _step != _Step.working) return;
     await _resumePersistedAdmission();
   }
 
@@ -297,9 +279,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         );
         final checkpoint = _activeSetupId == null
             ? resumable.firstOrNull
-            : resumable
-                .where((item) => item.setupId == _activeSetupId)
-                .firstOrNull;
+            : await widget.checkpoints.load(_activeSetupId!);
         if (checkpoint == null) return;
         _activeSetupId = checkpoint.setupId;
         _activeRequestId = checkpoint.requestId;
@@ -310,35 +290,21 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           });
         }
         final recovered =
-            await _coordinator().resumeAdmission(checkpoint.setupId);
+            await _coordinator.resumeAdmission(checkpoint.setupId);
         _showCheckpoint(recovered);
       });
-
-  /// Ask the Host again until the answer stops changing.
-  ///
-  /// `waiting` is the page's own existing notion of "not over" — neither ready
-  /// nor refused — so there is no second definition of doneness to keep in
-  /// step. Asking stops at a terminal answer, when the operator starts over,
-  /// and when the page goes away.
-  void _keepAskingWhileWaiting({required bool waiting}) {
-    if (!waiting) {
-      _admissionWatch?.cancel();
-      _admissionWatch = null;
-      return;
-    }
-    _admissionWatch ??= Timer.periodic(
-      // Long enough that a converging Enrollment is not polled pointlessly,
-      // short enough that a person watching the screen sees it land: the Host
-      // took eight seconds to go from approved to ClaimActive.
-      const Duration(seconds: 3),
-      (_) => unawaited(_autoResumePersistedAdmission()),
-    );
-  }
 
   void _showCheckpoint(DeviceSetupCheckpoint checkpoint) {
     if (!mounted) return;
     setState(() {
-      if (checkpoint.isReady) {
+      if (checkpoint.provisioningState !=
+          DeviceProvisioningState.networkConfigured) {
+        _step = checkpoint.provisioningState == DeviceProvisioningState.failed
+            ? _Step.choosingNetwork
+            : _Step.working;
+        _progress = checkpoint.failure == null ? '正在配置设备网络…' : null;
+        _error = checkpoint.failure?.message;
+      } else if (checkpoint.isReady) {
         _step = _Step.complete;
         _progress = null;
         _error = null;
@@ -358,7 +324,12 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         _error = checkpoint.failure?.message;
       }
     });
-    _keepAskingWhileWaiting(waiting: !checkpoint.isReady && !_refused);
+    _admissionObservation.setWaiting(
+      checkpoint.provisioningState ==
+              DeviceProvisioningState.networkConfigured &&
+          !checkpoint.isReady &&
+          !_refused,
+    );
   }
 
   /// Let go of a refused setup so the next device can be set up.
@@ -373,7 +344,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         }
         // Nothing left to converge on; the periodic ask would otherwise keep
         // scanning for a checkpoint that has just been forgotten.
-        _keepAskingWhileWaiting(waiting: false);
+        _admissionObservation.setWaiting(false);
         if (!mounted) return;
         setState(() {
           _activeSetupId = null;
@@ -384,7 +355,6 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           _error = null;
           _candidates = const [];
           _candidate = null;
-          _session = null;
           _networks = const [];
           _network = null;
           _password.clear();
@@ -617,32 +587,4 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
         '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
   }
-}
-
-/// Hands the coordinator the session this page already opened.
-///
-/// Reading the descriptor is what tells the person which device they are about
-/// to configure, so it happens before they choose a network. Opening a second
-/// session afterwards would either fail — a device offers one at a time — or
-/// configure a different device than the one on screen.
-class _OpenSessionTransport implements DeviceProvisioningTransport {
-  _OpenSessionTransport(this._inner, this._session);
-
-  final DeviceProvisioningTransport _inner;
-  final DeviceProvisioningSession _session;
-
-  @override
-  Future<bool> requestPermission() => _inner.requestPermission();
-
-  @override
-  Future<List<DeviceProvisioningCandidate>> discover() => _inner.discover();
-
-  @override
-  Future<DeviceProvisioningSession> open(
-    DeviceProvisioningCandidate candidate,
-  ) async =>
-      _session;
-
-  @override
-  Future<void> close() => _inner.close();
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'admission_observation.dart';
+
 import '../../generated/device_foundation_v1.dart';
 import '../host_setup/host_product_session.dart';
 import '../host_setup/local_api_client.dart';
@@ -42,27 +44,36 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage>
   List<EnrollmentRecoveryProjectionV1> _items = const [];
   EnrollmentRecoveryProjectionV1? _selected;
   String? _error;
-  var _busy = true;
+  var _busy = false;
+  late final AdmissionObservation _observation;
 
   @override
   void initState() {
     super.initState();
+    _observation = AdmissionObservation(_load);
     WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
   @override
   void dispose() {
+    _observation.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && !_busy) _load();
+    if (state == AppLifecycleState.resumed) {
+      _observation.resume();
+      if (!_busy) _load();
+    } else {
+      _observation.pause();
+    }
   }
 
   Future<void> _load() async {
+    if (_busy || !mounted) return;
     if (mounted) {
       setState(() {
         _busy = true;
@@ -94,7 +105,10 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage>
     } catch (error) {
       if (mounted) setState(() => _error = _message(error));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+        _observePending();
+      }
     }
   }
 
@@ -129,8 +143,21 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage>
     } catch (error) {
       if (mounted) setState(() => _error = _message(error));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+        _observePending();
+      }
     }
+  }
+
+  void _observePending() {
+    _observation.setWaiting(_items.any((item) {
+      final stage = item.validateForOwner(widget.ownerDomainId,
+          ownerDomainGeneration: widget.ownerDomainGeneration);
+      return stage == AdmissionProjectionStage.pendingReview ||
+          stage == AdmissionProjectionStage.approvedAwaitingHandoff ||
+          stage == AdmissionProjectionStage.grantDelivered;
+    }));
   }
 
   /// A stable idempotency key for approving exactly this Proposal revision.
@@ -187,7 +214,7 @@ class _DeviceAdmissionPageState extends State<DeviceAdmissionPage>
                 Text(error, key: const Key('device-admission-error')),
               ],
               const SizedBox(height: 16),
-              if (_busy)
+              if (_busy && _items.isEmpty)
                 const Center(child: CircularProgressIndicator())
               else if (_items.isEmpty)
                 const Card(

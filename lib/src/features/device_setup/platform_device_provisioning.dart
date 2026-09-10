@@ -292,11 +292,8 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
       );
     }
 
-    // The device is leaving its own access point to join the network it was just
-    // given, so this session is over whether or not anyone closes it. Letting go
-    // now is what puts the phone back on the Host's network — and the next thing
-    // asked is a question only the Host can answer.
-    await _channel.invokeMethod<void>('closeProvisioningSession');
+    // The coordinator persists this committed fact before transport cleanup.
+    // A failed close must never turn a successful network write into a retry.
     return evidence;
   }
 

@@ -46,6 +46,77 @@ DeviceProvisioningDescriptor _descriptorExpiringAt(DateTime expiresAt) =>
     DeviceProvisioningDescriptor(setup: _setup, expiresAt: expiresAt);
 
 void main() {
+  test('concurrent confirmation and restart never repeat committed networking',
+      () async {
+    final session = _Session(_descriptor)..failClose = true;
+    final admission = _Admission(_projection());
+    final store = InMemoryDeviceSetupCheckpointStore();
+    final coordinator = _coordinator(session, admission, store);
+    Future<DeviceSetupCheckpoint> submit(DeviceSetupCoordinator owner) =>
+        owner.provisionAndAdmit(
+          setupId: 'once',
+          requestId: 'intent-once',
+          candidate: _candidate,
+          credentials:
+              const DeviceWifiCredentials(ssid: 'Home', password: 'pw'),
+          onboardingTarget: deviceOnboardingTargetFixture(),
+          voucher: _voucher,
+        );
+
+    final results =
+        await Future.wait([submit(coordinator), submit(coordinator)]);
+    expect(session.configureCalls, 1);
+    expect(
+        results.every((result) =>
+            result.provisioningState ==
+            DeviceProvisioningState.networkConfigured),
+        isTrue);
+    expect(admission.decisionRequestIds, hasLength(1));
+
+    final restartedSession = _Session(_descriptor);
+    final recovered =
+        await submit(_coordinator(restartedSession, admission, store));
+    expect(restartedSession.configureCalls, 0);
+    expect(
+        recovered.provisioningState, DeviceProvisioningState.networkConfigured);
+    expect(admission.decisionRequestIds, hasLength(1));
+  });
+
+  test('committed progress is persisted before cleanup and admission recovery',
+      () async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    final states = <DeviceSetupCheckpoint>[];
+    final session = _Session(_descriptor);
+    DeviceSetupCheckpoint? persistedBeforeClose;
+    DeviceSetupCheckpoint? shownBeforeClose;
+    session.beforeClose = () async {
+      persistedBeforeClose = await store.load('progress');
+      shownBeforeClose = states.last;
+    };
+    final coordinator = DeviceSetupCoordinator(
+      transport: _Transport(session),
+      admission: _Admission(_projection()),
+      checkpoints: store,
+      ownerDirectoryVerifier: const AcceptingOwnerDomainDirectoryVerifier(),
+      clock: () => _now,
+      onCheckpoint: states.add,
+    );
+    await coordinator.provisionAndAdmit(
+      setupId: 'progress',
+      requestId: 'intent-progress',
+      candidate: _candidate,
+      credentials: const DeviceWifiCredentials(ssid: 'Home', password: 'pw'),
+      onboardingTarget: deviceOnboardingTargetFixture(),
+      voucher: _voucher,
+    );
+    expect(persistedBeforeClose?.provisioningState,
+        DeviceProvisioningState.networkConfigured);
+    expect(shownBeforeClose?.provisioningState,
+        DeviceProvisioningState.networkConfigured);
+    expect(states.last.admissionState,
+        DeviceAdmissionState.approvedAwaitingHandoff);
+  });
+
   test('network commit persists stable command IDs before explicit Decision',
       () async {
     final session = _Session(_descriptor);
@@ -363,9 +434,15 @@ class _Session implements DeviceProvisioningSession {
   final DeviceProvisioningDescriptor descriptor;
   Map<String, String>? commandIds;
   DeviceOnboardingTarget? handedOverTarget;
+  int configureCalls = 0;
+  bool failClose = false;
+  Future<void> Function()? beforeClose;
 
   @override
-  Future<void> close() async {}
+  Future<void> close() async {
+    await beforeClose?.call();
+    if (failClose) throw StateError('lost transport during cleanup');
+  }
 
   @override
   Future<CommissioningStatusEvidenceV1> configureNetwork({
@@ -375,6 +452,7 @@ class _Session implements DeviceProvisioningSession {
     required String collectCommandId,
     required String ackCommandId,
   }) async {
+    configureCalls += 1;
     commandIds = {
       'create': createCommandId,
       'collect': collectCommandId,

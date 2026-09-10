@@ -39,6 +39,12 @@ void main() {
       withDelivery: true,
       claimState: 'active',
     );
+    // Another consumer has already persisted the terminal projection. The
+    // active page must still adopt it rather than filter it out as completed.
+    await store.save(_checkpoint().copyWith(
+      admissionState: DeviceAdmissionState.claimActive,
+      updatedAt: DateTime.now().toUtc(),
+    ));
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await _pumpUntil(tester, () => admission.recoverCalls == 2);

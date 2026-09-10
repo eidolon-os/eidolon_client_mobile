@@ -297,6 +297,9 @@ void main() {
       if (call.method == 'provisioningConfigureNetwork') {
         return committedEvidence();
       }
+      if (call.method == 'closeProvisioningSession') {
+        throw PlatformException(code: 'CLOSE_FAILED');
+      }
       return null;
     });
 
@@ -308,7 +311,7 @@ void main() {
         trust: SetupDescriptorTrustV1.developmentTofu,
       ),
     );
-    await session.configureNetwork(
+    final evidence = await session.configureNetwork(
       credentials:
           const DeviceWifiCredentials(ssid: 'home', password: 'secret'),
       onboardingTarget: target,
@@ -323,6 +326,8 @@ void main() {
         ['provisioningHandOverTrust', 'provisioningConfigureNetwork'],
       ),
     );
+    expect(evidence.isCommittedTerminal, isTrue);
+    await expectLater(session.close(), throwsA(isA<PlatformException>()));
   });
 
   test('credential delivery without terminal device evidence is not success',

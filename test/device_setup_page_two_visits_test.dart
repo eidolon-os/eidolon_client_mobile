@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_page.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_ports.dart';
 import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/owner_domain_fixtures.dart';
+import 'support/admission_fixtures.dart';
 
 /// Setting up a device is two visits to it, and the Host is asked between them.
 ///
@@ -16,6 +20,100 @@ import 'support/owner_domain_fixtures.dart';
 /// then failed. So the session must be closed before the Host is asked, and
 /// re-opened afterwards to hand over what the Host said.
 void main() {
+  for (final restart in [false, true]) {
+    testWidgets(
+        'duplicate confirmation converges without replay (restart: $restart)',
+        (tester) async {
+      const channel = MethodChannel('live.eidolon.mobile/platform');
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          (call) async =>
+              call.method == 'verifyOwnerDomainDescriptor' ? true : null);
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null));
+      final transport = _Transport();
+      final admission = _Admission(transport);
+      final store = InMemoryDeviceSetupCheckpointStore();
+      if (restart) {
+        admission.current = canonicalProjection(
+            state: 'rejected',
+            ownerDomainId: ownerDomainIdFixture,
+            deviceId: 'device-instance-${'a' * 64}');
+        await store.save(DeviceSetupCheckpoint(
+          contractVersion: DeviceSetupCheckpoint.currentContractVersion,
+          setupId: 'previous',
+          requestId: 'previous-intent',
+          createCommandId: 'previous-create',
+          decisionRequestId: 'previous-decision',
+          collectCommandId: 'previous-collect',
+          ackCommandId: 'previous-ack',
+          provisioningState: DeviceProvisioningState.networkConfigured,
+          admissionState: DeviceAdmissionState.pendingReview,
+          updatedAt: DateTime.now().toUtc(),
+          onboardingTarget: deviceOnboardingTargetFixture(),
+          deviceId: 'device-instance-${'a' * 64}',
+          enrollmentId: 'enrollment_01',
+        ));
+      }
+      final gate = Completer<void>();
+      transport.configurationGate = gate.future;
+      await tester.pumpWidget(MaterialApp(
+          home: DeviceSetupPage(
+        transport: transport,
+        admission: admission,
+        checkpoints: store,
+        loadTarget: () async => deviceOnboardingTargetFixture(),
+      )));
+      await tester.pumpAndSettle();
+      if (restart) {
+        await tester.tap(find.byKey(const Key('restart-device-setup')));
+        await tester.pumpAndSettle();
+        admission.current = canonicalProjection(
+            state: 'pending_review',
+            ownerDomainId: ownerDomainIdFixture,
+            deviceId: 'device-instance-${'a' * 64}');
+      }
+      await tester.tap(find.text('查找设备'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('network-owner-wifi')));
+      await tester.pump();
+      final confirm = tester
+          .widget<FilledButton>(find.byKey(const Key('confirm-device-setup')))
+          .onPressed!;
+      // Two callbacks can arrive before Flutter rebuilds the disabled button.
+      confirm();
+      confirm();
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(transport.opened, 2);
+      expect(find.text('选择家庭 Wi-Fi'), findsNothing);
+      gate.complete();
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(admission.decisions, 1);
+      expect(find.text('选择家庭 Wi-Fi'), findsNothing);
+      admission.current = canonicalProjection(
+        state: 'grant_acknowledged',
+        ownerDomainId: ownerDomainIdFixture,
+        deviceId: 'device-instance-${'a' * 64}',
+        withDecision: true,
+        withDelivery: true,
+        claimState: 'active',
+        claimOwnerDomainGeneration: 1,
+      );
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      expect(find.text('设备已设置完成'), findsOneWidget);
+      expect(transport.opened, 2);
+      expect(transport.sessions.fold<int>(0, (sum, s) => sum + s.writes), 1);
+      expect(admission.decisions, 1);
+    });
+  }
+
   testWidgets('the Host is asked only while no session is held',
       (tester) async {
     final transport = _Transport();
@@ -52,6 +150,12 @@ class _Admission implements DeviceAdmissionPort {
   final _Transport _transport;
   final List<int> sessionsOpenWhenAsked = [];
   String? requestedKey;
+  int decisions = 0;
+  EnrollmentRecoveryProjectionV1 current = canonicalProjection(
+    state: 'pending_review',
+    ownerDomainId: ownerDomainIdFixture,
+    deviceId: 'device-instance-${'a' * 64}',
+  );
 
   @override
   Future<CommissioningVoucher> issueCommissioningVoucher({
@@ -71,26 +175,34 @@ class _Admission implements DeviceAdmissionPort {
   Future<EnrollmentProposalPageV1> listRecovery({
     AdmissionListCursorV1? after,
   }) async =>
-      throw UnimplementedError();
+      canonicalRecoveryPage([current], ownerDomainId: ownerDomainIdFixture);
 
   @override
   Future<EnrollmentRecoveryProjectionV1> recover({
     required String enrollmentId,
   }) async =>
-      throw UnimplementedError();
+      current;
 
   @override
   Future<EnrollmentRecoveryProjectionV1> decide({
     required String requestId,
     required EnrollmentRecoveryProjectionV1 projection,
     String? initialCompanionId,
-  }) async =>
-      throw UnimplementedError();
+  }) async {
+    decisions += 1;
+    return current = canonicalProjection(
+      state: 'approved_awaiting_handoff',
+      ownerDomainId: ownerDomainIdFixture,
+      deviceId: 'device-instance-${'a' * 64}',
+      withDecision: true,
+    );
+  }
 }
 
 class _Transport implements DeviceProvisioningTransport {
   final List<_Session> sessions = [];
   int opened = 0;
+  Future<void>? configurationGate;
 
   int get openSessions => sessions.where((session) => !session.closed).length;
 
@@ -112,7 +224,7 @@ class _Transport implements DeviceProvisioningTransport {
     DeviceProvisioningCandidate candidate,
   ) async {
     opened += 1;
-    final session = _Session();
+    final session = _Session()..configurationGate = configurationGate;
     sessions.add(session);
     return session;
   }
@@ -122,6 +234,8 @@ class _Transport implements DeviceProvisioningTransport {
 }
 
 class _Session implements DeviceProvisioningSession {
+  Future<void>? configurationGate;
+  int writes = 0;
   bool prepared = false;
   @override
   Future<DeviceProvisioningDescriptor> prepareOwner(
@@ -143,7 +257,7 @@ class _Session implements DeviceProvisioningSession {
   DeviceProvisioningDescriptor get descriptor => DeviceProvisioningDescriptor(
         setup: SetupDescriptorV1.fromJson({
           'contract_version': '1',
-          'device_id': 'device-instance-${'7' * 64}',
+          'device_id': 'device-instance-${'a' * 64}',
           'device_kind': 'esp32-display',
           'display_name': 'Eidolon Body 1',
           'identity_fingerprint': 'p256:${'5' * 64}',
@@ -151,7 +265,7 @@ class _Session implements DeviceProvisioningSession {
           'expires_in_seconds': 600,
           'trust': 'manufacturer-bound',
         }),
-        expiresAt: DateTime.utc(2026, 9, 2, 12),
+        expiresAt: DateTime.utc(2036),
       );
 
   @override
@@ -170,8 +284,22 @@ class _Session implements DeviceProvisioningSession {
     required String createCommandId,
     required String collectCommandId,
     required String ackCommandId,
-  }) async =>
-      throw UnimplementedError();
+  }) async {
+    writes += 1;
+    await configurationGate;
+    return const CommissioningStatusEvidenceV1(
+      sessionId: 'setup_session_01',
+      setupGeneration: 1,
+      stateRevision: 5,
+      state: CommissioningStatusStateV1.committed,
+      conditions: CommissioningConditionsV1(
+          wifiConnected: true,
+          ownerRouteValidated: true,
+          trustCommitted: true,
+          networkCommitted: true),
+      failureCode: null,
+    );
+  }
 
   @override
   Future<void> close() async {

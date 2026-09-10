@@ -32,12 +32,35 @@ class DeviceSetupCoordinator {
     required this.checkpoints,
     required this.ownerDirectoryVerifier,
     this.allowDevelopmentTrust = false,
+    this.onCheckpoint,
     this.enrollmentTimeout = const Duration(minutes: 3),
     this.enrollmentInterval = const Duration(seconds: 3),
     DeviceSetupClock? clock,
     Future<void> Function(Duration)? sleep,
   })  : _clock = clock ?? DateTime.now,
         _sleep = sleep ?? Future<void>.delayed;
+
+  final void Function(DeviceSetupCheckpoint)? onCheckpoint;
+  Future<DeviceSetupCheckpoint>? _operation;
+  String? _operationSetupId;
+
+  Future<DeviceSetupCheckpoint> _run(
+      String setupId, Future<DeviceSetupCheckpoint> Function() action) {
+    if (_operation case final running?) {
+      if (_operationSetupId == setupId) return running;
+      throw StateError('Another device setup is in progress');
+    }
+    _operationSetupId = setupId;
+    return _operation = Future.sync(action).whenComplete(() {
+      _operation = null;
+      _operationSetupId = null;
+    });
+  }
+
+  Future<void> _save(DeviceSetupCheckpoint checkpoint) async {
+    await checkpoints.save(checkpoint);
+    onCheckpoint?.call(checkpoint);
+  }
 
   final DeviceProvisioningTransport transport;
   final DeviceAdmissionPort admission;
@@ -55,6 +78,7 @@ class DeviceSetupCoordinator {
     required DeviceProvisioningCandidate candidate,
     required DeviceWifiCredentials credentials,
     required DeviceOnboardingTarget onboardingTarget,
+
     /// The standing this device will present, signed by the Host **before** the
     /// phone joined the device's access point.
     ///
@@ -65,13 +89,44 @@ class DeviceSetupCoordinator {
     required CommissioningVoucher voucher,
     String? companionId,
   }) async {
-    try {
-      await ownerDirectoryVerifier.verify(onboardingTarget);
-    } catch (error) {
-      throw DeviceSetupException(
-        code: 'owner_directory_rejected',
-        message: 'Owner Domain directory could not be authenticated: $error',
-      );
+    return _run(
+        setupId,
+        () => _provisionAndAdmit(
+              setupId: setupId,
+              requestId: requestId,
+              candidate: candidate,
+              credentials: credentials,
+              onboardingTarget: onboardingTarget,
+              voucher: voucher,
+              companionId: companionId,
+            ));
+  }
+
+  Future<DeviceSetupCheckpoint> _provisionAndAdmit({
+    required String setupId,
+    required String requestId,
+    required DeviceProvisioningCandidate candidate,
+    required DeviceWifiCredentials credentials,
+    required DeviceOnboardingTarget onboardingTarget,
+    required CommissioningVoucher voucher,
+    String? companionId,
+  }) async {
+    final saved = await checkpoints.load(setupId);
+    if (saved != null) {
+      if (saved.requestId != requestId ||
+          saved.onboardingTarget.ownerDomainId !=
+              onboardingTarget.ownerDomainId ||
+          saved.onboardingTarget.ownerDomainDescriptor.ownerDomainGeneration !=
+              onboardingTarget.ownerDomainDescriptor.ownerDomainGeneration) {
+        throw const DeviceSetupException(
+            code: 'setup_identity_mismatch',
+            message: 'This setup belongs to a different request or Owner');
+      }
+      if (saved.provisioningState ==
+          DeviceProvisioningState.networkConfigured) {
+        onCheckpoint?.call(saved);
+        return saved.isReady ? saved : _resume(saved, waitForEnrollment: false);
+      }
     }
     var checkpoint = DeviceSetupCheckpoint(
       contractVersion: DeviceSetupCheckpoint.currentContractVersion,
@@ -87,10 +142,18 @@ class DeviceSetupCoordinator {
       onboardingTarget: onboardingTarget,
       companionId: companionId,
     );
-    await checkpoints.save(checkpoint);
+    await _save(checkpoint);
 
     DeviceProvisioningSession? session;
     try {
+      try {
+        await ownerDirectoryVerifier.verify(onboardingTarget);
+      } catch (error) {
+        throw DeviceSetupException(
+          code: 'owner_directory_rejected',
+          message: 'Owner Domain directory could not be authenticated: $error',
+        );
+      }
       session = await transport.open(candidate);
       _validateTrust(candidate, session.descriptor);
       checkpoint = checkpoint.copyWith(
@@ -99,7 +162,7 @@ class DeviceSetupCoordinator {
         updatedAt: _now(),
         clearFailure: true,
       );
-      await checkpoints.save(checkpoint);
+      await _save(checkpoint);
       final evidence = await session.configureNetwork(
         credentials: credentials,
         onboardingTarget: onboardingTarget.withCommissioningVoucher(
@@ -122,7 +185,7 @@ class DeviceSetupCoordinator {
         admissionState: DeviceAdmissionState.awaitingEnrollment,
         updatedAt: _now(),
       );
-      await checkpoints.save(checkpoint);
+      await _save(checkpoint);
     } on DeviceSetupException catch (error) {
       return _fail(checkpoint, error);
     } catch (error) {
@@ -141,7 +204,10 @@ class DeviceSetupCoordinator {
   }
 
   /// Startup/foreground entry point. Recovery is always queried before replay.
-  Future<DeviceSetupCheckpoint> resumeAdmission(String setupId) async {
+  Future<DeviceSetupCheckpoint> resumeAdmission(String setupId) =>
+      _run(setupId, () => _resumeAdmission(setupId));
+
+  Future<DeviceSetupCheckpoint> _resumeAdmission(String setupId) async {
     final checkpoint = await checkpoints.load(setupId);
     if (checkpoint == null) {
       throw const DeviceSetupException(
@@ -249,7 +315,7 @@ class DeviceSetupCoordinator {
             recoveryCursor: page.nextCursor,
             updatedAt: _now(),
           );
-          await checkpoints.save(updated);
+          await _save(updated);
           return (projection, updated);
         }
       }
@@ -259,7 +325,7 @@ class DeviceSetupCoordinator {
         clearRecoveryCursor: cursor == null,
         updatedAt: _now(),
       );
-      await checkpoints.save(checkpoint);
+      await _save(checkpoint);
       if (cursor != null) continue;
       if (!wait || !_now().isBefore(deadline)) return null;
       await _sleep(enrollmentInterval);
@@ -292,7 +358,7 @@ class DeviceSetupCoordinator {
       updatedAt: _now(),
       clearFailure: true,
     );
-    await checkpoints.save(updated);
+    await _save(updated);
     return updated;
   }
 
@@ -346,7 +412,7 @@ class DeviceSetupCoordinator {
         retryable: error.retryable,
       ),
     );
-    await checkpoints.save(failed);
+    await _save(failed);
     return failed;
   }
 

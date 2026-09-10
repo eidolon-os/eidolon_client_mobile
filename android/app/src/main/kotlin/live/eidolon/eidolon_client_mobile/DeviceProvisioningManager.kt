@@ -325,12 +325,17 @@ class DeviceProvisioningManager(
 
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
+                synchronized(lock) {
+                    if (connectResult !== pending || networkCallback !== this) return
+                    // One network request may report availability more than once.
+                    if (device != null || pending.isAnswered) return
+                    connectivity.bindProcessToNetwork(network)
+                }
                 Log.i(TAG, "Joined the device's setup network")
                 // Every request this process makes now goes over the device's
                 // network. The commissioning adapter retains this lease through
                 // committed terminal evidence and its ACK, then releases it
                 // before the next Host request.
-                connectivity.bindProcessToNetwork(network)
                 mainHandler.post { startSession(transportId, pending) }
             }
 
@@ -370,6 +375,9 @@ class DeviceProvisioningManager(
     }
 
     private fun startSession(transportId: String, pending: PendingResult) {
+        synchronized(lock) {
+            if (connectResult !== pending || pending.isAnswered || device != null) return
+        }
         val espDevice = provisioning.createESPDevice(
             ESPConstants.TransportType.TRANSPORT_SOFTAP,
             ESPConstants.SecurityType.SECURITY_2,
@@ -405,12 +413,20 @@ class DeviceProvisioningManager(
     }
 
     private fun failConnection(pending: PendingResult, code: String, message: String) {
-        synchronized(lock) { releaseDeviceLocked() }
+        synchronized(lock) {
+            // A late loss/failure from the first SoftAP visit must not close
+            // the connection owned by the second visit.
+            if (connectResult !== pending) return
+            releaseDeviceLocked()
+        }
         pending.error(code, message)
     }
 
     private fun readDescriptor(pending: PendingResult) {
-        val espDevice = synchronized(lock) { device }
+        val espDevice = synchronized(lock) {
+            if (connectResult !== pending) return
+            device
+        }
         if (espDevice == null) {
             pending.error("PROVISIONING_CLOSED", "The setup session is no longer open")
             return
@@ -428,6 +444,7 @@ class DeviceProvisioningManager(
                 override fun onSuccess(response: ByteArray?) {
                     val descriptor = response?.toString(StandardCharsets.UTF_8).orEmpty()
                     mainHandler.post {
+                        if (synchronized(lock) { connectResult !== pending }) return@post
                         if (descriptor.isEmpty()) {
                             failConnection(
                                 pending,
@@ -556,7 +573,9 @@ class DeviceProvisioningManager(
             mainHandler.post {
                 // This is the one route-lease release point. No vendor callback
                 // may unbind SoftAP before the Eidolon core reaches terminal.
-                close()
+                synchronized(lock) {
+                    if (device === espDevice) releaseDeviceLocked()
+                }
                 if (success) {
                     val status = committedStatus
                     if (status == null) {
@@ -823,6 +842,7 @@ class DeviceProvisioningManager(
     }
 
     private fun releaseDeviceLocked() {
+        connectResult = null
         networkCallback?.let { callback ->
             try {
                 connectivity.unregisterNetworkCallback(callback)

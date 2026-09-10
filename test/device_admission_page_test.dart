@@ -6,6 +6,57 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/admission_fixtures.dart';
 
 void main() {
+  testWidgets(
+      'approval follows Grant and Claim without leaving or approving again',
+      (tester) async {
+    var current = canonicalProjection(state: 'pending_review');
+    var decisions = 0;
+    var reads = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: _page(
+      load: (_) async {
+        reads += 1;
+        return canonicalRecoveryPage([current]);
+      },
+      decide: ({required requestId, required projection}) async {
+        decisions += 1;
+        return current = canonicalProjection(
+            state: 'approved_awaiting_handoff', withDecision: true);
+      },
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('enrollment-enrollment_01')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('confirm-enrollment-decision')));
+    await tester.pumpAndSettle();
+    expect(find.text('已批准，等待设备领取 Grant'), findsOneWidget);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    final pausedReads = reads;
+    await tester.pump(const Duration(seconds: 9));
+    expect(reads, pausedReads);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    current = canonicalProjection(
+        state: 'grant_delivered', withDecision: true, withDelivery: true);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    expect(find.text('Grant 已交付，等待 ClaimActive'), findsOneWidget);
+    current = canonicalProjection(
+        state: 'grant_acknowledged',
+        withDecision: true,
+        withDelivery: true,
+        claimState: 'active');
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    expect(find.text('ClaimActive'), findsOneWidget);
+    expect(decisions, 1);
+    final completedReads = reads;
+    await tester.pump(const Duration(seconds: 9));
+    expect(reads, completedReads);
+  });
+
   testWidgets('empty recovery never presents completion', (tester) async {
     await tester.pumpWidget(
       MaterialApp(home: _page(load: (_) async => canonicalRecoveryPage([]))),
