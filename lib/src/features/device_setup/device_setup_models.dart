@@ -150,7 +150,6 @@ class DeviceOnboardingTarget {
     required this.ownerRootCertificate,
     required this.authoritySigningCertificate,
     this.commissioningVoucher,
-    this.hostAddress,
   });
 
   final String ownerDomainId;
@@ -169,24 +168,6 @@ class DeviceOnboardingTarget {
   /// commissioning it belonged to.
   final String? commissioningVoucher;
 
-  /// The address the Host answered on when it handed this target over.
-  ///
-  /// Absent from the wire and commissioning checkpoint: it describes
-  /// one client's route to a deployment at one moment, not the Owner Domain.
-  /// The signed descriptor is the durable fact.
-  final String? hostAddress;
-
-  /// A dial hint for the local Authority named by this descriptor. It never
-  /// replaces a signed URI, TLS hostname or trust root, and cannot route a
-  /// different (for example remote) Authority through the selected Host.
-  Map<String, String> get addressHints {
-    final host = Uri.parse(ownerDomainDescriptor.descriptorUri).host;
-    final address = hostAddress;
-    return address != null && host.endsWith('.local')
-        ? {host: address}
-        : const {};
-  }
-
   /// This target, carrying the standing the Host just signed for one device.
   DeviceOnboardingTarget withCommissioningVoucher(String voucher) =>
       DeviceOnboardingTarget(
@@ -195,18 +176,6 @@ class DeviceOnboardingTarget {
         ownerRootCertificate: ownerRootCertificate,
         authoritySigningCertificate: authoritySigningCertificate,
         commissioningVoucher: voucher,
-        hostAddress: hostAddress,
-      );
-
-  /// This target, as reached at [hostAddress].
-  DeviceOnboardingTarget reachedAt(String hostAddress) =>
-      DeviceOnboardingTarget(
-        ownerDomainId: ownerDomainId,
-        ownerDomainDescriptor: ownerDomainDescriptor,
-        ownerRootCertificate: ownerRootCertificate,
-        authoritySigningCertificate: authoritySigningCertificate,
-        commissioningVoucher: commissioningVoucher,
-        hostAddress: hostAddress,
       );
 
   factory DeviceOnboardingTarget.fromJson(Map<String, dynamic> value) {

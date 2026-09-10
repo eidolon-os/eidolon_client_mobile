@@ -81,3 +81,53 @@ Mobile 保存 Host 身份与管理授权。IP 是可失效的连接线索，换�
 进一步对齐原始刷新时段：11:50:50 断开、11:50:57 重连；11:51:54 再断开、11:52:01 重连。App 的一次 TCP 超时记录在 11:51:57，位于该断连区间。NetworkManager 同时记录 completed → disconnected → scanning，确认这不是仅有 App 内部的超时。
 
 旧刷新时段的服务日志在 11:51:17 也记录了来自平板的 host GET、auth challenge、auth session 全部 200。因此不能把整个过程归结为持续找不到香橙派，也不能宣称修复 App 请求排队就修好了无线链路。此次没有修改主机网络、省电、驱动或部署；链路反复掉线的诱因尚未查实。
+
+## 从主机连接到设备服务的地址分裂修复（2026-09-10）
+
+### 根因与边界
+
+主机管理与虚拟设备使用不同身份访问不同服务，这是原有架构；两条链路各自保存地址则不是必要边界。
+
+13:19 的原始请求显示：HostRegistry 已通过 192.168.1.33:9002 完成主机验证、Controller 认证及 onboarding target 读取，但 DeviceOwnerDirectory 仍把 `last_reached_address=192.168.100.19` 传给 Owner transport。原实现等待 Controller bootstrap 3 秒后便返回旧 target；实际主机发现本身可能耗时 5 秒。bootstrap 迟到后即使更新了目录，已经创建的客户端仍在向旧 IP 的 9443 端口连接。
+
+这是 Room 之前的配置链路断点，不是 ASR/LLM 超时。Owner 目录当时仍在有效期内；不需要重新认领、换证书或提高登记版本。香橙派另有已确认的 Wi-Fi Link Down/UP，两个问题同时存在，不能互相代替。
+
+### 最终实现
+
+- **信任与位置分开。** DeviceOnboardingTarget 删除 `hostAddress`、`addressHints`、`reachedAt`；DeviceOwnerDirectory 只保存并验证 Owner 根、签名目录和 signer 证书。旧 `last_reached_address` 读取时忽略，保存对应目录时移除，不需要清数据。
+- **一个 Owner HTTP 路由入口。** DeviceOwnerDirectory 的公开目录续期、Admission、Device Control 共用 OwnerAuthorityRoutes。它从现有 HostRegistry 读取已选 Host 的地址观察，并复用 HostLocator、已有发现/DNS 与平台 TLS transport。没有新增持久化地址表、发现协议、Host 身份或服务端端点。
+- **请求时定位。** 已创建的客户端在下一次请求时重新检查 registry 地址；本机网络变化使临时路线失效并取消旧 HTTP。新地址观察会取消还在等待旧地址的定位，旧结果不能写回新路线。请求失败清除对应路线，下次由同一定位入口重新寻找。
+- **定位不授予权限。** 候选仅用于连接地址。对原签名 HTTPS origin 做不携带设备签名或 Controller token 的 HEAD 探测，由既有 Owner 根与 hostname TLS 验证筛选；404/405 也只表示该 TLS origin 已响应，不表示配置或 Room 就绪。随后实际 Device 请求继续使用原 URL、请求体、签名及信任根。远端签名 authority 使用正常 DNS，不经选中 Host 转发。
+- **共享既有竞速机制。** HostProductSession 的候选调度提取到 HostLocator 的 `raceHostAddresses`，Host 身份读取与 Owner 公共 TLS 探测共用；失败及落败候选都释放连接。没有竞速业务 POST。
+- **明确请求所有权。** 并发 Owner API 共用同一 origin 的定位，关闭一个等待方不会中断其他等待方；最后一个等待方退出会取消探测。网络变更只允许重做尚未发送业务请求的定位，不自动重放已发出的登记、确认、声明或配置请求。Device Control 的调用方在结束时关闭其 transport，App 销毁时释放 Owner 路由服务。
+- **保留设备独立性。** 已安装 Owner 信任时，不再调用 Controller bootstrap，也没有“等 3 秒再走旧 IP”的分支；目录从其签名公开 URI 续期。有效缓存可在续期暂时失败时使用，过期、签名、Owner 身份与防回滚校验继续执行。首次安装信任仍走原有 onboarding bootstrap。
+
+标准链路保持：选择稳定 Host → 用已安装的 Owner 信任定位设备服务 → 设备密钥读取/声明配置 → 选择 companion 与 mode → 原有 Room 接入。Host 管理的 Controller 权限与设备自己的 Admission/Device Control 权限继续分离，Mobile 没有增加特殊服务入口。
+
+### 验证
+
+- Flutter 全量 943 项通过，5 项既有跳过；随后补充“新 registry 地址取消旧定位”边界，Owner 路由定向 11 项全部通过。最终 analyze 无问题。
+- Android App 原生 49 项通过，APK 构建通过。
+- 回归覆盖旧目录 IP 的无损移除、Controller 已撤销时使用安装信任、公开续期及过期拒绝、Owner 身份/根不可替换、防止旧目录覆盖新目录、已创建客户端换地址、错误 TLS 候选不发送 Device 请求、并发共享定位及独立取消、本机网络变化、Host 掉线后的重新定位、已发送 POST 不重放、远端 authority 不被本地 Host 接管。
+- 最终 APK 通过 `adb install -r` 覆盖安装到平板 df331f93，无卸载或清数据。列表保留当前三台主机。与此前保存的偏好快照相比，原有 Mac/香橙派的 Host 身份字段不变，只有最近连接时间更新；既有三项 mobile-body-claim 值相同。香橙派 Owner 记录只删除 `last_reached_address`，根与签名目录保持相同。
+- 13:55 真机从香橙派卡片点击“开始对话”。Owner 逻辑 origin 仍是 `https://eidolon-hub-f89c0ecca5d0070a7989.local:9443`；平台请求依次为公共探测、目录 GET、设备配置 POST。香橙派日志记录 HEAD `/` 404、GET descriptor 200、POST `configuration:pull` 200。随后 Controller auth challenge/session 才完成，实证设备读取不依赖管理登录完成。
+- 本轮平台探测耗时约 7.37 秒，随后目录 GET 76 ms、配置 POST 150 ms。主机日志显示 13:55:41 Wi-Fi 断开、13:55:48 恢复，随后服务于 13:55:49 响应；这是实际无线中断造成的等待，本次未改动主机网络配置。
+- 页面最终显示已选伙伴 `mac`、待选“按住说话 / 轮流说话 / 自由对话”，提示“选好伙伴和对话方式后再接通”，麦克风保持关闭。本次实测覆盖主机列表至设备配置/对话准备；没有把它记为新一轮 Room、ASR、LLM、TTS 全链路语音验收。
+
+无线链路稳定性仍取决于主机网络；本次修复的是应用地址事实分裂、请求生命周期和同类 Owner API 的共同路径，不宣称已修复香橙派 Wi-Fi 掉线诱因。
+
+## Host 媒体服务的网络生命周期（2026-09-10）
+
+Mac 的管理地址更新后，运行中的 LiveKit 仍使用启动时的旧网卡信息，因此“找到 Host”不等于“Room 媒体已就绪”。本轮修正在共享 Host 生命周期中完成，不增加 Mobile 专用入口。
+
+- 稳定身份、同机 loopback/Unix socket、监听地址、动态对外地址、显式公网/NAT 策略分别处理。NATS 的同机地址继续使用 loopback。
+- Mac/Linux 启动器都移除自动探测后注入 `rtc.node_ip` 的逻辑；原生 ICE 收集合适的接口，显式部署覆盖保留。示例配置默认采用动态观察。
+- 既有 eidolond 协调循环按共享 manifest 的 `restart_on_network_change` 声明处理网络变化。目前 LiveKit 声明该依赖，NATS 不声明。网络稳定 10 秒才刷新，失败至少间隔 30 秒重试，断网或抖动时不反复重启。
+- 可丢弃的运行观察缓存绑定网络指纹和进程实例，防止守护进程重启、服务自行重启或启动期间换网造成误判。设备登记、Owner 身份、Companion 解析与期望状态版本均不参与该判断。
+- Ops 通过既有服务目录读取明确的 `network_current` 事实，旧进程只有普通 `ready` 时不能通过；不再从 YAML 中的地址推断媒体进程已经更新。Linux 沙箱复用已有网络观测所需的 AF_NETLINK，仍无网络管理权限。
+
+完整决策和边界见 [Kernel ADR 0017](../../eidolon_kernel/docs/adr/0017-network-dependent-service-lifecycle.md)。
+
+验证：Kernel 全量 463 项通过、1 项跳过，最终 system 定向 121 项通过、1 项跳过；Ops 全量 1068 项通过；Channel LiveKit 52 项、Admin 服务客户端 13 项通过。香橙派临时 systemd 沙箱以 eidolon 用户、无额外 capability 成功运行本次网络观测源码，未修改其现有部署。Mac 独立真实 LiveKit + supervisord + SDK 测试观察到旧 TCP 候选超时，生命周期刷新后进程实例变化，两个客户端成功收发 WebRTC 数据，再次协调不重复重启。同机新启动实例可能通过 UDP 候选连通，因此该 TCP 测试没有被描述成真实跨 Wi-Fi 复现。
+
+本轮仅提交源码，暂不激活到日常运行的 Mac/香橙派部署；后续需通过标准部署流程同步 Kernel、Ops 和生成的 manifest。真实 Wi-Fi 切换后的 Room/语音验收仍待执行，不以单元测试、端口响应或隔离媒体测试代替。

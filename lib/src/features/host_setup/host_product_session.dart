@@ -17,14 +17,6 @@ import 'local_api_client.dart';
 import 'local_api_discovery.dart';
 import 'pinned_http_client.dart';
 
-/// How long one address gets to itself before the next is tried alongside it.
-///
-/// RFC 8305's Connection Attempt Delay: 250 ms recommended, 100 ms minimum,
-/// and never below 10 ms. Short enough that a wrong first address costs a
-/// quarter second instead of a timeout; long enough that the common case —
-/// the first address being right — makes exactly one connection.
-const Duration _connectionAttemptDelay = Duration(milliseconds: 250);
-
 /// A Host that answered at one of its addresses and proved it was itself.
 ///
 /// Carries the client that reached it, still open. Authenticating over the
@@ -36,24 +28,6 @@ class _ReachedHost {
   final LocalApiEndpoint endpoint;
   final HostOverview overview;
   final LocalApiClient client;
-}
-
-/// What racing one tier of addresses established.
-class _AddressRace {
-  const _AddressRace({
-    required this.winner,
-    required this.failures,
-  });
-
-  final _ReachedHost? winner;
-  final List<HostCandidateFailure> failures;
-}
-
-/// Candidate failures are evidence about addresses, not a refusal from the target.
-class HostCandidateFailure {
-  const HostCandidateFailure(this.candidate, this.error);
-  final HostAddressCandidate candidate;
-  final Object error;
 }
 
 class HostLocationException extends LocalApiRequestException {
@@ -425,102 +399,19 @@ class HostProductSession {
     }
   }
 
-  /// Whether the Host was never reached, as opposed to having answered.
-  ///
-  /// Only the absence of an answer means the address may be wrong. A refusal,
-  /// a broken pin, a malformed reply — those all came from something that was
-  /// there, and re-locating would hide what it said.
-  /// Which of a Host's own addresses answers first, tried the way RFC 8305
-  /// says to try several addresses for one destination.
-  ///
-  /// A Host publishes every address it has, because only the phone knows which
-  /// subnet it is on. Trying them in order made the *order* load-bearing: the
-  /// board is on Wi-Fi and on a wired link at once, the wired address is listed
-  /// first, and a phone on the Wi-Fi paid the full client timeout against an
-  /// address only a laptop on that cable could reach before it ever tried the
-  /// one that works.
-  ///
-  /// Nobody can sort that list correctly — not the Host, which does not know
-  /// where the phone is, and not the phone, which does not know the Host's
-  /// topology. So it is not sorted, it is raced: start the first, and start the
-  /// next either when [_connectionAttemptDelay] is spent or as soon as one
-  /// already running has settled, whichever comes first. Ordering degrades from
-  /// "decides the outcome" to "decides who gets a 250 ms head start", which is
-  /// what it deserves to decide.
-  ///
-  /// Only the read is raced. `fetchHost` is a GET and identical against every
-  /// address of one Host, so several in flight cost nothing and change nothing;
-  /// authenticating is not, and racing it would mint a session per address. So
-  /// the race establishes *where*, and hands over the client that got there for
-  /// the caller to authenticate on — once.
-  Future<_AddressRace> _firstToAnswer(List<HostAddressCandidate> tier) async {
-    final failures = <HostCandidateFailure>[];
+  Future<HostAddressRace<_ReachedHost>> _firstToAnswer(
+      List<HostAddressCandidate> tier) {
     final revision = _networkRevision;
-    final clients = <LocalApiClient>{};
-    _ReachedHost? winner;
-    final pending = <Future<void>>[];
-    // Completed by whichever attempt settles next, so a candidate that fails
-    // quickly frees its slot immediately instead of making the next one sit
-    // out a delay that exists for undecided attempts.
-    Completer<void>? settled;
-    // Completed by the first attempt to reach the Host. Separate from the slot
-    // signal because it is never reset: once somebody has answered, waiting on
-    // anything else is waiting for nothing.
-    final decided = Completer<void>();
-
-    void slotFreed() {
-      final waiting = settled;
-      settled = null;
-      if (waiting != null && !waiting.isCompleted) waiting.complete();
-    }
-
-    Future<void> attempt(HostAddressCandidate candidate) async {
+    return raceHostAddresses(tier, (candidate) {
       final client = _newLocalClient();
-      clients.add(client);
-      var handedOver = false;
-      try {
-        final overview = await client.fetchHost(candidate.endpoint.baseUrl);
+      final result =
+          client.fetchHost(candidate.endpoint.baseUrl).then((overview) {
         _ensureRevision(revision);
         _verifyHost(overview);
-        // A loser of the race is not a failure and is not recorded as one: two
-        // addresses of one Host both answering is the normal case, not a fault.
-        if (winner != null) return;
-        winner = _ReachedHost(candidate.endpoint, overview, client);
-        handedOver = true;
-        if (!decided.isCompleted) decided.complete();
-      } catch (error) {
-        failures.add(HostCandidateFailure(candidate, error));
-      } finally {
-        if (!handedOver) _release(client.close);
-        slotFreed();
-      }
-    }
-
-    for (var index = 0; index < tier.length; index += 1) {
-      settled = Completer<void>();
-      pending.add(attempt(tier[index]));
-      if (index == tier.length - 1) break;
-      await Future.any([
-        settled!.future,
-        Future<void>.delayed(_connectionAttemptDelay),
-      ]);
-      if (winner != null) break;
-    }
-    if (winner == null) {
-      // Everything is started and nothing has come back yet. Whichever happens
-      // first: somebody answers, or they have all failed. Waiting for them all
-      // unconditionally is what makes one address that never answers cost its
-      // full client timeout, which is the whole thing this replaces.
-      //
-      // When they have all failed, every candidate's own outcome is wanted — a
-      // timeout and a no-route say different things to the person who has to
-      // read the message.
-      await Future.any([decided.future, Future.wait(pending)]);
-    }
-    for (final client in clients) {
-      if (client != winner?.client) _release(client.close);
-    }
-    return _AddressRace(winner: winner, failures: List.unmodifiable(failures));
+        return _ReachedHost(candidate.endpoint, overview, client);
+      });
+      return HostAddressAttempt(result, () => _release(client.close));
+    });
   }
 
   static bool _hostDidNotAnswer(PinnedHttpException error) =>

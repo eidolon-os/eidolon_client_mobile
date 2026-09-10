@@ -5,7 +5,6 @@ import '../device_setup/mobile_body_claim_store.dart';
 import '../device_setup/mobile_body_enrollment.dart';
 import '../device_setup/mobile_body_enrollment_session.dart';
 import '../device_setup/mobile_body_enrollment_wiring.dart';
-import '../host_setup/pinned_http_client.dart';
 import 'conversation_flow.dart';
 import 'mobile_device_contexts.dart';
 import 'device_owner_directory.dart';
@@ -59,9 +58,7 @@ class MobileDeviceRuntime {
             rebindAdmission: (admission, t) => admission.useAuthority(
                 AdmissionAuthorityClient(
                     authority: admissionAuthorityFor(t),
-                    transport: PlatformPinnedHttpClient.ownerDomain(
-                        ownerRootCertificate: t.ownerRootCertificate,
-                        addressHints: t.addressHints))),
+                    transport: directory.transport(t))),
             platform: context.platform,
             buildAdmission: (t) => MobileBodyAdmission(
                 issueVoucher: ({required operationalSpkiSha256}) =>
@@ -69,9 +66,7 @@ class MobileDeviceRuntime {
                         operationalSpkiSha256: operationalSpkiSha256),
                 authority: AdmissionAuthorityClient(
                     authority: admissionAuthorityFor(t),
-                    transport: PlatformPinnedHttpClient.ownerDomain(
-                        ownerRootCertificate: t.ownerRootCertificate,
-                        addressHints: t.addressHints)),
+                    transport: directory.transport(t)),
                 claims: context.claims,
                 platform: context.platform));
       } else {
@@ -92,11 +87,18 @@ class MobileDeviceRuntime {
               currentEnrollmentId: () =>
                   current.enrollment.pending?.enrollmentId,
               resumeAcknowledgement: current.enrollment.resumeAcknowledgement,
-              buildDeviceControl: deviceControlClientBuilder(),
+              buildDeviceControl:
+                  deviceControlClientBuilder(transport: directory.transport),
               platform: current.context.platform));
     });
     _opening = opening.then<void>((_) {}, onError: (_, __) {});
     return opening;
+  }
+
+  Future<void> close() async {
+    _openRevision++;
+    await _active?.close();
+    await directory.close();
   }
 }
 

@@ -45,13 +45,12 @@ const ownerDomainDescriptorJsonFixture = <String, dynamic>{
 OwnerDomainDescriptorV1 ownerDomainDescriptorFixture() =>
     OwnerDomainDescriptorV1.fromJson(ownerDomainDescriptorJsonFixture);
 
-DeviceOnboardingTarget deviceOnboardingTargetFixture({String? hostAddress}) =>
+DeviceOnboardingTarget deviceOnboardingTargetFixture() =>
     DeviceOnboardingTarget(
       ownerDomainId: ownerDomainIdFixture,
       ownerDomainDescriptor: ownerDomainDescriptorFixture(),
       ownerRootCertificate: ownerRootCertificateFixture,
       authoritySigningCertificate: authoritySigningCertificateFixture,
-      hostAddress: hostAddress,
     );
 
 class AcceptingOwnerDomainDirectoryVerifier

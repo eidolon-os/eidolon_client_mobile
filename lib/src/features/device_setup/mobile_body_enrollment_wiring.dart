@@ -12,7 +12,7 @@
 /// `mobile_body_enrollment.dart`.
 library;
 
-import '../host_setup/pinned_http_client.dart';
+import 'package:http/http.dart' as http;
 import '../conversation/device_control_client.dart';
 import '../conversation/mobile_conversation_provisioner.dart';
 import 'device_setup_models.dart';
@@ -55,13 +55,12 @@ Uri admissionAuthorityFor(DeviceOnboardingTarget target) {
 /// Same rule as the Admission one, and for the same reason: the authority's
 /// address and the trust anchor that reaches it are two facts from one signed
 /// descriptor, and taken from separate readings they can disagree.
-DeviceControlClientBuilder deviceControlClientBuilder() =>
+DeviceControlClientBuilder deviceControlClientBuilder({
+  required http.Client Function(DeviceOnboardingTarget) transport,
+}) =>
     (target) => DeviceControlClient(
           authority: deviceControlAuthorityFor(target),
-          transport: PlatformPinnedHttpClient.ownerDomain(
-            ownerRootCertificate: target.ownerRootCertificate,
-            addressHints: target.addressHints,
-          ),
+          transport: transport(target),
         );
 
 /// Where this Owner Domain says its Device Control authority answers.

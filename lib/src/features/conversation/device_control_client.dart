@@ -136,6 +136,8 @@ class DeviceControlClient {
   /// vector's value is not a 32-byte draw.
   final String Function()? _newNonce;
 
+  void close() => _transport.close();
+
   static const _path = '/api/device-control/v1/configuration:pull';
 
   /// Ask what this Body's configuration is, proving it is that Body.

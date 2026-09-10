@@ -266,3 +266,76 @@ class HostLocator {
     if (!offered && firstFailure != null) throw firstFailure;
   }
 }
+
+/// A cancellable, read-only candidate check. Mutations are never raced.
+class HostAddressAttempt<T extends Object> {
+  const HostAddressAttempt(this.result, this.cancel);
+  final Future<T> result;
+  final void Function() cancel;
+}
+
+class HostCandidateFailure {
+  const HostCandidateFailure(this.candidate, this.error);
+  final HostAddressCandidate candidate;
+  final Object error;
+}
+
+class HostAddressRace<T extends Object> {
+  const HostAddressRace(this.winner, this.failures);
+  final T? winner;
+  final List<HostCandidateFailure> failures;
+}
+
+/// Shared connection-attempt scheduling for Host identity and Owner TLS probes.
+/// The winner is handed to the caller; every other attempt is released.
+Future<HostAddressRace<T>> raceHostAddresses<T extends Object>(
+    List<HostAddressCandidate> candidates,
+    HostAddressAttempt<T> Function(HostAddressCandidate) begin) async {
+  final failures = <HostCandidateFailure>[];
+  final attempts = <HostAddressAttempt<T>>[];
+  final pending = <Future<void>>[];
+  final decided = Completer<void>();
+  HostAddressAttempt<T>? selected;
+  T? winner;
+  Completer<void>? settled;
+  Future<void> run(HostAddressCandidate candidate) async {
+    HostAddressAttempt<T>? attempt;
+    try {
+      attempt = begin(candidate);
+      attempts.add(attempt);
+      final value = await attempt.result;
+      if (winner == null) {
+        selected = attempt;
+        winner = value;
+        decided.complete();
+      }
+    } catch (error) {
+      failures.add(HostCandidateFailure(candidate, error));
+    } finally {
+      if (attempt != selected) attempt?.cancel();
+      final waiting = settled;
+      settled = null;
+      if (waiting != null && !waiting.isCompleted) waiting.complete();
+    }
+  }
+
+  if (candidates.isEmpty) return HostAddressRace(null, const []);
+  for (final candidate in candidates) {
+    settled = Completer<void>();
+    final completed = settled!.future;
+    pending.add(run(candidate));
+    final delayed = Completer<void>();
+    final timer = Timer(const Duration(milliseconds: 250), delayed.complete);
+    try {
+      await Future.any([completed, decided.future, delayed.future]);
+    } finally {
+      timer.cancel();
+    }
+    if (winner != null) break;
+  }
+  if (winner == null) await Future.any([decided.future, Future.wait(pending)]);
+  for (final attempt in attempts) {
+    if (attempt != selected) attempt.cancel();
+  }
+  return HostAddressRace(winner, List.unmodifiable(failures));
+}

@@ -134,8 +134,7 @@ class MobileBodyEnrollmentSession {
       throw const MobileBodyEnrollmentUnavailable('不能把进行中的登记转到另一个 Owner。');
     }
     _ownerDomainId = target.ownerDomainId;
-    final version =
-        '${target.hostAddress}|${target.ownerDomainDescriptor.toJson()}';
+    final version = target.ownerDomainDescriptor.toJson().toString();
     if (_admission != null && version != _directoryVersion) {
       _rebindAdmission?.call(_admission!, target);
     }

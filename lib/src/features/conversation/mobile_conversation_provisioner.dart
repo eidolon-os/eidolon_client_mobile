@@ -103,10 +103,16 @@ final class MobileConversationProvisioner
     }
     final reference =
         Map<String, Object?>.from(recovered.claim!.json['device_ref']! as Map);
-    final configuration = await build(target).pullConfiguration(
-        deviceRef: reference,
-        operationalPublicKey: identity.operationalPublicKey,
-        sign: _platform.signDeviceCanonicalDocument);
+    final control = build(target);
+    final DeviceConfiguration configuration;
+    try {
+      configuration = await control.pullConfiguration(
+          deviceRef: reference,
+          operationalPublicKey: identity.operationalPublicKey,
+          sign: _platform.signDeviceCanonicalDocument);
+    } finally {
+      control.close();
+    }
     if (!configuration.claimStands) {
       throw const ConversationRecoveryUnavailable('此主机上的登记已撤销，无法恢复。原记录已保留。');
     }
@@ -320,8 +326,9 @@ final class MobileConversationProvisioner
           refusal: ChannelRefusal.localClaimMissing);
     }
     DeviceConfiguration configuration;
+    DeviceControlClient? control;
     try {
-      final control = build(target);
+      control = build(target);
       configuration = await control.pullConfiguration(
         deviceRef: claim.deviceRef,
         operationalPublicKey: identity.operationalPublicKey,
@@ -383,6 +390,8 @@ final class MobileConversationProvisioner
         refusal: ChannelRefusal.hostUnanswered,
         diagnostic: error.toString(),
       );
+    } finally {
+      control?.close();
     }
     // The Authority answered with the ref it holds, which is not necessarily
     // the one this ask carried: it finds the Claim by identity, so a ref that

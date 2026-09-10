@@ -12,6 +12,8 @@ import 'src/controller/client_controller.dart';
 import 'src/features/conversation/conversation_provisioner.dart';
 import 'src/features/conversation/conversation_flow.dart';
 import 'src/features/conversation/mobile_device_runtime.dart';
+import 'src/features/conversation/device_owner_directory.dart';
+import 'src/features/device_setup/owner_authority_routes.dart';
 import 'src/features/conversation/product_conversation_page.dart';
 import 'src/features/device_management/mounted_devices_page.dart';
 import 'src/features/host_setup/host_runtime_status_page.dart';
@@ -42,7 +44,15 @@ class EidolonMobileApp extends StatefulWidget {
 }
 
 class _EidolonMobileAppState extends State<EidolonMobileApp> {
-  late final MobileDeviceRuntime _deviceRuntime = MobileDeviceRuntime();
+  late final MobileDeviceRuntime _deviceRuntime = MobileDeviceRuntime(
+      directory: DeviceOwnerDirectory(
+          routes: OwnerAuthorityRoutes(registry: widget.hostRegistry)));
+
+  @override
+  void dispose() {
+    unawaited(_deviceRuntime.close());
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -81,7 +91,8 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
                 },
                 management: ConversationManagement(
                     controllerId: controller.host.controllerId,
-                    admission: HostControllerDeviceAdmission(controller, prepare: prepareManagement),
+                    admission: HostControllerDeviceAdmission(controller,
+                        prepare: prepareManagement),
                     roster: ({cursor}) async {
                       await prepareManagement();
                       return controller.roster(cursor: cursor);

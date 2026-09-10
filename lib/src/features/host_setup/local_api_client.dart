@@ -191,12 +191,9 @@ class LocalApiClient {
           headers: _authorizedHeaders(accessToken),
         )
         .timeout(timeout);
-    // The Hub named in this answer runs on the Host that just answered, so the
-    // address this request reached is an address its Hub answers on too. The
-    // Host names its Hub in mDNS, which this client cannot query.
     return DeviceOnboardingTarget.fromJson(
       _decodeResponse(response, operation: 'Device onboarding target'),
-    ).reachedAt(origin.host);
+    );
   }
 
   /// Ask this Host to sign the standing one device needs to be admitted.
