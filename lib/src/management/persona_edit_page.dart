@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
 import 'persona_form.dart';
+import 'conversation_preferences_form.dart';
 
 /// Changing who an Eidolon is, after it has been someone for a while.
 ///
@@ -26,6 +27,10 @@ class PersonaEditPage extends StatefulWidget {
     required this.onSave,
     this.busy = false,
     this.refusal,
+    this.preferences,
+    this.onPreferencesChanged,
+    this.preferencesChanged = false,
+    this.forceChanged = false,
   });
 
   /// What it is called, for the title. Not editable here: what it is called and
@@ -36,6 +41,10 @@ class PersonaEditPage extends StatefulWidget {
   final PersonaAuthoring standing;
 
   final Future<void> Function(PersonaAuthoring authored) onSave;
+  final ConversationPreferences? preferences;
+  final ValueChanged<ConversationPreferences>? onPreferencesChanged;
+  final bool preferencesChanged;
+  final bool forceChanged;
   final bool busy;
   final String? refusal;
 
@@ -75,7 +84,8 @@ class _PersonaEditPageState extends State<PersonaEditPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final unchanged = _form.unchanged;
+    final unchanged =
+        _form.unchanged && !widget.preferencesChanged && !widget.forceChanged;
     return Scaffold(
       key: const Key('persona-edit-page'),
       appBar: AppBar(title: Text('${widget.displayName} 是谁')),
@@ -94,20 +104,31 @@ class _PersonaEditPageState extends State<PersonaEditPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '改了之后它就是这样。以前是什么样仍然记着。',
+                    '性格修改在下次对话使用；回复偏好从下一条回复生效。',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(height: 24),
-                  _heading(theme, 'TA 是谁'),
-                  ..._form.whoItIs(_changed),
-                  const SizedBox(height: 32),
-                  _heading(theme, '你们的关系'),
-                  ..._form.theRelationship(_changed),
-                  const SizedBox(height: 32),
-                  _heading(theme, 'TA 如何表达'),
-                  ..._form.howItSpeaks(_changed),
+                  if (widget.onPreferencesChanged != null)
+                    ConversationPreferencesForm(
+                        value: widget.preferences ??
+                            const ConversationPreferences(),
+                        onChanged: widget.onPreferencesChanged!),
+                  ExpansionTile(
+                    key: const Key('persona-details'),
+                    title: const Text('详细设定'),
+                    children: [
+                      _heading(theme, 'TA 是谁'),
+                      ..._form.whoItIs(_changed),
+                      const SizedBox(height: 32),
+                      _heading(theme, '你们的关系'),
+                      ..._form.theRelationship(_changed),
+                      const SizedBox(height: 32),
+                      _heading(theme, 'TA 如何表达'),
+                      ..._form.howItSpeaks(_changed),
+                    ],
+                  ),
                 ],
               ),
             ),

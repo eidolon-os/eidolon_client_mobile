@@ -30,6 +30,7 @@ class CompanionRosterScreen extends StatefulWidget {
     this.setDefaultCompanion,
     this.createCompanion,
     this.loadPersonaTemplate,
+    this.loadPersonaPresets,
     this.newOperationId,
   });
 
@@ -71,6 +72,7 @@ class CompanionRosterScreen extends StatefulWidget {
     String operationId,
     String displayName,
     PersonaAuthoring? persona,
+    ConversationPreferences? preferences,
   )? createCompanion;
 
   /// What the Host would write if the authoring form came back untouched.
@@ -79,6 +81,7 @@ class CompanionRosterScreen extends StatefulWidget {
   /// only needed on the way into the form, and a roster that failed to load
   /// because of it would be a list nobody can read for the sake of a button.
   final Future<PersonaAuthoring> Function()? loadPersonaTemplate;
+  final Future<PersonaPresetCatalog> Function()? loadPersonaPresets;
 
   /// Injected so a test can pin the id; a real screen mints a random one.
   final String Function()? newOperationId;
@@ -224,8 +227,13 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
     });
 
     final PersonaAuthoring template;
+    List<PersonaPreset> presets = const [];
     try {
-      template = await loadTemplate();
+      if (widget.loadPersonaPresets != null) {
+        presets = (await widget.loadPersonaPresets!()).presets;
+      }
+      template =
+          presets.isNotEmpty ? presets.first.persona : await loadTemplate();
     } catch (error) {
       if (!mounted) return;
       // No form rather than a form full of guesses: a starting point this
@@ -239,9 +247,11 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
       MaterialPageRoute(
         builder: (_) => _AuthoringRoute(
           template: template,
-          create: (displayName, persona) async {
+          presets: presets,
+          create: (displayName, persona, preferences) async {
             final operationId = _pendingOperationId ??= _newOperationId();
-            final created = await create(operationId, displayName, persona);
+            final created =
+                await create(operationId, displayName, persona, preferences);
             // Answered, so this operation is finished — a later "add" is a new
             // one.
             _pendingOperationId = null;
@@ -341,15 +351,18 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
 class _AuthoringRoute extends StatefulWidget {
   const _AuthoringRoute({
     required this.template,
+    this.presets = const [],
     required this.create,
     required this.refusalSentence,
     required this.onCreated,
   });
 
   final PersonaAuthoring template;
+  final List<PersonaPreset> presets;
   final Future<CreatedCompanion> Function(
     String displayName,
     PersonaAuthoring? persona,
+    ConversationPreferences? preferences,
   ) create;
   final String Function(Object error) refusalSentence;
   final void Function(CreatedCompanion created) onCreated;
@@ -366,16 +379,18 @@ class _AuthoringRouteState extends State<_AuthoringRoute> {
   Widget build(BuildContext context) {
     return CompanionAuthoringPage(
       template: widget.template,
+      presets: widget.presets,
       busy: _busy,
       refusal: _refusal,
-      onCreate: (displayName, persona) async {
+      onCreate: (displayName, persona, preferences) async {
         setState(() {
           _busy = true;
           _refusal = null;
         });
         try {
           final navigator = Navigator.of(context);
-          final created = await widget.create(displayName, persona);
+          final created =
+              await widget.create(displayName, persona, preferences);
           if (!mounted) return;
           widget.onCreated(created);
           // Captured before the await: the analyzer is right that a context

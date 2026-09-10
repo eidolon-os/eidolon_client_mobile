@@ -547,28 +547,36 @@ class HostProductController extends ChangeNotifier {
     required String operationId,
     required String displayName,
     PersonaAuthoring? persona,
-  }) => _managementRepository.createCompanion(
-    operationId: operationId,
-    displayName: displayName,
-    persona: persona,
-  );
+    ConversationPreferences? preferences,
+  }) =>
+      _managementRepository.createCompanion(
+        operationId: operationId,
+        displayName: displayName,
+        persona: persona,
+        preferences: preferences,
+      );
 
   /// Who this Eidolon is now, in the words somebody wrote.
-  Future<PersonaAuthoring> persona({required String companionId}) =>
+  Future<PersonaEditSnapshot> persona({required String companionId}) =>
       _managementRepository.persona(companionId: companionId);
 
   /// Say who this Eidolon is now.
-  Future<PersonaAuthoring> setPersona({
+  Future<PersonaEditSnapshot> setPersona({
     required String companionId,
-    required PersonaAuthoring persona,
-  }) => _managementRepository.setPersona(
-    companionId: companionId,
-    persona: persona,
-  );
+    required PersonaEditRequest persona,
+  }) =>
+      _managementRepository.setPersona(
+        companionId: companionId,
+        persona: persona,
+      );
 
   /// Who a new Eidolon would be if nobody said anything.
   Future<PersonaAuthoring> personaAuthoringTemplate() =>
       _managementRepository.personaAuthoringTemplate();
+
+
+  Future<PersonaPresetCatalog> personaPresets() =>
+      _managementRepository.personaPresets();
 
   /// Make one of them the one that answers when nothing named an Eidolon.
   ///

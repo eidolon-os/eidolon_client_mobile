@@ -156,18 +156,21 @@ class HostManagementRepository {
     required String operationId,
     required String displayName,
     PersonaAuthoring? persona,
-  }) => _session.executeManagement(
-    (client, baseUri, accessToken) => client.createCompanion(
-      baseUri,
-      accessToken: accessToken,
-      operationId: operationId,
-      displayName: displayName,
-      persona: persona,
-    ),
-  );
+    ConversationPreferences? preferences,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.createCompanion(
+          baseUri,
+          accessToken: accessToken,
+          operationId: operationId,
+          displayName: displayName,
+          persona: persona,
+          preferences: preferences,
+        ),
+      );
 
   /// Who this Eidolon is now, in the words somebody wrote.
-  Future<PersonaAuthoring> persona({required String companionId}) =>
+  Future<PersonaEditSnapshot> persona({required String companionId}) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.fetchPersona(
           baseUri,
@@ -177,23 +180,30 @@ class HostManagementRepository {
       );
 
   /// Say who this Eidolon is now. Appends a chapter; never edits one.
-  Future<PersonaAuthoring> setPersona({
+  Future<PersonaEditSnapshot> setPersona({
     required String companionId,
-    required PersonaAuthoring persona,
-  }) => _session.executeManagement(
-    (client, baseUri, accessToken) => client.setPersona(
-      baseUri,
-      accessToken: accessToken,
-      companionId: companionId,
-      persona: persona,
-    ),
-  );
+    required PersonaEditRequest persona,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.setPersona(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          persona: persona,
+        ),
+      );
 
   /// What the Host would write if the authoring form came back untouched.
   Future<PersonaAuthoring> personaAuthoringTemplate() =>
       _session.executeManagement(
         (client, baseUri, accessToken) =>
             client.personaAuthoringTemplate(baseUri, accessToken: accessToken),
+      );
+
+
+  Future<PersonaPresetCatalog> personaPresets() => _session.executeManagement(
+        (client, baseUri, accessToken) =>
+            client.personaPresets(baseUri, accessToken: accessToken),
       );
 
   /// What is remembered, by category. [companionId] selects an audience.

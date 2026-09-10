@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -40,8 +42,8 @@ import 'host_models.dart';
 
 export 'host_product_controller.dart' show ManagedHostUpdater;
 
-typedef HostConversationBuilder =
-    Widget Function(BuildContext context, HostProductController controller);
+typedef HostConversationBuilder = Widget Function(
+    BuildContext context, HostProductController controller);
 
 class HostLocalConnectionPage extends StatefulWidget {
   const HostLocalConnectionPage({
@@ -320,8 +322,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             // Re-read from the live home so the page follows a rename or a
             // state change, and falls back to what the row said if this Eidolon
             // has since left the first page of the list.
-            final current =
-                _controller.home?.companions.firstWhere(
+            final current = _controller.home?.companions.firstWhere(
                   (row) => row.companionId == companion.companionId,
                   orElse: () => companion,
                 ) ??
@@ -363,28 +364,30 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   /// The workspace card above can only ever show one, because the runtime it
   /// reads answers with one. This is the read that can show the rest.
   Future<void> _openRoster() => Navigator.of(context).push<void>(
-    MaterialPageRoute(
-      builder: (_) => CompanionRosterScreen(
-        load: ({String? cursor}) => _controller.roster(cursor: cursor),
-        // The same page the home rows open. One Eidolon, one page,
-        // wherever it was tapped from.
-        openCompanion: (row) => _openCompanion(HostCompanion.fromView(row)),
-        loadContext: _controller.managementContext,
-        setDefaultCompanion: (companionId, expectedRevision) =>
-            _controller.setDefaultCompanion(
+        MaterialPageRoute(
+          builder: (_) => CompanionRosterScreen(
+            load: ({String? cursor}) => _controller.roster(cursor: cursor),
+            // The same page the home rows open. One Eidolon, one page,
+            // wherever it was tapped from.
+            openCompanion: (row) => _openCompanion(HostCompanion.fromView(row)),
+            loadContext: _controller.managementContext,
+            setDefaultCompanion: (companionId, expectedRevision) =>
+                _controller.setDefaultCompanion(
               companionId: companionId,
               expectedRevision: expectedRevision,
             ),
-        createCompanion: (operationId, displayName, persona) =>
-            _controller.createCompanion(
+            createCompanion: (operationId, displayName, persona, preferences) =>
+                _controller.createCompanion(
               operationId: operationId,
               displayName: displayName,
               persona: persona,
+              preferences: preferences,
             ),
-        loadPersonaTemplate: _controller.personaAuthoringTemplate,
-      ),
-    ),
-  );
+            loadPersonaTemplate: _controller.personaAuthoringTemplate,
+            loadPersonaPresets: _controller.personaPresets,
+          ),
+        ),
+      );
 
   /// Everything it has filed, not just what a search turns up.
   ///
@@ -423,8 +426,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       );
 
   Future<void> _openMemoryLibrary() => Navigator.of(
-    context,
-  ).push<void>(MaterialPageRoute(builder: (_) => _memoryLibrary()));
+        context,
+      ).push<void>(MaterialPageRoute(builder: (_) => _memoryLibrary()));
 
   /// The same Owner-memory experience, opened in this Companion's scope.
   Future<void> _openCompanionMemory(HostCompanion companion) =>
@@ -525,7 +528,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   /// fails opens no form and says why — a form full of guesses would describe
   /// an Eidolon this Host does not have.
   Future<void> _openPersonaEdit(HostCompanion companion) async {
-    final PersonaAuthoring standing;
+    final PersonaEditSnapshot standing;
     try {
       standing = await _controller.persona(companionId: companion.companionId);
     } catch (error) {
@@ -541,6 +544,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         builder: (_) => _PersonaEditRoute(
           displayName: companion.displayName,
           standing: standing,
+          reload: () => _controller.persona(companionId: companion.companionId),
           save: (authored) => _controller.setPersona(
             companionId: companion.companionId,
             persona: authored,
@@ -615,13 +619,13 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       );
 
   Future<void> _openDevices() => Navigator.of(context).push<void>(
-    MaterialPageRoute(
-      builder: (_) => MountedDevicesPage(
-        controller: _controller,
-        deviceProvisioning: widget.deviceProvisioning,
-      ),
-    ),
-  );
+        MaterialPageRoute(
+          builder: (_) => MountedDevicesPage(
+            controller: _controller,
+            deviceProvisioning: widget.deviceProvisioning,
+          ),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -647,7 +651,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         padding: const EdgeInsets.all(24),
         children: [
           HostIdentitySummary(
-              host: _controller.host, compact: true,
+              host: _controller.host,
+              compact: true,
               currentAddress: connection?.endpoint.ipAddress,
               status: connection != null ? '已安全连接' : '已保存的主机资料'),
           if (widget.conversationBuilder != null) ...[
@@ -675,8 +680,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               // be about the same fact it needs.
               onOpenConstellation:
                   connection.overview.state.claim == HostClaimState.claimed
-                  ? _openConstellation
-                  : null,
+                      ? _openConstellation
+                      : null,
               onOpenSystem: () => Navigator.of(context).push<void>(
                 MaterialPageRoute(
                   builder: (_) => HostRuntimeStatusPage(
@@ -832,33 +837,35 @@ class _ConversationCard extends StatelessWidget {
 }
 
 class _ConnectedHostCard extends StatelessWidget {
-  const _ConnectedHostCard({required this.onOpenSystem, this.onOpenConstellation});
+  const _ConnectedHostCard(
+      {required this.onOpenSystem, this.onOpenConstellation});
   final VoidCallback onOpenSystem;
   // The cockpit needs an Owner; monitoring needs only a management session.
   final VoidCallback? onOpenConstellation;
 
   @override
   Widget build(BuildContext context) => Card(
-    key: const Key('local-connection-complete'),
-    child: Column(children: [
-      ListTile(
-        key: const Key('open-host-runtime-status'),
-        leading: const Icon(Icons.monitor_heart_outlined),
-        title: const Text('主机监控'),
-        subtitle: const Text('CPU、NPU、内存、服务与进程'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onOpenSystem,
-      ),
-      if (onOpenConstellation != null) ListTile(
-        key: const Key('open-constellation'),
-        leading: const Icon(Icons.hub_outlined),
-        title: const Text('驾驶舱'),
-        subtitle: const Text('伙伴、设备与活动关系'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onOpenConstellation,
-      ),
-    ]),
-  );
+        key: const Key('local-connection-complete'),
+        child: Column(children: [
+          ListTile(
+            key: const Key('open-host-runtime-status'),
+            leading: const Icon(Icons.monitor_heart_outlined),
+            title: const Text('主机监控'),
+            subtitle: const Text('CPU、NPU、内存、服务与进程'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: onOpenSystem,
+          ),
+          if (onOpenConstellation != null)
+            ListTile(
+              key: const Key('open-constellation'),
+              leading: const Icon(Icons.hub_outlined),
+              title: const Text('驾驶舱'),
+              subtitle: const Text('伙伴、设备与活动关系'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: onOpenConstellation,
+            ),
+        ]),
+      );
 }
 
 class _WorkspaceCard extends StatelessWidget {
@@ -967,9 +974,8 @@ class _WorkspaceCard extends StatelessWidget {
             const SizedBox(height: 8),
             TextButton.icon(
               key: const Key('retry-workspace-status'),
-              onPressed: controller.workspaceBusy
-                  ? null
-                  : controller.refreshWorkspace,
+              onPressed:
+                  controller.workspaceBusy ? null : controller.refreshWorkspace,
               icon: const Icon(Icons.refresh),
               label: const Text('检查已有进度'),
             ),
@@ -1049,9 +1055,9 @@ class _WorkspaceCard extends StatelessWidget {
       );
 
   void _initialize() => controller.initializeWorkspace(
-    ownerDisplayName: ownerName.text,
-    companionDisplayName: companionName.text,
-  );
+        ownerDisplayName: ownerName.text,
+        companionDisplayName: companionName.text,
+      );
 
   String _companionSummary(HostHome? home) {
     if (home == null) return '查看、新建和管理你的伙伴';
@@ -1060,9 +1066,8 @@ class _WorkspaceCard extends StatelessWidget {
     final parts = <String>[];
     final answering = home.answering;
     if (answering != null) {
-      final name = answering.displayName.isEmpty
-          ? '未命名伙伴'
-          : answering.displayName;
+      final name =
+          answering.displayName.isEmpty ? '未命名伙伴' : answering.displayName;
       parts.add('默认应答：$name');
     } else if (home.defaultCompanionId == null) {
       parts.add('尚未设置默认应答伙伴');
@@ -1128,9 +1133,8 @@ class _WorkspaceCard extends StatelessWidget {
               openTooltip: '打开你的伙伴',
               icon: Icons.groups_2_outlined,
               label: '你的伙伴',
-              statusLabel: home == null
-                  ? '可查看'
-                  : '${home.companionCounts.total} 位',
+              statusLabel:
+                  home == null ? '可查看' : '${home.companionCounts.total} 位',
               detail: _companionSummary(home),
             ),
             _WorkspaceResourceStatus(
@@ -1341,8 +1345,6 @@ class _WorkspaceResourceStatus extends StatelessWidget {
       );
 }
 
-
-
 /// The edit page plus the request state it cannot own.
 ///
 /// Separate so the page stays a form: it renders who the Eidolon is and hands
@@ -1354,11 +1356,13 @@ class _PersonaEditRoute extends StatefulWidget {
     required this.displayName,
     required this.standing,
     required this.save,
+    required this.reload,
   });
 
   final String displayName;
-  final PersonaAuthoring standing;
-  final Future<PersonaAuthoring> Function(PersonaAuthoring authored) save;
+  final PersonaEditSnapshot standing;
+  final Future<PersonaEditSnapshot> Function(PersonaEditRequest authored) save;
+  final Future<PersonaEditSnapshot> Function() reload;
 
   @override
   State<_PersonaEditRoute> createState() => _PersonaEditRouteState();
@@ -1366,13 +1370,108 @@ class _PersonaEditRoute extends StatefulWidget {
 
 class _PersonaEditRouteState extends State<_PersonaEditRoute> {
   bool _busy = false;
+  late PersonaEditSnapshot _standing = widget.standing;
+  late ConversationPreferences _preferences =
+      _standing.preferences ?? const ConversationPreferences();
+  PersonaEditRequest? _pending;
+  bool _preferencesChanged = false;
+  int _formRevision = 0;
+
+  String _operationId() {
+    final random = Random.secure();
+    return List.generate(
+            24, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'))
+        .join();
+  }
+
+  Future<void> _resolveConflict(PersonaAuthoring draft) async {
+    try {
+      final latest = await widget.reload();
+      if (!mounted) return;
+      final before = _standing.persona.toJson();
+      final mine = draft.toJson();
+      final theirs = latest.persona.toJson();
+      final changed = mine.keys
+          .where((k) => jsonEncode(mine[k]) != jsonEncode(before[k]))
+          .toList();
+      final conflicts = changed
+          .where((k) =>
+              jsonEncode(theirs[k]) != jsonEncode(before[k]) &&
+              jsonEncode(theirs[k]) != jsonEncode(mine[k]))
+          .toList();
+      if (_preferencesChanged &&
+          jsonEncode(latest.preferences?.toJson()) !=
+              jsonEncode(_standing.preferences?.toJson())) {
+        conflicts.add('回复偏好');
+        theirs['回复偏好'] = latest.preferences?.toJson();
+        mine['回复偏好'] = _preferences.toJson();
+      }
+      final conflictDetails = conflicts
+          .map((k) => '$k：最新 ${theirs[k]}\n你的 ${mine[k]}')
+          .join('\n\n');
+      final useMine = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+                title: const Text('设定已在别处更新'),
+                content: SingleChildScrollView(
+                    child: Text(conflicts.isEmpty
+                        ? '你的草稿仍在。可以将本次修改合并到最新设定，重新检查后保存。'
+                        : '以下项目两边都改过。合并将使用你的内容，请检查后再保存。\n\n$conflictDetails')),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('保留草稿，暂不合并')),
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('载入最新，放弃草稿')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('合并后检查')),
+                ],
+              ));
+      if (!mounted || useMine == null) return;
+      theirs.remove('回复偏好');
+      final merged = <String, dynamic>{
+        ...theirs,
+        if (useMine)
+          for (final k in changed) k: mine[k]
+      };
+      setState(() {
+        _standing = latest;
+        _pending = null;
+        if (!useMine || !_preferencesChanged) {
+          _preferences = latest.preferences ?? const ConversationPreferences();
+          _preferencesChanged = false;
+        }
+        _draft = PersonaAuthoring.fromJson(merged);
+        _formRevision++;
+        _refusal = '已载入最新版本，请检查后保存。';
+      });
+    } catch (_) {
+      if (mounted) setState(() => _refusal = '读取最新设定失败，你的草稿仍然保留。');
+    }
+  }
+
+  PersonaAuthoring? _draft;
+
   String? _refusal;
 
   @override
   Widget build(BuildContext context) {
     return PersonaEditPage(
+      key: ValueKey(_formRevision),
       displayName: widget.displayName,
-      standing: widget.standing,
+      standing: _draft ?? _standing.persona,
+      forceChanged: _draft != null,
+      preferences: _preferences,
+      preferencesChanged: _preferencesChanged,
+      onPreferencesChanged: (value) => setState(() {
+        _preferences = value;
+        _preferencesChanged = jsonEncode(value.toJson()) !=
+            jsonEncode(
+                (_standing.preferences ?? const ConversationPreferences())
+                    .toJson());
+      }),
       busy: _busy,
       refusal: _refusal,
       onSave: (authored) async {
@@ -1382,7 +1481,26 @@ class _PersonaEditRouteState extends State<_PersonaEditRoute> {
           _refusal = null;
         });
         try {
-          await widget.save(authored);
+          final before = _standing.persona.toJson();
+          final changed = <String, dynamic>{
+            for (final e in authored.toJson().entries)
+              if (jsonEncode(e.value) != jsonEncode(before[e.key]))
+                e.key: e.value,
+          };
+          final patch = PersonaAuthoring.fromJson(changed);
+          if (_pending == null ||
+              jsonEncode(_pending!.persona.toJson()) !=
+                  jsonEncode(patch.toJson()) ||
+              jsonEncode(_pending!.preferences?.toJson()) !=
+                  jsonEncode(_preferences.toJson())) {
+            _pending = PersonaEditRequest(
+                expectedBaseGenomeId: _standing.genomeId,
+                expectedPreferenceRevision: _standing.preferenceRevision ?? 1,
+                operationId: _operationId(),
+                persona: patch,
+                preferences: _preferences);
+          }
+          await widget.save(_pending!);
           if (!mounted) return;
           navigator.pop();
         } catch (error) {
@@ -1391,6 +1509,9 @@ class _PersonaEditRouteState extends State<_PersonaEditRoute> {
             _busy = false;
             _refusal = '没能保存：${failureSentence(error)}';
           });
+          if (error is ManagementRequestException && error.statusCode == 409) {
+            await _resolveConflict(authored);
+          }
         }
       },
     );

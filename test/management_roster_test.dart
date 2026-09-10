@@ -760,7 +760,7 @@ void creationTests() {
   Future<void> pumpRoster(
     WidgetTester tester, {
     required Future<CreatedCompanion> Function(
-            String, String, PersonaAuthoring?)
+            String, String, PersonaAuthoring?, ConversationPreferences?)
         create,
     Future<CompanionRosterView> Function({String? cursor})? load,
     Future<PersonaAuthoring> Function()? loadTemplate,
@@ -801,7 +801,7 @@ void creationTests() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('authoring-name')), name);
     await tester.pumpAndSettle();
-    for (var step = 0; step < 3; step++) {
+    for (var step = 0; step < 1; step++) {
       await tester.tap(find.byKey(const Key('authoring-next')));
       await tester.pumpAndSettle();
     }
@@ -817,7 +817,7 @@ void creationTests() {
         await pumpRoster(
           tester,
           canCreate: allowed,
-          create: (_, __, ___) async => const CreatedCompanion(
+          create: (_, __, ___, ____) async => const CreatedCompanion(
             companionId: 'cp-1',
             displayName: '小南',
             created: true,
@@ -832,7 +832,7 @@ void creationTests() {
       }
     });
 
-    testWidgets('three taps past the form is the Eidolon the Host would make',
+    testWidgets('two steps through the form is the Eidolon the Host would make',
         (tester) async {
       // The path somebody takes when they just want another one. Nothing on the
       // form is required beyond the name, and leaving it alone must say so on
@@ -843,7 +843,7 @@ void creationTests() {
       var authored = 0;
       await pumpRoster(
         tester,
-        create: (operationId, name, persona) async {
+        create: (operationId, name, persona, preferences) async {
           operations.add(operationId);
           sentName = name;
           if (persona != null) authored++;
@@ -870,7 +870,7 @@ void creationTests() {
       // they can read.
       await pumpRoster(
         tester,
-        create: (_, __, ___) async => const CreatedCompanion(
+        create: (_, __, ___, ____) async => const CreatedCompanion(
           companionId: 'cp-1',
           displayName: '小南',
           created: true,
@@ -882,8 +882,7 @@ void creationTests() {
       await tester.pumpAndSettle();
 
       expect(find.text('一个沉稳的伙伴。'), findsOneWidget);
-      expect(find.text('诚实'), findsOneWidget);
-      expect(find.text('不替他做决定'), findsOneWidget);
+      expect(find.byKey(const Key('authoring-self-concept')), findsNothing);
     });
 
     testWidgets('what somebody writes is what the Host is told',
@@ -894,7 +893,7 @@ void creationTests() {
       PersonaAuthoring? sent;
       await pumpRoster(
         tester,
-        create: (_, __, persona) async {
+        create: (_, __, persona, preferences) async {
           sent = persona;
           return const CreatedCompanion(
             companionId: 'cp-1',
@@ -908,25 +907,24 @@ void creationTests() {
       await tester.tap(find.byKey(const Key('roster-add')));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('authoring-name')), '小南');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('authoring-next')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('authoring-details')));
+      await tester.tap(find.byKey(const Key('authoring-details')));
+      await tester.pumpAndSettle();
+      await tester
+          .ensureVisible(find.byKey(const Key('authoring-self-concept')));
       await tester.enterText(
-        find.byKey(const Key('authoring-self-concept')),
-        '我是一个会记得你说过的话的伙伴',
-      );
+          find.byKey(const Key('authoring-self-concept')), '我是一个会记得你说过的话的伙伴');
+      await tester.ensureVisible(find.byKey(const Key('authoring-values')));
       await tester.enterText(find.byKey(const Key('authoring-values')), '守时');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
-
-      await tester.tap(find.byKey(const Key('authoring-next')));
-      await tester.pumpAndSettle();
+      await tester
+          .ensureVisible(find.byKey(const Key('authoring-relationship')));
       await tester.enterText(
-        find.byKey(const Key('authoring-relationship')),
-        '我们是从一次很长的深夜对话开始的',
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byKey(const Key('authoring-next')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('authoring-next')));
+          find.byKey(const Key('authoring-relationship')), '我们是从一次很长的深夜对话开始的');
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('authoring-create')));
       await tester.pumpAndSettle();
@@ -944,7 +942,7 @@ void creationTests() {
     testWidgets('a name is the one thing it will not default', (tester) async {
       await pumpRoster(
         tester,
-        create: (_, __, ___) async => const CreatedCompanion(
+        create: (_, __, ___, ____) async => const CreatedCompanion(
           companionId: 'cp-1',
           displayName: '小南',
           created: true,
@@ -968,7 +966,7 @@ void creationTests() {
       // person wondering why it is quiet.
       await pumpRoster(
         tester,
-        create: (_, __, ___) async => const CreatedCompanion(
+        create: (_, __, ___, ____) async => const CreatedCompanion(
           companionId: 'cp-1',
           displayName: '小南',
           created: true,
@@ -992,7 +990,7 @@ void creationTests() {
       var attempts = 0;
       await pumpRoster(
         tester,
-        create: (operationId, name, persona) async {
+        create: (operationId, name, persona, preferences) async {
           operations.add(operationId);
           attempts++;
           if (attempts == 1) {
@@ -1029,7 +1027,7 @@ void creationTests() {
           reads++;
           return CompanionRosterView.fromJson(twoActiveWire());
         },
-        create: (_, __, ___) async => const CreatedCompanion(
+        create: (_, __, ___, ____) async => const CreatedCompanion(
           companionId: 'cp-1',
           displayName: '小南',
           created: true,
@@ -1047,7 +1045,7 @@ void creationTests() {
       var calls = 0;
       await pumpRoster(
         tester,
-        create: (_, __, ___) async {
+        create: (_, __, ___, ____) async {
           calls++;
           return const CreatedCompanion(
             companionId: 'cp-1',
@@ -1075,7 +1073,7 @@ void creationTests() {
         tester,
         loadTemplate: () async =>
             throw const ManagementRequestException('读取失败', statusCode: 503),
-        create: (_, __, ___) async => const CreatedCompanion(
+        create: (_, __, ___, ____) async => const CreatedCompanion(
           companionId: 'cp-1',
           displayName: '小南',
           created: true,

@@ -92,6 +92,7 @@ class ManagementV1 {
       '/api/management/v1/owner/default-companion';
   static const String personaAuthoringTemplatePath =
       '/api/management/v1/persona-authoring-template';
+  static const String personaPresetsPath = '/api/management/v1/persona-presets';
 }
 
 class ActivityMomentView {
@@ -194,6 +195,7 @@ class CompanionCreateRequest {
     this.kind,
     required this.operationId,
     this.persona,
+    this.preferences,
   });
 
   final String displayName;
@@ -204,6 +206,8 @@ class CompanionCreateRequest {
 
   final PersonaAuthoring? persona;
 
+  final ConversationPreferences? preferences;
+
   factory CompanionCreateRequest.fromJson(Map<String, dynamic> value) {
     return CompanionCreateRequest(
       displayName: value['display_name'] as String,
@@ -212,6 +216,11 @@ class CompanionCreateRequest {
       persona: value['persona'] == null
           ? null
           : PersonaAuthoring.fromJson(value['persona'] as Map<String, dynamic>),
+      preferences: value['preferences'] == null
+          ? null
+          : ConversationPreferences.fromJson(
+              value['preferences'] as Map<String, dynamic>,
+            ),
     );
   }
 
@@ -221,6 +230,7 @@ class CompanionCreateRequest {
       if (kind != null) 'kind': kind,
       'operation_id': operationId,
       if (persona != null) 'persona': persona?.toJson(),
+      if (preferences != null) 'preferences': preferences?.toJson(),
     };
   }
 }
@@ -774,6 +784,36 @@ class ConversationPageView {
       if (contractVersion != null) 'contract_version': contractVersion,
       'conversations': conversations.map((entry) => entry.toJson()).toList(),
       if (nextCursor != null) 'next_cursor': nextCursor,
+    };
+  }
+}
+
+class ConversationPreferences {
+  const ConversationPreferences({
+    this.advice,
+    this.followUp,
+    this.responseLength,
+  });
+
+  final String? advice;
+
+  final String? followUp;
+
+  final String? responseLength;
+
+  factory ConversationPreferences.fromJson(Map<String, dynamic> value) {
+    return ConversationPreferences(
+      advice: value['advice'] as String?,
+      followUp: value['follow_up'] as String?,
+      responseLength: value['response_length'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (advice != null) 'advice': advice,
+      if (followUp != null) 'follow_up': followUp,
+      if (responseLength != null) 'response_length': responseLength,
     };
   }
 }
@@ -2817,6 +2857,93 @@ class PersonaChapterView {
   }
 }
 
+class PersonaEditRequest {
+  const PersonaEditRequest({
+    required this.expectedBaseGenomeId,
+    required this.expectedPreferenceRevision,
+    required this.operationId,
+    required this.persona,
+    this.preferences,
+  });
+
+  final String expectedBaseGenomeId;
+
+  final int expectedPreferenceRevision;
+
+  final String operationId;
+
+  final PersonaAuthoring persona;
+
+  final ConversationPreferences? preferences;
+
+  factory PersonaEditRequest.fromJson(Map<String, dynamic> value) {
+    return PersonaEditRequest(
+      expectedBaseGenomeId: value['expected_base_genome_id'] as String,
+      expectedPreferenceRevision: value['expected_preference_revision'] as int,
+      operationId: value['operation_id'] as String,
+      persona: PersonaAuthoring.fromJson(
+        value['persona'] as Map<String, dynamic>,
+      ),
+      preferences: value['preferences'] == null
+          ? null
+          : ConversationPreferences.fromJson(
+              value['preferences'] as Map<String, dynamic>,
+            ),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'expected_base_genome_id': expectedBaseGenomeId,
+      'expected_preference_revision': expectedPreferenceRevision,
+      'operation_id': operationId,
+      'persona': persona.toJson(),
+      if (preferences != null) 'preferences': preferences?.toJson(),
+    };
+  }
+}
+
+class PersonaEditSnapshot {
+  const PersonaEditSnapshot({
+    required this.genomeId,
+    required this.persona,
+    this.preferenceRevision,
+    this.preferences,
+  });
+
+  final String genomeId;
+
+  final PersonaAuthoring persona;
+
+  final int? preferenceRevision;
+
+  final ConversationPreferences? preferences;
+
+  factory PersonaEditSnapshot.fromJson(Map<String, dynamic> value) {
+    return PersonaEditSnapshot(
+      genomeId: value['genome_id'] as String,
+      persona: PersonaAuthoring.fromJson(
+        value['persona'] as Map<String, dynamic>,
+      ),
+      preferenceRevision: value['preference_revision'] as int?,
+      preferences: value['preferences'] == null
+          ? null
+          : ConversationPreferences.fromJson(
+              value['preferences'] as Map<String, dynamic>,
+            ),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'genome_id': genomeId,
+      'persona': persona.toJson(),
+      if (preferenceRevision != null) 'preference_revision': preferenceRevision,
+      if (preferences != null) 'preferences': preferences?.toJson(),
+    };
+  }
+}
+
 class PersonaHistoryView {
   const PersonaHistoryView({
     required this.chapters,
@@ -2849,6 +2976,68 @@ class PersonaHistoryView {
       'companion_id': companionId,
       if (contractVersion != null) 'contract_version': contractVersion,
     };
+  }
+}
+
+class PersonaPreset {
+  const PersonaPreset({
+    required this.examples,
+    required this.persona,
+    required this.presetId,
+    this.revision,
+    required this.title,
+  });
+
+  final List<String> examples;
+
+  final PersonaAuthoring persona;
+
+  final String presetId;
+
+  final String? revision;
+
+  final String title;
+
+  factory PersonaPreset.fromJson(Map<String, dynamic> value) {
+    return PersonaPreset(
+      examples: ((value['examples'] as List<dynamic>)
+          .map((entry) => entry as String)
+          .toList()),
+      persona: PersonaAuthoring.fromJson(
+        value['persona'] as Map<String, dynamic>,
+      ),
+      presetId: value['preset_id'] as String,
+      revision: value['revision'] as String?,
+      title: value['title'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'examples': examples,
+      'persona': persona.toJson(),
+      'preset_id': presetId,
+      if (revision != null) 'revision': revision,
+      'title': title,
+    };
+  }
+}
+
+class PersonaPresetCatalog {
+  const PersonaPresetCatalog({required this.presets});
+
+  final List<PersonaPreset> presets;
+
+  factory PersonaPresetCatalog.fromJson(Map<String, dynamic> value) {
+    return PersonaPresetCatalog(
+      presets: ((value['presets'] as List<dynamic>)
+          .map((entry) => PersonaPreset.fromJson(entry as Map<String, dynamic>))
+          .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'presets': presets.map((entry) => entry.toJson()).toList()};
   }
 }
 

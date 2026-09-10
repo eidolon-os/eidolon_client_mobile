@@ -821,12 +821,26 @@ class ManagementClient {
     return PersonaAuthoring.fromJson(body);
   }
 
+
+  Future<PersonaPresetCatalog> personaPresets(
+    Uri baseUri, {
+    required String accessToken,
+  }) async {
+    final body = await _send(
+      'GET',
+      baseUri.resolve(ManagementV1.personaPresetsPath),
+      accessToken: accessToken,
+      what: '读取人格起点',
+    );
+    return PersonaPresetCatalog.fromJson(body);
+  }
+
   /// Who this Eidolon is now, in the words somebody wrote.
   ///
   /// The read the edit screen opens on. Editing has to start from who it
   /// currently is, or saving would replace everything the person did not
   /// retype with whatever the form happened to be showing.
-  Future<PersonaAuthoring> fetchPersona(
+  Future<PersonaEditSnapshot> fetchPersona(
     Uri baseUri, {
     required String accessToken,
     required String companionId,
@@ -839,15 +853,15 @@ class ManagementClient {
       accessToken: accessToken,
       what: '读取它是谁',
     );
-    return PersonaAuthoring.fromJson(body);
+    return PersonaEditSnapshot.fromJson(body);
   }
 
   /// Say who this Eidolon is now. Appends a chapter; never edits one.
-  Future<PersonaAuthoring> setPersona(
+  Future<PersonaEditSnapshot> setPersona(
     Uri baseUri, {
     required String accessToken,
     required String companionId,
-    required PersonaAuthoring persona,
+    required PersonaEditRequest persona,
   }) async {
     final body = await _send(
       'PUT',
@@ -858,7 +872,7 @@ class ManagementClient {
       what: '改它是谁',
       body: persona.toJson(),
     );
-    return PersonaAuthoring.fromJson(body);
+    return PersonaEditSnapshot.fromJson(body);
   }
 
   Future<CreatedCompanion> createCompanion(
@@ -867,6 +881,7 @@ class ManagementClient {
     required String operationId,
     required String displayName,
     PersonaAuthoring? persona,
+    ConversationPreferences? preferences,
   }) async {
     final body = await _send(
       'PUT',
@@ -880,6 +895,7 @@ class ManagementClient {
         // fingerprints the request, so sending a blank persona would turn a
         // retry after a lost answer into a conflict instead of a replay.
         if (persona != null) 'persona': persona.toJson(),
+        if (preferences != null) 'preferences': preferences.toJson(),
       },
     );
     final view = CompanionCreatedView.fromJson(body);

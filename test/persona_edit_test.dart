@@ -42,6 +42,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key("persona-details")));
+    await tester.pumpAndSettle();
     await edit(tester);
     await tester.tap(find.byKey(const Key('persona-edit-save')));
     await tester.pumpAndSettle();
@@ -63,6 +65,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const Key('persona-details')));
+    await tester.pumpAndSettle();
     expect(find.text('我原本是这样'), findsOneWidget);
     expect(find.text('诚实'), findsOneWidget);
     expect(find.text('他有一只猫'), findsOneWidget);
@@ -112,11 +116,14 @@ void main() {
 
     expect(find.byKey(const Key('persona-edit-unchanged')), findsOneWidget);
     expect(
-      tester.widget<FilledButton>(find.byKey(const Key('persona-edit-save')))
+      tester
+          .widget<FilledButton>(find.byKey(const Key('persona-edit-save')))
           .onPressed,
       isNull,
     );
 
+    await tester.tap(find.byKey(const Key('persona-details')));
+    await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('authoring-self-concept')),
       '改了',
@@ -125,7 +132,8 @@ void main() {
 
     expect(find.byKey(const Key('persona-edit-unchanged')), findsNothing);
     expect(
-      tester.widget<FilledButton>(find.byKey(const Key('persona-edit-save')))
+      tester
+          .widget<FilledButton>(find.byKey(const Key('persona-edit-save')))
           .onPressed,
       isNotNull,
     );
@@ -177,6 +185,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('persona-edit-refusal')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('persona-details')));
+    await tester.pumpAndSettle();
     expect(find.text('我原本是这样'), findsOneWidget);
   });
 

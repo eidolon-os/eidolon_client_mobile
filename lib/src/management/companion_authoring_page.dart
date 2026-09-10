@@ -2,36 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
 import 'persona_form.dart';
+import 'conversation_preferences_form.dart';
 
-/// Saying who a new Eidolon is, before it has been anything.
-///
-/// This replaced a dialog that asked for a name and nothing else, which meant
-/// every Eidolon this Host made was the same person under a different label.
-/// The fields are the ones the Admin web page had before it was removed —
-/// deliberately the same set, because that page's grouping was already the
-/// right one: who TA is, what you two are to each other, how TA comes across.
-///
-/// Three decisions this screen makes, none of them cosmetic:
-///
-/// **It starts filled in.** The Host is asked what it would write if nobody
-/// said anything, and that is what appears. An empty box labelled 人格画像 asks
-/// somebody to invent a personality from nothing; a filled one asks them to
-/// change something they can read. It also means the whole screen is skippable
-/// — 继续、继续、创建 gives the Eidolon the Host would have made anyway, so
-/// adding a second Eidolon never *requires* writing an essay.
-///
-/// **One step per screen.** Thirteen fields on one scroll is a form; four short
-/// pages with a question at the top of each is a conversation. The keyboard
-/// covers half a phone, so a step that fits above it is the unit that works.
-///
-/// **Nothing is required except the name.** Every other field has a value
-/// already, and a blank one is a deliberate blank rather than an error — the
-/// person is describing someone, and refusing to continue because they have not
-/// yet decided what TA will not do would be the screen overruling them.
+/// Two decisions: name and a short description, then review and reply preferences.
 class CompanionAuthoringPage extends StatefulWidget {
   const CompanionAuthoringPage({
     super.key,
     required this.template,
+    this.presets = const [],
     required this.onCreate,
     this.busy = false,
     this.refusal,
@@ -39,11 +17,12 @@ class CompanionAuthoringPage extends StatefulWidget {
 
   /// What the Host would write if this form came back untouched.
   final PersonaAuthoring template;
+  final List<PersonaPreset> presets;
 
   /// Hand back a name and the authoring. Null authoring means "as it came" —
   /// see [_authored].
-  final Future<void> Function(String displayName, PersonaAuthoring? persona)
-      onCreate;
+  final Future<void> Function(String displayName, PersonaAuthoring? persona,
+      ConversationPreferences? preferences) onCreate;
 
   final bool busy;
 
@@ -55,12 +34,15 @@ class CompanionAuthoringPage extends StatefulWidget {
 }
 
 class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
-  static const _steps = ['TA 是谁', '你们的关系', 'TA 如何表达', '确认'];
+  static const _steps = ['认识你的伙伴', '确认设定'];
 
   final _name = TextEditingController();
-  late final PersonaForm _form = PersonaForm(widget.template);
+  late PersonaForm _form = PersonaForm(widget.template);
 
   int _step = 0;
+  int _presetIndex = 0;
+  ConversationPreferences _preferences = ConversationPreferences();
+  bool _preferencesChanged = false;
 
   @override
   void dispose() {
@@ -76,7 +58,7 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
   /// lost answer a replay rather than a conflict. Sending back a copy of the
   /// template would work and would also quietly claim the person authored it.
   PersonaAuthoring? _authored() =>
-      _form.unchanged ? null : _form.authoring;
+      _form.unchanged && widget.presets.isEmpty ? null : _form.authoring;
 
   bool get _named => _name.text.trim().isNotEmpty;
 
@@ -129,7 +111,7 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
                       key: const Key('authoring-next'),
                       // The name is the one thing that cannot be defaulted, so
                       // it is also the only thing that blocks the first step.
-                      onPressed: _step == 0 && !_named
+                      onPressed: widget.busy || (_step == 0 && !_named)
                           ? null
                           : () => setState(() => _step += 1),
                       icon: const Icon(Icons.arrow_forward),
@@ -143,6 +125,7 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
                           : () => widget.onCreate(
                                 _name.text.trim(),
                                 _authored(),
+                                _preferencesChanged ? _preferences : null,
                               ),
                       icon: widget.busy
                           ? const SizedBox.square(
@@ -168,6 +151,20 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (widget.presets.isNotEmpty)
+              Wrap(spacing: 8, children: [
+                for (var i = 0; i < widget.presets.length; i++)
+                  ChoiceChip(
+                      label: Text(widget.presets[i].title),
+                      selected: _presetIndex == i,
+                      onSelected: widget.busy
+                          ? null
+                          : (_) => setState(() {
+                                _presetIndex = i;
+                                _form.dispose();
+                                _form = PersonaForm(widget.presets[i].persona);
+                              })),
+              ]),
             Text('名字', style: theme.textTheme.titleSmall),
             const SizedBox(height: 8),
             TextField(
@@ -179,18 +176,20 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
               decoration: const InputDecoration(hintText: '比如「小南」'),
             ),
             const SizedBox(height: 24),
-            ..._form.whoItIs(changed),
+            Text('用一句话描述你希望 TA 是什么样的伙伴', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 8),
+            TextField(
+              key: const Key('authoring-short-description'),
+              controller: _form.characterPortrait,
+              minLines: 2,
+              maxLines: 4,
+              onChanged: (_) => changed(),
+              decoration:
+                  const InputDecoration(hintText: '例如：温和直接，愿意听我说，说话简短一些'),
+            ),
+            const SizedBox(height: 12),
+            const Text('其他设定已有默认值，创建后仍可调整。'),
           ],
-        );
-      case 1:
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: _form.theRelationship(changed),
-        );
-      case 2:
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: _form.howItSpeaks(changed),
         );
       default:
         return _review(theme);
@@ -204,25 +203,6 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
   /// through anything that could change them, so a round trip would only add a
   /// way for the review to be wrong.
   Widget _review(ThemeData theme) {
-    final written = _form.authoring;
-    final sections = <(String, String, List<String>)>[
-      ('自我认知', written.selfConcept ?? '', written.values ?? const []),
-      ('人格画像', written.characterPortrait ?? '', written.boundaries ?? const []),
-      (
-        '关系',
-        written.relationshipNarrative ?? '',
-        [
-          ...?written.commitments,
-          ...?written.pinnedFacts,
-          ...?written.safetyBoundaries,
-        ],
-      ),
-      (
-        '表达',
-        written.voicePortrait ?? '',
-        [...?written.behaviorGuidance, ...?written.dialogueExamples],
-      ),
-    ];
     return Column(
       key: const Key('authoring-review'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -239,25 +219,32 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
           ),
         ),
         const SizedBox(height: 24),
-        for (final (title, prose, lines) in sections) ...[
-          Text(title, style: theme.textTheme.titleSmall),
-          const SizedBox(height: 4),
-          if (prose.isNotEmpty)
-            Text(prose, style: theme.textTheme.bodyMedium)
-          else
-            Text(
-              '（没写）',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          for (final line in lines)
+        Text(_form.characterPortrait.text, style: theme.textTheme.bodyLarge),
+        const SizedBox(height: 16),
+        ConversationPreferencesForm(
+            value: _preferences,
+            onChanged: (value) => setState(() {
+                  _preferences = value;
+                  _preferencesChanged = true;
+                })),
+        const SizedBox(height: 16),
+        const Text('表达示例（说明所选起点风格，不反映自定义修改）'),
+        if (widget.presets.isNotEmpty)
+          for (final example in widget.presets[_presetIndex].examples)
             Padding(
-              padding: const EdgeInsets.only(top: 2, left: 8),
-              child: Text('· $line', style: theme.textTheme.bodyMedium),
-            ),
-          const SizedBox(height: 20),
-        ],
+                padding: const EdgeInsets.only(top: 8), child: Text(example))
+        else
+          const Text('你：今天有点累。\nTA：辛苦了，先歇一会儿。我在。'),
+        const SizedBox(height: 16),
+        ExpansionTile(
+          key: const Key('authoring-details'),
+          title: const Text('详细设定（可选）'),
+          children: [
+            ..._form.whoItIs(() => setState(() {})),
+            ..._form.theRelationship(() => setState(() {})),
+            ..._form.howItSpeaks(() => setState(() {})),
+          ],
+        ),
       ],
     );
   }
