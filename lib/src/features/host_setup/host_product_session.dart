@@ -294,9 +294,28 @@ class HostProductSession {
     await for (final tier in _locator.locate(_host)) {
       _ensureRevision(revision);
       onProgress?.call('正在连接主机');
-      final race = await _firstToAnswer(tier);
+      var race = await _firstToAnswer(tier);
       _ensureRevision(revision);
       failures.addAll(race.failures);
+      // Only repeat unanswered, read-only identity probes, once per address.
+      // A winning alternative avoids the retry entirely. Authentication below
+      // is outside this recovery boundary and must never be replayed here.
+      if (race.winner == null) {
+        final retryable = [
+          for (final failure in race.failures)
+            if (failure.error is TimeoutException ||
+                failure.error is PinnedHttpException &&
+                    _hostDidNotAnswer(failure.error as PinnedHttpException))
+              failure.candidate,
+        ];
+        if (retryable.isNotEmpty) {
+          onProgress?.call('连接暂时未完成，正在重试');
+          _ensureRevision(revision);
+          race = await _firstToAnswer(retryable);
+          _ensureRevision(revision);
+          failures.addAll(race.failures);
+        }
+      }
       final winner = race.winner;
       if (winner != null) {
         final endpoint = winner.endpoint;

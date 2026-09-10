@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/features/host_setup/host_locator.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_product_session.dart';
@@ -35,6 +36,218 @@ class Discovery implements LocalApiDiscovery {
 }
 
 void main() {
+  HostProductSession sessionFor(
+          Future<http.Response> Function(http.Request) respond) =>
+      HostProductSession(
+        host: hostFixture(lastKnownBaseUrl: 'https://192.168.1.33:9002'),
+        transport: NoopTransport(),
+        controllerKeys: FakeControllerKeys(),
+        discovery: Discovery(() async => survey('192.168.1.33')),
+        clientFactory: (_) => LocalApiClient(
+            ownsHttpClient: true, httpClient: MockClient(respond)),
+      );
+
+  for (final failure in [
+    TimeoutException('deadline'),
+    for (final kind in [
+      PinnedHttpFailureKind.timeout,
+      PinnedHttpFailureKind.unreachable,
+      PinnedHttpFailureKind.io
+    ])
+      PinnedHttpException(kind: kind, message: kind.name),
+  ]) {
+    test('read-only probe recovers once from $failure before authenticating',
+        () async {
+      final requests = <String>[];
+      var probes = 0;
+      final session = sessionFor((request) async {
+        requests.add('${request.method} ${request.url.path}');
+        if (request.url.path.endsWith('/host') && ++probes == 1) throw failure;
+        return hostSessionResponse(request);
+      });
+      addTearDown(session.close);
+      final progress = <String>[];
+      await session.connect(allowBle: false, onProgress: progress.add);
+      expect(probes, 2);
+      expect(requests.where((r) => r.startsWith('POST ')), [
+        'POST /api/local/v1/auth/challenges',
+        'POST /api/local/v1/auth/sessions',
+      ]);
+      expect(progress.where((p) => p.contains('重试')), hasLength(1));
+      expect(session.connection, isNotNull);
+    });
+  }
+
+  test('two failed probes stop even when discovery and saved address match',
+      () async {
+    var probes = 0;
+    final session = sessionFor((request) async {
+      expect(request.method, 'GET');
+      probes++;
+      throw TimeoutException('still unavailable');
+    });
+    addTearDown(session.close);
+    await expectLater(session.connect(allowBle: false),
+        throwsA(isA<HostLocationException>()));
+    expect(probes, 2);
+    expect(session.connection, isNull);
+    expect(session.host.lastConnectedAt, isNull);
+  });
+
+  for (final failure in [
+    PinnedHttpException(
+        kind: PinnedHttpFailureKind.secureChannel, message: 'pin'),
+    PinnedHttpException(
+        kind: PinnedHttpFailureKind.cancelled, message: 'closed'),
+    const FormatException('unsupported response'),
+    const LocalApiRequestException('refused', statusCode: 403),
+  ]) {
+    test('probe does not retry a definitive refusal: $failure', () async {
+      var probes = 0;
+      final session = sessionFor((request) async {
+        expect(request.method, 'GET');
+        probes++;
+        throw failure;
+      });
+      addTearDown(session.close);
+      await expectLater(session.connect(allowBle: false),
+          throwsA(isA<HostLocationException>()));
+      expect(probes, 1);
+    });
+  }
+
+  test('a different Host identity is never retried or authenticated', () async {
+    var probes = 0;
+    final session = sessionFor((request) async {
+      expect(request.method, 'GET');
+      probes++;
+      final body = overviewBody();
+      (body['descriptor'] as Map)['host_id'] = 'ehost-00000000000000000000';
+      return http.Response(jsonEncode(body), 200);
+    });
+    addTearDown(session.close);
+    await expectLater(session.connect(allowBle: false),
+        throwsA(isA<HostLocationException>()));
+    expect(probes, 1);
+  });
+
+  for (final failure in [
+    PinnedHttpException(
+        kind: PinnedHttpFailureKind.timeout, message: 'auth timeout'),
+    const LocalApiRequestException('revoked', statusCode: 403),
+  ]) {
+    test('probe recovery never repeats authentication on $failure', () async {
+      var probes = 0;
+      var authentications = 0;
+      final session = sessionFor((request) async {
+        if (request.url.path.endsWith('/host') && ++probes == 1) {
+          throw TimeoutException('transient probe failure');
+        }
+        if (request.url.path.endsWith('/sessions')) {
+          authentications++;
+          throw failure;
+        }
+        return hostSessionResponse(request);
+      });
+      addTearDown(session.close);
+      await expectLater(
+          session.connect(allowBle: false), throwsA(isA<Exception>()));
+      expect(probes, 2);
+      expect(authentications, 1);
+      expect(session.connection, isNull);
+    });
+  }
+
+  test('closing before retry prevents any new probe', () async {
+    var probes = 0;
+    final session = sessionFor((_) async {
+      probes++;
+      throw TimeoutException('transient');
+    });
+    await expectLater(
+        session.connect(
+            allowBle: false,
+            onProgress: (message) {
+              if (message.contains('重试')) unawaited(session.close());
+            }),
+        throwsStateError);
+    expect(probes, 1);
+  });
+
+  test('closing a retrying session leaves a new session usable', () async {
+    var probes = 0;
+    var authentications = 0;
+    final retryStarted = Completer<void>();
+    final pending = Completer<http.Response>();
+    final old = HostProductSession(
+      host: hostFixture(),
+      transport: NoopTransport(),
+      controllerKeys: FakeControllerKeys(),
+      discovery: Discovery(() async => survey('192.168.1.33')),
+      clientFactory: (_) => LocalApiClient(
+          ownsHttpClient: true,
+          httpClient: ClosingClient((request) async {
+            if (!request.url.path.endsWith('/host')) {
+              authentications++;
+              return hostSessionResponse(request);
+            }
+            if (++probes == 1) throw TimeoutException('transient');
+            retryStarted.complete();
+            return pending.future;
+          }, () {
+            if (retryStarted.isCompleted && !pending.isCompleted) {
+              pending.completeError(PinnedHttpException(
+                  kind: PinnedHttpFailureKind.cancelled, message: 'closed'));
+            }
+          })),
+    );
+    final closed = expectLater(old.connect(allowBle: false), throwsStateError);
+    await retryStarted.future;
+    final fresh = sessionFor(hostSessionResponse);
+    addTearDown(fresh.close);
+    await fresh.connect(allowBle: false);
+    await old.close();
+    await closed;
+    await fresh.execute((client, url, token) => client.fetchHost(url));
+    expect(fresh.connection, isNotNull);
+    expect(probes, 2);
+    expect(authentications, 0);
+  });
+
+  test('network change before retry discards the old target', () async {
+    var address = '192.168.1.33';
+    final probes = <String>[];
+    final updates = <ManagedHost>[];
+    final session = HostProductSession(
+      host: hostFixture(),
+      transport: NoopTransport(),
+      controllerKeys: FakeControllerKeys(),
+      discovery: Discovery(() async => survey(address)),
+      onHostConnected: (host) async => updates.add(host),
+      clientFactory: (_) =>
+          LocalApiClient(httpClient: MockClient((request) async {
+        if (request.url.path.endsWith('/host')) {
+          probes.add(request.url.host);
+          if (request.url.host == '192.168.1.33') {
+            throw TimeoutException('moved');
+          }
+        }
+        return hostSessionResponse(request);
+      })),
+    );
+    addTearDown(session.close);
+    await session.connect(
+        allowBle: false,
+        onProgress: (message) {
+          if (message.contains('重试')) {
+            address = '10.0.0.33';
+            session.invalidateLocation();
+          }
+        });
+    expect(probes, ['192.168.1.33', '10.0.0.33']);
+    expect(updates.single.lastKnownBaseUrl, 'https://10.0.0.33:9002');
+  });
+
   test(
       'list distinguishes fresh connection timeout from unrelated TLS rejection',
       () async {

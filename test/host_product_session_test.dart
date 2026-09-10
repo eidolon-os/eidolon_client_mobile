@@ -192,21 +192,18 @@ void main() {
       clientFactory: (_) {
         clients += 1;
         return LocalApiClient(
-          httpClient: clients == 1
-              // Answered, and its identity was refused.
-              ? MockClient(
-                  (_) async => throw PinnedHttpException(
-                    kind: PinnedHttpFailureKind.secureChannel,
-                    message: 'pin mismatch',
-                  ),
-                )
-              // Silence, tried afterwards.
-              : MockClient(
-                  (_) async => throw PinnedHttpException(
-                    kind: PinnedHttpFailureKind.unreachable,
-                    message: 'Unable to resolve host "eidolon-pi5.local"',
-                  ),
-                ),
+          httpClient: MockClient((request) async {
+            if (request.url.host == '192.168.1.20') {
+              throw PinnedHttpException(
+                kind: PinnedHttpFailureKind.secureChannel,
+                message: 'pin mismatch',
+              );
+            }
+            throw PinnedHttpException(
+              kind: PinnedHttpFailureKind.unreachable,
+              message: 'Unable to resolve host "eidolon-pi5.local"',
+            );
+          }),
         );
       },
     );
@@ -222,7 +219,8 @@ void main() {
         ),
       ),
     );
-    expect(clients, 2, reason: 'both candidates are still tried');
+    expect(clients, 3,
+        reason: 'both candidates are tried; only silence is retried');
   });
 
   test('when nothing answered anywhere, silence is the answer', () async {
@@ -279,19 +277,18 @@ void main() {
       clientFactory: (_) {
         clients += 1;
         return LocalApiClient(
-          httpClient: clients == 1
-              ? MockClient(
-                  (_) async => throw PinnedHttpException(
-                    kind: PinnedHttpFailureKind.timeout,
-                    message: '主机没有在预期时间内回应',
-                  ),
-                )
-              : MockClient(
-                  (_) async => throw PinnedHttpException(
-                    kind: PinnedHttpFailureKind.unreachable,
-                    message: 'no route to 192.168.1.26',
-                  ),
-                ),
+          httpClient: MockClient((request) async {
+            if (request.url.host == '192.168.1.20') {
+              throw PinnedHttpException(
+                kind: PinnedHttpFailureKind.timeout,
+                message: '主机没有在预期时间内回应',
+              );
+            }
+            throw PinnedHttpException(
+              kind: PinnedHttpFailureKind.unreachable,
+              message: 'no route to 192.168.1.26',
+            );
+          }),
         );
       },
     );
@@ -307,7 +304,7 @@ void main() {
         ),
       ),
     );
-    expect(clients, 2, reason: 'both candidates are still tried');
+    expect(clients, 4, reason: 'each silent candidate is tried at most twice');
   });
 
   test('tries the next discovered endpoint without weakening Host validation',
