@@ -27,8 +27,6 @@ class PersonaForm {
             TextEditingController(text: standing.voicePortrait ?? ''),
         values = [...?standing.values],
         boundaries = [...?standing.boundaries],
-        commitments = [...?standing.commitments],
-        pinnedFacts = [...?standing.pinnedFacts],
         safetyBoundaries = [...?standing.safetyBoundaries],
         behaviorGuidance = [...?standing.behaviorGuidance],
         dialogueExamples = [...?standing.dialogueExamples];
@@ -45,8 +43,6 @@ class PersonaForm {
 
   List<String> values;
   List<String> boundaries;
-  List<String> commitments;
-  List<String> pinnedFacts;
   List<String> safetyBoundaries;
   List<String> behaviorGuidance;
   List<String> dialogueExamples;
@@ -71,8 +67,6 @@ class PersonaForm {
         voicePortrait: voicePortrait.text.trim(),
         values: values,
         boundaries: boundaries,
-        commitments: commitments,
-        pinnedFacts: pinnedFacts,
         safetyBoundaries: safetyBoundaries,
         behaviorGuidance: behaviorGuidance,
         dialogueExamples: dialogueExamples,
@@ -99,8 +93,6 @@ class PersonaForm {
         voicePortrait.text.trim() == (_standing.voicePortrait ?? '') &&
         sameLines(values, _standing.values) &&
         sameLines(boundaries, _standing.boundaries) &&
-        sameLines(commitments, _standing.commitments) &&
-        sameLines(pinnedFacts, _standing.pinnedFacts) &&
         sameLines(safetyBoundaries, _standing.safetyBoundaries) &&
         sameLines(behaviorGuidance, _standing.behaviorGuidance) &&
         sameLines(dialogueExamples, _standing.dialogueExamples);
@@ -156,30 +148,6 @@ class PersonaForm {
           help: '你和 TA 是什么关系，从哪里开始的。',
           controller: relationshipNarrative,
           minLines: 4,
-        ),
-        const SizedBox(height: 24),
-        AuthoringLines(
-          fieldKey: const Key('authoring-commitments'),
-          label: '关系承诺',
-          help: 'TA 对这段关系许下的事。',
-          hint: 'TA 对这段关系的一条承诺',
-          lines: commitments,
-          onChanged: (lines) {
-            commitments = lines;
-            changed();
-          },
-        ),
-        const SizedBox(height: 24),
-        AuthoringLines(
-          fieldKey: const Key('authoring-pinned-facts'),
-          label: '已确认事实',
-          help: '关于你的、TA 一开始就该知道的事。',
-          hint: '关于你已确认的事实',
-          lines: pinnedFacts,
-          onChanged: (lines) {
-            pinnedFacts = lines;
-            changed();
-          },
         ),
         const SizedBox(height: 24),
         AuthoringLines(

@@ -19,8 +19,6 @@ void main() {
         voicePortrait: '短句',
         values: ['诚实'],
         boundaries: ['不替他做决定'],
-        commitments: ['每周问一次'],
-        pinnedFacts: ['他有一只猫'],
         safetyBoundaries: ['不提他父亲'],
         behaviorGuidance: ['先问再答'],
         dialogueExamples: ['「今天怎么样？」'],
@@ -69,7 +67,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('我原本是这样'), findsOneWidget);
     expect(find.text('诚实'), findsOneWidget);
-    expect(find.text('他有一只猫'), findsOneWidget);
   });
 
   testWidgets('changing one sentence leaves every other one alone',
@@ -91,7 +88,6 @@ void main() {
     expect(saved!.selfConcept, '我现在是这样');
     expect(saved.characterPortrait, '安静');
     expect(saved.values, ['诚实']);
-    expect(saved.pinnedFacts, ['他有一只猫']);
     expect(saved.dialogueExamples, ['「今天怎么样？」']);
     // Not on the form at all, and still on the way back: absence from a screen
     // is not absence from the Eidolon.

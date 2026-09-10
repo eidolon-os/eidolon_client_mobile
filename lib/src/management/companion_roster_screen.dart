@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
 import 'companion_authoring_page.dart';
+import 'persona_preview_panel.dart';
 import 'companion_roster_page.dart';
 import 'management_client.dart';
 import 'refusal_notice.dart';
@@ -31,6 +32,7 @@ class CompanionRosterScreen extends StatefulWidget {
     this.createCompanion,
     this.loadPersonaTemplate,
     this.loadPersonaPresets,
+    this.preview,
     this.newOperationId,
   });
 
@@ -82,6 +84,7 @@ class CompanionRosterScreen extends StatefulWidget {
   /// because of it would be a list nobody can read for the sake of a button.
   final Future<PersonaAuthoring> Function()? loadPersonaTemplate;
   final Future<PersonaPresetCatalog> Function()? loadPersonaPresets;
+  final PreviewPersona? preview;
 
   /// Injected so a test can pin the id; a real screen mints a random one.
   final String Function()? newOperationId;
@@ -246,6 +249,7 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => _AuthoringRoute(
+          preview: widget.preview,
           template: template,
           presets: presets,
           create: (displayName, persona, preferences) async {
@@ -351,12 +355,14 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
 class _AuthoringRoute extends StatefulWidget {
   const _AuthoringRoute({
     required this.template,
+    this.preview,
     this.presets = const [],
     required this.create,
     required this.refusalSentence,
     required this.onCreated,
   });
 
+  final PreviewPersona? preview;
   final PersonaAuthoring template;
   final List<PersonaPreset> presets;
   final Future<CreatedCompanion> Function(
@@ -379,6 +385,7 @@ class _AuthoringRouteState extends State<_AuthoringRoute> {
   Widget build(BuildContext context) {
     return CompanionAuthoringPage(
       template: widget.template,
+      preview: widget.preview,
       presets: widget.presets,
       busy: _busy,
       refusal: _refusal,

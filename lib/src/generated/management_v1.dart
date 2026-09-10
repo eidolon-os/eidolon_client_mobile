@@ -93,6 +93,7 @@ class ManagementV1 {
   static const String personaAuthoringTemplatePath =
       '/api/management/v1/persona-authoring-template';
   static const String personaPresetsPath = '/api/management/v1/persona-presets';
+  static const String personaPreviewPath = '/api/management/v1/persona-preview';
 }
 
 class ActivityMomentView {
@@ -2697,10 +2698,8 @@ class PersonaAuthoring {
     this.behaviorGuidance,
     this.boundaries,
     this.characterPortrait,
-    this.commitments,
     this.dialogueExamples,
     this.modalityNotes,
-    this.pinnedFacts,
     this.relationshipNarrative,
     this.safetyBoundaries,
     this.selfConcept,
@@ -2717,13 +2716,9 @@ class PersonaAuthoring {
 
   final String? characterPortrait;
 
-  final List<String>? commitments;
-
   final List<String>? dialogueExamples;
 
   final Map<String, String>? modalityNotes;
-
-  final List<String>? pinnedFacts;
 
   final String? relationshipNarrative;
 
@@ -2751,11 +2746,6 @@ class PersonaAuthoring {
                 .map((entry) => entry as String)
                 .toList()),
       characterPortrait: value['character_portrait'] as String?,
-      commitments: value['commitments'] == null
-          ? null
-          : ((value['commitments'] as List<dynamic>)
-                .map((entry) => entry as String)
-                .toList()),
       dialogueExamples: value['dialogue_examples'] == null
           ? null
           : ((value['dialogue_examples'] as List<dynamic>)
@@ -2766,11 +2756,6 @@ class PersonaAuthoring {
           : ((value['modality_notes'] as Map<String, dynamic>).map(
               (key, entry) => MapEntry(key, entry as String),
             )),
-      pinnedFacts: value['pinned_facts'] == null
-          ? null
-          : ((value['pinned_facts'] as List<dynamic>)
-                .map((entry) => entry as String)
-                .toList()),
       relationshipNarrative: value['relationship_narrative'] as String?,
       safetyBoundaries: value['safety_boundaries'] == null
           ? null
@@ -2801,10 +2786,8 @@ class PersonaAuthoring {
       if (behaviorGuidance != null) 'behavior_guidance': behaviorGuidance,
       if (boundaries != null) 'boundaries': boundaries,
       if (characterPortrait != null) 'character_portrait': characterPortrait,
-      if (commitments != null) 'commitments': commitments,
       if (dialogueExamples != null) 'dialogue_examples': dialogueExamples,
       if (modalityNotes != null) 'modality_notes': modalityNotes,
-      if (pinnedFacts != null) 'pinned_facts': pinnedFacts,
       if (relationshipNarrative != null)
         'relationship_narrative': relationshipNarrative,
       if (safetyBoundaries != null) 'safety_boundaries': safetyBoundaries,
@@ -2859,12 +2842,19 @@ class PersonaChapterView {
 
 class PersonaEditRequest {
   const PersonaEditRequest({
+    this.action,
+    this.displayName,
     required this.expectedBaseGenomeId,
     required this.expectedPreferenceRevision,
     required this.operationId,
     required this.persona,
     this.preferences,
+    this.restoreGenomeId,
   });
+
+  final String? action;
+
+  final String? displayName;
 
   final String expectedBaseGenomeId;
 
@@ -2876,8 +2866,12 @@ class PersonaEditRequest {
 
   final ConversationPreferences? preferences;
 
+  final String? restoreGenomeId;
+
   factory PersonaEditRequest.fromJson(Map<String, dynamic> value) {
     return PersonaEditRequest(
+      action: value['action'] as String?,
+      displayName: value['display_name'] as String?,
       expectedBaseGenomeId: value['expected_base_genome_id'] as String,
       expectedPreferenceRevision: value['expected_preference_revision'] as int,
       operationId: value['operation_id'] as String,
@@ -2889,27 +2883,37 @@ class PersonaEditRequest {
           : ConversationPreferences.fromJson(
               value['preferences'] as Map<String, dynamic>,
             ),
+      restoreGenomeId: value['restore_genome_id'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
+      if (action != null) 'action': action,
+      if (displayName != null) 'display_name': displayName,
       'expected_base_genome_id': expectedBaseGenomeId,
       'expected_preference_revision': expectedPreferenceRevision,
       'operation_id': operationId,
       'persona': persona.toJson(),
       if (preferences != null) 'preferences': preferences?.toJson(),
+      if (restoreGenomeId != null) 'restore_genome_id': restoreGenomeId,
     };
   }
 }
 
 class PersonaEditSnapshot {
   const PersonaEditSnapshot({
+    this.companionRevision,
+    this.displayName,
     required this.genomeId,
     required this.persona,
     this.preferenceRevision,
     this.preferences,
   });
+
+  final int? companionRevision;
+
+  final String? displayName;
 
   final String genomeId;
 
@@ -2921,6 +2925,8 @@ class PersonaEditSnapshot {
 
   factory PersonaEditSnapshot.fromJson(Map<String, dynamic> value) {
     return PersonaEditSnapshot(
+      companionRevision: value['companion_revision'] as int?,
+      displayName: value['display_name'] as String?,
       genomeId: value['genome_id'] as String,
       persona: PersonaAuthoring.fromJson(
         value['persona'] as Map<String, dynamic>,
@@ -2936,6 +2942,8 @@ class PersonaEditSnapshot {
 
   Map<String, dynamic> toJson() {
     return {
+      if (companionRevision != null) 'companion_revision': companionRevision,
+      if (displayName != null) 'display_name': displayName,
       'genome_id': genomeId,
       'persona': persona.toJson(),
       if (preferenceRevision != null) 'preference_revision': preferenceRevision,
@@ -3038,6 +3046,97 @@ class PersonaPresetCatalog {
 
   Map<String, dynamic> toJson() {
     return {'presets': presets.map((entry) => entry.toJson()).toList()};
+  }
+}
+
+class PersonaPreviewRequest {
+  const PersonaPreviewRequest({
+    this.baseGenomeId,
+    this.companionId,
+    this.modality,
+    required this.name,
+    required this.persona,
+    this.preferences,
+    required this.text,
+  });
+
+  final String? baseGenomeId;
+
+  final String? companionId;
+
+  final String? modality;
+
+  final String name;
+
+  final PersonaAuthoring persona;
+
+  final ConversationPreferences? preferences;
+
+  final String text;
+
+  factory PersonaPreviewRequest.fromJson(Map<String, dynamic> value) {
+    return PersonaPreviewRequest(
+      baseGenomeId: value['base_genome_id'] as String?,
+      companionId: value['companion_id'] as String?,
+      modality: value['modality'] as String?,
+      name: value['name'] as String,
+      persona: PersonaAuthoring.fromJson(
+        value['persona'] as Map<String, dynamic>,
+      ),
+      preferences: value['preferences'] == null
+          ? null
+          : ConversationPreferences.fromJson(
+              value['preferences'] as Map<String, dynamic>,
+            ),
+      text: value['text'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (baseGenomeId != null) 'base_genome_id': baseGenomeId,
+      if (companionId != null) 'companion_id': companionId,
+      if (modality != null) 'modality': modality,
+      'name': name,
+      'persona': persona.toJson(),
+      if (preferences != null) 'preferences': preferences?.toJson(),
+      'text': text,
+    };
+  }
+}
+
+class PersonaPreviewResponse {
+  const PersonaPreviewResponse({
+    required this.draftDigest,
+    required this.finishReason,
+    required this.reply,
+    this.truncated,
+  });
+
+  final String draftDigest;
+
+  final String finishReason;
+
+  final String reply;
+
+  final bool? truncated;
+
+  factory PersonaPreviewResponse.fromJson(Map<String, dynamic> value) {
+    return PersonaPreviewResponse(
+      draftDigest: value['draft_digest'] as String,
+      finishReason: value['finish_reason'] as String,
+      reply: value['reply'] as String,
+      truncated: value['truncated'] as bool?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'draft_digest': draftDigest,
+      'finish_reason': finishReason,
+      'reply': reply,
+      if (truncated != null) 'truncated': truncated,
+    };
   }
 }
 

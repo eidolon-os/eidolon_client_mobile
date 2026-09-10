@@ -181,7 +181,9 @@ bool canRetry(Object error) {
 class CompanionFacePicture {
   const CompanionFacePicture({required this.bytes, this.sha256});
 
-  const CompanionFacePicture.none() : bytes = null, sha256 = null;
+  const CompanionFacePicture.none()
+      : bytes = null,
+        sha256 = null;
 
   final Uint8List? bytes;
   final String? sha256;
@@ -205,8 +207,8 @@ class ManagementClient {
     http.Client? httpClient,
     bool? ownsHttpClient,
     this.timeout = const Duration(seconds: 8),
-  }) : _httpClient = httpClient ?? http.Client(),
-       _ownsHttpClient = ownsHttpClient ?? httpClient == null;
+  })  : _httpClient = httpClient ?? http.Client(),
+        _ownsHttpClient = ownsHttpClient ?? httpClient == null;
 
   final http.Client _httpClient;
   final bool _ownsHttpClient;
@@ -821,6 +823,28 @@ class ManagementClient {
     return PersonaAuthoring.fromJson(body);
   }
 
+  Future<PersonaPreviewResponse> previewPersona(Uri baseUri,
+      {required String accessToken,
+      required PersonaPreviewRequest draft}) async {
+    final body = await _send(
+        'POST', baseUri.resolve(ManagementV1.personaPreviewPath),
+        accessToken: accessToken,
+        what: '试聊',
+        body: draft.toJson(),
+        requestTimeout: const Duration(seconds: 45));
+    return PersonaPreviewResponse.fromJson(body);
+  }
+
+  Future<PersonaHistoryView> personaHistory(Uri baseUri,
+      {required String accessToken, required String companionId}) async {
+    final body = await _send(
+        'GET',
+        baseUri.resolve(ManagementV1.companionsByCompanionIdPersonaHistoryPath(
+            companionId)),
+        accessToken: accessToken,
+        what: '读取历史设定');
+    return PersonaHistoryView.fromJson(body);
+  }
 
   Future<PersonaPresetCatalog> personaPresets(
     Uri baseUri, {
@@ -960,18 +984,16 @@ class ManagementClient {
     String? companionId,
   }) async {
     final body = await _get(
-      baseUri
-          .resolve(ManagementV1.memoryEntriesPath)
-          .replace(
-            queryParameters: {
-              // Local time with its offset, not UTC: "today" is the person's day,
-              // and the offset is what lets the Host place the instant without
-              // knowing where they are.
-              'since': _iso8601WithOffset(since),
-              if (limit != null) 'limit': '$limit',
-              if (companionId != null) 'companion_id': companionId,
-            },
-          ),
+      baseUri.resolve(ManagementV1.memoryEntriesPath).replace(
+        queryParameters: {
+          // Local time with its offset, not UTC: "today" is the person's day,
+          // and the offset is what lets the Host place the instant without
+          // knowing where they are.
+          'since': _iso8601WithOffset(since),
+          if (limit != null) 'limit': '$limit',
+          if (companionId != null) 'companion_id': companionId,
+        },
+      ),
       accessToken: accessToken,
       what: '读取今天记下的',
     );
@@ -1045,7 +1067,8 @@ class ManagementClient {
     final body = await _get(
       _withQuery(
         baseUri.resolve(
-          ManagementV1.companionsByCompanionIdConversationsByConversationIdTurnsPath(
+          ManagementV1
+              .companionsByCompanionIdConversationsByConversationIdTurnsPath(
             companionId,
             conversationId,
           ),
@@ -1098,16 +1121,17 @@ class ManagementClient {
     required String accessToken,
     required String companionId,
     required String taskId,
-  }) => _taskAction(
-    baseUri.resolve(
-      ManagementV1.companionsByCompanionIdTasksByTaskIdCancelPath(
-        companionId,
-        taskId,
-      ),
-    ),
-    accessToken: accessToken,
-    what: '取消任务',
-  );
+  }) =>
+      _taskAction(
+        baseUri.resolve(
+          ManagementV1.companionsByCompanionIdTasksByTaskIdCancelPath(
+            companionId,
+            taskId,
+          ),
+        ),
+        accessToken: accessToken,
+        what: '取消任务',
+      );
 
   /// 再试一次 — ask for it again. The Host decides whether it can.
   Future<TaskView> retryTask(
@@ -1115,16 +1139,17 @@ class ManagementClient {
     required String accessToken,
     required String companionId,
     required String taskId,
-  }) => _taskAction(
-    baseUri.resolve(
-      ManagementV1.companionsByCompanionIdTasksByTaskIdRetryPath(
-        companionId,
-        taskId,
-      ),
-    ),
-    accessToken: accessToken,
-    what: '重试任务',
-  );
+  }) =>
+      _taskAction(
+        baseUri.resolve(
+          ManagementV1.companionsByCompanionIdTasksByTaskIdRetryPath(
+            companionId,
+            taskId,
+          ),
+        ),
+        accessToken: accessToken,
+        what: '重试任务',
+      );
 
   Future<TaskView> _taskAction(
     Uri endpoint, {
@@ -1163,15 +1188,13 @@ class ManagementClient {
     String? companionId,
   }) async {
     final body = await _get(
-      baseUri
-          .resolve(ManagementV1.memoryRecollectionsPath)
-          .replace(
-            queryParameters: {
-              'q': query,
-              'limit': '$limit',
-              if (companionId != null) 'companion_id': companionId,
-            },
-          ),
+      baseUri.resolve(ManagementV1.memoryRecollectionsPath).replace(
+        queryParameters: {
+          'q': query,
+          'limit': '$limit',
+          if (companionId != null) 'companion_id': companionId,
+        },
+      ),
       accessToken: accessToken,
       what: '问它记得什么',
     );
@@ -1248,7 +1271,8 @@ class ManagementClient {
     Uri endpoint, {
     required String accessToken,
     required String what,
-  }) => _send('GET', endpoint, accessToken: accessToken, what: what);
+  }) =>
+      _send('GET', endpoint, accessToken: accessToken, what: what);
 
   /// One place that talks to the Host, whatever the verb.
   ///
@@ -1260,6 +1284,7 @@ class ManagementClient {
     required String accessToken,
     required String what,
     Map<String, dynamic>? body,
+    Duration? requestTimeout,
   }) async {
     final http.Response response;
     try {
@@ -1271,7 +1296,7 @@ class ManagementClient {
       }
       response = await http.Response.fromStream(
         await _httpClient.send(request),
-      ).timeout(timeout);
+      ).timeout(requestTimeout ?? timeout);
     } on TimeoutException {
       throw ManagementRequestException('$what超时');
     } catch (error) {

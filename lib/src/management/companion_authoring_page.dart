@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
 import 'persona_form.dart';
+import 'persona_preview_panel.dart';
 import 'conversation_preferences_form.dart';
 
 /// Two decisions: name and a short description, then review and reply preferences.
@@ -11,6 +12,7 @@ class CompanionAuthoringPage extends StatefulWidget {
     required this.template,
     this.presets = const [],
     required this.onCreate,
+    this.preview,
     this.busy = false,
     this.refusal,
   });
@@ -24,6 +26,7 @@ class CompanionAuthoringPage extends StatefulWidget {
   final Future<void> Function(String displayName, PersonaAuthoring? persona,
       ConversationPreferences? preferences) onCreate;
 
+  final PreviewPersona? preview;
   final bool busy;
 
   /// Why the Host said no, in words the person can act on.
@@ -228,6 +231,14 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
                   _preferencesChanged = true;
                 })),
         const SizedBox(height: 16),
+        if (widget.preview != null)
+          PersonaPreviewPanel(
+              draft: PersonaPreviewRequest(
+                  name: _name.text.trim(),
+                  persona: _form.authoring,
+                  preferences: _preferences,
+                  text: ''),
+              preview: widget.preview!),
         const Text('表达示例（说明所选起点风格，不反映自定义修改）'),
         if (widget.presets.isNotEmpty)
           for (final example in widget.presets[_presetIndex].examples)

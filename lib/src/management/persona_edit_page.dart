@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
 import 'persona_form.dart';
+import 'persona_preview_panel.dart';
 import 'conversation_preferences_form.dart';
 
 /// Changing who an Eidolon is, after it has been someone for a while.
@@ -25,6 +26,8 @@ class PersonaEditPage extends StatefulWidget {
     required this.displayName,
     required this.standing,
     required this.onSave,
+    this.onRestore,
+    this.preview,
     this.busy = false,
     this.refusal,
     this.preferences,
@@ -45,6 +48,8 @@ class PersonaEditPage extends StatefulWidget {
   final ValueChanged<ConversationPreferences>? onPreferencesChanged;
   final bool preferencesChanged;
   final bool forceChanged;
+  final VoidCallback? onRestore;
+  final PreviewPersona? preview;
   final bool busy;
   final String? refusal;
 
@@ -115,6 +120,18 @@ class _PersonaEditPageState extends State<PersonaEditPage> {
                         value: widget.preferences ??
                             const ConversationPreferences(),
                         onChanged: widget.onPreferencesChanged!),
+                  if (widget.preview != null)
+                    PersonaPreviewPanel(
+                        draft: PersonaPreviewRequest(
+                            name: widget.displayName,
+                            persona: _form.authoring,
+                            preferences: widget.preferences,
+                            text: ''),
+                        preview: widget.preview!),
+                  if (widget.onRestore != null)
+                    TextButton(
+                        onPressed: widget.busy ? null : widget.onRestore,
+                        child: const Text('恢复历史设定')),
                   ExpansionTile(
                     key: const Key('persona-details'),
                     title: const Text('详细设定'),

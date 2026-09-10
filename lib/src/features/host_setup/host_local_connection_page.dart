@@ -226,26 +226,56 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   /// Ask what this Eidolon should be called, and tell the Host.
   /// Rename the Eidolon whose page this is — not whichever one answers.
   Future<void> _renameCompanion(HostCompanion companion) async {
-    final name = await askForAName(
-      context,
-      question: '这个 Eidolon 叫什么？',
-      hint: '给它起个名字',
-      current: companion.displayName,
-      dialogKey: const Key('rename-companion-dialog'),
-      fieldKey: const Key('companion-name-field'),
-      confirmKey: const Key('confirm-companion-name'),
-    );
-    if (name == null || !mounted) return;
     try {
-      await _controller.renameCompanion(
-        companionId: companion.companionId,
-        displayName: name,
-      );
+      final standing =
+          await _controller.persona(companionId: companion.companionId);
+      if (!mounted) return;
+      final name = await askForAName(context,
+          question: '这个 Eidolon 叫什么？',
+          hint: '给它起个名字',
+          current: standing.displayName ?? companion.displayName,
+          dialogKey: const Key('rename-companion-dialog'),
+          fieldKey: const Key('companion-name-field'),
+          confirmKey: const Key('confirm-companion-name'));
+      if (name == null || !mounted) return;
+      final request = PersonaEditRequest(
+          expectedBaseGenomeId: standing.genomeId,
+          expectedPreferenceRevision: standing.preferenceRevision ?? 1,
+          operationId: List.generate(
+              24,
+              (_) => Random.secure()
+                  .nextInt(256)
+                  .toRadixString(16)
+                  .padLeft(2, '0')).join(),
+          persona: const PersonaAuthoring(),
+          action: 'rename',
+          displayName: name);
+      await _saveRename(companion.companionId, request);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('改名没有完成：${failureSentence(error)}')));
+      }
+    }
+  }
+
+  Future<void> _saveRename(
+      String companionId, PersonaEditRequest request) async {
+    try {
+      await _controller.setPersona(companionId: companionId, persona: request);
+      await _controller.refreshWorkspace();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('改名没有完成：${failureSentence(error)}')),
-      );
+      final conflict =
+          error is ManagementRequestException && error.statusCode == 409;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              conflict ? '设定已变化，请重新打开改名。' : '改名没有完成：${failureSentence(error)}'),
+          action: conflict
+              ? null
+              : SnackBarAction(
+                  label: '重试',
+                  onPressed: () => _saveRename(companionId, request))));
     }
   }
 
@@ -385,6 +415,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             ),
             loadPersonaTemplate: _controller.personaAuthoringTemplate,
             loadPersonaPresets: _controller.personaPresets,
+            preview: _controller.previewPersona,
           ),
         ),
       );
@@ -542,6 +573,10 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => _PersonaEditRoute(
+          companionId: companion.companionId,
+          preview: _controller.previewPersona,
+          history: () =>
+              _controller.personaHistory(companionId: companion.companionId),
           displayName: companion.displayName,
           standing: standing,
           reload: () => _controller.persona(companionId: companion.companionId),
@@ -1353,12 +1388,18 @@ class _WorkspaceResourceStatus extends StatelessWidget {
 /// Eidolon's page where the person can no longer see what they wrote.
 class _PersonaEditRoute extends StatefulWidget {
   const _PersonaEditRoute({
+    required this.companionId,
     required this.displayName,
     required this.standing,
     required this.save,
     required this.reload,
+    required this.preview,
+    required this.history,
   });
 
+  final Future<PersonaPreviewResponse> Function(PersonaPreviewRequest) preview;
+  final Future<PersonaHistoryView> Function() history;
+  final String companionId;
   final String displayName;
   final PersonaEditSnapshot standing;
   final Future<PersonaEditSnapshot> Function(PersonaEditRequest authored) save;
@@ -1382,6 +1423,100 @@ class _PersonaEditRouteState extends State<_PersonaEditRoute> {
     return List.generate(
             24, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'))
         .join();
+  }
+
+  Future<void> _restore() async {
+    setState(() {
+      _busy = true;
+      _refusal = null;
+    });
+    try {
+      final history = await widget.history();
+      if (!mounted) return;
+      String? target;
+      PersonaEditRequest? pending;
+      String? error;
+      bool saving = false;
+      bool conflict = false;
+      final restored = await showDialog<PersonaEditSnapshot>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => StatefulBuilder(
+              builder: (context, update) => AlertDialog(
+                    title: const Text('恢复历史设定'),
+                    content: SingleChildScrollView(
+                        child:
+                            Column(mainAxisSize: MainAxisSize.min, children: [
+                      const Text('将放弃当前草稿，恢复所选性格，保留现在的名字和回复偏好。'),
+                      for (final chapter
+                          in history.chapters.where((c) => c.isCurrent != true))
+                        CheckboxListTile(
+                            value: target == chapter.chapterId,
+                            title: Text(chapter.whatChanged ?? '历史设定'),
+                            subtitle: Text(chapter.changedAt),
+                            onChanged: saving || pending != null
+                                ? null
+                                : (value) => update(() => target =
+                                    value == true ? chapter.chapterId : null)),
+                      if (error != null) Text(error!),
+                    ])),
+                    actions: [
+                      TextButton(
+                          onPressed: saving
+                              ? null
+                              : () => Navigator.pop(dialogContext),
+                          child: const Text('取消')),
+                      FilledButton(
+                          onPressed: saving || conflict || target == null
+                              ? null
+                              : () async {
+                                  pending ??= PersonaEditRequest(
+                                      expectedBaseGenomeId: _standing.genomeId,
+                                      expectedPreferenceRevision:
+                                          _standing.preferenceRevision ?? 1,
+                                      operationId: _operationId(),
+                                      persona: const PersonaAuthoring(),
+                                      action: 'restore',
+                                      restoreGenomeId: target);
+                                  update(() {
+                                    saving = true;
+                                    error = null;
+                                  });
+                                  try {
+                                    final result = await widget.save(pending!);
+                                    if (dialogContext.mounted) {
+                                      Navigator.pop(dialogContext, result);
+                                    }
+                                  } catch (e) {
+                                    if (!dialogContext.mounted) return;
+                                    update(() {
+                                      saving = false;
+                                      conflict =
+                                          e is ManagementRequestException &&
+                                              e.statusCode == 409;
+                                      error = conflict
+                                          ? '设定已变化，请关闭并重新打开编辑页。'
+                                          : '恢复失败，可以重试。';
+                                    });
+                                  }
+                                },
+                          child: Text(saving ? '正在恢复' : '恢复')),
+                    ],
+                  )));
+      if (!mounted || restored == null) return;
+      setState(() {
+        _standing = restored;
+        _draft = null;
+        _pending = null;
+        _preferences = restored.preferences ?? const ConversationPreferences();
+        _preferencesChanged = false;
+        _formRevision++;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _refusal = '读取历史设定失败：${failureSentence(e)}');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _resolveConflict(PersonaAuthoring draft) async {
@@ -1460,7 +1595,13 @@ class _PersonaEditRouteState extends State<_PersonaEditRoute> {
   Widget build(BuildContext context) {
     return PersonaEditPage(
       key: ValueKey(_formRevision),
-      displayName: widget.displayName,
+      displayName: _standing.displayName ?? widget.displayName,
+      preview: (draft) => widget.preview(PersonaPreviewRequest.fromJson({
+        ...draft.toJson(),
+        'companion_id': widget.companionId,
+        'base_genome_id': _standing.genomeId
+      })),
+      onRestore: _restore,
       standing: _draft ?? _standing.persona,
       forceChanged: _draft != null,
       preferences: _preferences,

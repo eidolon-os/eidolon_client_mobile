@@ -18,21 +18,22 @@ class HostWorkspaceRepository {
   final HostProductSession _session;
 
   Future<WorkspaceStatus> fetchStatus() => _session.execute(
-    (client, baseUrl, accessToken) =>
-        client.fetchWorkspace(baseUrl, accessToken: accessToken),
-  );
+        (client, baseUrl, accessToken) =>
+            client.fetchWorkspace(baseUrl, accessToken: accessToken),
+      );
 
   Future<WorkspaceStatus> initialize({
     required String ownerDisplayName,
     required String companionDisplayName,
-  }) => _session.execute(
-    (client, baseUrl, accessToken) => client.initializeWorkspace(
-      baseUrl,
-      accessToken: accessToken,
-      ownerDisplayName: ownerDisplayName,
-      companionDisplayName: companionDisplayName,
-    ),
-  );
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.initializeWorkspace(
+          baseUrl,
+          accessToken: accessToken,
+          ownerDisplayName: ownerDisplayName,
+          companionDisplayName: companionDisplayName,
+        ),
+      );
 }
 
 class HostDevicesRepository {
@@ -51,14 +52,15 @@ class HostDevicesRepository {
   Future<DeviceRemovalView> remove({
     required String requestId,
     required String deviceId,
-  }) => _session.executeManagement(
-    (client, baseUri, accessToken) => client.removeDevice(
-      baseUri,
-      accessToken: accessToken,
-      requestId: requestId,
-      deviceId: deviceId,
-    ),
-  );
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.removeDevice(
+          baseUri,
+          accessToken: accessToken,
+          requestId: requestId,
+          deviceId: deviceId,
+        ),
+      );
 }
 
 class HostCompanionRepository {
@@ -74,26 +76,28 @@ class HostCompanionRepository {
   Future<CompanionFacePicture> face({
     required String companionId,
     CompanionFacePicture? held,
-  }) => _session.executeManagement(
-    (client, baseUri, accessToken) => client.fetchCompanionFace(
-      baseUri,
-      accessToken: accessToken,
-      companionId: companionId,
-      held: held,
-    ),
-  );
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchCompanionFace(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          held: held,
+        ),
+      );
 
   Future<CompanionFaceView> setFace({
     required String companionId,
     required Uint8List face,
-  }) => _session.executeManagement(
-    (client, baseUri, accessToken) => client.setCompanionFace(
-      baseUri,
-      accessToken: accessToken,
-      companionId: companionId,
-      face: face,
-    ),
-  );
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.setCompanionFace(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          face: face,
+        ),
+      );
 
   Future<CompanionFaceView> clearFace({required String companionId}) =>
       _session.executeManagement(
@@ -138,9 +142,9 @@ class HostManagementRepository {
   final HostProductSession _session;
 
   Future<ManagementContextView> context() => _session.executeManagement(
-    (client, baseUri, accessToken) =>
-        client.fetchContext(baseUri, accessToken: accessToken),
-  );
+        (client, baseUri, accessToken) =>
+            client.fetchContext(baseUri, accessToken: accessToken),
+      );
 
   Future<CompanionDetailView> companion({required String companionId}) =>
       _session.executeManagement(
@@ -200,6 +204,13 @@ class HostManagementRepository {
             client.personaAuthoringTemplate(baseUri, accessToken: accessToken),
       );
 
+  Future<PersonaPreviewResponse> previewPersona(PersonaPreviewRequest draft) =>
+      _session.executeManagement((client, baseUri, accessToken) => client
+          .previewPersona(baseUri, accessToken: accessToken, draft: draft));
+  Future<PersonaHistoryView> personaHistory({required String companionId}) =>
+      _session.executeManagement((client, baseUri, accessToken) =>
+          client.personaHistory(baseUri,
+              accessToken: accessToken, companionId: companionId));
 
   Future<PersonaPresetCatalog> personaPresets() => _session.executeManagement(
         (client, baseUri, accessToken) =>
@@ -230,15 +241,16 @@ class HostManagementRepository {
     required DateTime since,
     int? limit,
     String? companionId,
-  }) => _session.executeManagement(
-    (client, baseUri, accessToken) => client.fetchMemoryEntries(
-      baseUri,
-      accessToken: accessToken,
-      since: since,
-      limit: limit,
-      companionId: companionId,
-    ),
-  );
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchMemoryEntries(
+          baseUri,
+          accessToken: accessToken,
+          since: since,
+          limit: limit,
+          companionId: companionId,
+        ),
+      );
 
   /// End every runtime session this Owner has.
   Future<RevokedSessionsView> revokeRuntimeSessions() =>
@@ -252,15 +264,16 @@ class HostManagementRepository {
     required String companionId,
     int? limit,
     String? cursor,
-  }) => _session.executeManagement(
-    (client, baseUri, accessToken) => client.fetchConversations(
-      baseUri,
-      accessToken: accessToken,
-      companionId: companionId,
-      limit: limit,
-      cursor: cursor,
-    ),
-  );
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchConversations(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          limit: limit,
+          cursor: cursor,
+        ),
+      );
 
   /// What was said in one conversation.
   Future<TranscriptView> transcript({
@@ -268,16 +281,17 @@ class HostManagementRepository {
     required String conversationId,
     int? limit,
     String? cursor,
-  }) => _session.executeManagement(
-    (client, baseUri, accessToken) => client.fetchTranscript(
-      baseUri,
-      accessToken: accessToken,
-      companionId: companionId,
-      conversationId: conversationId,
-      limit: limit,
-      cursor: cursor,
-    ),
-  );
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchTranscript(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          conversationId: conversationId,
+          limit: limit,
+          cursor: cursor,
+        ),
+      );
 
   /// What it was asked to do, and how far it has got.
   Future<TaskPageView> tasks({
@@ -285,42 +299,45 @@ class HostManagementRepository {
     int? limit,
     String? status,
     String? cursor,
-  }) => _session.executeManagement(
-    (client, baseUri, accessToken) => client.fetchTasks(
-      baseUri,
-      accessToken: accessToken,
-      companionId: companionId,
-      limit: limit,
-      status: status,
-      cursor: cursor,
-    ),
-  );
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchTasks(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          limit: limit,
+          status: status,
+          cursor: cursor,
+        ),
+      );
 
   /// Stop a task. The Host answers with what it became.
   Future<TaskView> cancelTask({
     required String companionId,
     required String taskId,
-  }) => _session.executeManagement(
-    (client, baseUri, accessToken) => client.cancelTask(
-      baseUri,
-      accessToken: accessToken,
-      companionId: companionId,
-      taskId: taskId,
-    ),
-  );
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.cancelTask(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          taskId: taskId,
+        ),
+      );
 
   /// Ask for a task again. The Host decides whether it can.
   Future<TaskView> retryTask({
     required String companionId,
     required String taskId,
-  }) => _session.executeManagement(
-    (client, baseUri, accessToken) => client.retryTask(
-      baseUri,
-      accessToken: accessToken,
-      companionId: companionId,
-      taskId: taskId,
-    ),
-  );
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.retryTask(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          taskId: taskId,
+        ),
+      );
 
   /// What it remembers about [query]. A sentence and a time, nothing about how
   /// it was found.
@@ -328,15 +345,16 @@ class HostManagementRepository {
     required String query,
     int limit = 10,
     String? companionId,
-  }) => _session.executeManagement(
-    (client, baseUri, accessToken) => client.fetchRecollections(
-      baseUri,
-      accessToken: accessToken,
-      query: query,
-      limit: limit,
-      companionId: companionId,
-    ),
-  );
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchRecollections(
+          baseUri,
+          accessToken: accessToken,
+          query: query,
+          limit: limit,
+          companionId: companionId,
+        ),
+      );
 
   /// A copy of the whole visible memory. [companionId] selects an audience.
   Future<MemoryCopyView> memoryCopy({String? companionId}) =>
@@ -352,14 +370,15 @@ class HostManagementRepository {
   Future<ForgetProposalView> previewForget({
     required String target,
     String? action,
-  }) => _session.executeManagement(
-    (client, baseUri, accessToken) => client.previewForget(
-      baseUri,
-      accessToken: accessToken,
-      target: target,
-      action: action,
-    ),
-  );
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.previewForget(
+          baseUri,
+          accessToken: accessToken,
+          target: target,
+          action: action,
+        ),
+      );
 
   /// Forget exactly what a preview showed. The token is passed back unread.
   Future<ForgetResultView> confirmForget({required String confirmationToken}) =>
@@ -375,14 +394,15 @@ class HostManagementRepository {
   Future<CompanionDetailOutcome> setDefaultCompanion({
     required String companionId,
     required int expectedRevision,
-  }) => _session.executeManagement(
-    (client, baseUri, accessToken) => client.setDefaultCompanion(
-      baseUri,
-      accessToken: accessToken,
-      companionId: companionId,
-      expectedRevision: expectedRevision,
-    ),
-  );
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.setDefaultCompanion(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          expectedRevision: expectedRevision,
+        ),
+      );
 
   /// Put one away, or bring it back.
   ///
@@ -394,24 +414,25 @@ class HostManagementRepository {
     required String lifecycleState,
     String? replacementCompanionId,
     int? expectedRevision,
-  }) => _session.executeManagement(
-    (client, baseUri, accessToken) => client.setCompanionLifecycle(
-      baseUri,
-      accessToken: accessToken,
-      companionId: companionId,
-      lifecycleState: lifecycleState,
-      replacementCompanionId: replacementCompanionId,
-      expectedRevision: expectedRevision,
-    ),
-  );
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.setCompanionLifecycle(
+          baseUri,
+          accessToken: accessToken,
+          companionId: companionId,
+          lifecycleState: lifecycleState,
+          replacementCompanionId: replacementCompanionId,
+          expectedRevision: expectedRevision,
+        ),
+      );
 
   /// What is mine, right now — the one read a screen makes when it opens.
   Future<HostHome> home() async => HostHome.fromView(
-    await _session.executeManagement(
-      (client, baseUri, accessToken) =>
-          client.fetchHome(baseUri, accessToken: accessToken),
-    ),
-  );
+        await _session.executeManagement(
+          (client, baseUri, accessToken) =>
+              client.fetchHome(baseUri, accessToken: accessToken),
+        ),
+      );
 
   /// One page. [cursor] is a value a previous page handed back, forwarded as-is.
   /// The Owner's runtime map, as this Host observed it.
@@ -524,41 +545,43 @@ class HostServicesRepository {
   /// app's, because "degraded" is a word the wire uses and 降级 is the word a
   /// person reads.
   Future<HostVitals> vitals() async => HostVitals.fromView(
-    await _session.executeManagement(
-      (client, baseUri, accessToken) =>
-          client.fetchHostVitals(baseUri, accessToken: accessToken),
-    ),
-  );
+        await _session.executeManagement(
+          (client, baseUri, accessToken) =>
+              client.fetchHostVitals(baseUri, accessToken: accessToken),
+        ),
+      );
 
   Future<HostMonitorWire> monitor() => _session.executeManagement(
-    (client, baseUri, accessToken) => client.fetchHostMonitor(
-      baseUri, accessToken: accessToken,
-    ),
-  );
+        (client, baseUri, accessToken) => client.fetchHostMonitor(
+          baseUri,
+          accessToken: accessToken,
+        ),
+      );
 
   Future<HostServiceInventory> list() async => HostServiceInventory.fromView(
-    await _session.executeManagement(
-      (client, baseUri, accessToken) =>
-          client.fetchHostServices(baseUri, accessToken: accessToken),
-    ),
-  );
+        await _session.executeManagement(
+          (client, baseUri, accessToken) =>
+              client.fetchHostServices(baseUri, accessToken: accessToken),
+        ),
+      );
 
   /// [expectedRevision] is the revision the screen displayed, not a re-read.
   Future<HostServiceChange> change({
     required String serviceId,
     required String operation,
     required int expectedRevision,
-  }) async => HostServiceChange.fromView(
-    await _session.executeManagement(
-      (client, baseUri, accessToken) => client.changeHostService(
-        baseUri,
-        accessToken: accessToken,
-        serviceId: serviceId,
-        operation: operation,
-        expectedRevision: expectedRevision,
-      ),
-    ),
-  );
+  }) async =>
+      HostServiceChange.fromView(
+        await _session.executeManagement(
+          (client, baseUri, accessToken) => client.changeHostService(
+            baseUri,
+            accessToken: accessToken,
+            serviceId: serviceId,
+            operation: operation,
+            expectedRevision: expectedRevision,
+          ),
+        ),
+      );
 }
 
 class HostDeviceCompanionRepository {
@@ -571,18 +594,19 @@ class HostDeviceCompanionRepository {
     required String requestId,
     required String? companionId,
     required int expectedRevision,
-  }) async => MountedDevice.fromView(
-    await _session.executeManagement(
-      (client, baseUri, accessToken) => client.setDeviceCompanion(
-        baseUri,
-        accessToken: accessToken,
-        deviceId: deviceId,
-        requestId: requestId,
-        companionId: companionId,
-        expectedRevision: expectedRevision,
-      ),
-    ),
-  );
+  }) async =>
+      MountedDevice.fromView(
+        await _session.executeManagement(
+          (client, baseUri, accessToken) => client.setDeviceCompanion(
+            baseUri,
+            accessToken: accessToken,
+            deviceId: deviceId,
+            requestId: requestId,
+            companionId: companionId,
+            expectedRevision: expectedRevision,
+          ),
+        ),
+      );
 }
 
 class HostDeviceAdmissionRepository {
@@ -591,41 +615,44 @@ class HostDeviceAdmissionRepository {
   final HostProductSession _session;
 
   Future<DeviceOnboardingTarget> fetchTarget() => _session.execute(
-    (client, baseUrl, accessToken) =>
-        client.fetchDeviceOnboardingTarget(baseUrl, accessToken: accessToken),
-  );
+        (client, baseUrl, accessToken) => client
+            .fetchDeviceOnboardingTarget(baseUrl, accessToken: accessToken),
+      );
 
   Future<CommissioningVoucher> issueCommissioningVoucher({
     required String operationalSpkiSha256,
-  }) => _session.execute(
-    (client, baseUrl, accessToken) => client.issueCommissioningVoucher(
-      baseUrl,
-      accessToken: accessToken,
-      operationalSpkiSha256: operationalSpkiSha256,
-    ),
-  );
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.issueCommissioningVoucher(
+          baseUrl,
+          accessToken: accessToken,
+          operationalSpkiSha256: operationalSpkiSha256,
+        ),
+      );
 
   Future<EnrollmentProposalPageV1> listRecovery({
     required String ownerDomainId,
     AdmissionListCursorV1? after,
-  }) => _session.execute(
-    (client, baseUrl, accessToken) => client.fetchEnrollmentRecoveryPage(
-      baseUrl,
-      accessToken: accessToken,
-      ownerDomainId: ownerDomainId,
-      after: after,
-    ),
-  );
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.fetchEnrollmentRecoveryPage(
+          baseUrl,
+          accessToken: accessToken,
+          ownerDomainId: ownerDomainId,
+          after: after,
+        ),
+      );
 
   Future<EnrollmentRecoveryProjectionV1> recover({
     required String enrollmentId,
-  }) => _session.execute(
-    (client, baseUrl, accessToken) => client.fetchEnrollmentRecovery(
-      baseUrl,
-      accessToken: accessToken,
-      enrollmentId: enrollmentId,
-    ),
-  );
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.fetchEnrollmentRecovery(
+          baseUrl,
+          accessToken: accessToken,
+          enrollmentId: enrollmentId,
+        ),
+      );
 
   Future<AdmissionDecisionOutcome> decide({
     required String requestId,
@@ -635,29 +662,31 @@ class HostDeviceAdmissionRepository {
     required String expectedOwnerDomainId,
     required String expectedBusinessOwnerId,
     String? initialCompanionId,
-  }) => _session.execute(
-    (client, baseUrl, accessToken) => client.decideEnrollment(
-      baseUrl,
-      accessToken: accessToken,
-      requestId: requestId,
-      enrollmentId: enrollmentId,
-      expectedProposalRevision: expectedProposalRevision,
-      reviewedManifestRef: reviewedManifestRef,
-      expectedOwnerDomainId: expectedOwnerDomainId,
-      expectedBusinessOwnerId: expectedBusinessOwnerId,
-      initialCompanionId: initialCompanionId,
-    ),
-  );
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.decideEnrollment(
+          baseUrl,
+          accessToken: accessToken,
+          requestId: requestId,
+          enrollmentId: enrollmentId,
+          expectedProposalRevision: expectedProposalRevision,
+          reviewedManifestRef: reviewedManifestRef,
+          expectedOwnerDomainId: expectedOwnerDomainId,
+          expectedBusinessOwnerId: expectedBusinessOwnerId,
+          initialCompanionId: initialCompanionId,
+        ),
+      );
 
   Future<ClaimPageV1> listClaims({
     required String ownerDomainId,
     AdmissionListCursorV1? after,
-  }) => _session.execute(
-    (client, baseUrl, accessToken) => client.fetchClaimPage(
-      baseUrl,
-      accessToken: accessToken,
-      ownerDomainId: ownerDomainId,
-      after: after,
-    ),
-  );
+  }) =>
+      _session.execute(
+        (client, baseUrl, accessToken) => client.fetchClaimPage(
+          baseUrl,
+          accessToken: accessToken,
+          ownerDomainId: ownerDomainId,
+          after: after,
+        ),
+      );
 }
