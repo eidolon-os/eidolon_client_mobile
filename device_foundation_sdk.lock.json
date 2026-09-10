@@ -1,5 +1,5 @@
 {
-  "sdk_commit": "695b5576351be3b4ae51ad554a0e8c3a2cf5a629",
+  "sdk_commit": "bfb9441eb4bcef449ce3e2adc6e94ac44169a061",
   "files": [
     {
       "source": "contracts/device_foundation/v1/generated/dart/device_foundation_v1.dart",
@@ -84,7 +84,7 @@
     {
       "source": "contracts/device_foundation/v1/golden/livekit-session-binding.json",
       "target": "test/fixtures/device_foundation/livekit-session-binding.json",
-      "sha256": "21c9a40aeb0621259e043502ecb7a352eda30ddb64cd5bc5e24b2481dbaff107"
+      "sha256": "cf7079a8a12363aadbec3afb7e5345c11ca625108f94228cc9e15ea7b83b7542"
     },
     {
       "source": "contracts/device_foundation/v1/golden/device-control-configuration-proof.json",

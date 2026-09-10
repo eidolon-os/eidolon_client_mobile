@@ -18,30 +18,10 @@
 /// Provider's own wire bytes. `DF-CHANNEL-BINDING-001` names this repository
 /// among the requirement's owners.
 ///
-/// ## Why `audio` is dropped
-///
-/// `DF-LIVEKIT-SESSION-BINDING-001` says a binding whose `audio` names three
-/// channels or a rate out of range must be refused, and this reader refuses
-/// neither. That looks like neglect and is not; it is a difference between two
-/// kinds of Body, and it is written down here because the alternative is a
-/// comment that promises a fix nobody can make.
-///
-/// `audio.sample_rate` and `audio.channels` are settable by a Body that feeds
-/// PCM into the transport itself, which is what the firmware does —
-/// `livekit_session.cc` takes the binding's values, with a fallback, and opens
-/// its capture at them. This Body does not feed PCM. It publishes through
-/// `livekit_client`, whose `AudioCaptureOptions` has nine members and not one
-/// of them is a rate or a channel count, and whose only publish entry point
-/// (`setMicrophoneEnabled`) accepts nothing else. The rate on the wire is
-/// negotiated by WebRTC.
-///
-/// So there is nothing here to set and nothing to check a request against.
-/// Refusing on the member would deny a channel this app can join perfectly
-/// well — trading a rate mismatch that WebRTC resolves for a Body that cannot
-/// talk at all. `DF-CHANNEL-BINDING-AUDIO-001` is registered against this
-/// repository for the gap; the evidence above has gone to the SDK, because
-/// which of the two obligations applies to a transport-negotiated Body is a
-/// contract question, not this file's.
+/// The SDK permits transport-negotiated Bodies to ignore PCM capture hints.
+/// This app publishes through livekit_client/WebRTC; sample rate and channel
+/// count are negotiated by the transport. Firmware that feeds PCM directly
+/// still validates those hints against its capture capabilities.
 library;
 
 import 'dart:convert';
@@ -138,7 +118,12 @@ RoomConfig liveKitSessionFromBinding({
       'the channel binding carries no session',
     );
   }
-  final room = RoomConfig.fromJson(session);
+  final RoomConfig room;
+  try {
+    room = RoomConfig.fromJson(session);
+  } on FormatException {
+    throw const UnreadableSessionBinding('the channel binding has invalid server candidates');
+  }
   if (!room.usable) {
     // `RoomConfig.fromJson` fills absent members with empty strings, which is
     // right for a lenient reader and wrong here: a binding that arrived and

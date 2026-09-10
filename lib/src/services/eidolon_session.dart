@@ -13,6 +13,18 @@ import '../protocol/eidolon_protocol.dart';
 /// RTC transport for one conversation. Disconnecting does not revoke the
 /// device's Claim or its logical Channel binding at the Host.
 class EidolonSession {
+  EidolonSession({Room Function()? roomFactory})
+      : _roomFactory = roomFactory ?? _newRoom;
+
+  final Room Function() _roomFactory;
+  int _connectGeneration = 0;
+
+  static Room _newRoom() => Room(
+    roomOptions: const RoomOptions(
+      adaptiveStream: true, dynacast: true,
+      defaultAudioCaptureOptions: _capture,
+    ),
+  );
   Room? _room;
   ConversationMode mode = ConversationMode.fullDuplex;
   bool pttHeld = false;
@@ -86,35 +98,50 @@ class EidolonSession {
   );
 
   Future<void> connect(RoomConfig config) async {
-    await disconnect();
+    final generation = ++_connectGeneration;
+    await _releaseRoom();
+    if (generation != _connectGeneration) throw StateError('Connection cancelled');
     if (!config.usable) throw StateError('Channel config is incomplete');
-    final room = Room(
-      roomOptions: const RoomOptions(
-        adaptiveStream: true,
-        dynacast: true,
-        defaultAudioCaptureOptions: _capture,
-      ),
-    );
-    final listener = room.createListener();
-    _wireRoom(listener);
-    _room = room;
-    _listener = listener;
-    room.registerTextStreamHandler(transcriptionTopic,
-        (reader, identity) async {
-      final payload = await reader.readAll();
-      _dataController.add(SessionData(transcriptionTopic, payload));
-    });
-    // LiveKit Agents may create this stream for session lifecycle data. ESP32
-    // deliberately drains it; doing the same prevents backpressure here.
-    room.registerTextStreamHandler(agentSessionTopic, (reader, identity) async {
-      await reader.readAll();
-    });
     _stateController.add(const SessionState('connecting'));
-    await room.connect(config.serverUrl, config.token);
-    // The microphone stays closed until there is a conversation to speak into.
-    // Connecting is no longer a request to be listened to.
-    await room.setSpeakerOn(true);
-    _stateController.add(const SessionState('connected'));
+    for (final url in config.connectionUrls) {
+      if (generation != _connectGeneration) throw StateError('Connection cancelled');
+      final room = _roomFactory();
+      _room = room;
+      var accepted = false;
+      final listener = room.createListener();
+      _listener = listener;
+      _wireRoom(listener, isCurrent: () => accepted && identical(_room, room));
+      try {
+        // The SDK owns bounded signalling/ICE timeouts. A failed candidate's
+        // Room is destroyed before trying the next; late work cannot win.
+        await room.connect(url, config.token);
+        if (generation != _connectGeneration) throw StateError('Connection cancelled');
+        await room.setSpeakerOn(true);
+        if (generation != _connectGeneration) throw StateError('Connection cancelled');
+        accepted = true;
+        room.registerTextStreamHandler(transcriptionTopic, (reader, identity) async {
+          final payload = await reader.readAll();
+          _dataController.add(SessionData(transcriptionTopic, payload));
+        });
+        room.registerTextStreamHandler(agentSessionTopic, (reader, identity) async {
+          await reader.readAll();
+        });
+        _stateController.add(const SessionState('connected'));
+        return;
+      } catch (_) {
+        await listener.dispose();
+        if (identical(_listener, listener)) _listener = null;
+        if (identical(_room, room)) {
+          _room = null;
+          try {
+            await room.disconnect();
+          } finally {
+            await room.dispose();
+          }
+        }
+        if (generation != _connectGeneration || url == config.connectionUrls.last) rethrow;
+      }
+    }
   }
 
   /// Ask to be served. The agent, its models and its metered speech services
@@ -204,7 +231,7 @@ class EidolonSession {
     );
   }
 
-  void _wireRoom(EventsListener<RoomEvent> listener) {
+  void _wireRoom(EventsListener<RoomEvent> listener, {required bool Function() isCurrent}) {
     listener
       ..on<DataReceivedEvent>((event) {
         final topic = event.topic ?? '';
@@ -232,14 +259,17 @@ class EidolonSession {
       ..on<ParticipantConnectedEvent>((event) => _emitPresence())
       ..on<ParticipantDisconnectedEvent>((event) => _emitPresence())
       ..on<RoomDisconnectedEvent>((event) {
+        if (!isCurrent()) return;
         _conversationId = null;
         _stateController.add(const SessionState('disconnected'));
         _videoController.add(null);
       })
       ..on<RoomReconnectingEvent>((event) {
+        if (!isCurrent()) return;
         _stateController.add(const SessionState('reconnecting'));
       })
       ..on<RoomReconnectedEvent>((event) {
+        if (!isCurrent()) return;
         _stateController.add(const SessionState('connected'));
       });
   }
@@ -285,16 +315,26 @@ class EidolonSession {
   }
 
   Future<void> disconnect() async {
+    ++_connectGeneration;
+    await _releaseRoom();
+  }
+
+  Future<void> _releaseRoom() async {
+    final room = _room;
+    final listener = _listener;
+    _room = null;
+    _listener = null;
     pttHeld = false;
     _conversationId = null;
     _videoController.add(null);
-    _room?.unregisterTextStreamHandler(transcriptionTopic);
-    _room?.unregisterTextStreamHandler(agentSessionTopic);
-    await _room?.disconnect();
-    await _room?.dispose();
-    await _listener?.dispose();
-    _room = null;
-    _listener = null;
+    await listener?.dispose();
+    room?.unregisterTextStreamHandler(transcriptionTopic);
+    room?.unregisterTextStreamHandler(agentSessionTopic);
+    try {
+      await room?.disconnect();
+    } finally {
+      await room?.dispose();
+    }
   }
 
   Future<void> dispose() async {

@@ -53,12 +53,16 @@ class RoomConfig {
     required this.token,
     required this.identity,
     required this.roomName,
+    this.serverUrls = const [],
   });
 
   final String serverUrl;
   final String token;
   final String identity;
   final String roomName;
+  final List<String> serverUrls;
+
+  List<String> get connectionUrls => serverUrls.isEmpty ? [serverUrl] : serverUrls;
 
   bool get usable => serverUrl.isNotEmpty && token.isNotEmpty;
 
@@ -67,7 +71,19 @@ class RoomConfig {
         token: json['token'] as String? ?? '',
         identity: json['identity'] as String? ?? '',
         roomName: json['room_name'] as String? ?? '',
+        serverUrls: _serverUrls(json),
       );
+  static List<String> _serverUrls(Map<String, dynamic> json) {
+    if (!json.containsKey('server_urls')) return const [];
+    final values = json['server_urls'];
+    if (values is! List || values.isEmpty ||
+        values.any((value) => value is! String || value.isEmpty) ||
+        values.first != json['server_url'] || values.toSet().length != values.length) {
+      throw const FormatException('Invalid channel server candidates');
+    }
+    return List<String>.unmodifiable(values.cast<String>());
+  }
+
 }
 
 /// What this client was granted: one channel it holds for as long as it is

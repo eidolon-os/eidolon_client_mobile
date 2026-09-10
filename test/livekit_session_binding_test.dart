@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:eidolon_client_mobile/src/models/hub_models.dart';
 import 'package:eidolon_client_mobile/src/protocol/livekit_session_binding.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -121,27 +122,10 @@ void main() {
   });
 
   test('the audio the Provider asks for is not honoured, and not refused', () {
-    // The vector says a binding with three channels or a rate out of range
-    // must be refused, and this app refuses neither. Kept as an assertion
-    // about the current behaviour, with the reason now established rather than
-    // assumed:
-    //
-    // `audio.sample_rate` and `audio.channels` are settable by a Body that
-    // feeds PCM into the transport, which is what the firmware does —
-    // `livekit_session.cc` takes the binding's values with a fallback. This
-    // Body publishes through `livekit_client`, whose `AudioCaptureOptions`
-    // carries nine members and no rate or channel count, and whose only
-    // publish entry (`setMicrophoneEnabled`) takes nothing else. WebRTC
-    // negotiates the rate on the wire. There is nothing here to set.
-    //
-    // So refusing would deny a channel this app can join, and honouring is not
-    // expressible — which makes this a question about which obligation applies
-    // to a transport-negotiated Body, and that belongs to the contract.
-    // `DF-CHANNEL-BINDING-AUDIO-001` is registered against this repository and
-    // the evidence has gone to the SDK. Until it answers, this test is what
-    // keeps the behaviour from being changed by accident in either direction.
+    // SDK may_refuse cases apply to Bodies that configure PCM capture.
+    // This Body delegates capture format negotiation to WebRTC.
     final vector = _vector();
-    final refusals = (vector['must_refuse']! as List<Object?>)
+    final refusals = (vector['may_refuse']! as List<Object?>)
         .cast<Map<String, dynamic>>();
     final audioCases = refusals.where(
       (entry) => (entry['case_id']! as String).contains('SAMPLE-RATE') ||
@@ -302,4 +286,22 @@ void main() {
       throwsA(isA<UnreadableSessionBinding>()),
     );
   });
+  test('all shared routing cases obey the same contract as the firmware', () {
+    final vector = _vector();
+    final routing = vector['routing'] as Map<String, dynamic>;
+    for (final kind in ['accept', 'refuse']) {
+      for (final value in routing[kind] as List) {
+        final payload = {...vector['binding'] as Map<String, dynamic>, 'session': value['session']};
+        RoomConfig read() => liveKitSessionFromBinding(
+          bindingFormat: liveKitSessionBindingFormat, opaqueBinding: seal(payload));
+        if (kind == 'accept') {
+          final room = read();
+          expect(room.connectionUrls, value['session']['server_urls'] ?? [room.serverUrl]);
+        } else {
+          expect(read, throwsA(isA<UnreadableSessionBinding>()), reason: value['case_id']);
+        }
+      }
+    }
+  });
+
 }
