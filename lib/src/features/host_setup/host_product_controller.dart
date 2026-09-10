@@ -157,6 +157,7 @@ class HostProductController extends ChangeNotifier {
   late final HostActivityRepository _activityRepository;
   late final HostManagementRepository _managementRepository;
 
+  Future<void>? _connectTask;
   bool _connecting = false;
   bool _workspaceBusy = false;
   bool _devicesBusy = false;
@@ -225,8 +226,19 @@ class HostProductController extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> connect() async {
-    if (_connecting || _disposed) return;
+  /// Concurrent callers wait for the same preparation, including product reads.
+  Future<void> connect({bool allowBle = true}) {
+    if (_disposed) return Future.value();
+    return _connectTask ??=
+        _connect(allowBle: allowBle).whenComplete(() => _connectTask = null);
+  }
+
+  void updateDisplayName(String name) {
+    _host = _host.copyWith(displayName: name);
+    _notify();
+  }
+
+  Future<void> _connect({required bool allowBle}) async {
     _connecting = true;
     _progress = '正在连接';
     _connectionError = null;
@@ -236,6 +248,7 @@ class HostProductController extends ChangeNotifier {
     _notify();
     try {
       await _session.connect(
+        allowBle: allowBle,
         onProgress: (message) {
           _progress = message;
           _notify();
@@ -243,6 +256,8 @@ class HostProductController extends ChangeNotifier {
       );
       if (_disposed) return;
       _progress = null;
+      _workspaceBusy = true;
+      _notify();
       await _loadProductState();
     } on SetupTrustException catch (error) {
       // The Host answered and named itself as someone else. Same dead end as a
@@ -282,6 +297,7 @@ class HostProductController extends ChangeNotifier {
       _failConnection('无法安全连接主机。请确认当前设备和主机连接同一 Wi-Fi 后重试。');
     } finally {
       _connecting = false;
+      _workspaceBusy = false;
       _notify();
     }
   }
@@ -902,7 +918,9 @@ class HostProductController extends ChangeNotifier {
       ));
       return;
     }
+    if (_disposed) return;
     _workspace = workspace;
+    _notify();
     if (!workspace.isReady) {
       _home = null;
       _homeError = null;

@@ -73,7 +73,7 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
         conversationBuilder: (_, controller) {
           Future<void>? preparing;
           Future<void> prepareManagement() {
-            if (controller.workspace?.isReady == true) {
+            if (controller.workspace?.isReady == true && !controller.connecting) {
               return Future<void>.value();
             }
             return preparing ??=

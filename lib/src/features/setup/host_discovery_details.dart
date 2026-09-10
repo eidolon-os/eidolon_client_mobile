@@ -46,6 +46,16 @@ class HostDiscoveryDetails extends StatelessWidget {
     final last = known?.lastConnectedAt?.toLocal();
     final identity = endpoint?.hostId ?? known?.hostId;
     String two(int value) => value.toString().padLeft(2, '0');
+    final addresses = <String>[
+      if (liveAddress != null)
+        '局域网地址：$liveAddress'
+      else if (publishedAddresses.isNotEmpty)
+        '主机提供地址：${publishedAddresses.join('、')}'
+      else if (previousAddress != null)
+        '上次连接地址：$previousAddress'
+      else
+        '局域网地址：暂未获取',
+    ];
     final details = <String>[
       if (info?.operatingSystem?.trim().isNotEmpty == true)
         '系统：${info!.operatingSystem!.trim()}',
@@ -58,14 +68,6 @@ class HostDiscoveryDetails extends StatelessWidget {
           serviceName != lan?.localApi.ipAddress)
         '服务名称：$serviceName',
       if (nearby != null && nearby!.name != displayName) '广播名称：${nearby!.name}',
-      if (liveAddress != null)
-        '局域网地址：$liveAddress'
-      else if (publishedAddresses.isNotEmpty)
-        '主机提供地址：${publishedAddresses.join('、')}'
-      else if (previousAddress != null)
-        '上次连接地址：$previousAddress'
-      else
-        '局域网地址：暂未获取',
       '发现方式：${[if (lan != null) '局域网', if (nearby != null) '蓝牙'].join(' + ')}'
           '${nearby != null ? ' · 信号 ${nearby!.rssi} dBm' : ''}',
       if (identity != null) 'Host ID：$identity',
@@ -87,11 +89,18 @@ class HostDiscoveryDetails extends StatelessWidget {
           else if (identity != null)
             Text(known == null ? '机型和系统信息将在添加并连接后显示' : '尚未保存机型信息',
                 style: Theme.of(context).textTheme.bodySmall),
-          for (final detail in details)
-            Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: Text(detail, style: Theme.of(context).textTheme.bodySmall),
-            ),
+          for (final address in addresses) Text(address),
+          ExpansionTile(
+            title: const Text('识别详情'),
+            children: [
+              for (final detail in details)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: SelectableText(detail,
+                      style: Theme.of(context).textTheme.bodySmall),
+                ),
+            ],
+          ),
           if (info != null)
             Padding(
               padding: const EdgeInsets.only(top: 6),

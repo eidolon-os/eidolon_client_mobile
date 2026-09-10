@@ -20,6 +20,29 @@ ManagedHost _host(String suffix, {int minute = 0}) => ManagedHost(
     );
 
 void main() {
+  test(
+      'renaming and observations preserve each other and never revive a removed Host',
+      () async {
+    final prefs = InMemoryAppPreferences();
+    final a = PlatformHostRegistry(preferences: prefs);
+    final b = PlatformHostRegistry(preferences: prefs);
+    final host = _host('1');
+    await a.save(host);
+    await Future.wait([
+      a.rename(host.hostId, '书房'),
+      b.updateObservation(host.copyWith(
+          lastKnownBaseUrl: 'https://192.168.1.99:9002',
+          lastConnectedAt: DateTime.utc(2026, 9, 10))),
+    ]);
+    final renamed = (await a.load()).single;
+    expect(renamed.displayName, '书房');
+    expect(renamed.lastKnownBaseUrl, 'https://192.168.1.99:9002');
+    expect(renamed.controllerId, host.controllerId);
+    await a.remove(host.hostId);
+    await b.rename(host.hostId, '不能复活');
+    expect(await a.load(), isEmpty);
+  });
+
   test('one malformed entry does not erase valid managed Hosts', () async {
     final preferences = InMemoryAppPreferences();
     await preferences.writeString(

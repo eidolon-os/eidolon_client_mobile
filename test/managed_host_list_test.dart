@@ -26,6 +26,8 @@ Future<void> _tapForget(WidgetTester tester) async {
     find.byType(Scrollable).last,
     const Offset(0, -300),
   );
+  await tester.ensureVisible(find.byKey(const Key('forget-managed-host')));
+  await tester.pumpAndSettle();
   await tester.tap(find.byKey(const Key('forget-managed-host')));
   await tester.pumpAndSettle();
 }
@@ -44,6 +46,8 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Eidolon-461dfb'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('open-host-settings')));
       await tester.pumpAndSettle();
       await _tapForget(tester);
       expect(find.byKey(const Key('confirm-forget-host')), findsOneWidget);
@@ -72,6 +76,8 @@ void main() {
 
       await tester.tap(find.text('Eidolon-461dfb'));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('open-host-settings')));
+      await tester.pumpAndSettle();
       await _tapForget(tester);
       await tester.tap(find.byKey(const Key('confirm-forget-host-action')));
       await tester.pumpAndSettle();
@@ -99,6 +105,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('Eidolon-461dfb'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('open-host-settings')));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('rename-host')));
@@ -130,6 +138,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Eidolon-461dfb'));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('open-host-settings')));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('rename-host')));
       await tester.pumpAndSettle();
@@ -154,6 +164,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('Eidolon-461dfb'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('open-host-settings')));
       await tester.pumpAndSettle();
       expect(find.text(_liveId), findsNothing);
 

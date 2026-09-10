@@ -284,7 +284,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Direct Host'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('open-device-conversation')));
+    await tester.tap(find.byKey(const Key('open-conversation')));
     await tester.pumpAndSettle();
     expect(opened, true);
     expect(find.text('Device conversation entry'), findsOneWidget);
@@ -310,29 +310,18 @@ void main() {
     await tester.tap(find.text('Eidolon-4c0285'));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('change-host-network')), findsOneWidget);
-    expect(find.byKey(const Key('connect-local-host')), findsOneWidget);
-    // Setting a device up hands it this Host's identity, which needs the
-    // Owner session the shell does not have.
-    expect(find.byKey(const Key('add-device-needs-session')), findsOneWidget);
-    await tester.scrollUntilVisible(
-        find.byKey(const Key('manage-controllers-needs-session')), 150);
-    // Managing the phones that hold this Host needs that same session; the
-    // Host itself has been able to answer for a while.
-    expect(
-      find.byKey(const Key('manage-controllers-needs-session')),
-      findsOneWidget,
-    );
-    await tester.drag(find.byType(ListView), const Offset(0, -420));
+    expect(find.byKey(const Key('host-local-connection-page')), findsOneWidget);
+    expect(find.byKey(const Key('connect-local-host')), findsNothing);
+    expect(find.byKey(const Key('open-conversation')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('open-host-settings')));
     await tester.pumpAndSettle();
-    // Recovery is open now, and honest about needing someone at the Host:
-    // see host_controller_recovery_test.dart for what it promises.
-    expect(
-      find.byKey(const Key('controller-recovery-unavailable')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('change-host-network')), findsOneWidget);
+    await tester
+        .ensureVisible(find.byKey(const Key('open-managed-controllers')));
+    expect(find.text('连接并查看'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('controller-recovery')));
     expect(find.byKey(const Key('controller-recovery')), findsOneWidget);
-    expect(find.text('尚未开放'), findsWidgets);
+    expect(find.text('尚未开放'), findsNothing);
     expect(find.byType(AlertDialog), findsNothing);
   });
 }

@@ -91,7 +91,7 @@ void main() {
         home: EidolonAppShell(
             registry: registry, hostInfoReader: (_) => reply.future)));
     await tester.pumpAndSettle();
-    expect(find.text('上次连接地址：192.168.1.32'), findsNothing);
+    expect(find.text('上次连接地址：192.168.1.32'), findsOneWidget);
     expect(find.text('正在查找主机'), findsOneWidget);
     reply.complete(HostListInfo(
         host().copyWith(machineInfo: info, lastConnectedAt: DateTime.now()),

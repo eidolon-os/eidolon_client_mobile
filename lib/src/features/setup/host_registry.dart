@@ -125,6 +125,9 @@ abstract interface class HostRegistry {
 
   Future<void> save(ManagedHost host);
 
+  /// Change only the local label, preserving concurrent identity/address observations.
+  Future<void> rename(String hostId, String displayName);
+
   /// An asynchronous observation cannot recreate a forgotten Host or replace
   /// a newer registration, name, trust pin, or connection result.
   Future<ManagedHost?> updateObservation(ManagedHost observed);
@@ -184,6 +187,17 @@ class PlatformHostRegistry implements HostRegistry {
   }
 
   @override
+  Future<void> rename(String hostId, String displayName) =>
+      PreferenceWrites.run(_preferences, _key, () async {
+        final current = await load();
+        final index = current.indexWhere((h) => h.hostId == hostId);
+        if (index < 0) return;
+        current[index] = current[index].copyWith(displayName: displayName);
+        await _preferences.writeString(
+            _key, jsonEncode(current.map((h) => h.toJson()).toList()));
+      });
+
+  @override
   Future<ManagedHost?> updateObservation(ManagedHost observed) =>
       PreferenceWrites.run(_preferences, _key, () async {
         final current = await load();
@@ -224,6 +238,14 @@ class InMemoryHostRegistry implements HostRegistry {
     _hosts
       ..removeWhere((item) => item.hostId == host.hostId)
       ..insert(0, host);
+  }
+
+  @override
+  Future<void> rename(String hostId, String displayName) async {
+    final index = _hosts.indexWhere((h) => h.hostId == hostId);
+    if (index >= 0) {
+      _hosts[index] = _hosts[index].copyWith(displayName: displayName);
+    }
   }
 
   @override

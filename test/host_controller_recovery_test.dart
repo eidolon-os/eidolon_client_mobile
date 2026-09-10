@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:eidolon_client_mobile/src/features/setup/eidolon_app_shell.dart';
 
 import 'package:eidolon_client_mobile/main.dart';
 import 'package:eidolon_client_mobile/src/features/setup/commissioning_transport.dart';
@@ -100,9 +101,57 @@ Future<void> _openHostDetail(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.drag(find.byType(ListView), const Offset(0, -420));
   await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('open-host-settings')));
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(find.byKey(const Key('controller-recovery')));
 }
 
 void main() {
+  testWidgets(
+      'completed recovery returns to home with the replacement Controller',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 2400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final registry = InMemoryHostRegistry([_host]);
+    String? enteredController;
+    await tester.pumpWidget(MaterialApp(
+        home: EidolonAppShell(
+      registry: registry,
+      conversationBuilder: (_, controller) {
+        enteredController = controller.host.controllerId;
+        return const Scaffold(body: Text('准备对话'));
+      },
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(_host.displayName));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('open-host-settings')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('controller-recovery')));
+    await tester.tap(find.byKey(const Key('controller-recovery')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('recovery-reclaim')));
+    await tester.tap(find.byKey(const Key('recovery-reclaim')));
+    await tester.pumpAndSettle();
+    final restored = ManagedHost.fromJson({
+      ..._host.toJson(),
+      'controller_id': 'ectrl-fedcba9876543210abcd',
+      'display_name': 'Host 默认名'
+    });
+    tester
+        .widget<SetupWizardPage>(find.byType(SetupWizardPage))
+        .onComplete(restored);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('host-local-connection-page')), findsOneWidget);
+    expect(find.byKey(const Key('host-settings-page')), findsNothing);
+    expect(find.byType(SetupWizardPage), findsNothing);
+    expect((await registry.load()).single.displayName, _host.displayName);
+    expect((await registry.load()).single.controllerId, restored.controllerId);
+    await tester.tap(find.byKey(const Key('open-conversation')));
+    await tester.pumpAndSettle();
+    expect(enteredController, restored.controllerId);
+  });
+
   testWidgets('the recovery entry is open and says what it costs',
       (tester) async {
     await _openHostDetail(tester);

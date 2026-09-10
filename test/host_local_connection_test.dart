@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:eidolon_client_mobile/src/features/host_setup/host_product_controller.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -354,6 +356,8 @@ LocalApiClient _clientFor(
   /// What the Host answers when this phone tries to authenticate as a
   /// Controller. 401 is a Grant it has withdrawn.
   int authenticationStatusCode = 200,
+  Future<void>? workspaceGate,
+  void Function()? onWorkspaceRead,
   // The Host is the authority on what anyone is called, and renaming now
   // happens over the management contract — so the name lives in a box both
   // fakes share, and a later read here answers with what that write was told.
@@ -402,6 +406,8 @@ LocalApiClient _clientFor(
         );
       }
       if (request.url.path == '/api/local/v1/setup/workspace') {
+        onWorkspaceRead?.call();
+        await workspaceGate;
         if (workspaceTransportFailure case final kind?) {
           throw PinnedHttpException(
             kind: kind,
@@ -462,6 +468,97 @@ LocalApiClient _clientFor(
 }
 
 void main() {
+  testWidgets('authenticated monitor and conversation survive a slow Workspace',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final gate = Completer<void>();
+    var reads = 0;
+    var openings = 0;
+    HostProductController? borrowed;
+    await tester.pumpWidget(MaterialApp(
+        home: HostLocalConnectionPage(
+      host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+      controllerKeys: _FakeControllerKeys(),
+      discovery: _FakeDiscovery(),
+      transport: _LegacyHostTransport(),
+      localApiClientFactory: (_) => _clientFor(_hostOverview(),
+          workspaceReady: true,
+          workspaceGate: gate.future,
+          onWorkspaceRead: () => reads++),
+      managementClientFactory: (_) => _quietManagementClient(),
+      onHostUpdated: (_) async {},
+      conversationBuilder: (_, controller) {
+        borrowed = controller;
+        openings++;
+        return Scaffold(appBar: AppBar(title: const Text('对话准备')));
+      },
+    )));
+    await tester.pumpAndSettle();
+    expect(reads, 1);
+    expect(find.byKey(const Key('workspace-loading')), findsOneWidget);
+    expect(find.byKey(const Key('initialize-workspace')), findsNothing);
+    await tester
+        .ensureVisible(find.byKey(const Key('open-host-runtime-status')));
+    await tester.tap(find.byKey(const Key('open-host-runtime-status')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('host-runtime-status-page')), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('open-conversation')));
+    final enter = tester
+        .widget<FilledButton>(find.byKey(const Key('open-conversation')))
+        .onPressed!;
+    enter();
+    enter();
+    await tester.pumpAndSettle();
+    expect(openings, 1);
+    final pending = borrowed!.connect();
+    var complete = false;
+    pending.then((_) => complete = true);
+    await tester.pump();
+    expect(complete, false);
+    expect(reads, 1);
+    gate.complete();
+    await tester.pumpAndSettle();
+    await pending;
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await borrowed!.refreshWorkspace();
+    await tester.pumpAndSettle();
+    expect(reads, 2); // returning does not dispose the borrowed controller
+    expect(borrowed!.workspace!.isReady, true);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'leaving during Workspace read cancels ownership before late completion',
+      (tester) async {
+    final gate = Completer<void>();
+    var managementReads = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: HostLocalConnectionPage(
+      host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+      controllerKeys: _FakeControllerKeys(),
+      discovery: _FakeDiscovery(),
+      transport: _LegacyHostTransport(),
+      localApiClientFactory: (_) => _clientFor(_hostOverview(),
+          workspaceReady: true, workspaceGate: gate.future),
+      managementClientFactory: (_) =>
+          ManagementClient(httpClient: MockClient((_) async {
+        managementReads++;
+        return _jsonResponse({}, 503);
+      })),
+      onHostUpdated: (_) async {},
+    )));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox());
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(managementReads, 0);
+    expect(tester.takeException(), isNull);
+  });
+
   _theseTestsDescribeAHostThatCanAnswer();
   testWidgets(
       'legacy claimed Host refreshes only TLS trust over BLE then authenticates on LAN',
@@ -488,6 +585,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(transport.scans, 0);
+    expect(transport.opens, 0);
+    await tester.tap(find.byKey(const Key('retry-local-connection')));
+    await tester.pumpAndSettle();
     expect(transport.scans, 1);
     expect(transport.opens, 1);
     expect(updated?.tlsSpkiFingerprint, _tlsFingerprint);
@@ -495,7 +596,8 @@ void main() {
     expect(find.byKey(const Key('local-connection-complete')), findsOneWidget);
     expect(find.text('已安全连接'), findsOneWidget);
     expect(find.text('Host IP：192.168.1.26'), findsOneWidget);
-    expect(find.textContaining(_controllerId), findsOneWidget);
+    expect(updated!.controllerId, _controllerId);
+    expect(find.textContaining(_controllerId), findsNothing);
   });
 
   testWidgets('LAN candidate with another Host identity is rejected',
@@ -519,6 +621,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(transport.scans, 0);
+    await tester.tap(find.byKey(const Key('retry-local-connection')));
+    await tester.pumpAndSettle();
     // An unrelated LAN responder cannot terminate the search for the saved
     // Host. The BLE fallback is tried and still cannot bypass identity checks.
     expect(transport.scans, 1);
@@ -590,7 +695,7 @@ void main() {
     // Both halves of the way back are named: who opens the window, and what
     // this phone does afterwards.
     expect(find.textContaining('重新认领'), findsWidgets);
-    expect(find.textContaining('设置新主机'), findsOneWidget);
+    expect(find.textContaining('主机设置 → 恢复'), findsOneWidget);
   });
 
   testWidgets('an ordinary connection failure still offers a retry',
@@ -854,6 +959,8 @@ void main() {
     expect(find.byKey(const Key('workspace-ready')), findsOneWidget);
     expect(find.byKey(const Key('local-connection-error')), findsNothing);
     expect(find.byKey(const Key('home-error')), findsOneWidget);
+    expect(find.text('暂时无法读取记忆概览'), findsOneWidget);
+    expect(find.textContaining('还没记下什么'), findsNothing);
     expect(find.textContaining('概览暂时读不到'), findsOneWidget);
     // The home read failed, so there are no Eidolon rows to draw — and the
     // card says the overview could not be read rather than drawing rows full of
@@ -1024,11 +1131,12 @@ void main() {
     expect(find.textContaining('不代表设备当前在线'), findsOneWidget);
   });
 
-  testWidgets('setup continuation initializes Workspace without redoing claim',
+  testWidgets('initialization completes on the home without redoing claim',
       (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 2200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     var initialized = false;
     var overviewAvailable = false;
-    var finished = false;
     final requests = <String>[];
 
     LocalApiClient clientFactory(String _) => LocalApiClient(
@@ -1160,8 +1268,7 @@ void main() {
           discovery: _FakeDiscovery(),
           localApiClientFactory: clientFactory,
           onHostUpdated: (_) async {},
-          setupContinuation: true,
-          onSetupComplete: () => finished = true,
+          conversationBuilder: (_, __) => const Scaffold(body: Text('准备对话')),
         ),
       ),
     );
@@ -1226,26 +1333,14 @@ void main() {
     // fact — on two rows that were not even about the same thing.
     expect(find.text('运行中'), findsNothing);
     expect(find.byKey(const Key('home-error')), findsNothing);
-    expect(find.text('我的 Eidolon'), findsOneWidget);
-    // The Host is ready and 「对话」/「设备」 are still held back — which is
-    // fine, this is a setup step — but the screen has to say so. It did not,
-    // and the two screens are otherwise identical: on a real phone the tester
-    // saw 「Eidolon 已准备就绪」 with all three Eidolons and a valid session,
-    // no 「对话」 card, no 「设备」 card, and no way to tell this was not simply
-    // the product missing two features. They force-stopped the app and came
-    // back in from the Host list to get them.
-    await tester.ensureVisible(
-      find.byKey(const Key('setup-continuation-entries-held')),
-    );
-    expect(
-      find.byKey(const Key('setup-continuation-entries-held')),
-      findsOneWidget,
-    );
-    expect(find.textContaining('进入我的 Eidolon'), findsWidgets);
-    expect(find.byKey(const Key('open-conversation')), findsNothing);
-    await tester.ensureVisible(find.byKey(const Key('finish-workspace-setup')));
-    await tester.tap(find.byKey(const Key('finish-workspace-setup')));
-    expect(finished, isTrue);
+    expect(find.text('主机设置已完成'), findsOneWidget);
+    // Completing initialization stays on the same home with usable entries.
+    expect(find.byKey(const Key('open-conversation')), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('open-mounted-devices')));
+    expect(find.byKey(const Key('open-mounted-devices')), findsOneWidget);
+    expect(find.byKey(const Key('finish-workspace-setup')), findsNothing);
+    expect(requests.where((r) => r == 'PUT /api/local/v1/setup/workspace'),
+        hasLength(1));
     expect(requests, contains('PUT /api/local/v1/setup/workspace'));
   });
 
@@ -1371,7 +1466,7 @@ void main() {
       MaterialApp(
         home: HostLocalConnectionPage(
           managementClientFactory: (_) => _quietManagementClient(),
-          host: _host(),
+          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           onHostUpdated: (_) async {},
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),
@@ -1385,6 +1480,8 @@ void main() {
     expect(find.textContaining('服务：'), findsNothing);
     expect(find.textContaining('remembered'), findsNothing);
     expect(find.textContaining('published'), findsNothing);
+    await tester
+        .ensureVisible(find.byKey(const Key('local-connection-complete')));
     expect(find.textContaining('Host IP：'), findsOneWidget);
   });
 

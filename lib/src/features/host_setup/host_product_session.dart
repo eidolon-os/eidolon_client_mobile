@@ -153,14 +153,16 @@ class HostProductSession {
         HostLocator.standard(
           discovery ??
               platformLocalApiDiscovery(hostNames: hostNamesRemembered(host)),
-          readPublished: (_) async =>
-              (await _readEndpointOverBle()).localApiBaseUrls,
+          readPublished: (_) async => _allowBle
+              ? (await _readEndpointOverBle()).localApiBaseUrls
+              : const [],
         );
   }
 
   /// One publication point for explicit connects and automatic relocation.
   Future<void> Function(ManagedHost host)? onHostConnected;
   Future<ManagedHost>? _connecting;
+  bool _allowBle = true;
   int _networkRevision = 0;
 
   ManagedHost _host;
@@ -232,9 +234,12 @@ class HostProductSession {
     );
   }
 
-  Future<ManagedHost> connect({HostConnectionProgress? onProgress}) {
+  Future<ManagedHost> connect(
+      {HostConnectionProgress? onProgress, bool allowBle = true}) {
     _ensureOpen();
-    return _connecting ??= Future.any<ManagedHost>([
+    if (_connecting != null) return _connecting!;
+    _allowBle = allowBle;
+    return _connecting = Future.any<ManagedHost>([
       _connectCurrentNetwork(onProgress),
       _closedSignal.future.then<ManagedHost>(
           (_) => throw StateError('Host product session is closed')),
@@ -269,6 +274,7 @@ class HostProductSession {
     _ensureOpen();
     _clearConnection();
     if (_host.tlsSpkiFingerprint == null) {
+      if (!_allowBle) throw LocalApiRequestException('需要靠近主机，点击连接以确认主机身份');
       onProgress?.call('正在从附近主机更新本地连接信任');
       final trusted = await _readTlsIdentityOverBle();
       _ensureOpen();
