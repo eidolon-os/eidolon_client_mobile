@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/host_session_fixtures.dart';
 import 'support/local_api_fixtures.dart';
 import 'support/setup_fixtures.dart';
+import 'support/setup_discovery_fixtures.dart';
 
 class _Transport implements CommissioningTransport {
   _Transport(this.documents);
@@ -72,6 +73,7 @@ Future<void> _scan(WidgetTester tester, _Transport transport) async {
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(MaterialApp(
     home: SetupWizardPage(
+      developmentLanCommissioning: emptyLanCommissioning(),
       registry: InMemoryHostRegistry([
         hostFixture().copyWith(displayName: '书房 Mac'),
       ]),

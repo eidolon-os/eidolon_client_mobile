@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/setup_fixtures.dart';
+import 'support/setup_discovery_fixtures.dart';
 
 final _host = ManagedHost(
   hostId: validHostId,
@@ -160,6 +161,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SetupWizardPage(
+          developmentLanCommissioning: emptyLanCommissioning(),
           onComplete: (_) {},
           transport: _RefusingTransport(),
           controllerKeys: _RefusingKeyBridge(),

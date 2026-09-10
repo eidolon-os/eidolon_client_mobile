@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_discovery.dart';
 import 'package:eidolon_client_mobile/src/features/setup/controller_key_bridge.dart';
 import 'package:eidolon_client_mobile/src/features/setup/development_lan_commissioning.dart';
-import 'package:eidolon_client_mobile/src/features/setup/development_lan_setup_page.dart';
+import 'package:eidolon_client_mobile/src/features/setup/setup_wizard_page.dart';
+import 'support/setup_discovery_fixtures.dart';
 import 'package:eidolon_client_mobile/src/features/setup/setup_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -141,21 +142,16 @@ void main() {
     );
     ManagedHost? selected;
     await tester.pumpWidget(MaterialApp(
-        home: Builder(
-            builder: (context) => TextButton(
-                onPressed: () async {
-                  selected = await Navigator.of(context).push<ManagedHost>(
-                      MaterialPageRoute(
-                          builder: (_) => DevelopmentLanSetupPage(
-                              commissioning: commissioning,
-                              registry: registry)));
-                },
-                child: const Text('scan')))));
-    await tester.tap(find.text('scan'));
+      home: SetupWizardPage(
+        developmentLanCommissioning: commissioning,
+        registry: registry,
+        transport: UnavailableBleTransport(),
+        onComplete: (host) => selected = host,
+      ),
+    ));
+    await tester.tap(find.byKey(const Key('scan-nearby-hosts')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('discover-development-lan-hosts')));
-    await tester.pumpAndSettle();
-    expect(find.text('已添加'), findsOneWidget);
+    expect(find.textContaining('已添加 ·'), findsOneWidget);
     expect(find.text('已添加的主机'), findsOneWidget);
     expect(find.text('发现 1 台已添加主机，未发现新的主机。'), findsOneWidget);
     expect(find.text('可添加的主机'), findsNothing);
@@ -535,15 +531,17 @@ void main() {
     );
 
     await tester.pumpWidget(
-      MaterialApp(home: DevelopmentLanSetupPage(commissioning: service)),
+      MaterialApp(
+          home: SetupWizardPage(
+        developmentLanCommissioning: service,
+        transport: UnavailableBleTransport(),
+        onComplete: (_) {},
+      )),
     );
-    await tester.tap(find.byKey(const Key('discover-development-lan-hosts')));
+    await tester.tap(find.byKey(const Key('scan-nearby-hosts')));
     await tester.pumpAndSettle();
 
-    final error = tester.widget<Text>(
-      find.byKey(const Key('development-lan-error')),
-    );
-    expect(error.data, contains('本网段探测'));
-    expect(error.data, contains('eidolon-ops controller-reset'));
+    expect(find.textContaining('本网段探测'), findsOneWidget);
+    expect(find.textContaining('eidolon-ops controller-reset'), findsOneWidget);
   });
 }

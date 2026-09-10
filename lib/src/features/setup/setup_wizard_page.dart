@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 import 'commissioning_transport.dart';
 import 'controller_key_bridge.dart';
 import 'development_lan_commissioning.dart';
-import 'development_lan_setup_page.dart';
 import 'host_registry.dart';
 import 'host_identity.dart';
 import 'host_discovery_sections.dart';
@@ -22,6 +21,12 @@ typedef _NearbyHost = ({
   CommissioningEndpoint? endpoint,
   ManagedHost? known,
   String? error,
+});
+
+typedef _DiscoveredHost = ({
+  _NearbyHost? ble,
+  DevelopmentLanHost? lan,
+  ManagedHost? known,
 });
 
 class SetupWizardPage extends StatefulWidget {
@@ -59,8 +64,13 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   _SetupStage _stage = _SetupStage.nearby;
   CommissioningEndpoint? _endpoint;
   NearbyEidolonHost? _selectedNearbyHost;
+  DevelopmentLanHost? _selectedLanHost;
   List<_NearbyHost> _nearby = const [];
-  bool _identifyingNearby = false;
+  List<DevelopmentLanHost> _lanHosts = const [];
+  List<ManagedHost> _knownHosts = const [];
+  final Map<String, String> _discoveryFailures = {};
+  bool _discovering = false;
+  bool _lanClaimFailed = false;
   List<WifiNetwork> _networks = const [];
   WifiNetwork? _selectedNetwork;
   bool _canKeepCurrentNetwork = false;
@@ -77,7 +87,8 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
     _transport = widget.transport ?? PlatformBleCommissioningTransport();
     _controllerKeys = widget.controllerKeys ?? PlatformControllerKeyBridge();
     _developmentLanCommissioning = widget.developmentLanCommissioning ??
-        DevelopmentLanCommissioning(controllerKeys: _controllerKeys);
+        DevelopmentLanCommissioning(
+            controllerKeys: _controllerKeys, clock: widget.clock);
   }
 
   @override
@@ -94,37 +105,81 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
     await _run(_scanNearbyInternal);
   }
 
-  Future<void> _openDevelopmentLanSetup() async {
-    final host = await Navigator.of(context).push<ManagedHost>(
-      MaterialPageRoute(
-        builder: (_) => DevelopmentLanSetupPage(
-          commissioning: _developmentLanCommissioning,
-          registry: widget.registry,
-        ),
-      ),
-    );
-    if (host == null || !mounted) return;
-    final known = (await widget.registry?.load() ?? <ManagedHost>[])
-        .where((item) => item.hostId == host.hostId)
-        .firstOrNull;
-    if (!mounted) return;
-    if (known != null) {
-      widget.onComplete(known);
-      return;
-    }
-    setState(() {
-      _completedHost = host;
-      _stage = _SetupStage.complete;
-      _progress = null;
-      _error = null;
-    });
-  }
-
   Future<void> _scanNearbyInternal() async {
     setState(() {
       _nearby = const [];
-      _progress = '正在获取蓝牙权限';
+      _lanHosts = const [];
+      _discoveryFailures.clear();
+      _discovering = true;
+      _progress = '正在查找并识别主机';
     });
+    try {
+      _knownHosts = await widget.registry?.load() ?? <ManagedHost>[];
+      if (!mounted) return;
+      // Each source owns its failures. A denied BLE permission, a missing LAN
+      // entrance or an offline network must not suppress the other source.
+      await Future.wait([
+        _discoverWith('附近发现', _scanBle),
+        if (kDebugMode)
+          _discoverWith('局域网发现', () async {
+            final report = await _developmentLanCommissioning.discover(
+                knownHosts: _knownHosts);
+            if (!mounted) return;
+            setState(() => _lanHosts = report.hosts);
+            if (report.failure case final failure?) throw failure;
+          }),
+      ]);
+      if (!mounted) return;
+      if (_discoveredHosts.isEmpty) {
+        _showFailure('没有找到可连接的主机。请确认主机已通电，靠近手机或与手机连接同一局域网。\n'
+            '${_discoveryFailures.entries.map((e) => '${e.key}：${e.value}').join('\n')}');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _discovering = false;
+          _progress = null;
+        });
+      }
+    }
+  }
+
+  Future<void> _discoverWith(
+      String source, Future<void> Function() discover) async {
+    try {
+      await discover();
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = switch (error) {
+        CommissioningRequestException() => error.message,
+        SetupTrustException() => error.message,
+        PlatformException(code: 'BLUETOOTH_OFF') => '蓝牙未开启',
+        PlatformException(code: 'PERMISSION_DENIED') => '附近设备权限未开启',
+        _ => '暂时无法完成查找，请重试',
+      };
+      setState(() => _discoveryFailures[source] = message);
+    }
+  }
+
+  List<_DiscoveredHost> get _discoveredHosts {
+    final lanById = {for (final host in _lanHosts) host.endpoint.hostId: host};
+    return [
+      for (final ble in _nearby)
+        (
+          ble: ble,
+          lan: lanById.remove(ble.endpoint?.hostId),
+          known: ble.known,
+        ),
+      for (final lan in lanById.values)
+        (
+          ble: null,
+          lan: lan,
+          known: knownHostForEndpoint(_knownHosts, lan.endpoint),
+        ),
+    ];
+  }
+
+  Future<void> _scanBle() async {
     await _transport.close();
     if (!mounted) return;
     if (!await _transport.requestPermission()) {
@@ -134,7 +189,6 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       );
     }
     if (!mounted) return;
-    setState(() => _progress = '正在寻找附近的 Eidolon 主机');
     final discovered = await _transport.scan(
       serviceUuid: CommissioningEndpoint.defaultServiceUuid,
     );
@@ -151,74 +205,64 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       _nearby = nearby
           .map((host) => (host: host, endpoint: null, known: null, error: null))
           .toList();
-      _identifyingNearby = true;
-      _progress = '正在识别附近主机';
     });
-    try {
-      final knownHosts = await widget.registry?.load() ?? <ManagedHost>[];
-      final seen = <String>{};
-      // The native transport owns one GATT link. Inspect and close candidates
-      // sequentially; advertisements alone must never select a saved identity.
-      for (final host in nearby) {
+    final seen = <String>{};
+    // The native transport owns one GATT link. Inspect and close candidates
+    // sequentially; advertisements alone must never select a saved identity.
+    for (final host in nearby) {
+      if (!mounted) return;
+      _NearbyHost identified;
+      try {
+        final raw = await _transport
+            .open(
+              address: host.address,
+              serviceUuid: CommissioningEndpoint.defaultServiceUuid,
+            )
+            .timeout(const Duration(seconds: 12));
         if (!mounted) return;
-        _NearbyHost identified;
-        try {
-          final raw = await _transport
-              .open(
-                address: host.address,
-                serviceUuid: CommissioningEndpoint.defaultServiceUuid,
-              )
-              .timeout(const Duration(seconds: 12));
-          if (!mounted) return;
-          final endpoint =
-              await CommissioningEndpoint.parseAndVerifyDiscovered(raw);
-          identified = (
-            host: host,
-            endpoint: endpoint,
-            known: knownHostForEndpoint(knownHosts, endpoint),
-            error: null,
-          );
-        } on Object catch (error) {
-          identified = (
-            host: host,
-            endpoint: null,
-            known: null,
-            error: error is SetupTrustException
-                ? '主机身份未通过验证，请重试确认'
-                : '暂时无法识别，请靠近主机后重试',
-          );
-        } finally {
-          // dispose already closes our link. A late completion must not close
-          // a link that a newly opened page may now own.
-          if (mounted) await _transport.close();
+        final endpoint =
+            await CommissioningEndpoint.parseAndVerifyDiscovered(raw);
+        identified = (
+          host: host,
+          endpoint: endpoint,
+          known: knownHostForEndpoint(_knownHosts, endpoint),
+          error: null,
+        );
+      } on Object catch (error) {
+        identified = (
+          host: host,
+          endpoint: null,
+          known: null,
+          error: error is SetupTrustException
+              ? '主机身份未通过验证，请重试确认'
+              : '暂时无法识别，请靠近主机后重试',
+        );
+      } finally {
+        // dispose already closes our link. A late completion must not close
+        // a link that a newly opened page may now own.
+        if (mounted) await _transport.close();
+      }
+      if (!mounted) return;
+      final id = identified.endpoint?.hostId;
+      setState(() {
+        if (id != null && !seen.add(id)) {
+          _nearby = _nearby
+              .where((item) => item.host.address != host.address)
+              .toList();
+        } else {
+          _nearby = _nearby
+              .map((item) =>
+                  item.host.address == host.address ? identified : item)
+              .toList();
         }
-        if (!mounted) return;
-        final id = identified.endpoint?.hostId;
-        setState(() {
-          if (id != null && !seen.add(id)) {
-            _nearby = _nearby
-                .where((item) => item.host.address != host.address)
-                .toList();
-          } else {
-            _nearby = _nearby
-                .map((item) =>
-                    item.host.address == host.address ? identified : item)
-                .toList();
-          }
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _identifyingNearby = false;
-          _progress = null;
-        });
-      }
+      });
     }
   }
 
   Future<void> _selectHost(NearbyEidolonHost host) async {
     await _run(() async {
+      _selectedLanHost = null;
+      _lanClaimFailed = false;
       setState(() => _progress = '正在验证 ${host.name} 的 Host 身份');
       final rawEndpoint = await _transport.open(
         address: host.address,
@@ -282,6 +326,29 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
     final code = _setupCode.text.trim();
     if (!setupCodePattern.hasMatch(code)) {
       setState(() => _error = '请输入 Host 上显示的 $setupCodeDigits 位 Setup 码');
+      return;
+    }
+    if (_selectedLanHost case final lan?) {
+      await _run(() async {
+        setState(() {
+          _lanClaimFailed = false;
+          _progress = '正在验证 Setup 码并添加主机';
+        });
+        try {
+          final host = await _developmentLanCommissioning.claim(lan,
+              setupCode: code, controllerName: _controllerName.text);
+          if (!mounted) return;
+          _setupCode.clear();
+          setState(() {
+            _completedHost = host;
+            _stage = _SetupStage.complete;
+            _progress = null;
+          });
+        } on Object {
+          if (mounted) setState(() => _lanClaimFailed = true);
+          rethrow;
+        }
+      });
       return;
     }
     await _run(() async {
@@ -495,6 +562,10 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       }
     } on FormatException catch (error) {
       if (mounted) _showFailure(error.message);
+    } on TimeoutException {
+      if (mounted) _showFailure('主机响应超时，请重试或选择其他接入方式。');
+    } on Object {
+      if (mounted) _showFailure('主机接入暂时未完成，请检查连接后重试。');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -553,7 +624,8 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
               key: const Key('setup-wizard-page'),
               padding: const EdgeInsets.all(24),
               children: [
-                _ProgressHeader(stage: _stage),
+                _ProgressHeader(
+                    stage: _stage, alreadyNetworked: _selectedLanHost != null),
                 const SizedBox(height: 24),
                 if (_stage == _SetupStage.nearby) _buildNearby(),
                 if (_stage == _SetupStage.code) _buildSetupCode(),
@@ -577,110 +649,122 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
     );
   }
 
-  Widget _buildNearby() => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('查找附近主机', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          const Text('给主机接通电源，并让平板保持在主机附近。首次设置不要求主机已经联网。'),
-          const SizedBox(height: 8),
-          // Said before the scan, not after a refusal: a Host does not open a
-          // claim window by being new, so someone has to mint a code first.
-          // The wizard used to mention this only as recovery advice, which is
-          // where it read as "something went wrong" instead of "step one".
-          const Text(
-              '还需要一个 Setup 码：请有人在主机上执行 `eidolon-ops commissioning-code` 取一个，'
-              '首次设置也要用它。'),
-          const SizedBox(height: 8),
-          const Text('找到主机后会自动识别；已添加的主机会单独列出，可以直接连接。'),
-          if (kDebugMode) ...[
-            const SizedBox(height: 12),
-            const _Notice(
-              icon: Icons.developer_mode,
-              text:
-                  '开发测试：Host 可配置固定 $setupCodeDigits 位 Setup 码，也可临时生成。App 不再导入 JSON。',
-              color: Color(0xFF24222D),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              key: const Key('open-development-lan-setup'),
-              onPressed: _busy ? null : _openDevelopmentLanSetup,
-              icon: const Icon(Icons.lan_outlined),
-              label: const Text('通过局域网添加已联网开发 Host'),
-            ),
+  Widget _buildNearby() {
+    final hosts = _discoveredHosts;
+    bool identified(_DiscoveredHost host) =>
+        host.lan != null || host.ble?.endpoint != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('查找主机', style: Theme.of(context).textTheme.headlineSmall),
+        const SizedBox(height: 8),
+        Text(kDebugMode
+            ? '给主机接通电源，让它靠近手机或与手机连接同一局域网。App 会自动查找可用的接入方式。'
+            : '给主机接通电源，并让手机保持在主机附近。首次设置不要求主机已经联网。'),
+        const SizedBox(height: 8),
+        const Text('新主机需要 Setup 码；已添加的主机会单独列出，可以直接连接。'),
+        const SizedBox(height: 16),
+        if (hosts.isEmpty)
+          FilledButton.icon(
+            key: const Key('scan-nearby-hosts'),
+            onPressed: _busy ? null : _scanNearby,
+            icon: const Icon(Icons.search),
+            label: const Text('查找主机'),
+          ),
+        HostDiscoverySections(
+          identifying: _discovering,
+          available: [
+            for (final item in hosts)
+              if (identified(item) && item.known == null)
+                _buildDiscoveredHost(item),
           ],
-          const SizedBox(height: 16),
-          if (_nearby.isEmpty)
-            FilledButton.icon(
-              key: const Key('scan-nearby-hosts'),
-              onPressed: _busy ? null : _scanNearby,
-              icon: const Icon(Icons.bluetooth_searching),
-              label: const Text('查找附近 Eidolon 主机'),
-            ),
-          HostDiscoverySections(
-            identifying: _identifyingNearby,
-            available: [
-              for (final item in _nearby)
-                if (item.endpoint != null && item.known == null)
-                  _buildNearbyHost(item),
-            ],
-            added: [
-              for (final item in _nearby)
-                if (item.known != null) _buildNearbyHost(item),
-            ],
-            unidentified: [
-              for (final item in _nearby)
-                if (item.endpoint == null) _buildNearbyHost(item),
+          added: [
+            for (final item in hosts)
+              if (item.known != null) _buildDiscoveredHost(item),
+          ],
+          unidentified: [
+            for (final item in hosts)
+              if (!identified(item)) _buildDiscoveredHost(item),
+          ],
+        ),
+        if (_progress != null) _BusyNotice(text: _progress!),
+        if (hosts.isNotEmpty && !_discovering && _discoveryFailures.isNotEmpty)
+          ExpansionTile(
+            key: const Key('discovery-details'),
+            title: const Text('部分查找方式未找到主机'),
+            subtitle: const Text('已找到的主机仍可使用'),
+            children: [
+              for (final failure in _discoveryFailures.entries)
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text('${failure.key}：${failure.value}'),
+                ),
             ],
           ),
-          if (_progress != null) _BusyNotice(text: _progress!),
-          if (_nearby.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _busy ? null : _scanNearby,
-              icon: const Icon(Icons.refresh),
-              label: const Text('重新扫描'),
-            ),
-          ],
+        if (hosts.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _scanNearby,
+            icon: const Icon(Icons.refresh),
+            label: const Text('重新扫描'),
+          ),
         ],
-      );
+      ],
+    );
+  }
 
-  Widget _buildNearbyHost(_NearbyHost item) {
-    final identifying = item.endpoint == null && item.error == null;
+  Widget _buildDiscoveredHost(_DiscoveredHost item) {
+    final ble = item.ble;
+    final identifying =
+        item.lan == null && ble?.endpoint == null && ble?.error == null;
     final action = item.known != null
         ? '连接'
-        : item.error != null
+        : ble?.error != null
             ? '重试识别'
             : '添加';
+    final description =
+        item.lan != null ? '主机已联网' : '距离信号 ${ble!.host.rssi} dBm';
     return Card(
-      key: ValueKey('nearby-host-${item.host.address}'),
+      key: ValueKey(
+          'discovered-host-${item.lan?.endpoint.hostId ?? ble!.host.address}'),
       child: ListTile(
         leading: const Icon(Icons.memory),
-        title: Text(item.known?.displayName ?? item.host.name),
+        title: Text(
+            item.known?.displayName ?? item.lan?.displayName ?? ble!.host.name),
         subtitle: Text(identifying
             ? '正在识别…'
-            : item.error ??
-                '${item.known != null ? '已添加 · ' : ''}距离信号 ${item.host.rssi} dBm'),
+            : ble?.error ??
+                '${item.known != null ? '已添加 · ' : ''}$description'),
         trailing: identifying
             ? const SizedBox.square(
                 dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
             : TextButton(
-                onPressed: _busy ? null : () => _openNearbyHost(item),
+                onPressed: _busy ? null : () => _openDiscoveredHost(item),
                 child: Text(action),
               ),
-        onTap: _busy ? null : () => _openNearbyHost(item),
+        onTap: _busy ? null : () => _openDiscoveredHost(item),
       ),
     );
   }
 
-  void _openNearbyHost(_NearbyHost item) {
+  void _openDiscoveredHost(_DiscoveredHost item) {
     final known = item.known;
     if (known != null) {
-      // The scan verified this identity. The normal connection flow checks
-      // current Controller authority; discovery grants no new permissions.
+      // The normal connection flow checks current Controller authority.
       widget.onComplete(known);
+    } else if (item.lan case final lan?) {
+      setState(() {
+        _selectedLanHost = lan;
+        _selectedNearbyHost = item.ble?.host;
+        _endpoint = lan.endpoint;
+        _lanClaimFailed = false;
+        _setupCode.clear();
+        _error = null;
+        _progress = null;
+        _stage = _SetupStage.code;
+      });
     } else {
-      unawaited(_selectHost(item.host));
+      unawaited(_selectHost(item.ble!.host));
     }
   }
 
@@ -690,8 +774,22 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           Text('输入 Setup 码', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
           Text(
-            '已连接 ${_selectedNearbyHost?.name ?? 'Eidolon Host'}。'
-            '请输入这台 Host 配置或临时生成的 $setupCodeDigits 位开发码。',
+            '正在添加 ${_selectedLanHost?.displayName ?? _selectedNearbyHost?.name ?? 'Eidolon Host'}。'
+            '请输入这台主机的 $setupCodeDigits 位 Setup 码。',
+          ),
+          if (_selectedLanHost != null) ...[
+            const SizedBox(height: 8),
+            const Text('主机已经联网，无需重新配置 Wi-Fi。'),
+          ],
+          ExpansionTile(
+            title: const Text('如何获取 Setup 码'),
+            children: const [
+              Padding(
+                padding: EdgeInsets.all(12),
+                child: Text(
+                    '请在主机上执行 `eidolon-ops commissioning-code` 获取 Setup 码；首次添加也需要。'),
+              )
+            ],
           ),
           const SizedBox(height: 20),
           TextField(
@@ -718,22 +816,46 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
             ),
             onSubmitted: (_) => _authenticateSetupCode(),
           ),
+          if (_selectedLanHost != null) ...[
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('lan-controller-name'),
+              controller: _controllerName,
+              enabled: !_busy,
+              decoration: const InputDecoration(labelText: '这台管理手机的名称'),
+            ),
+          ],
           const SizedBox(height: 12),
           FilledButton.icon(
             key: const Key('authenticate-setup-code'),
             onPressed: _busy ? null : _authenticateSetupCode,
             icon: const Icon(Icons.lock_open_outlined),
-            label: const Text('验证并继续'),
+            label: Text(_selectedLanHost == null ? '验证并继续' : '验证并添加'),
           ),
+          if (_progress != null) _BusyNotice(text: _progress!),
+          if (_lanClaimFailed && _selectedNearbyHost != null) ...[
+            const SizedBox(height: 12),
+            OutlinedButton(
+              key: const Key('retry-setup-via-nearby'),
+              onPressed: _busy ? null : () => _selectHost(_selectedNearbyHost!),
+              child: const Text('换一种方式重试'),
+            ),
+          ],
           const SizedBox(height: 12),
           TextButton(
             onPressed: _busy
                 ? null
                 : () async {
                     await _transport.close();
+                    if (!mounted) return;
                     setState(() {
                       _endpoint = null;
                       _selectedNearbyHost = null;
+                      _selectedLanHost = null;
+                      _lanClaimFailed = false;
+                      _setupCode.clear();
+                      _error = null;
+                      _progress = null;
                       _stage = _SetupStage.nearby;
                     });
                   },
@@ -855,7 +977,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           Text('主机接入已完成', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
           Text(
-            '${_completedHost!.displayName} 已连接 Wi-Fi，'
+            '${_completedHost!.displayName} 已接入，'
             '这台手机已取得 Host Admin 权限。主机已可恢复保存，下一步会通过局域网创建 Workspace。',
           ),
           const SizedBox(height: 24),
@@ -892,12 +1014,18 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
 /// exactly as separate as they were: this only stops presenting them as
 /// errands.
 class _ProgressHeader extends StatelessWidget {
-  const _ProgressHeader({required this.stage});
+  const _ProgressHeader({required this.stage, this.alreadyNetworked = false});
 
   final _SetupStage stage;
+  final bool alreadyNetworked;
 
   /// The three things a person does here, plus the one waiting after.
-  static const _steps = ['选一台主机', '输入 Setup 码', '连上 Wi-Fi', '起名字'];
+  List<String> get _steps => [
+        '选一台主机',
+        '输入 Setup 码',
+        if (!alreadyNetworked) '连上 Wi-Fi',
+        '起名字',
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -907,7 +1035,9 @@ class _ProgressHeader extends StatelessWidget {
       _SetupStage.wifi => 2,
       // Working and finished are the same amount of the person's work: all of
       // it that happens here.
-      _SetupStage.configuring || _SetupStage.complete => 3,
+      _SetupStage.configuring ||
+      _SetupStage.complete =>
+        alreadyNetworked ? 2 : 3,
     };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

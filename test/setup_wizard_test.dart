@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/setup_fixtures.dart';
+import 'support/setup_discovery_fixtures.dart';
 import 'support/host_session_fixtures.dart' show hostFixture;
 
 class _FakeControllerKeyBridge implements ControllerKeyBridge {
@@ -189,6 +190,7 @@ void main() {
     ManagedHost? selected;
     await tester.pumpWidget(MaterialApp(
         home: SetupWizardPage(
+      developmentLanCommissioning: emptyLanCommissioning(),
       registry: registry,
       transport: transport,
       controllerKeys: _FakeControllerKeyBridge(),
@@ -238,6 +240,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SetupWizardPage(
+          developmentLanCommissioning: emptyLanCommissioning(),
           transport: transport,
           controllerKeys: controllerKeys,
           clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
@@ -246,12 +249,12 @@ void main() {
       ),
     );
 
-    expect(find.byKey(const Key('open-development-lan-setup')), findsOneWidget);
+    expect(find.byKey(const Key('open-development-lan-setup')), findsNothing);
 
     await tester.tap(find.byKey(const Key('scan-nearby-hosts')));
     await tester.pumpAndSettle();
 
-    expect(find.text('查找附近主机'), findsOneWidget);
+    expect(find.text('查找主机'), findsOneWidget);
     expect(find.text('Eidolon-4c0285'), findsOneWidget);
     await tester.tap(find.text('Eidolon-4c0285'));
     await tester.pumpAndSettle();
@@ -304,6 +307,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SetupWizardPage(
+          developmentLanCommissioning: emptyLanCommissioning(),
           transport: transport,
           controllerKeys: controllerKeys,
           clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
@@ -391,6 +395,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SetupWizardPage(
+          developmentLanCommissioning: emptyLanCommissioning(),
           transport: _FakeCommissioningTransport(),
           controllerKeys: _FakeControllerKeyBridge(),
           clock: () => DateTime.parse('2026-08-05T00:10:00Z'),

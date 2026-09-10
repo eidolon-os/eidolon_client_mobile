@@ -454,6 +454,7 @@ class DevelopmentLanCommissioning {
         displayName: host.displayName,
         claimedAt: _clock().toUtc(),
         tlsSpkiFingerprint: host.endpoint.tlsSpkiFingerprint,
+        lastKnownBaseUrl: host.localApi.baseUrl,
       );
     } finally {
       client.close();
