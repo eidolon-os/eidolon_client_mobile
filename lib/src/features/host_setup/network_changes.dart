@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 /// When this phone's own network changed.
 ///
@@ -18,7 +20,8 @@ abstract interface class NetworkChanges {
   Future<void> close();
 }
 
-/// The real thing, on top of connectivity_plus.
+/// Android observes the OS route identity and link addresses. Other platforms
+/// retain the connectivity plugin fallback.
 ///
 /// Every transition is reported, including the ones that look like nothing:
 /// Wi-Fi to Wi-Fi is the case that matters most, because it is the one where
@@ -28,9 +31,12 @@ class PlatformNetworkChanges implements NetworkChanges {
   PlatformNetworkChanges({Connectivity? connectivity})
       : _connectivity = connectivity ?? Connectivity();
 
+  static final Stream<Object?> _androidChanges =
+      const EventChannel('live.eidolon.mobile/network-changes')
+          .receiveBroadcastStream();
   final Connectivity _connectivity;
   StreamController<void>? _controller;
-  StreamSubscription<List<ConnectivityResult>>? _subscription;
+  StreamSubscription<Object?>? _subscription;
 
   @override
   Stream<void> get changes {
@@ -38,7 +44,11 @@ class PlatformNetworkChanges implements NetworkChanges {
     if (existing != null) return existing.stream;
     final controller = StreamController<void>.broadcast();
     _controller = controller;
-    _subscription = _connectivity.onConnectivityChanged.listen(
+    final Stream<Object?> source =
+        defaultTargetPlatform == TargetPlatform.android
+            ? _androidChanges
+            : _connectivity.onConnectivityChanged;
+    _subscription = source.listen(
       (_) => controller.add(null),
       // A phone that stops reporting its own connectivity is not a reason to
       // take down the screen watching it: the reactive path still recovers

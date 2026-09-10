@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/setup_fixtures.dart';
+import 'support/host_session_fixtures.dart' show hostFixture;
 
 class _FakeControllerKeyBridge implements ControllerKeyBridge {
   @override
@@ -178,6 +179,35 @@ class _FakeChangeNetworkTransport implements CommissioningTransport {
 }
 
 void main() {
+  testWidgets(
+      'scanning a saved Host reconnects without Setup commands or replacing metadata',
+      (tester) async {
+    final saved = hostFixture(lastKnownBaseUrl: 'https://192.168.1.9:9002')
+        .copyWith(displayName: '书房 Mac');
+    final registry = InMemoryHostRegistry([saved]);
+    final transport = _FakeCommissioningTransport();
+    ManagedHost? selected;
+    await tester.pumpWidget(MaterialApp(
+        home: SetupWizardPage(
+      registry: registry,
+      transport: transport,
+      controllerKeys: _FakeControllerKeyBridge(),
+      onComplete: (host) => selected = host,
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('scan-nearby-hosts')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Eidolon-4c0285'));
+    await tester.pumpAndSettle();
+    expect(find.text('这台主机已添加'), findsOneWidget);
+    expect(transport.operations, isEmpty);
+    await tester.tap(find.byKey(const Key('finish-setup')));
+    await tester.pumpAndSettle();
+    expect(identical(selected, saved), isTrue);
+    expect((await registry.load()).single.displayName, '书房 Mac');
+    expect((await registry.load()).single.claimedAt, saved.claimedAt);
+  });
+
   test('verifies the signed dynamic TLS endpoint against the Host credential',
       () async {
     final endpoint = await CommissioningEndpoint.parseAndVerifyDiscovered(

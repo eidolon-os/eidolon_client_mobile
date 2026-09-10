@@ -20,6 +20,7 @@ class SetupWizardPage extends StatefulWidget {
   const SetupWizardPage({
     super.key,
     required this.onComplete,
+    this.registry,
     this.transport,
     this.controllerKeys,
     this.clock,
@@ -27,6 +28,7 @@ class SetupWizardPage extends StatefulWidget {
   });
 
   final ValueChanged<ManagedHost> onComplete;
+  final HostRegistry? registry;
   final CommissioningTransport? transport;
   final ControllerKeyBridge? controllerKeys;
   final DateTime Function()? clock;
@@ -58,6 +60,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   String? _progress;
   bool _busy = false;
   ManagedHost? _completedHost;
+  bool _alreadyAdded = false;
   late String _networkOperationId = _uuidV4();
 
   @override
@@ -88,12 +91,18 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       MaterialPageRoute(
         builder: (_) => DevelopmentLanSetupPage(
           commissioning: _developmentLanCommissioning,
+          registry: widget.registry,
         ),
       ),
     );
     if (host == null || !mounted) return;
+    final known = (await widget.registry?.load() ?? <ManagedHost>[])
+        .where((item) => item.hostId == host.hostId)
+        .firstOrNull;
+    if (!mounted) return;
     setState(() {
-      _completedHost = host;
+      _alreadyAdded = known != null;
+      _completedHost = known ?? host;
       _stage = _SetupStage.complete;
       _progress = null;
       _error = null;
@@ -136,6 +145,19 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       final endpoint = await CommissioningEndpoint.parseAndVerifyDiscovered(
         rawEndpoint,
       );
+      final known =
+          knownHostForEndpoint(await widget.registry?.load() ?? [], endpoint);
+      if (known != null) {
+        await _transport.close();
+        if (!mounted) return;
+        setState(() {
+          _completedHost = known;
+          _alreadyAdded = true;
+          _stage = _SetupStage.complete;
+          _progress = null;
+        });
+        return;
+      }
       setState(() => _progress = '正在建立加密 Setup 通道');
       await _transport.secure(tlsSpkiFingerprint: endpoint.tlsSpkiFingerprint);
       final developmentSetup = endpoint.developmentSetup;
@@ -418,8 +440,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         // No longer says what happens after five wrong tries: nothing does.
         // A wrong code is refused and the window stays open, because revoking
         // an unexpiring one leaves nobody able to reopen it (ADR-0007).
-        'commissioning_denied' =>
-          'Setup 码错误或已失效。请核对 $setupCodeDigits 位码后再试。',
+        'commissioning_denied' => 'Setup 码错误或已失效。请核对 $setupCodeDigits 位码后再试。',
         // Says only what the App knows: there is no window. Whether this Host
         // was ever claimed is a separate question, and the Host answers it with
         // `already_claimed` below.
@@ -490,7 +511,8 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           // claim window by being new, so someone has to mint a code first.
           // The wizard used to mention this only as recovery advice, which is
           // where it read as "something went wrong" instead of "step one".
-          const Text('还需要一个 Setup 码：请有人在主机上执行 `eidolon-ops commissioning-code` 取一个，'
+          const Text(
+              '还需要一个 Setup 码：请有人在主机上执行 `eidolon-ops commissioning-code` 取一个，'
               '首次设置也要用它。'),
           const SizedBox(height: 8),
           const Text('附近列表可能同时包含待设置和已认领主机；选择后 App 才会验证 Host 身份和当前权限。'),
@@ -708,17 +730,20 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         children: [
           const Icon(Icons.check_circle, size: 72, color: Colors.green),
           const SizedBox(height: 16),
-          Text('主机接入已完成', style: Theme.of(context).textTheme.headlineSmall),
+          Text(_alreadyAdded ? '这台主机已添加' : '主机接入已完成',
+              style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
           Text(
-            '${_completedHost!.displayName} 已连接 Wi-Fi，'
-            '这台手机已取得 Host Admin 权限。主机已可恢复保存，下一步会通过局域网创建 Workspace。',
+            _alreadyAdded
+                ? '已找到 ${_completedHost!.displayName}，继续连接即可。原有名称和授权记录会保留。'
+                : '${_completedHost!.displayName} 已连接 Wi-Fi，'
+                    '这台手机已取得 Host Admin 权限。主机已可恢复保存，下一步会通过局域网创建 Workspace。',
           ),
           const SizedBox(height: 24),
           FilledButton(
             key: const Key('finish-setup'),
             onPressed: () => widget.onComplete(_completedHost!),
-            child: const Text('继续创建我的 Eidolon'),
+            child: Text(_alreadyAdded ? '连接已有主机' : '继续创建我的 Eidolon'),
           ),
         ],
       );

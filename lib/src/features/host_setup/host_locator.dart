@@ -96,12 +96,15 @@ class PublishedAddressSource implements HostAddressSource {
 /// history simply has none to offer, and the probe stands down while the browse
 /// and the subnet sweep — neither of which needs a name — carry it.
 List<String> hostNamesRemembered(ManagedHost host) {
-  final remembered = host.lastKnownBaseUrl;
-  if (remembered == null) return const [];
-  final name = Uri.tryParse(remembered)?.host ?? '';
-  // An address is not a name, and resolving one leads nowhere.
-  if (name.isEmpty || InternetAddress.tryParse(name) != null) return const [];
-  return [name];
+  final names = <String>{};
+  final remembered = Uri.tryParse(host.lastKnownBaseUrl ?? '')?.host ?? '';
+  final hostname = host.machineInfo?.hostname.trim() ?? '';
+  for (final name in [remembered, hostname]) {
+    if (name.isEmpty || InternetAddress.tryParse(name) != null) continue;
+    // Bare machine names are learned from the authenticated Host monitor.
+    names.add(name.contains('.') ? name : '$name.local');
+  }
+  return names.toList(growable: false);
 }
 
 class RememberedAddressSource implements HostAddressSource {
@@ -182,7 +185,9 @@ class HostLocator {
         name,
         type: InternetAddressType.IPv4,
       );
-      return addresses.map((address) => address.address).toList(growable: false);
+      return addresses
+          .map((address) => address.address)
+          .toList(growable: false);
     } on Object {
       return const [];
     }

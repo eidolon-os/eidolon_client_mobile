@@ -259,3 +259,30 @@ class MultiSourceLocalApiDiscovery implements LocalApiDiscovery {
         ),
       );
 }
+
+/// One foreground list refresh shares a survey across all saved Hosts.
+/// A new refresh creates a new pass; this is not a cache across networks.
+class LocalApiDiscoveryPass implements LocalApiDiscovery {
+  LocalApiDiscoveryPass(this.discovery);
+  final LocalApiDiscovery discovery;
+  Future<LocalApiSurvey>? _survey;
+
+  @override
+  Future<LocalApiSurvey> discover(
+          {Duration timeout = const Duration(seconds: 5)}) =>
+      _survey ??= discovery.discover(timeout: timeout);
+}
+
+/// Reuse an in-flight platform probe when a list and a connection overlap.
+/// Finished results are never retained for a later network or refresh.
+class SingleFlightLocalApiSource implements LocalApiCandidateSource {
+  SingleFlightLocalApiSource(this.source);
+  final LocalApiCandidateSource source;
+  Future<LocalApiSourceReport>? _pending;
+  @override
+  LocalApiCandidateOrigin get origin => source.origin;
+  @override
+  Future<LocalApiSourceReport> probe({required Duration timeout}) =>
+      _pending ??=
+          source.probe(timeout: timeout).whenComplete(() => _pending = null);
+}

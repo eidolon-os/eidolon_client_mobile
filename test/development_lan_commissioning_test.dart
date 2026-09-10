@@ -12,6 +12,8 @@ import 'package:http/testing.dart';
 
 import 'support/local_api_fixtures.dart';
 import 'support/setup_fixtures.dart';
+import 'support/host_session_fixtures.dart' show hostFixture;
+import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
 
 const _controllerId = 'ectrl-0123456789abcdefabcd';
 
@@ -120,6 +122,48 @@ String get _tamperedEndpoint => jsonEncode({
     });
 
 void main() {
+  testWidgets(
+      'LAN scan merges addresses of an existing Host and opens it without a Setup code',
+      (tester) async {
+    final saved = hostFixture().copyWith(displayName: '书房 Mac');
+    final registry = InMemoryHostRegistry([saved]);
+    var writes = 0;
+    final commissioning = DevelopmentLanCommissioning(
+      discovery: _Discovery(_announced(['10.0.0.8', '10.0.0.9'])),
+      endpointFetcher: (_) async => jsonEncode(validCommissioningEndpoint),
+      // The old Setup session has expired; reconnecting a known identity does
+      // not require a new claim window.
+      clock: () => DateTime.utc(2030),
+      pinnedClientFactory: (_) {
+        writes++;
+        throw StateError('No claim expected');
+      },
+    );
+    ManagedHost? selected;
+    await tester.pumpWidget(MaterialApp(
+        home: Builder(
+            builder: (context) => TextButton(
+                onPressed: () async {
+                  selected = await Navigator.of(context).push<ManagedHost>(
+                      MaterialPageRoute(
+                          builder: (_) => DevelopmentLanSetupPage(
+                              commissioning: commissioning,
+                              registry: registry)));
+                },
+                child: const Text('scan')))));
+    await tester.tap(find.text('scan'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('discover-development-lan-hosts')));
+    await tester.pumpAndSettle();
+    expect(find.text('已添加'), findsOneWidget);
+    expect(find.byKey(const Key('development-lan-setup-code')), findsNothing);
+    await tester.tap(find.text('书房 Mac'));
+    await tester.pumpAndSettle();
+    expect(identical(selected, saved), isTrue);
+    expect(writes, 0);
+    expect(await registry.load(), hasLength(1));
+  });
+
   test(
       'discovers a signed development endpoint and claims through pinned HTTPS',
       () async {

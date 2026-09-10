@@ -15,6 +15,10 @@ import 'controller_key_bridge.dart';
 import 'controller_recovery_page.dart';
 import 'host_registry.dart';
 import 'host_list_info.dart';
+import '../host_setup/host_locator.dart';
+import '../host_setup/local_api_candidate_sources.dart';
+import '../host_setup/local_api_discovery.dart';
+import '../host_setup/network_changes.dart';
 import 'setup_wizard_page.dart';
 
 class EidolonAppShell extends StatefulWidget {
@@ -22,6 +26,7 @@ class EidolonAppShell extends StatefulWidget {
     super.key,
     this.registry,
     this.hostInfoReader,
+    this.networkChanges,
     this.setupTransport,
     this.controllerKeys,
     this.deviceProvisioning,
@@ -30,6 +35,7 @@ class EidolonAppShell extends StatefulWidget {
 
   final HostRegistry? registry;
   final HostListInfoReader? hostInfoReader;
+  final NetworkChanges? networkChanges;
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
   final DeviceProvisioningTransport? deviceProvisioning;
@@ -39,11 +45,17 @@ class EidolonAppShell extends StatefulWidget {
   State<EidolonAppShell> createState() => _EidolonAppShellState();
 }
 
-class _EidolonAppShellState extends State<EidolonAppShell> {
+class _EidolonAppShellState extends State<EidolonAppShell>
+    with WidgetsBindingObserver {
   late final HostRegistry _registry;
   List<ManagedHost>? _hosts;
   final Map<String, String> _hostStatuses = {};
-  final Set<String> _readingHosts = {};
+  late final NetworkChanges _networkChanges;
+  StreamSubscription<void>? _networkSubscription;
+  Future<void>? _refreshing;
+  bool _refreshAgain = false;
+  bool _foreground = true;
+  int _revision = 0;
 
   @override
   void initState() {
@@ -52,58 +64,119 @@ class _EidolonAppShellState extends State<EidolonAppShell> {
         (defaultTargetPlatform == TargetPlatform.android
             ? PlatformHostRegistry()
             : InMemoryHostRegistry());
+    WidgetsBinding.instance.addObserver(this);
+    _networkChanges = widget.networkChanges ?? PlatformNetworkChanges();
+    _networkSubscription = _networkChanges.changes.listen((_) {
+      if (_foreground &&
+          mounted &&
+          ModalRoute.of(context)?.isCurrent != false) {
+        unawaited(_load());
+      } else {
+        _revision += 1;
+      }
+    });
     _load();
   }
 
-  Future<void> _load({bool refreshInfo = true}) async {
-    final hosts = await _registry.load();
-    if (!mounted) return;
-    setState(() => _hosts = hosts);
-    if (refreshInfo) unawaited(_readHostInformation(hosts));
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    _revision += 1;
+    if (_foreground && ModalRoute.of(context)?.isCurrent != false) {
+      unawaited(_load());
+    }
   }
 
-  Future<void> _readHostInformation(List<ManagedHost> hosts) async {
-    for (final host in hosts) {
-      if (!mounted || ModalRoute.of(context)?.isCurrent == false) return;
-      if (!_readingHosts.add(host.hostId)) continue;
-      setState(() => _hostStatuses[host.hostId] = '正在确认连接');
-      try {
-        final result = await (widget.hostInfoReader ?? readHostListInfo)(host);
-        if (!mounted) return;
-        final updated = await _registry.updateObservation(result.host);
-        if (updated == null) continue;
-        if (!mounted) return;
-        setState(() {
-          _hosts = _hosts
-              ?.map((h) => h.hostId == updated.hostId ? updated : h)
-              .toList();
-          _hostStatuses[host.hostId] = result.status;
-        });
-      } catch (_) {
-        if (mounted) setState(() => _hostStatuses[host.hostId] = '资料读取失败');
-      } finally {
-        _readingHosts.remove(host.hostId);
-      }
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_networkSubscription?.cancel());
+    unawaited(_networkChanges.close());
+    super.dispose();
+  }
+
+  Future<void> _load({bool refreshInfo = true}) async {
+    if (!refreshInfo) {
+      final hosts = await _registry.load();
+      if (mounted) setState(() => _hosts = hosts);
+      return;
     }
+    _revision += 1;
+    _refreshAgain = true;
+    await (_refreshing ??=
+        _refreshHosts().whenComplete(() => _refreshing = null));
+  }
+
+  Future<void> _refreshHosts() async {
+    do {
+      _refreshAgain = false;
+      final revision = _revision;
+      final hosts = await _registry.load();
+      if (!mounted) return;
+      setState(() => _hosts = hosts);
+      if (!_foreground || ModalRoute.of(context)?.isCurrent == false) return;
+      final discovery = LocalApiDiscoveryPass(platformLocalApiDiscovery(
+          hostNames: hosts.expand(hostNamesRemembered).toSet()));
+      await Future.wait(hosts.map((host) async {
+        bool current() =>
+            mounted &&
+            _foreground &&
+            revision == _revision &&
+            ModalRoute.of(context)?.isCurrent != false;
+        if (!current()) return;
+        setState(() => _hostStatuses[host.hostId] = '正在查找主机');
+        try {
+          final result = await (widget.hostInfoReader != null
+              ? widget.hostInfoReader!(host)
+              : readHostListInfo(host, discovery: discovery));
+          if (!current()) return;
+          final updated = await _registry.updateObservation(result.host);
+          if (updated == null || !current()) return;
+          setState(() {
+            _hosts = _hosts
+                ?.map((h) => h.hostId == updated.hostId ? updated : h)
+                .toList();
+            _hostStatuses[host.hostId] =
+                updated.lastConnectedAt == result.host.lastConnectedAt
+                    ? result.status
+                    : '可连接';
+          });
+        } catch (_) {
+          if (current()) {
+            setState(() => _hostStatuses[host.hostId] = '暂时无法确认 · 重新查找');
+          }
+        }
+      }));
+    } while (_refreshAgain && mounted && _foreground);
+  }
+
+  Future<void> _observeHost(ManagedHost host) async {
+    await _registry.updateObservation(host);
+    await _load(refreshInfo: false);
   }
 
   Future<void> _openSetup() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (context) => SetupWizardPage(
+          registry: _registry,
           transport: widget.setupTransport,
           controllerKeys: widget.controllerKeys,
           onComplete: (host) async {
-            await _registry.save(host);
+            final known = (await _registry.load())
+                .where((item) => item.hostId == host.hostId)
+                .firstOrNull;
+            if (known == null) await _registry.save(host);
+            final registered = known ?? host;
             if (!context.mounted) return;
             await Navigator.of(context).pushReplacement<void, void>(
               MaterialPageRoute(
                 builder: (localContext) => HostLocalConnectionPage(
-                  host: host,
-                  onHostUpdated: _registry.save,
+                  host: registered,
+                  onHostUpdated: _observeHost,
                   transport: widget.setupTransport,
                   controllerKeys: widget.controllerKeys,
-                  setupContinuation: true,
+                  setupContinuation: known == null,
                   onSetupComplete: () => Navigator.of(localContext).pop(),
                   conversationBuilder: widget.conversationBuilder,
                 ),
@@ -135,6 +208,7 @@ class _EidolonAppShellState extends State<EidolonAppShell> {
         await _registry.save(host);
         await _load(refreshInfo: false);
       },
+      onHostObserved: _observeHost,
       onRefresh: _load,
       onHostRemoved: (hostId) async {
         await _registry.remove(hostId);
@@ -206,6 +280,7 @@ class _HostsPage extends StatelessWidget {
     required this.statuses,
     required this.onAdd,
     required this.onHostUpdated,
+    required this.onHostObserved,
     required this.onRefresh,
     required this.onHostRemoved,
     this.setupTransport,
@@ -218,6 +293,7 @@ class _HostsPage extends StatelessWidget {
   final Map<String, String> statuses;
   final VoidCallback onAdd;
   final ManagedHostUpdater onHostUpdated;
+  final ManagedHostUpdater onHostObserved;
   final Future<void> Function() onRefresh;
   final Future<void> Function(String hostId) onHostRemoved;
   final CommissioningTransport? setupTransport;
@@ -233,7 +309,7 @@ class _HostsPage extends StatelessWidget {
           actions: [
             IconButton(
                 onPressed: onRefresh,
-                tooltip: '更新主机资料',
+                tooltip: '重新查找主机',
                 icon: const Icon(Icons.refresh)),
             IconButton(
               key: const Key('add-another-host'),
@@ -255,7 +331,9 @@ class _HostsPage extends StatelessWidget {
                 leading: const CircleAvatar(child: Icon(Icons.memory)),
                 title: Text(host.displayName),
                 subtitle: _HostIdentitySummary(
-                    host: host, status: statuses[host.hostId] ?? '待确认连接'),
+                    host: host,
+                    showAddress: false,
+                    status: statuses[host.hostId] ?? '待确认连接'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
                   await Navigator.of(context).push<void>(
@@ -263,6 +341,7 @@ class _HostsPage extends StatelessWidget {
                       builder: (_) => _HostDetailPage(
                         host: host,
                         onHostUpdated: onHostUpdated,
+                        onHostObserved: onHostObserved,
                         onHostRemoved: onHostRemoved,
                         setupTransport: setupTransport,
                         controllerKeys: controllerKeys,
@@ -284,6 +363,7 @@ class _HostDetailPage extends StatefulWidget {
   const _HostDetailPage({
     required this.host,
     required this.onHostUpdated,
+    required this.onHostObserved,
     required this.onHostRemoved,
     this.setupTransport,
     this.controllerKeys,
@@ -293,6 +373,7 @@ class _HostDetailPage extends StatefulWidget {
 
   final ManagedHost host;
   final ManagedHostUpdater onHostUpdated;
+  final ManagedHostUpdater onHostObserved;
   final Future<void> Function(String hostId) onHostRemoved;
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
@@ -327,7 +408,7 @@ class _HostDetailPageState extends State<_HostDetailPage> {
         transport: setupTransport,
         controllerKeys: controllerKeys,
         onHostUpdated: (updated) async {
-          await onHostUpdated(updated);
+          await widget.onHostObserved(updated);
           if (mounted) setState(() => host = updated);
         });
     try {
@@ -425,7 +506,7 @@ class _HostDetailPageState extends State<_HostDetailPage> {
                   builder: (_) => HostLocalConnectionPage(
                     host: host,
                     onHostUpdated: (updated) async {
-                      await onHostUpdated(updated);
+                      await widget.onHostObserved(updated);
                       if (mounted) setState(() => host = updated);
                     },
                     transport: setupTransport,
@@ -630,9 +711,11 @@ class _ManagementEntry extends StatelessWidget {
 }
 
 class _HostIdentitySummary extends StatelessWidget {
-  const _HostIdentitySummary({required this.host, required this.status});
+  const _HostIdentitySummary(
+      {required this.host, required this.status, this.showAddress = true});
   final ManagedHost host;
   final String status;
+  final bool showAddress;
 
   @override
   Widget build(BuildContext context) {
@@ -655,7 +738,8 @@ class _HostIdentitySummary extends StatelessWidget {
         if (info?.operatingSystem?.isNotEmpty == true)
           Text(info!.operatingSystem!),
         if (info?.hostname.isNotEmpty == true) Text('主机名：${info!.hostname}'),
-        Text(address?.isNotEmpty == true ? '上次连接地址：$address' : 'IP 尚未确认'),
+        if (showAddress)
+          Text(address?.isNotEmpty == true ? '上次连接地址：$address' : 'IP 尚未确认'),
         const SizedBox(height: 6),
         Text(status, style: Theme.of(context).textTheme.labelMedium),
         if (last != null)

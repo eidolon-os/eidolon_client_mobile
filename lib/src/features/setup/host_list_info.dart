@@ -1,8 +1,11 @@
 import '../../generated/management_v1.dart';
 import '../host_setup/host_locator.dart';
+import '../host_setup/local_api_discovery.dart';
+import '../host_setup/local_api_candidate_sources.dart';
 import '../host_setup/host_product_session.dart';
 import 'host_registry.dart';
 import 'commissioning_transport.dart';
+import 'controller_key_bridge.dart';
 import 'setup_models.dart';
 
 class HostListInfo {
@@ -23,34 +26,45 @@ HostMachineInfo machineInfoFromMonitor(HostMonitorWire monitor) =>
       memoryBytes: monitor.memory.totalBytes,
     );
 
-/// A list checks saved addresses only. Discovery and BLE remain in the explicit
-/// connection flow; all successful replies still pass Host identity and auth.
-Future<HostListInfo> readHostListInfo(ManagedHost host) async {
-  if (host.tlsSpkiFingerprint == null || host.lastKnownBaseUrl == null) {
+/// Lists use the same LAN relocation and authentication as a connection.
+/// BLE remains an explicit user action.
+Future<HostListInfo> readHostListInfo(
+  ManagedHost host, {
+  LocalApiDiscovery? discovery,
+  LocalApiClientFactory? clientFactory,
+  ManagementClientFactory? managementClientFactory,
+  ControllerKeyBridge? controllerKeys,
+}) async {
+  if (host.tlsSpkiFingerprint == null) {
     return HostListInfo(host, '待连接确认');
   }
   final session = HostProductSession(
     host: host,
     transport: _NoBleTransport(),
-    locator: const HostLocator([RememberedAddressSource()]),
+    locator: HostLocator.standard(discovery ??
+        platformLocalApiDiscovery(hostNames: hostNamesRemembered(host))),
+    clientFactory: clientFactory,
+    managementClientFactory: managementClientFactory,
+    controllerKeys: controllerKeys,
   );
   try {
-    final connected =
-        (await session.connect()).copyWith(lastConnectedAt: DateTime.now());
+    await session.connect();
     try {
       final monitor = await session.executeManagement(
         (client, baseUri, token) =>
             client.fetchHostMonitor(baseUri, accessToken: token),
       );
       return HostListInfo(
-        connected.copyWith(machineInfo: machineInfoFromMonitor(monitor)),
-        '上次验证可连接',
+        session.host.copyWith(machineInfo: machineInfoFromMonitor(monitor)),
+        '可连接',
       );
     } catch (_) {
-      return HostListInfo(connected, '可连接 · 设备资料暂不可用');
+      return HostListInfo(session.host, '可连接 · 设备资料暂不可用');
     }
+  } on HostControllerAuthorizationException {
+    return HostListInfo(host, '需要恢复管理授权');
   } catch (_) {
-    return HostListInfo(host, '原地址未能连接 · 点击重新查找');
+    return HostListInfo(host, '当前网络未找到 · 重新查找');
   } finally {
     await session.close();
   }

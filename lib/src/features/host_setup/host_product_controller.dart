@@ -122,6 +122,7 @@ class HostProductController extends ChangeNotifier {
          clientFactory: localApiClientFactory,
          managementClientFactory: managementClientFactory,
        ) {
+    _session.onHostConnected = _observeConnectedHost;
     _workspaceRepository = HostWorkspaceRepository(_session);
     _devicesRepository = HostDevicesRepository(_session);
     _deviceAdmissionRepository = HostDeviceAdmissionRepository(_session);
@@ -212,6 +213,18 @@ class HostProductController extends ChangeNotifier {
   MountedDeviceInventory? get devices => _devices;
   String? get devicesError => _devicesError;
 
+  Future<void> _observeConnectedHost(ManagedHost observed) async {
+    if (_disposed) return;
+    _host = _host.copyWith(
+      tlsSpkiFingerprint: observed.tlsSpkiFingerprint,
+      lastKnownBaseUrl: observed.lastKnownBaseUrl,
+      lastConnectedAt: observed.lastConnectedAt,
+    );
+    _connection = _session.connection;
+    await _onHostUpdated(_host);
+    _notify();
+  }
+
   Future<void> connect() async {
     if (_connecting || _disposed) return;
     _connecting = true;
@@ -222,26 +235,13 @@ class HostProductController extends ChangeNotifier {
     _clearProductState();
     _notify();
     try {
-      final previous = _host;
-      final connectedHost = await _session.connect(
+      await _session.connect(
         onProgress: (message) {
           _progress = message;
           _notify();
         },
       );
       if (_disposed) return;
-      // The address it answered on is worth keeping for the same reason the
-      // fingerprint is: next time, it is one less thing that has to be found.
-      if (connectedHost.tlsSpkiFingerprint != previous.tlsSpkiFingerprint ||
-          connectedHost.lastKnownBaseUrl != previous.lastKnownBaseUrl) {
-        await _onHostUpdated(connectedHost);
-      }
-      _host = connectedHost.copyWith(
-        machineInfo: _host.machineInfo, lastConnectedAt: DateTime.now(),
-      );
-      await _onHostUpdated(_host);
-      if (_disposed) return;
-      _connection = _session.connection;
       _progress = null;
       await _loadProductState();
     } on SetupTrustException catch (error) {

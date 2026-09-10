@@ -23,6 +23,7 @@ import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.nio.charset.StandardCharsets
 import java.security.KeyPairGenerator
@@ -72,6 +73,8 @@ class MainActivity : FlutterActivity() {
     private fun handoffKeys(call: MethodCall): HandoffKeyHolder =
         handoffKeys.getOrPut(deviceKeyAlias(call)) { HandoffKeyHolder() }
 
+    private val networkChanges by lazy { NetworkChangesHandler(applicationContext, mainHandler) }
+
     private val pinnedHttpsClient by lazy { PinnedHttpsClient(mainHandler) }
     private val deviceProvisioning by lazy {
         DeviceProvisioningManager(applicationContext, mainHandler)
@@ -79,6 +82,8 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "live.eidolon.mobile/network-changes")
+            .setStreamHandler(networkChanges)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler(::handleMethodCall)
     }
@@ -721,6 +726,7 @@ class MainActivity : FlutterActivity() {
         commissioningManager = null
         deviceProvisioning.destroy()
         pinnedHttpsClient.close()
+        networkChanges.close()
         discoveryListener?.let {
             try { (getSystemService(Context.NSD_SERVICE) as NsdManager).stopServiceDiscovery(it) } catch (_: Exception) { }
         }

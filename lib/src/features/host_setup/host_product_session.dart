@@ -43,16 +43,10 @@ class _AddressRace {
   const _AddressRace({
     required this.winner,
     required this.failures,
-    required this.answered,
   });
 
   final _ReachedHost? winner;
   final List<Object> failures;
-
-  /// Whether anything at these addresses said anything at all. A Host that
-  /// answered and refused has decided something and there is no point looking
-  /// further; only silence is a reason to keep looking.
-  final bool answered;
 }
 
 typedef LocalApiClientFactory = LocalApiClient Function(String fingerprint);
@@ -125,6 +119,7 @@ class HostProductSession {
     LocalApiClientFactory? clientFactory,
     ManagementClientFactory? managementClientFactory,
     HostLocator? locator,
+    this.onHostConnected,
   })  : _host = host,
         _transport = transport ?? PlatformBleCommissioningTransport(),
         _controllerKeys = controllerKeys ?? PlatformControllerKeyBridge(),
@@ -136,11 +131,17 @@ class HostProductSession {
     // the Host is asked directly where it is.
     _locator = locator ??
         HostLocator.standard(
-          discovery ?? platformLocalApiDiscovery(hostNames: hostNamesRemembered(host)),
+          discovery ??
+              platformLocalApiDiscovery(hostNames: hostNamesRemembered(host)),
           readPublished: (_) async =>
               (await _readEndpointOverBle()).localApiBaseUrls,
         );
   }
+
+  /// One publication point for explicit connects and automatic relocation.
+  Future<void> Function(ManagedHost host)? onHostConnected;
+  Future<ManagedHost>? _connecting;
+  int _networkRevision = 0;
 
   ManagedHost _host;
   final CommissioningTransport _transport;
@@ -176,7 +177,36 @@ class HostProductSession {
     );
   }
 
-  Future<ManagedHost> connect({HostConnectionProgress? onProgress}) async {
+  Future<ManagedHost> connect({HostConnectionProgress? onProgress}) {
+    _ensureOpen();
+    return _connecting ??= _connectCurrentNetwork(onProgress).whenComplete(() {
+      _connecting = null;
+    });
+  }
+
+  Future<ManagedHost> _connectCurrentNetwork(
+      HostConnectionProgress? progress) async {
+    while (true) {
+      final revision = _networkRevision;
+      final observedAt = DateTime.now().toUtc();
+      try {
+        final host = await _connectOnce(onProgress: progress);
+        _ensureOpen();
+        if (revision != _networkRevision) continue;
+        _locationStale = false;
+        _host = host.copyWith(lastConnectedAt: observedAt);
+        await onHostConnected?.call(_host);
+        if (revision != _networkRevision) continue;
+        return _host;
+      } catch (_) {
+        _ensureOpen();
+        if (revision != _networkRevision) continue;
+        rethrow;
+      }
+    }
+  }
+
+  Future<ManagedHost> _connectOnce({HostConnectionProgress? onProgress}) async {
     _ensureOpen();
     _clearConnection();
     if (_host.tlsSpkiFingerprint == null) {
@@ -206,14 +236,12 @@ class HostProductSession {
     Object? silentFailure;
     var silentCandidates = 0;
     await for (final tier in _locator.locate(_host)) {
-      // Whether anything at these addresses said anything at all. Something
-      // that answered and was refused has told us where the Host is not, which
-      // is knowledge; moving on to a costlier means because of it would ask the
-      // person for a permission and a scan on account of an impostor. Only
-      // silence is a reason to keep looking.
+      // Identity is checked independently for every candidate. Only the
+      // verified target Host can accept or refuse controller authorization.
       final race = await _firstToAnswer(tier);
       for (final error in race.failures) {
-        final silence = error is PinnedHttpException && _hostDidNotAnswer(error);
+        final silence =
+            error is PinnedHttpException && _hostDidNotAnswer(error);
         if (silence) {
           silentFailure = error;
           silentCandidates += 1;
@@ -239,17 +267,18 @@ class HostProductSession {
             _host = _host.copyWith(lastKnownBaseUrl: endpoint.baseUrl);
           }
           return _host;
-        } catch (error) {
+        } catch (_) {
           // The Host answered and then refused, which decides this attempt.
           // Trying the same Host again at another of its own addresses would
           // ask it the same question and get the same answer.
-          decidedFailure ??= error;
-          break;
+          rethrow;
         } finally {
           client.close();
         }
       }
-      if (race.answered) break;
+      // A different device at a candidate address cannot decide that the
+      // requested Host is absent. Keep the refusal for diagnostics, but try
+      // the remaining sources under the same identity and TLS checks.
     }
     // The refusal that decided this, if anything decided it. Only when
     // nothing anywhere answered does silence become the answer.
@@ -262,8 +291,8 @@ class HostProductSession {
     // describes one address when the fact being reported is that none of them
     // answered. That fact is not a gap to fill with an example — it already
     // has its own sentence, written just below, and it is the honest one.
-    final failure = decidedFailure ??
-        (silentCandidates == 1 ? silentFailure : null);
+    final failure =
+        decidedFailure ?? (silentCandidates == 1 ? silentFailure : null);
     if (failure != null) throw failure;
     throw const LocalApiRequestException(
       '局域网里没有任何设备应答这台主机的 Local API。'
@@ -375,7 +404,6 @@ class HostProductSession {
   /// the caller to authenticate on — once.
   Future<_AddressRace> _firstToAnswer(List<HostAddressCandidate> tier) async {
     final failures = <Object>[];
-    var answered = false;
     _ReachedHost? winner;
     final pending = <Future<void>>[];
     // Completed by whichever attempt settles next, so a candidate that fails
@@ -407,9 +435,6 @@ class HostProductSession {
         if (!decided.isCompleted) decided.complete();
       } catch (error) {
         failures.add(error);
-        if (!(error is PinnedHttpException && _hostDidNotAnswer(error))) {
-          answered = true;
-        }
       } finally {
         if (!handedOver) client.close();
         slotFreed();
@@ -437,7 +462,7 @@ class HostProductSession {
       // read the message.
       await Future.any([decided.future, Future.wait(pending)]);
     }
-    return _AddressRace(winner: winner, failures: failures, answered: answered);
+    return _AddressRace(winner: winner, failures: failures);
   }
 
   static bool _hostDidNotAnswer(PinnedHttpException error) =>
@@ -454,10 +479,7 @@ class HostProductSession {
   /// Nothing above this layer learns that it happened: repositories never held
   /// an address, and the operation they asked for is simply carried out.
   Future<void> _relocate() async {
-    _endpoint = null;
-    _overview = null;
-    _controllerSession = null;
-    _locationStale = false;
+    _locationStale = true;
     await connect();
   }
 
@@ -467,6 +489,7 @@ class HostProductSession {
   /// be correct, but nothing about it can be assumed any more, and paying one
   /// timeout to discover that is worse than looking again.
   void invalidateLocation() {
+    _networkRevision += 1;
     if (_endpoint == null && !_locationStale) return;
     _endpoint = null;
     _overview = null;

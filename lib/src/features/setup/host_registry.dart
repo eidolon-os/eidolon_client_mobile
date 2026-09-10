@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import '../../platform/app_preferences.dart';
 import 'host_identity.dart';
+import 'setup_models.dart';
+import 'setup_trust.dart';
 
 class ManagedHost {
   const ManagedHost({
@@ -278,7 +280,8 @@ ManagedHost? _mergeObservation(ManagedHost current, ManagedHost observed) {
   if (current.hostPublicKey != observed.hostPublicKey ||
       current.controllerId != observed.controllerId ||
       current.claimedAt != observed.claimedAt ||
-      current.tlsSpkiFingerprint != observed.tlsSpkiFingerprint) {
+      (current.tlsSpkiFingerprint != null &&
+          current.tlsSpkiFingerprint != observed.tlsSpkiFingerprint)) {
     return null;
   }
   if (current.lastConnectedAt != null &&
@@ -287,7 +290,23 @@ ManagedHost? _mergeObservation(ManagedHost current, ManagedHost observed) {
     return current;
   }
   return current.copyWith(
+      tlsSpkiFingerprint: observed.tlsSpkiFingerprint,
       lastKnownBaseUrl: observed.lastKnownBaseUrl,
       machineInfo: observed.machineInfo,
       lastConnectedAt: observed.lastConnectedAt);
+}
+
+/// Called only after the endpoint signature has been verified. A discovered
+/// address may select an existing record, but cannot replace its trust/metadata.
+ManagedHost? knownHostForEndpoint(
+    Iterable<ManagedHost> hosts, CommissioningEndpoint endpoint) {
+  final known =
+      hosts.where((host) => host.hostId == endpoint.hostId).firstOrNull;
+  if (known == null) return null;
+  if (known.hostPublicKey != endpoint.hostPublicKey ||
+      known.hostFingerprint != endpoint.hostPublicKeyFingerprint ||
+      known.bleServiceUuid != endpoint.bleServiceUuid) {
+    throw const SetupTrustException('主机身份与已保存记录不一致，请通过身份恢复流程确认。');
+  }
+  return known;
 }

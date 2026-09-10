@@ -232,14 +232,15 @@ class DevelopmentLanCommissioning {
   final DevelopmentPinnedClientFactory _pinnedClientFactory;
   final DateTime Function() _clock;
 
-  Future<DevelopmentLanDiscovery> discover() async {
+  Future<DevelopmentLanDiscovery> discover(
+      {List<ManagedHost> knownHosts = const []}) async {
     _requireDebugBuild();
     final survey = await _discovery.discover();
     final hosts = <DevelopmentLanHost>[];
     final rejections = <DevelopmentLanRejection>[];
     final seen = <String>{};
     for (final candidate in survey.candidates) {
-      final admission = await _admit(candidate);
+      final admission = await _admit(candidate, knownHosts);
       final host = admission.host;
       if (host == null) {
         rejections.add(admission.rejection!);
@@ -268,7 +269,7 @@ class DevelopmentLanCommissioning {
   /// which is also why sweeping addresses costs nothing in safety: whatever
   /// answers on that port still has to produce a signature it cannot forge.
   Future<({DevelopmentLanHost? host, DevelopmentLanRejection? rejection})>
-      _admit(LocalApiCandidate candidate) async {
+      _admit(LocalApiCandidate candidate, List<ManagedHost> knownHosts) async {
     DevelopmentLanRejection refuse(
       DevelopmentLanRefusal refusal,
       String reason,
@@ -294,6 +295,12 @@ class DevelopmentLanCommissioning {
       final endpoint = await CommissioningEndpoint.parseAndVerifyDiscovered(
         raw,
       );
+      if (knownHostForEndpoint(knownHosts, endpoint) != null) {
+        return (
+          host: DevelopmentLanHost(candidate: candidate, endpoint: endpoint),
+          rejection: null
+        );
+      }
       final setup = endpoint.developmentSetup;
       if (setup == null) {
         return (

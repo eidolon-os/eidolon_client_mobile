@@ -514,7 +514,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(transport.scans, 0);
+    // An unrelated LAN responder cannot terminate the search for the saved
+    // Host. The BLE fallback is tried and still cannot bypass identity checks.
+    expect(transport.scans, 1);
     expect(find.byKey(const Key('local-connection-complete')), findsNothing);
     expect(find.byKey(const Key('local-connection-error')), findsOneWidget);
     expect(find.textContaining('另一台 Host'), findsOneWidget);

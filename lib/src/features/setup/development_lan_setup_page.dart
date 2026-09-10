@@ -7,9 +7,11 @@ import 'host_registry.dart';
 import 'setup_models.dart';
 
 class DevelopmentLanSetupPage extends StatefulWidget {
-  const DevelopmentLanSetupPage({super.key, required this.commissioning});
+  const DevelopmentLanSetupPage(
+      {super.key, required this.commissioning, this.registry});
 
   final DevelopmentLanCommissioning commissioning;
+  final HostRegistry? registry;
 
   @override
   State<DevelopmentLanSetupPage> createState() =>
@@ -20,6 +22,7 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
   final _setupCode = TextEditingController();
   final _controllerName = TextEditingController(text: '我的平板');
   List<DevelopmentLanHost> _hosts = const [];
+  List<ManagedHost> _knownHosts = const [];
   DevelopmentLanHost? _selected;
   bool _busy = false;
   String? _progress;
@@ -41,7 +44,9 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
       setState(
         () => _progress = '正在同时用 mDNS 服务浏览、主机名解析和本网段探测查找开发 Host',
       );
-      final discovered = await widget.commissioning.discover();
+      _knownHosts = await widget.registry?.load() ?? [];
+      final discovered =
+          await widget.commissioning.discover(knownHosts: _knownHosts);
       // The report already knows which of the several ways this can come up
       // empty happened, and what to do about each; the page must not flatten
       // that back into one sentence.
@@ -52,6 +57,18 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
         _progress = null;
       });
     });
+  }
+
+  ManagedHost? _known(DevelopmentLanHost host) =>
+      knownHostForEndpoint(_knownHosts, host.endpoint);
+
+  void _select(DevelopmentLanHost host) {
+    final known = _known(host);
+    if (known != null) {
+      Navigator.of(context).pop<ManagedHost>(known);
+    } else {
+      setState(() => _selected = host);
+    }
   }
 
   Future<void> _claim() async {
@@ -121,13 +138,16 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
               Card(
                 child: ListTile(
                   selected: identical(_selected, host),
-                  onTap: _busy ? null : () => setState(() => _selected = host),
+                  onTap: _busy ? null : () => _select(host),
                   leading: Icon(
                     identical(_selected, host)
                         ? Icons.radio_button_checked
                         : Icons.radio_button_off,
                   ),
-                  title: Text(host.displayName),
+                  title: Text(_known(host)?.displayName ?? host.displayName),
+                  trailing: _known(host) == null
+                      ? null
+                      : const Chip(label: Text('已添加')),
                   subtitle: Text(
                     '${host.endpoint.hostId}\n${host.localApi.baseUrl}'
                     '（${host.candidate.origin.label}）',
@@ -190,8 +210,9 @@ class _DevelopmentLanSetupPageState extends State<DevelopmentLanSetupPage> {
                 const SizedBox(height: 12),
                 FilledButton.icon(
                   key: const Key('development-lan-use-bluetooth'),
-                  onPressed:
-                      _busy ? null : () => Navigator.of(context).pop<ManagedHost>(),
+                  onPressed: _busy
+                      ? null
+                      : () => Navigator.of(context).pop<ManagedHost>(),
                   icon: const Icon(Icons.bluetooth_searching),
                   label: const Text('回到蓝牙设置'),
                 ),

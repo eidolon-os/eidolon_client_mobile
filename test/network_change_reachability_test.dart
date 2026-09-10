@@ -39,17 +39,18 @@ class _NetworkChanges implements NetworkChanges {
 
 class _CountingDiscovery implements LocalApiDiscovery {
   var rounds = 0;
+  String address = '192.168.1.20';
 
   @override
   Future<LocalApiSurvey> discover({
     Duration timeout = const Duration(seconds: 5),
   }) async {
     rounds += 1;
-    return announcedSurvey(const [
+    return announcedSurvey([
       LocalApiEndpoint(
         instanceName: 'Eidolon Local API',
-        baseUrl: 'https://192.168.1.20:9002',
-        ipAddress: '192.168.1.20',
+        baseUrl: 'https://$address:9002',
+        ipAddress: address,
         contractVersion: '1',
       ),
     ]);
@@ -181,13 +182,15 @@ void main() {
   late _NetworkChanges network;
   late _CountingDiscovery discovery;
   late HostProductController controller;
+  late List<ManagedHost> observed;
 
   setUp(() {
+    observed = [];
     network = _NetworkChanges();
     discovery = _CountingDiscovery();
     controller = HostProductController(
       host: _host(),
-      onHostUpdated: (_) async {},
+      onHostUpdated: (host) async => observed.add(host),
       transport: _NoopTransport(),
       controllerKeys: _ControllerKeys(),
       discovery: discovery,
@@ -202,6 +205,7 @@ void main() {
     await controller.connect();
     expect(discovery.rounds, 1);
 
+    discovery.address = '10.0.0.9';
     network.moved();
     // The listener is synchronous on delivery, and delivery is a microtask.
     await Future<void>.delayed(Duration.zero);
@@ -212,6 +216,8 @@ void main() {
     // App waited for a request to time out before it would look again.
     expect(discovery.rounds, 2);
     expect(controller.connection, isNotNull);
+    expect(controller.host.lastKnownBaseUrl, 'https://10.0.0.9:9002');
+    expect(observed.last.lastKnownBaseUrl, 'https://10.0.0.9:9002');
   });
 
   test('a connection that nothing disturbed is not thrown away', () async {

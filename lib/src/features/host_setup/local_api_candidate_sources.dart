@@ -336,10 +336,13 @@ class SubnetLocalApiSource implements LocalApiCandidateSource {
   }
 }
 
+final _announcedSource = SingleFlightLocalApiSource(AnnouncedLocalApiSource());
+final _subnetSource = SingleFlightLocalApiSource(SubnetLocalApiSource());
+
 /// Every probe this phone has, asked at once.
 LocalApiDiscovery platformLocalApiDiscovery({Iterable<String>? hostNames}) =>
     MultiSourceLocalApiDiscovery([
-      AnnouncedLocalApiSource(),
+      _announcedSource,
       HostnameLocalApiSource(names: hostNames),
-      SubnetLocalApiSource(),
+      _subnetSource,
     ]);
