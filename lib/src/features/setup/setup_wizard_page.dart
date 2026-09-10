@@ -11,6 +11,7 @@ import 'development_lan_commissioning.dart';
 import 'host_registry.dart';
 import 'host_identity.dart';
 import 'host_discovery_sections.dart';
+import 'host_discovery_details.dart';
 import 'setup_models.dart';
 import 'setup_trust.dart';
 
@@ -722,19 +723,26 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         : ble?.error != null
             ? '重试识别'
             : '添加';
-    final description =
-        item.lan != null ? '主机已联网' : '距离信号 ${ble!.host.rssi} dBm';
+    final description = item.lan != null ? '主机已联网' : '附近发现';
+    final displayName =
+        item.known?.displayName ?? item.lan?.displayName ?? ble!.host.name;
     return Card(
       key: ValueKey(
           'discovered-host-${item.lan?.endpoint.hostId ?? ble!.host.address}'),
       child: ListTile(
         leading: const Icon(Icons.memory),
-        title: Text(
-            item.known?.displayName ?? item.lan?.displayName ?? ble!.host.name),
-        subtitle: Text(identifying
-            ? '正在识别…'
-            : ble?.error ??
-                '${item.known != null ? '已添加 · ' : ''}$description'),
+        title: Text(displayName),
+        subtitle: HostDiscoveryDetails(
+          displayName: displayName,
+          known: item.known,
+          lan: item.lan,
+          nearby: ble?.host,
+          endpoint: item.lan?.endpoint ?? ble?.endpoint,
+          status: identifying
+              ? '正在识别…'
+              : ble?.error ??
+                  '${item.known != null ? '已添加' : '未添加'} · $description',
+        ),
         trailing: identifying
             ? const SizedBox.square(
                 dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))

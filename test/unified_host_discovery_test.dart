@@ -147,6 +147,9 @@ void main() {
         onComplete: (host) => completed = host);
     await tester.pumpAndSettle();
     expect(find.text('可添加的主机'), findsOneWidget);
+    expect(find.text('局域网地址：192.168.1.25:9002'), findsOneWidget);
+    expect(find.text('Host ID：$validHostId'), findsOneWidget);
+    expect(find.text('机型和系统信息将在添加并连接后显示'), findsOneWidget);
     expect(requests, isEmpty);
     await tester.tap(find.text('添加'));
     await tester.pumpAndSettle();
@@ -174,7 +177,19 @@ void main() {
       'BLE and LAN sightings merge into one saved Host without claiming',
       (tester) async {
     final ble = _Ble();
-    final saved = hostFixture().copyWith(displayName: '书房主机');
+    final saved = hostFixture().copyWith(
+      displayName: '书房主机',
+      machineInfo: const HostMachineInfo(
+        hostname: 'study-macbook.local',
+        model: 'MacBook Pro',
+        cpuModel: 'Apple M3 Pro',
+        cpuCores: 12,
+        memoryBytes: 36 * 1024 * 1024 * 1024,
+        operatingSystem: 'macOS',
+      ),
+      lastKnownBaseUrl: 'https://192.168.1.99:9002',
+      lastConnectedAt: DateTime.utc(2026, 9, 10),
+    );
     final registry = InMemoryHostRegistry([saved]);
     ManagedHost? opened;
     await _scan(tester,
@@ -183,9 +198,19 @@ void main() {
         registry: registry,
         onComplete: (host) => opened = host);
     await tester.pumpAndSettle();
+    await tester.binding.setSurfaceSize(const Size(360, 1000));
+    await tester.pumpAndSettle();
     expect(find.text('书房主机'), findsOneWidget);
+    expect(find.textContaining('MacBook Pro · Apple M3 Pro'), findsOneWidget);
+    expect(find.text('主机名：study-macbook.local'), findsOneWidget);
+    expect(find.text('发现方式：局域网 + 蓝牙 · 信号 -40 dBm'), findsOneWidget);
+    expect(find.text('局域网地址：192.168.1.25:9002'), findsOneWidget);
+    expect(find.textContaining('192.168.1.99'), findsNothing);
+    expect(find.text('设备资料来自上次连接'), findsOneWidget);
+    expect(tester.takeException(), isNull);
     expect(find.text('连接'), findsOneWidget);
     expect(find.text('发现 1 台已添加主机，未发现新的主机。'), findsOneWidget);
+    await tester.ensureVisible(find.text('连接'));
     await tester.tap(find.text('连接'));
     await tester.pumpAndSettle();
     expect(identical(opened, saved), isTrue);
