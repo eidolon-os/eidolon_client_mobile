@@ -290,7 +290,11 @@ ManagementClient _managementClientFor(
           // file about what it is about.
           return _jsonResponse({
             'contract_version': '1',
-            'owner': {'owner_id': 'owner-1', 'display_name': 'Manson', 'revision': 4},
+            'owner': {
+              'owner_id': 'owner-1',
+              'display_name': 'Manson',
+              'revision': 4
+            },
             'default_companion_id': 'companion-a',
             'capabilities': <String, bool>{},
             'unavailable': <String, String>{},
@@ -346,6 +350,7 @@ LocalApiClient _clientFor(
   int runtimeStatusCode = 200,
   bool withReadyDevice = false,
   PinnedHttpFailureKind? workspaceTransportFailure,
+
   /// What the Host answers when this phone tries to authenticate as a
   /// Controller. 401 is a Grant it has withdrawn.
   int authenticationStatusCode = 200,
@@ -519,15 +524,14 @@ void main() {
     expect(transport.scans, 1);
     expect(find.byKey(const Key('local-connection-complete')), findsNothing);
     expect(find.byKey(const Key('local-connection-error')), findsOneWidget);
-    expect(find.textContaining('另一台 Host'), findsOneWidget);
+    expect(find.textContaining('未通过这台主机的身份校验'), findsOneWidget);
   });
 
   testWidgets(
-      'a Host whose identity changed is not offered a retry that cannot work',
+      'unrelated candidate identities do not declare the saved Host reset',
       (tester) async {
-    // A reinstalled Host issues a new key and keeps it, so 「重新连接」 is the
-    // one control on this screen that can never succeed — and it used to be
-    // the only one. What works is on the page underneath.
+    // Only unrelated candidates answered. This does not prove the saved Host
+    // changed its identity; keep locating it without offering a reset as repair.
     const otherHostId = 'ehost-0123456789abcdefabcd';
 
     await tester.pumpWidget(
@@ -546,15 +550,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('retry-local-connection')), findsNothing);
-    expect(
-      find.byKey(const Key('local-connection-identity-changed')),
-      findsOneWidget,
-    );
-    expect(find.byKey(const Key('open-host-recovery')), findsOneWidget);
-    // Both ways back are named, not just gestured at.
-    expect(find.textContaining('不再管理这台主机'), findsOneWidget);
-    expect(find.textContaining('手机丢失或重新认领'), findsOneWidget);
+    expect(find.byKey(const Key('retry-local-connection')), findsOneWidget);
+    expect(find.byKey(const Key('local-connection-identity-changed')),
+        findsNothing);
+    expect(find.byKey(const Key('open-host-recovery')), findsNothing);
   });
 
   testWidgets('a revoked Grant is not offered a retry that cannot work',
@@ -735,7 +734,8 @@ void main() {
     expect(find.textContaining('已经完成过设置'), findsOneWidget);
   });
 
-  testWidgets('a Host without the Workspace route is a version gap, not an outage',
+  testWidgets(
+      'a Host without the Workspace route is a version gap, not an outage',
       (tester) async {
     // What 404 means now that the orphaned binding moved to 409: this Host's
     // build does not serve the route. Reloading cannot add it, so the control
@@ -770,7 +770,8 @@ void main() {
     expect(find.textContaining('没有 Workspace 设置接口'), findsNothing);
   });
 
-  testWidgets('an expired management session is offered a new one, not a reload',
+  testWidgets(
+      'an expired management session is offered a new one, not a reload',
       (tester) async {
     // 401 is not an outage either: reloading asks with the same dead session.
     // The sentence already said 「请重新连接主机」 while the only button on the
@@ -833,7 +834,8 @@ void main() {
         home: HostLocalConnectionPage(
           // The Host answers everything except the one read a screen opens
           // with. A ready, claimed Workspace and no overview is a real state.
-          managementClientFactory: (_) => _quietManagementClient(homeStatus: 503),
+          managementClientFactory: (_) =>
+              _quietManagementClient(homeStatus: 503),
           host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),
@@ -1679,7 +1681,6 @@ void main() {
   });
 }
 
-
 /// A test in this file must describe a Host that can answer, on both surfaces.
 ///
 /// Twelve constructions here stubbed `/api/local/v1` and left the management
@@ -1689,8 +1690,8 @@ void main() {
 /// reason that had nothing to do with what they were testing.
 void _theseTestsDescribeAHostThatCanAnswer() {
   test('every page in this file is given a management surface to talk to', () {
-    final source = File('test/host_local_connection_test.dart')
-        .readAsStringSync();
+    final source =
+        File('test/host_local_connection_test.dart').readAsStringSync();
     final blocks = source.split('HostLocalConnectionPage(');
     // The first chunk is everything before the first construction.
     for (var index = 1; index < blocks.length; index += 1) {

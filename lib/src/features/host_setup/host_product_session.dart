@@ -46,7 +46,53 @@ class _AddressRace {
   });
 
   final _ReachedHost? winner;
-  final List<Object> failures;
+  final List<HostCandidateFailure> failures;
+}
+
+/// Candidate failures are evidence about addresses, not a refusal from the target.
+class HostCandidateFailure {
+  const HostCandidateFailure(this.candidate, this.error);
+  final HostAddressCandidate candidate;
+  final Object error;
+}
+
+class HostLocationException extends LocalApiRequestException {
+  HostLocationException(List<HostCandidateFailure> failures)
+      : failures = List.unmodifiable(failures),
+        super(_describe(failures));
+
+  final List<HostCandidateFailure> failures;
+
+  static String _describe(List<HostCandidateFailure> failures) {
+    final fresh = failures
+        .where((f) => f.candidate.evidence != HostAddressEvidence.remembered)
+        .toList();
+    final relevant = fresh.isNotEmpty ? fresh : failures;
+    if (relevant.isEmpty) return '当前网络未发现主机地址，可检查网络后重新查找。';
+    if (relevant.any((f) =>
+        f.error is TimeoutException ||
+        f.error is PinnedHttpException &&
+            (f.error as PinnedHttpException).kind ==
+                PinnedHttpFailureKind.timeout)) {
+      return fresh.isNotEmpty
+          ? '已发现局域网服务，但连接超时 · 重新查找'
+          : '上次连接地址超时，当前网络未确认新地址 · 重新查找';
+    }
+    if (relevant.every((f) =>
+        f.error is SetupTrustException ||
+        f.error is PinnedHttpException &&
+            (f.error as PinnedHttpException).kind ==
+                PinnedHttpFailureKind.secureChannel)) {
+      return '发现的服务未通过这台主机的身份校验 · 重新查找';
+    }
+    if (relevant.any((f) =>
+        f.error is PinnedHttpException &&
+        {PinnedHttpFailureKind.unreachable, PinnedHttpFailureKind.io}
+            .contains((f.error as PinnedHttpException).kind))) {
+      return '已获得地址，但当前网络连接失败 · 重新查找';
+    }
+    return '未能完成主机连接验证 · 重新查找';
+  }
 }
 
 typedef LocalApiClientFactory = LocalApiClient Function(String fingerprint);
@@ -154,6 +200,41 @@ class HostProductSession {
   HostOverview? _overview;
   LocalControllerSession? _controllerSession;
   bool _closed = false;
+  final _closedSignal = Completer<void>();
+  final _clientClosers = <void Function()>{};
+
+  LocalApiClient _newLocalClient() {
+    _ensureOpen();
+    final client = _clientFactory(_host.tlsSpkiFingerprint!);
+    _clientClosers.add(client.close);
+    return client;
+  }
+
+  ManagementClient _newManagementClient() {
+    _ensureOpen();
+    final client = _managementClientFactory(_host.tlsSpkiFingerprint!);
+    _clientClosers.add(client.close);
+    return client;
+  }
+
+  void _release(void Function() close) {
+    if (_clientClosers.remove(close)) close();
+  }
+
+  void _cancelRequests() {
+    for (final close in _clientClosers.toList()) {
+      _release(close);
+    }
+  }
+
+  void _ensureRevision(int revision) {
+    _ensureOpen();
+    if (revision != _networkRevision) {
+      throw PinnedHttpException(
+          kind: PinnedHttpFailureKind.cancelled,
+          message: 'Network changed during Host location');
+    }
+  }
 
   /// Whether where the Host was has stopped being something we may assume.
   ///
@@ -179,7 +260,11 @@ class HostProductSession {
 
   Future<ManagedHost> connect({HostConnectionProgress? onProgress}) {
     _ensureOpen();
-    return _connecting ??= _connectCurrentNetwork(onProgress).whenComplete(() {
+    return _connecting ??= Future.any<ManagedHost>([
+      _connectCurrentNetwork(onProgress),
+      _closedSignal.future.then<ManagedHost>(
+          (_) => throw StateError('Host product session is closed')),
+    ]).whenComplete(() {
       _connecting = null;
     });
   }
@@ -211,7 +296,9 @@ class HostProductSession {
     _clearConnection();
     if (_host.tlsSpkiFingerprint == null) {
       onProgress?.call('正在从附近主机更新本地连接信任');
-      _host = await _readTlsIdentityOverBle();
+      final trusted = await _readTlsIdentityOverBle();
+      _ensureOpen();
+      _host = trusted;
     }
 
     onProgress?.call('正在同一局域网中查找主机');
@@ -222,44 +309,26 @@ class HostProductSession {
     // its way through the alternatives instead of stopping there. Nothing is
     // trusted for having been remembered or published: every candidate proves
     // it is this Host before a word is said to it.
-    // Two kinds of failure, kept apart because only one of them explains an
-    // outcome. A Host that answered and refused decided something; a candidate
-    // that nothing answered at has decided nothing and is only a lead removed.
-    //
-    // They used to share one variable that every failure overwrote, so what
-    // surfaced was whichever candidate happened to be tried last. On a phone
-    // where the Local API answered fine at 192.168.3.206, the sentence shown
-    // was `Unable to resolve host "eidolon-pi5.local"` — a candidate that had
-    // nothing to do with why the connection did not happen. The person, and
-    // the person reading the bug report, were handed an unrelated fact.
-    Object? decidedFailure;
-    Object? silentFailure;
-    var silentCandidates = 0;
+    final revision = _networkRevision;
+    final failures = <HostCandidateFailure>[];
     await for (final tier in _locator.locate(_host)) {
-      // Identity is checked independently for every candidate. Only the
-      // verified target Host can accept or refuse controller authorization.
+      _ensureRevision(revision);
+      onProgress?.call('正在连接主机');
       final race = await _firstToAnswer(tier);
-      for (final error in race.failures) {
-        final silence =
-            error is PinnedHttpException && _hostDidNotAnswer(error);
-        if (silence) {
-          silentFailure = error;
-          silentCandidates += 1;
-        } else {
-          decidedFailure ??= error;
-        }
-      }
+      _ensureRevision(revision);
+      failures.addAll(race.failures);
       final winner = race.winner;
       if (winner != null) {
         final endpoint = winner.endpoint;
         final client = winner.client;
         try {
+          onProgress?.call('正在验证管理授权');
           final controllerSession = await _authenticate(
             client,
             endpoint,
             winner.overview,
           );
-          _ensureOpen();
+          _ensureRevision(revision);
           _endpoint = endpoint;
           _overview = winner.overview;
           _controllerSession = controllerSession;
@@ -273,32 +342,14 @@ class HostProductSession {
           // ask it the same question and get the same answer.
           rethrow;
         } finally {
-          client.close();
+          _release(client.close);
         }
       }
       // A different device at a candidate address cannot decide that the
       // requested Host is absent. Keep the refusal for diagnostics, but try
       // the remaining sources under the same identity and TLS checks.
     }
-    // The refusal that decided this, if anything decided it. Only when
-    // nothing anywhere answered does silence become the answer.
-    //
-    // One silent candidate can speak for itself: `failureSentence` grades a
-    // timeout apart from a network that has no route, and with a single
-    // address tried that distinction is both specific and true. Several
-    // silent candidates cannot. Whichever was tried last is an arbitrary pick
-    // among equals, and quoting its address as the account of the failure
-    // describes one address when the fact being reported is that none of them
-    // answered. That fact is not a gap to fill with an example — it already
-    // has its own sentence, written just below, and it is the honest one.
-    final failure =
-        decidedFailure ?? (silentCandidates == 1 ? silentFailure : null);
-    if (failure != null) throw failure;
-    throw const LocalApiRequestException(
-      '局域网里没有任何设备应答这台主机的 Local API。'
-      '已经试过 mDNS 服务浏览、主机名解析、本网段探测，以及上次连上的地址。'
-      '请确认主机已开机、并和这台手机在同一个局域网。$controllerResetGuidance',
-    );
+    throw HostLocationException(failures);
   }
 
   /// Runs a typed Local API operation, recovering once from either of the two
@@ -362,7 +413,7 @@ class HostProductSession {
     LocalApiEndpoint endpoint,
     LocalControllerSession session,
   ) async {
-    final client = _managementClientFactory(_host.tlsSpkiFingerprint!);
+    final client = _newManagementClient();
     try {
       return await operation(
         client,
@@ -370,7 +421,7 @@ class HostProductSession {
         session.accessToken,
       );
     } finally {
-      client.close();
+      _release(client.close);
     }
   }
 
@@ -403,7 +454,9 @@ class HostProductSession {
   /// the race establishes *where*, and hands over the client that got there for
   /// the caller to authenticate on — once.
   Future<_AddressRace> _firstToAnswer(List<HostAddressCandidate> tier) async {
-    final failures = <Object>[];
+    final failures = <HostCandidateFailure>[];
+    final revision = _networkRevision;
+    final clients = <LocalApiClient>{};
     _ReachedHost? winner;
     final pending = <Future<void>>[];
     // Completed by whichever attempt settles next, so a candidate that fails
@@ -422,10 +475,12 @@ class HostProductSession {
     }
 
     Future<void> attempt(HostAddressCandidate candidate) async {
-      final client = _clientFactory(_host.tlsSpkiFingerprint!);
+      final client = _newLocalClient();
+      clients.add(client);
       var handedOver = false;
       try {
         final overview = await client.fetchHost(candidate.endpoint.baseUrl);
+        _ensureRevision(revision);
         _verifyHost(overview);
         // A loser of the race is not a failure and is not recorded as one: two
         // addresses of one Host both answering is the normal case, not a fault.
@@ -434,9 +489,9 @@ class HostProductSession {
         handedOver = true;
         if (!decided.isCompleted) decided.complete();
       } catch (error) {
-        failures.add(error);
+        failures.add(HostCandidateFailure(candidate, error));
       } finally {
-        if (!handedOver) client.close();
+        if (!handedOver) _release(client.close);
         slotFreed();
       }
     }
@@ -462,7 +517,10 @@ class HostProductSession {
       // read the message.
       await Future.any([decided.future, Future.wait(pending)]);
     }
-    return _AddressRace(winner: winner, failures: failures);
+    for (final client in clients) {
+      if (client != winner?.client) _release(client.close);
+    }
+    return _AddressRace(winner: winner, failures: List.unmodifiable(failures));
   }
 
   static bool _hostDidNotAnswer(PinnedHttpException error) =>
@@ -490,6 +548,7 @@ class HostProductSession {
   /// timeout to discover that is worse than looking again.
   void invalidateLocation() {
     _networkRevision += 1;
+    _cancelRequests();
     if (_endpoint == null && !_locationStale) return;
     _endpoint = null;
     _overview = null;
@@ -505,11 +564,11 @@ class HostProductSession {
     LocalApiEndpoint endpoint,
     LocalControllerSession session,
   ) async {
-    final client = _clientFactory(_host.tlsSpkiFingerprint!);
+    final client = _newLocalClient();
     try {
       return await operation(client, endpoint.baseUrl, session.accessToken);
     } finally {
-      client.close();
+      _release(client.close);
     }
   }
 
@@ -518,7 +577,7 @@ class HostProductSession {
     if (endpoint == null) {
       throw const HostControllerAuthorizationException('请重新连接主机');
     }
-    final client = _clientFactory(_host.tlsSpkiFingerprint!);
+    final client = _newLocalClient();
     try {
       final overview = await client.fetchHost(endpoint.baseUrl);
       _verifyHost(overview);
@@ -556,7 +615,7 @@ class HostProductSession {
         '管理会话已失效，主机返回的重新认证数据不兼容。',
       );
     } finally {
-      client.close();
+      _release(client.close);
     }
   }
 
@@ -669,12 +728,15 @@ class HostProductSession {
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    _closedSignal.complete();
+    _cancelRequests();
     _clearConnection();
     await _transport.close();
   }
 
   static LocalApiClient _platformClientFactory(String fingerprint) =>
       LocalApiClient(
+        ownsHttpClient: true,
         httpClient: PlatformPinnedHttpClient(
           tlsSpkiFingerprint: fingerprint,
         ),
@@ -683,6 +745,7 @@ class HostProductSession {
   static ManagementClient _platformManagementClientFactory(
           String fingerprint) =>
       ManagementClient(
+        ownsHttpClient: true,
         httpClient: PlatformPinnedHttpClient(
           tlsSpkiFingerprint: fingerprint,
         ),

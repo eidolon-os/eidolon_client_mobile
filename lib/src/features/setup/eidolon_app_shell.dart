@@ -9,6 +9,7 @@ import '../device_setup/device_setup_ports.dart';
 import '../../management/management_client.dart';
 import '../host_setup/host_local_connection_page.dart';
 import '../host_setup/host_product_controller.dart';
+import '../host_setup/host_product_session.dart';
 import 'commissioning_transport.dart';
 import 'change_network_page.dart';
 import 'controller_key_bridge.dart';
@@ -56,6 +57,18 @@ class _EidolonAppShellState extends State<EidolonAppShell>
   bool _refreshAgain = false;
   bool _foreground = true;
   int _revision = 0;
+  Completer<void>? _refreshCancelled;
+  final _refreshSessions = <HostProductSession>{};
+
+  void _cancelRefresh() {
+    _revision += 1;
+    final cancelled = _refreshCancelled;
+    if (cancelled != null && !cancelled.isCompleted) cancelled.complete();
+    for (final session in _refreshSessions.toList()) {
+      unawaited(session.close());
+    }
+    _refreshSessions.clear();
+  }
 
   @override
   void initState() {
@@ -72,7 +85,7 @@ class _EidolonAppShellState extends State<EidolonAppShell>
           ModalRoute.of(context)?.isCurrent != false) {
         unawaited(_load());
       } else {
-        _revision += 1;
+        _cancelRefresh();
       }
     });
     _load();
@@ -81,7 +94,7 @@ class _EidolonAppShellState extends State<EidolonAppShell>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
-    _revision += 1;
+    _cancelRefresh();
     if (_foreground && ModalRoute.of(context)?.isCurrent != false) {
       unawaited(_load());
     }
@@ -89,6 +102,7 @@ class _EidolonAppShellState extends State<EidolonAppShell>
 
   @override
   void dispose() {
+    _cancelRefresh();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_networkSubscription?.cancel());
     unawaited(_networkChanges.close());
@@ -101,7 +115,7 @@ class _EidolonAppShellState extends State<EidolonAppShell>
       if (mounted) setState(() => _hosts = hosts);
       return;
     }
-    _revision += 1;
+    _cancelRefresh();
     _refreshAgain = true;
     await (_refreshing ??=
         _refreshHosts().whenComplete(() => _refreshing = null));
@@ -111,6 +125,7 @@ class _EidolonAppShellState extends State<EidolonAppShell>
     do {
       _refreshAgain = false;
       final revision = _revision;
+      final cancelled = _refreshCancelled = Completer<void>();
       final hosts = await _registry.load();
       if (!mounted) return;
       setState(() => _hosts = hosts);
@@ -125,11 +140,27 @@ class _EidolonAppShellState extends State<EidolonAppShell>
             ModalRoute.of(context)?.isCurrent != false;
         if (!current()) return;
         setState(() => _hostStatuses[host.hostId] = '正在查找主机');
+        HostProductSession? ownedSession;
         try {
-          final result = await (widget.hostInfoReader != null
-              ? widget.hostInfoReader!(host)
-              : readHostListInfo(host, discovery: discovery));
-          if (!current()) return;
+          final result = await Future.any<HostListInfo?>([
+            widget.hostInfoReader != null
+                ? widget.hostInfoReader!(host)
+                : readHostListInfo(host, discovery: discovery,
+                    onProgress: (status) {
+                    if (current()) {
+                      setState(() => _hostStatuses[host.hostId] = status);
+                    }
+                  }, onSession: (session) {
+                    ownedSession = session;
+                    if (current()) {
+                      _refreshSessions.add(session);
+                    } else {
+                      unawaited(session.close());
+                    }
+                  }),
+            cancelled.future.then((_) => null),
+          ]);
+          if (result == null || !current()) return;
           final updated = await _registry.updateObservation(result.host);
           if (updated == null || !current()) return;
           setState(() {
@@ -145,6 +176,9 @@ class _EidolonAppShellState extends State<EidolonAppShell>
           if (current()) {
             setState(() => _hostStatuses[host.hostId] = '暂时无法确认 · 重新查找');
           }
+        } finally {
+          _refreshSessions.remove(ownedSession);
+          await ownedSession?.close();
         }
       }));
     } while (_refreshAgain && mounted && _foreground);
@@ -156,6 +190,7 @@ class _EidolonAppShellState extends State<EidolonAppShell>
   }
 
   Future<void> _openSetup() async {
+    _cancelRefresh();
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (context) => SetupWizardPage(
@@ -210,6 +245,7 @@ class _EidolonAppShellState extends State<EidolonAppShell>
       },
       onHostObserved: _observeHost,
       onRefresh: _load,
+      onLeave: _cancelRefresh,
       onHostRemoved: (hostId) async {
         await _registry.remove(hostId);
         await _load();
@@ -282,6 +318,7 @@ class _HostsPage extends StatelessWidget {
     required this.onHostUpdated,
     required this.onHostObserved,
     required this.onRefresh,
+    required this.onLeave,
     required this.onHostRemoved,
     this.setupTransport,
     this.controllerKeys,
@@ -295,6 +332,7 @@ class _HostsPage extends StatelessWidget {
   final ManagedHostUpdater onHostUpdated;
   final ManagedHostUpdater onHostObserved;
   final Future<void> Function() onRefresh;
+  final VoidCallback onLeave;
   final Future<void> Function(String hostId) onHostRemoved;
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
@@ -336,6 +374,7 @@ class _HostsPage extends StatelessWidget {
                     status: statuses[host.hostId] ?? '待确认连接'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
+                  onLeave();
                   await Navigator.of(context).push<void>(
                     MaterialPageRoute(
                       builder: (_) => _HostDetailPage(

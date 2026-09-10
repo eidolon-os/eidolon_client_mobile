@@ -42,7 +42,8 @@ void main() {
     )));
     await tester.pumpAndSettle();
     network.events.add(null);
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(calls, 2, reason: 'new network must not wait for the obsolete read');
     first.complete(HostListInfo(
         host().copyWith(lastConnectedAt: DateTime.utc(2026, 9, 10)), '旧网络结果'));
     await tester.pumpAndSettle();

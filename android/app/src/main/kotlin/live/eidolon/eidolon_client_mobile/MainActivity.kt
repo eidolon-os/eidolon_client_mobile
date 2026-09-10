@@ -113,6 +113,7 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "pinnedHttpsRequest" -> pinnedHttpsClient.request(call, result)
+                "cancelPinnedHttpsRequest" -> pinnedHttpsClient.cancel(call, result)
                 "requestMicrophonePermission" -> requestMicrophonePermission(result)
                 "requestBluetoothPermissions" -> requestBluetoothPermissions(result)
                 "requestDeviceProvisioningPermission" ->

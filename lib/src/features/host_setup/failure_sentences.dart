@@ -23,6 +23,7 @@ import 'pinned_http_client.dart';
 String failureSentence(Object error) {
   if (error is PinnedHttpException) {
     return switch (error.kind) {
+      PinnedHttpFailureKind.cancelled => '本次连接已取消。',
       PinnedHttpFailureKind.invalidRequest => 'App 无法构造有效的本地管理请求。',
       PinnedHttpFailureKind.unsupportedPlatform => '当前平台尚未实现安全的本地主机连接。',
       PinnedHttpFailureKind.secureChannel => '主机的加密身份与已保存身份不一致，已拒绝连接。',

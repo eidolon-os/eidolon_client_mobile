@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 enum PinnedHttpFailureKind {
+  cancelled,
   invalidRequest,
   unsupportedPlatform,
   secureChannel,
@@ -30,6 +32,7 @@ class PinnedHttpException extends http.ClientException {
     required Uri uri,
   }) {
     final kind = switch (error.code) {
+      'PINNED_HTTPS_CANCELLED' => PinnedHttpFailureKind.cancelled,
       'PINNED_HTTPS_INVALID_REQUEST' => PinnedHttpFailureKind.invalidRequest,
       'PINNED_HTTPS_SECURE_CHANNEL_FAILED' =>
         PinnedHttpFailureKind.secureChannel,
@@ -55,6 +58,7 @@ class PinnedHttpException extends http.ClientException {
 class PlatformPinnedHttpClient extends http.BaseClient {
   PlatformPinnedHttpClient({
     required this.tlsSpkiFingerprint,
+    this.requestTimeout = const Duration(seconds: 8),
     MethodChannel? channel,
   })  : ownerRootCertificate = null,
         addressHints = const {},
@@ -64,6 +68,7 @@ class PlatformPinnedHttpClient extends http.BaseClient {
   PlatformPinnedHttpClient.ownerDomain({
     required this.ownerRootCertificate,
     this.addressHints = const {},
+    this.requestTimeout = const Duration(seconds: 8),
     MethodChannel? channel,
   })  : tlsSpkiFingerprint = null,
         _channel =
@@ -76,9 +81,44 @@ class PlatformPinnedHttpClient extends http.BaseClient {
   final String? ownerRootCertificate;
   final Map<String, String> addressHints;
   final MethodChannel _channel;
+  final Duration requestTimeout;
+  static int _nextRequest = 0;
+  final Set<String> _pending = {};
+  bool _closed = false;
+
+  void _ensureOpen(Uri uri) {
+    if (_closed) {
+      throw PinnedHttpException(
+          kind: PinnedHttpFailureKind.cancelled,
+          message: 'Pinned HTTPS client is closed',
+          uri: uri);
+    }
+  }
+
+  Future<void> _cancel(String id) async {
+    try {
+      await _channel
+          .invokeMethod<void>('cancelPinnedHttpsRequest', {'requestId': id});
+    } on PlatformException {
+      // Engine shutdown can remove the bridge; native teardown also cancels calls.
+    } on MissingPluginException {
+      // No native request exists when the plugin is unavailable.
+    }
+  }
+
+  @override
+  void close() {
+    if (_closed) return;
+    _closed = true;
+    for (final id in _pending.toList()) {
+      unawaited(_cancel(id));
+    }
+    super.close();
+  }
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    _ensureOpen(request.url);
     if (defaultTargetPlatform != TargetPlatform.android) {
       throw PinnedHttpException(
         kind: PinnedHttpFailureKind.unsupportedPlatform,
@@ -101,12 +141,17 @@ class PlatformPinnedHttpClient extends http.BaseClient {
         uri: request.url,
       );
     }
+    _ensureOpen(request.url);
+    final requestId =
+        '${DateTime.now().microsecondsSinceEpoch}-${_nextRequest++}';
+    _pending.add(requestId);
     Map<Object?, Object?>? result;
     try {
       result = await _channel.invokeMapMethod<Object?, Object?>(
         'pinnedHttpsRequest',
         {
           'protocolVersion': _protocolVersion,
+          'requestId': requestId,
           'url': request.url.toString(),
           'method': request.method,
           if (addressHints[request.url.host] != null)
@@ -118,7 +163,14 @@ class PlatformPinnedHttpClient extends http.BaseClient {
           if (ownerRootCertificate != null)
             'ownerRootCertificate': ownerRootCertificate,
         },
-      );
+      ).timeout(requestTimeout, onTimeout: () {
+        unawaited(_cancel(requestId));
+        throw PinnedHttpException(
+            kind: PinnedHttpFailureKind.timeout,
+            message: 'Pinned HTTPS request deadline exceeded',
+            uri: request.url);
+      });
+      _ensureOpen(request.url);
     } on PlatformException catch (error) {
       throw PinnedHttpException.fromPlatform(error, uri: request.url);
     } on MissingPluginException catch (error) {
@@ -128,6 +180,8 @@ class PlatformPinnedHttpClient extends http.BaseClient {
         uri: request.url,
         platformCode: 'MISSING_PLUGIN',
       );
+    } finally {
+      _pending.remove(requestId);
     }
     if (result == null ||
         result['protocolVersion'] != _protocolVersion ||

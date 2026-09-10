@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/features/host_setup/pinned_http_client.dart';
@@ -19,6 +20,77 @@ void main() {
   tearDown(() {
     debugDefaultTargetPlatformOverride = null;
     messenger.setMockMethodCallHandler(channel, null);
+  });
+
+  test('deadline cancels the native request and does not block a second client',
+      () async {
+    final pending = Completer<Object?>();
+    final ids = <String>[];
+    final cancelled = <String>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      final args = call.arguments as Map;
+      if (call.method == 'cancelPinnedHttpsRequest') {
+        cancelled.add(args['requestId'] as String);
+        pending
+            .completeError(PlatformException(code: 'PINNED_HTTPS_CANCELLED'));
+        return null;
+      }
+      ids.add(args['requestId'] as String);
+      if ((args['url'] as String).contains('slow')) return pending.future;
+      return {'protocolVersion': 1, 'statusCode': 200, 'bodyBase64': ''};
+    });
+    final slow = PlatformPinnedHttpClient(
+        tlsSpkiFingerprint: 'pin',
+        channel: channel,
+        requestTimeout: const Duration(milliseconds: 30));
+    final fast =
+        PlatformPinnedHttpClient(tlsSpkiFingerprint: 'pin', channel: channel);
+    final failed = expectLater(
+        slow.get(Uri.parse('https://slow/')),
+        throwsA(isA<PinnedHttpException>()
+            .having((e) => e.kind, 'kind', PinnedHttpFailureKind.timeout)));
+    expect((await fast.get(Uri.parse('https://fast/'))).statusCode, 200);
+    await failed;
+    await Future<void>.delayed(Duration.zero);
+    expect(cancelled, [ids.first]);
+    slow.close();
+    fast.close();
+  });
+
+  test('closing a client cancels only its requests and rejects future sends',
+      () async {
+    final pending = <String, Completer<Object?>>{};
+    final cancelled = <String>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      final id = (call.arguments as Map)['requestId'] as String;
+      if (call.method == 'cancelPinnedHttpsRequest') {
+        cancelled.add(id);
+        pending[id]!
+            .completeError(PlatformException(code: 'PINNED_HTTPS_CANCELLED'));
+        return null;
+      }
+      return (pending[id] = Completer<Object?>()).future;
+    });
+    final first =
+        PlatformPinnedHttpClient(tlsSpkiFingerprint: 'pin', channel: channel);
+    final second =
+        PlatformPinnedHttpClient(tlsSpkiFingerprint: 'pin', channel: channel);
+    final closed = expectLater(
+        first.get(Uri.parse('https://first/')),
+        throwsA(isA<PinnedHttpException>()
+            .having((e) => e.kind, 'kind', PinnedHttpFailureKind.cancelled)));
+    final reply = second.get(Uri.parse('https://second/'));
+    await Future<void>.delayed(Duration.zero);
+    first.close();
+    first.close();
+    await closed;
+    expect(cancelled, [pending.keys.first]);
+    pending.values.last
+        .complete({'protocolVersion': 1, 'statusCode': 200, 'bodyBase64': ''});
+    expect((await reply).statusCode, 200);
+    await expectLater(first.get(Uri.parse('https://first/')),
+        throwsA(isA<PinnedHttpException>()));
+    second.close();
   });
 
   test(

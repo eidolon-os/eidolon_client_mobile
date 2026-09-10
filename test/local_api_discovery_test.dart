@@ -59,6 +59,30 @@ LocalApiSourceReport _silent(LocalApiCandidateOrigin origin) =>
     LocalApiSourceReport(origin: origin, attempted: 'scripted');
 
 void main() {
+  test(
+      'a stalled hostname resolver cannot hold the survey or dial after its deadline',
+      () async {
+    final unresolved = Completer<List<String>>();
+    var sockets = 0;
+    final discovery = MultiSourceLocalApiDiscovery([
+      _ScriptedSource(LocalApiCandidateOrigin.announced,
+          (origin) => _found(origin, 'https://192.168.1.33:9002')),
+      HostnameLocalApiSource(
+          names: ['missing.local'],
+          resolve: (_) => unresolved.future,
+          probePort: (address, port, timeout) async {
+            sockets++;
+            return true;
+          }),
+    ]);
+    final survey =
+        await discovery.discover(timeout: const Duration(milliseconds: 20));
+    expect(survey.endpoints.single.baseUrl, 'https://192.168.1.33:9002');
+    unresolved.complete(['192.168.1.32']);
+    await Future<void>.delayed(Duration.zero);
+    expect(sockets, 0);
+  });
+
   group('a discovered service that names another contract', () {
     test('is incompatible rather than invalid', () {
       expect(
@@ -209,8 +233,8 @@ void main() {
           'https://192.168.3.206:$localApiPort');
       expect(report.candidates.single.endpoint.ipAddress, '192.168.3.206');
       // The name is still what was attempted, and still names the instance.
-      expect(report.candidates.single.endpoint.instanceName,
-          'eidolon-pi5.local');
+      expect(
+          report.candidates.single.endpoint.instanceName, 'eidolon-pi5.local');
       expect(report.attempted, contains('eidolon-pi5.local'));
     });
 

@@ -215,9 +215,9 @@ void main() {
     await expectLater(
       session.connect(),
       throwsA(
-        isA<PinnedHttpException>().having(
-          (error) => error.kind,
-          'kind',
+        isA<HostLocationException>().having(
+          (error) => (error.failures.first.error as PinnedHttpException).kind,
+          'first candidate failure',
           PinnedHttpFailureKind.secureChannel,
         ),
       ),
@@ -244,7 +244,7 @@ void main() {
 
     await expectLater(
       session.connect(),
-      throwsA(isA<PinnedHttpException>()),
+      throwsA(isA<HostLocationException>()),
     );
   });
 
@@ -303,7 +303,7 @@ void main() {
         isA<LocalApiRequestException>().having(
           (error) => error.message,
           'message',
-          contains('局域网里没有任何设备应答这台主机的 Local API'),
+          contains('连接超时'),
         ),
       ),
     );
@@ -402,8 +402,7 @@ void main() {
             sessionsMinted.add(request.url.host);
           }
           return switch (request.url.path) {
-            '/api/local/v1/host' =>
-              http.Response(jsonEncode(_overview()), 200),
+            '/api/local/v1/host' => http.Response(jsonEncode(_overview()), 200),
             '/api/local/v1/auth/challenges' => _challenge(),
             '/api/local/v1/auth/sessions' => _session(),
             '/api/local/v1/setup/workspace' => _workspace(),

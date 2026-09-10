@@ -1050,6 +1050,7 @@ class HostProductController extends ChangeNotifier {
     bool workspaceIsOptional = false,
   }) {
     final message = switch (error.kind) {
+      PinnedHttpFailureKind.cancelled => '本次连接已取消。',
       PinnedHttpFailureKind.invalidRequest =>
         'App 无法构造有效的本地管理请求，请更新或重新安装当前开发版本。',
       PinnedHttpFailureKind.unsupportedPlatform => '当前平台尚未实现安全的本地主机连接。',
@@ -1080,6 +1081,7 @@ class HostProductController extends ChangeNotifier {
       PinnedHttpFailureKind.invalidRequest ||
       PinnedHttpFailureKind.unsupportedPlatform =>
         WorkspaceRecovery.fixedElsewhere,
+      PinnedHttpFailureKind.cancelled ||
       PinnedHttpFailureKind.timeout ||
       PinnedHttpFailureKind.unreachable ||
       PinnedHttpFailureKind.io ||

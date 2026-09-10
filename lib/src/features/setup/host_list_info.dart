@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import '../host_setup/pinned_http_client.dart';
 import '../../generated/management_v1.dart';
 import '../host_setup/host_locator.dart';
 import '../host_setup/local_api_discovery.dart';
@@ -34,6 +37,8 @@ Future<HostListInfo> readHostListInfo(
   LocalApiClientFactory? clientFactory,
   ManagementClientFactory? managementClientFactory,
   ControllerKeyBridge? controllerKeys,
+  void Function(HostProductSession)? onSession,
+  HostConnectionProgress? onProgress,
 }) async {
   if (host.tlsSpkiFingerprint == null) {
     return HostListInfo(host, '待连接确认');
@@ -48,7 +53,9 @@ Future<HostListInfo> readHostListInfo(
     controllerKeys: controllerKeys,
   );
   try {
-    await session.connect();
+    onSession?.call(session);
+    await session.connect(onProgress: onProgress);
+    onProgress?.call('可连接 · 正在读取主机资料');
     try {
       final monitor = await session.executeManagement(
         (client, baseUri, token) =>
@@ -63,8 +70,18 @@ Future<HostListInfo> readHostListInfo(
     }
   } on HostControllerAuthorizationException {
     return HostListInfo(host, '需要恢复管理授权');
+  } on HostLocationException catch (error) {
+    return HostListInfo(host, error.message);
+  } on TimeoutException {
+    return HostListInfo(host, '主机连接验证超时 · 重新查找');
+  } on PinnedHttpException catch (error) {
+    return HostListInfo(
+        host,
+        error.kind == PinnedHttpFailureKind.timeout
+            ? '主机连接验证超时 · 重新查找'
+            : '安全连接未完成 · 重新查找');
   } catch (_) {
-    return HostListInfo(host, '当前网络未找到 · 重新查找');
+    return HostListInfo(host, '暂时无法确认连接 · 重新查找');
   } finally {
     await session.close();
   }

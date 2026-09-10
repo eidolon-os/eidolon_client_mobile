@@ -203,9 +203,10 @@ class CompanionFacePicture {
 class ManagementClient {
   ManagementClient({
     http.Client? httpClient,
+    bool? ownsHttpClient,
     this.timeout = const Duration(seconds: 8),
   }) : _httpClient = httpClient ?? http.Client(),
-       _ownsHttpClient = httpClient == null;
+       _ownsHttpClient = ownsHttpClient ?? httpClient == null;
 
   final http.Client _httpClient;
   final bool _ownsHttpClient;

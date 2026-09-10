@@ -214,7 +214,8 @@ class HostLocator {
     final uri = Uri.tryParse(endpoint.baseUrl);
     if (uri == null || uri.host.isEmpty) return null;
     if (InternetAddress.tryParse(uri.host) != null) return endpoint;
-    final resolved = await _resolve(uri.host);
+    final resolved = await _resolve(uri.host)
+        .timeout(const Duration(seconds: 5), onTimeout: () => const []);
     if (resolved.isEmpty) return null;
     final address = resolved.first;
     return LocalApiEndpoint(

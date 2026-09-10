@@ -164,7 +164,9 @@ class HostnameLocalApiSource implements LocalApiCandidateSource {
         unavailable: '这台手机还不知道任何 Host 名字',
       );
     }
-    final found = await Future.wait(names.map(_probeName));
+    final watch = Stopwatch()..start();
+    final found = await Future.wait(
+        names.map((name) => _probeName(name, timeout, watch)));
     return LocalApiSourceReport(
       origin: origin,
       attempted: '${names.join('、')}（端口 $port）',
@@ -172,11 +174,18 @@ class HostnameLocalApiSource implements LocalApiCandidateSource {
     );
   }
 
-  Future<LocalApiCandidate?> _probeName(String name) async {
-    final addresses = await _resolve(name);
+  Future<LocalApiCandidate?> _probeName(
+      String name, Duration timeout, Stopwatch watch) async {
+    final addresses =
+        await _resolve(name).timeout(timeout, onTimeout: () => const []);
+    final remaining = timeout - watch.elapsed;
+    if (remaining <= Duration.zero) return null;
     if (addresses.isEmpty) return null;
     final address = addresses.first;
-    if (!await _probePort(address, port, attemptTimeout)) return null;
+    if (!await _probePort(address, port,
+        remaining < attemptTimeout ? remaining : attemptTimeout)) {
+      return null;
+    }
     // Dialled at the address this name just resolved to, and named after the
     // name only for the record.
     //
