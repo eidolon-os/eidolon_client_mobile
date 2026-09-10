@@ -281,73 +281,94 @@ class HostProductSession {
       _host = trusted;
     }
 
-    onProgress?.call('正在同一局域网中查找主机');
-    // Each means of learning where the Host is, cheapest first, and the next
-    // one only when nothing in the last could be reached. Multicast does not
-    // reach every phone on every network — same Wi-Fi, same subnet, ping fine,
-    // and nothing discovered — so a Host this phone has already claimed asks
-    // its way through the alternatives instead of stopping there. Nothing is
-    // trusted for having been remembered or published: every candidate proves
-    // it is this Host before a word is said to it.
+    onProgress?.call('正在连接主机');
     final revision = _networkRevision;
     final failures = <HostCandidateFailure>[];
-    await for (final tier in _locator.locate(_host)) {
+    // Known addresses and discovery feed the same read-only race. Only after
+    // every network candidate failed do we repeat transient probes once or
+    // consult the existing BLE fallback. Authentication is never raced.
+    Future<HostAddressRace<_ReachedHost>> probe(
+      List<HostAddressCandidate> candidates, {
+      Stream<List<HostAddressCandidate>>? incoming,
+    }) async {
+      var result = await _firstToAnswer(candidates, incoming: incoming);
       _ensureRevision(revision);
-      onProgress?.call('正在连接主机');
-      var race = await _firstToAnswer(tier);
-      _ensureRevision(revision);
-      failures.addAll(race.failures);
-      // Only repeat unanswered, read-only identity probes, once per address.
-      // A winning alternative avoids the retry entirely. Authentication below
-      // is outside this recovery boundary and must never be replayed here.
-      if (race.winner == null) {
-        final retryable = [
-          for (final failure in race.failures)
-            if (failure.error is TimeoutException ||
-                failure.error is PinnedHttpException &&
-                    _hostDidNotAnswer(failure.error as PinnedHttpException))
-              failure.candidate,
-        ];
-        if (retryable.isNotEmpty) {
-          onProgress?.call('连接暂时未完成，正在重试');
-          _ensureRevision(revision);
-          race = await _firstToAnswer(retryable);
-          _ensureRevision(revision);
-          failures.addAll(race.failures);
-        }
+      failures.addAll(result.failures);
+      if (result.winner != null) return result;
+      final retryable = [
+        for (final failure in result.failures)
+          if (failure.error is TimeoutException ||
+              failure.error is PinnedHttpException &&
+                  _hostDidNotAnswer(failure.error as PinnedHttpException))
+            failure.candidate,
+      ];
+      if (retryable.isNotEmpty) {
+        onProgress?.call('连接暂时未完成，正在重试');
+        _ensureRevision(revision);
+        result = await _firstToAnswer(retryable);
+        _ensureRevision(revision);
+        failures.addAll(result.failures);
       }
-      final winner = race.winner;
-      if (winner != null) {
-        final endpoint = winner.endpoint;
-        final client = winner.client;
-        try {
-          onProgress?.call('正在验证管理授权');
-          final controllerSession = await _authenticate(
-            client,
-            endpoint,
-            winner.overview,
-          );
-          _ensureRevision(revision);
-          _endpoint = endpoint;
-          _overview = winner.overview;
-          _controllerSession = controllerSession;
-          if (_host.lastKnownBaseUrl != endpoint.baseUrl) {
-            _host = _host.copyWith(lastKnownBaseUrl: endpoint.baseUrl);
-          }
-          return _host;
-        } catch (_) {
-          // The Host answered and then refused, which decides this attempt.
-          // Trying the same Host again at another of its own addresses would
-          // ask it the same question and get the same answer.
-          rethrow;
-        } finally {
-          _release(client.close);
-        }
-      }
-      // A different device at a candidate address cannot decide that the
-      // requested Host is absent. Keep the refusal for diagnostics, but try
-      // the remaining sources under the same identity and TLS checks.
+      return result;
     }
+
+    Object? sourceFailure;
+    var race = const HostAddressRace<_ReachedHost>(null, []);
+    try {
+      race = await probe(const [], incoming: _locator.locateNetwork(_host));
+    } catch (error) {
+      _ensureRevision(revision);
+      sourceFailure = error;
+    }
+    if (race.winner == null && _allowBle) {
+      onProgress?.call('正在重新定位主机地址');
+      try {
+        await for (final tier in _locator.locatePublished(_host)) {
+          _ensureRevision(revision);
+          // Already checked network addresses do not acquire a second budget
+          // merely because BLE publishes them too.
+          final fresh = tier
+              .where((candidate) => !failures.any((failure) =>
+                  failure.candidate.endpoint.baseUrl ==
+                  candidate.endpoint.baseUrl))
+              .toList();
+          race = await probe(fresh);
+          if (race.winner != null) break;
+        }
+      } catch (error) {
+        _ensureRevision(revision);
+        sourceFailure ??= error;
+      }
+    }
+    final winner = race.winner;
+    if (winner != null) {
+      final endpoint = winner.endpoint;
+      final client = winner.client;
+      try {
+        onProgress?.call('正在验证管理授权');
+        final controllerSession = await _authenticate(
+          client,
+          endpoint,
+          winner.overview,
+        );
+        _ensureRevision(revision);
+        _endpoint = endpoint;
+        _overview = winner.overview;
+        _controllerSession = controllerSession;
+        if (_host.lastKnownBaseUrl != endpoint.baseUrl) {
+          _host = _host.copyWith(lastKnownBaseUrl: endpoint.baseUrl);
+        }
+        return _host;
+      } catch (_) {
+        // The Host answered and then refused, which decides this attempt.
+        // Trying the same Host again at another of its own addresses would
+        // ask it the same question and get the same answer.
+        rethrow;
+      } finally {
+        _release(client.close);
+      }
+    }
+    if (failures.isEmpty && sourceFailure != null) throw sourceFailure;
     throw HostLocationException(failures);
   }
 
@@ -425,18 +446,31 @@ class HostProductSession {
   }
 
   Future<HostAddressRace<_ReachedHost>> _firstToAnswer(
-      List<HostAddressCandidate> tier) {
+    List<HostAddressCandidate> tier, {
+    Stream<List<HostAddressCandidate>>? incoming,
+  }) async {
     final revision = _networkRevision;
-    return raceHostAddresses(tier, (candidate) {
-      final client = _newLocalClient();
-      final result =
-          client.fetchHost(candidate.endpoint.baseUrl).then((overview) {
+    final cancelled = Completer<void>();
+    void cancel() {
+      if (!cancelled.isCompleted) cancelled.complete();
+    }
+
+    _clientClosers.add(cancel);
+    try {
+      return await raceHostAddresses(tier, (candidate) {
         _ensureRevision(revision);
-        _verifyHost(overview);
-        return _ReachedHost(candidate.endpoint, overview, client);
-      });
-      return HostAddressAttempt(result, () => _release(client.close));
-    });
+        final client = _newLocalClient();
+        final result =
+            client.fetchHost(candidate.endpoint.baseUrl).then((overview) {
+          _ensureRevision(revision);
+          _verifyHost(overview);
+          return _ReachedHost(candidate.endpoint, overview, client);
+        });
+        return HostAddressAttempt(result, () => _release(client.close));
+      }, incoming: incoming, cancelled: cancelled.future);
+    } finally {
+      _release(cancel);
+    }
   }
 
   static bool _hostDidNotAnswer(PinnedHttpException error) =>

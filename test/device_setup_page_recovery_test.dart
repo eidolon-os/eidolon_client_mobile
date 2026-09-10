@@ -27,10 +27,14 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
+    expect(admission.recoverCalls, 0);
+    await tester.tap(find.text('继续接入'));
     await _pumpUntil(tester, () => admission.recoverCalls == 1);
 
     expect(admission.recoverCalls, 1);
-    expect(find.textContaining('尚未 ClaimActive'), findsOneWidget);
+    expect(find.text('Wi-Fi 已配置，正在接入主机'), findsOneWidget);
+    expect(find.text('已批准，等待设备领取接入凭据'), findsOneWidget);
     expect(find.text('设备已设置完成'), findsNothing);
 
     admission.current = _projection(
@@ -47,9 +51,9 @@ void main() {
     ));
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await _pumpUntil(tester, () => admission.recoverCalls == 2);
+    await _pumpUntil(tester, () => find.text('设备已设置完成').evaluate().isNotEmpty);
 
-    expect(admission.recoverCalls, 2);
+    expect(admission.recoverCalls, 1);
     expect(find.text('设备已设置完成'), findsOneWidget);
     expect(admission.decideCalls, 0);
   });
@@ -77,6 +81,9 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
+    expect(admission.recoverCalls, 0);
+    await tester.tap(find.text('继续接入'));
     await _pumpUntil(tester, () => admission.recoverCalls == 1);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
 

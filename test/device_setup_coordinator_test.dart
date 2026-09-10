@@ -94,6 +94,7 @@ void main() {
       shownBeforeClose = states.last;
     };
     final coordinator = DeviceSetupCoordinator(
+      loadTarget: () async => deviceOnboardingTargetFixture(),
       transport: _Transport(session),
       admission: _Admission(_projection()),
       checkpoints: store,
@@ -344,6 +345,108 @@ void main() {
     expect(result.failure?.code, 'provisioning_session_expired');
   });
 
+  test('all recovery entry points reject a different authority before requests',
+      () async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    final old = _checkpoint('old');
+    await store.save(old);
+    final admission = _Admission(_projection());
+    final session = _Session(_descriptor);
+    final target = DeviceOnboardingTarget(
+      ownerDomainId: ownerDomainIdFixture,
+      ownerDomainDescriptor: OwnerDomainDescriptorV1.fromJson({
+        ...ownerDomainDescriptorJsonFixture,
+        'owner_domain_generation': 2,
+      }),
+      ownerRootCertificate: ownerRootCertificateFixture,
+      authoritySigningCertificate: authoritySigningCertificateFixture,
+    );
+    final coordinator = DeviceSetupCoordinator(
+      transport: _Transport(session),
+      admission: admission,
+      checkpoints: store,
+      ownerDirectoryVerifier: const AcceptingOwnerDomainDirectoryVerifier(),
+      loadTarget: () async => target,
+    );
+    expect(await coordinator.resumableSetups(), isEmpty);
+    await expectLater(
+        coordinator.provisionAndAdmit(
+          setupId: old.setupId,
+          requestId: old.requestId,
+          candidate: _candidate,
+          credentials:
+              const DeviceWifiCredentials(ssid: 'Hotspot', password: 'pw'),
+          onboardingTarget: target,
+          voucher: _voucher,
+        ),
+        throwsA(isA<DeviceSetupException>()));
+    final result = await coordinator.resumeAdmission(old.setupId);
+    expect(result.failure?.code, 'setup_authority_changed');
+    expect(result.failure?.retryable, false);
+    expect(admission.recoverCalls, 0);
+    expect(admission.decisionRequestIds, isEmpty);
+    expect(session.configureCalls, 0);
+  });
+
+  test('authority change after recovery fences the pending Decision', () async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    await store.save(_checkpoint('changing'));
+    var target = deviceOnboardingTargetFixture();
+    final admission = _Admission(_projection())
+      ..onRecover = () {
+        target = DeviceOnboardingTarget(
+          ownerDomainId: ownerDomainIdFixture,
+          ownerDomainDescriptor: OwnerDomainDescriptorV1.fromJson({
+            ...ownerDomainDescriptorJsonFixture,
+            'owner_domain_generation': 2,
+          }),
+          ownerRootCertificate: ownerRootCertificateFixture,
+          authoritySigningCertificate: authoritySigningCertificateFixture,
+        );
+      };
+    final coordinator = DeviceSetupCoordinator(
+      transport: _Transport(_Session(_descriptor)),
+      admission: admission,
+      checkpoints: store,
+      ownerDirectoryVerifier: const AcceptingOwnerDomainDirectoryVerifier(),
+      loadTarget: () async => target,
+    );
+    final result = await coordinator.resumeAdmission('changing');
+    expect(result.failure?.code, 'setup_authority_changed');
+    expect(admission.recoverCalls, 1);
+    expect(admission.decisionRequestIds, isEmpty);
+  });
+
+  for (final state in ['rejected', 'expired', 'canceled', 'claim_revoked']) {
+    test('$state leaves recovery without deleting other owner records',
+        () async {
+      final store = InMemoryDeviceSetupCheckpointStore();
+      await store.save(_checkpoint('terminal'));
+      final unrelated = DeviceSetupCheckpoint.fromJson({
+        ..._checkpoint('unrelated').toJson(),
+        'owner_domain_id': 'owner-other',
+        'owner_domain_descriptor': {
+          ...ownerDomainDescriptorJsonFixture,
+          'owner_domain_id': 'owner-other',
+        },
+      });
+      await store.save(unrelated);
+      final admission = _Admission(_projection(state: state));
+      final coordinator = _coordinator(_Session(_descriptor), admission, store);
+      expect((await coordinator.resumableSetups()).map((item) => item.setupId),
+          ['terminal']);
+      final result = await coordinator.resumeAdmission('terminal');
+      expect(result.admissionState, DeviceAdmissionState.rejected);
+      expect(await coordinator.resumableSetups(), isEmpty);
+      await coordinator.resumeAdmission('terminal');
+      expect(admission.recoverCalls, 1);
+      expect(admission.decisionRequestIds, isEmpty);
+      await expectLater(coordinator.resumeAdmission('unrelated'),
+          throwsA(isA<DeviceSetupException>()));
+      expect((await store.load('unrelated'))!.encode(), unrelated.encode());
+    });
+  }
+
   test('ClaimActive alone makes the recovered workflow ready', () async {
     final store = InMemoryDeviceSetupCheckpointStore();
     await store.save(_checkpoint('setup-active'));
@@ -371,6 +474,7 @@ DeviceSetupCoordinator _coordinator(
   DeviceSetupCheckpointStore store,
 ) =>
     DeviceSetupCoordinator(
+      loadTarget: () async => deviceOnboardingTargetFixture(),
       transport: _Transport(session),
       admission: admission,
       checkpoints: store,
@@ -519,6 +623,7 @@ class _Admission implements DeviceAdmissionPort {
   EnrollmentRecoveryProjectionV1 current;
   final bool loseDecisionReply;
   bool unavailable = false;
+  void Function()? onRecover;
   int recoverCalls = 0;
   final List<String> decisionRequestIds = [];
   final List<Map<String, dynamic>> payloads = [];
@@ -536,6 +641,7 @@ class _Admission implements DeviceAdmissionPort {
     required String enrollmentId,
   }) async {
     recoverCalls += 1;
+    onRecover?.call();
     if (unavailable) throw StateError('Hub unavailable');
     return current;
   }

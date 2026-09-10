@@ -20,6 +20,79 @@ import 'support/owner_domain_fixtures.dart';
 /// can never move a terminal Enrollment.
 void main() {
   _adapterGrading();
+  testWidgets('old authority and terminal history never take over new setup',
+      (tester) async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    final original = _checkpoint();
+    for (final state in [
+      DeviceAdmissionState.claimActive,
+      DeviceAdmissionState.rejected
+    ]) {
+      await store.save(DeviceSetupCheckpoint.fromJson({
+        ...original.toJson(),
+        'setup_id': state.name,
+        'admission_state': state.name,
+      }));
+    }
+    await store.save(DeviceSetupCheckpoint.fromJson({
+      ...original.toJson(),
+      'setup_id': 'old-authority',
+      'owner_domain_descriptor': {
+        ...ownerDomainDescriptorJsonFixture,
+        'owner_domain_generation': 2,
+      },
+    }));
+    await store.save(DeviceSetupCheckpoint.fromJson({
+      ...original.toJson(),
+      'setup_id': 'gone',
+      'admission_state': 'failed',
+      'failure': {
+        'stage': 'admission',
+        'code': 'enrollment_gone',
+        'message': 'gone',
+        'retryable': false
+      },
+    }));
+    final before = (await store.list()).map((item) => item.encode()).toList();
+    final admission = _Admission(_projection('rejected'));
+    await tester.pumpWidget(_page(store, admission));
+    await tester.pumpAndSettle();
+    expect(find.text('准备设备'), findsOneWidget);
+    expect(find.text('继续接入'), findsNothing);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('discover-devices')));
+    await tester.pumpAndSettle();
+    expect(admission.recoverCalls, 0);
+    expect((await store.list()).map((item) => item.encode()).toList(), before);
+    expect(find.textContaining('附近没有等待设置的设备'), findsOneWidget);
+  });
+
+  testWidgets('multiple pending setups require a choice and remain independent',
+      (tester) async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    await store.save(_checkpoint());
+    await store.save(DeviceSetupCheckpoint.fromJson({
+      ..._checkpoint().toJson(),
+      'setup_id': 'second',
+      'enrollment_id': 'enrollment_second',
+    }));
+    final admission = _GoneAdmission();
+    await tester.pumpWidget(_page(store, admission));
+    await tester.pumpAndSettle();
+    expect(find.text('继续接入'), findsNWidgets(2));
+    expect(find.byKey(const Key('discover-devices')), findsOneWidget);
+    expect(admission.recoverCalls, 0);
+    await tester.tap(find.byKey(const Key('continue-setup-second')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('restart-device-setup')));
+    await tester.pumpAndSettle();
+    expect((await store.list()).single.setupId, 'setup-dead-end');
+    expect(find.text('继续接入'), findsOneWidget);
+    expect(admission.recoverCalls, 1);
+  });
+
   testWidgets('a refused setup offers a way out instead of only a retry',
       (tester) async {
     final store = InMemoryDeviceSetupCheckpointStore();
@@ -27,6 +100,9 @@ void main() {
     final admission = _Admission(_projection('rejected'));
 
     await tester.pumpWidget(_page(store, admission));
+    await tester.pumpAndSettle();
+    expect(admission.recoverCalls, 0);
+    await tester.tap(find.text('继续接入'));
     await _pumpUntil(tester, () => admission.recoverCalls == 1);
 
     expect(find.text('这次接入进行不下去了'), findsOneWidget);
@@ -41,6 +117,9 @@ void main() {
     final admission = _Admission(_projection('rejected'));
 
     await tester.pumpWidget(_page(store, admission));
+    await tester.pumpAndSettle();
+    expect(admission.recoverCalls, 0);
+    await tester.tap(find.text('继续接入'));
     await _pumpUntil(tester, () => admission.recoverCalls == 1);
 
     await tester.tap(find.byKey(const Key('restart-device-setup')));
@@ -68,6 +147,9 @@ void main() {
     );
 
     await tester.pumpWidget(_page(store, admission));
+    await tester.pumpAndSettle();
+    expect(admission.recoverCalls, 0);
+    await tester.tap(find.text('继续接入'));
     await _pumpUntil(tester, () => admission.recoverCalls == 1);
 
     expect(find.byKey(const Key('resume-device-admission')), findsOneWidget);
@@ -85,14 +167,16 @@ void main() {
     final admission = _GoneAdmission();
 
     await tester.pumpWidget(_page(store, admission));
+    await tester.pumpAndSettle();
+    expect(admission.recoverCalls, 0);
+    await tester.tap(find.text('继续接入'));
     await _pumpUntil(
       tester,
       () => find.byKey(const Key('restart-device-setup')).evaluate().isNotEmpty,
     );
 
     expect(admission.recoverCalls, 0, reason: 'no Enrollment id to recover');
-    expect(find.textContaining('Device has not created an Enrollment yet'),
-        findsOneWidget);
+    expect(find.textContaining('Wi-Fi 已配置，但主机尚未收到这台设备的登记'), findsOneWidget);
     expect(find.byKey(const Key('resume-device-admission')), findsOneWidget);
     expect(find.byKey(const Key('restart-device-setup')), findsOneWidget);
 
@@ -110,6 +194,9 @@ void main() {
     final admission = _GoneAdmission();
 
     await tester.pumpWidget(_page(store, admission));
+    await tester.pumpAndSettle();
+    expect(admission.recoverCalls, 0);
+    await tester.tap(find.text('继续接入'));
     await _pumpUntil(tester, () => admission.recoverCalls == 1);
 
     // The Host's own sentence, and no retry above it.
@@ -235,7 +322,6 @@ class _Transport implements DeviceProvisioningTransport {
   Future<bool> requestPermission() async => true;
 }
 
-
 /// A Host that answers 404 for this Enrollment, as one does after a reinstall.
 class _GoneAdmission implements DeviceAdmissionPort {
   @override
@@ -283,7 +369,6 @@ class _GoneAdmission implements DeviceAdmissionPort {
   }) =>
       throw UnimplementedError();
 }
-
 
 void _adapterGrading() {
   test('only a 404 is graded terminal', () {

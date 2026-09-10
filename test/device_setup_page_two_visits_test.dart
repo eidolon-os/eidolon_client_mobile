@@ -66,6 +66,8 @@ void main() {
       )));
       await tester.pumpAndSettle();
       if (restart) {
+        await tester.tap(find.text('继续接入'));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('restart-device-setup')));
         await tester.pumpAndSettle();
         admission.current = canonicalProjection(
@@ -90,7 +92,22 @@ void main() {
       }
       expect(transport.opened, 2);
       expect(find.text('选择家庭 Wi-Fi'), findsNothing);
+      expect(find.text('Wi-Fi 已配置，正在接入主机'), findsNothing);
+      admission.publishEnrollment = false;
       gate.complete();
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      // A committed network is visible even when device enrollment is late.
+      // Waiting must not reopen SoftAP or need a refresh/approval tap.
+      expect(find.text('Wi-Fi 已配置，正在接入主机'), findsOneWidget);
+      expect(find.text('等待设备向主机登记，状态会自动更新'), findsOneWidget);
+      expect(find.text('设备已设置完成'), findsNothing);
+      expect(admission.decisions, 0);
+      await tester.pump(const Duration(seconds: 30));
+      expect(transport.opened, 2);
+      admission.publishEnrollment = true;
+      await tester.pump(const Duration(seconds: 3));
       for (var i = 0; i < 30; i++) {
         await tester.pump(const Duration(milliseconds: 10));
       }
@@ -151,6 +168,7 @@ class _Admission implements DeviceAdmissionPort {
   final List<int> sessionsOpenWhenAsked = [];
   String? requestedKey;
   int decisions = 0;
+  bool publishEnrollment = true;
   EnrollmentRecoveryProjectionV1 current = canonicalProjection(
     state: 'pending_review',
     ownerDomainId: ownerDomainIdFixture,
@@ -175,7 +193,8 @@ class _Admission implements DeviceAdmissionPort {
   Future<EnrollmentProposalPageV1> listRecovery({
     AdmissionListCursorV1? after,
   }) async =>
-      canonicalRecoveryPage([current], ownerDomainId: ownerDomainIdFixture);
+      canonicalRecoveryPage(publishEnrollment ? [current] : [],
+          ownerDomainId: ownerDomainIdFixture);
 
   @override
   Future<EnrollmentRecoveryProjectionV1> recover({

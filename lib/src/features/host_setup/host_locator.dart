@@ -176,6 +176,53 @@ class HostLocator {
         resolve: resolve,
       );
 
+  /// Network evidence arrives independently: a slow browse or name lookup
+  /// cannot withhold a remembered numeric address. BLE stays an explicit
+  /// fallback after these candidates have been checked.
+  Stream<List<HostAddressCandidate>> locateNetwork(ManagedHost host) {
+    late final StreamController<List<HostAddressCandidate>> controller;
+    var cancelled = false;
+    final seen = <String>{};
+    controller = StreamController<List<HostAddressCandidate>>(
+      onListen: () async {
+        await Future.wait([
+          for (final source in sources)
+            if (source.evidence != HostAddressEvidence.published)
+              () async {
+                try {
+                  await for (final tier
+                      in HostLocator([source], resolve: _resolve)
+                          .locate(host)) {
+                    if (cancelled) return;
+                    final fresh = tier
+                        .where((item) => seen.add(item.endpoint.baseUrl))
+                        .toList();
+                    if (fresh.isNotEmpty) controller.add(fresh);
+                  }
+                } catch (error, stack) {
+                  // A source failure must not suppress another source's result.
+                  if (!cancelled) controller.addError(error, stack);
+                }
+              }(),
+        ]);
+        if (!cancelled) await controller.close();
+      },
+      onCancel: () {
+        cancelled = true;
+      },
+    );
+    return controller.stream;
+  }
+
+  Stream<List<HostAddressCandidate>> locatePublished(ManagedHost host) =>
+      HostLocator(
+              sources
+                  .where((source) =>
+                      source.evidence == HostAddressEvidence.published)
+                  .toList(),
+              resolve: _resolve)
+          .locate(host);
+
   final List<HostAddressSource> sources;
   final HostAddressResolver _resolve;
 
@@ -289,53 +336,95 @@ class HostAddressRace<T extends Object> {
 /// Shared connection-attempt scheduling for Host identity and Owner TLS probes.
 /// The winner is handed to the caller; every other attempt is released.
 Future<HostAddressRace<T>> raceHostAddresses<T extends Object>(
-    List<HostAddressCandidate> candidates,
-    HostAddressAttempt<T> Function(HostAddressCandidate) begin) async {
+  List<HostAddressCandidate> candidates,
+  HostAddressAttempt<T> Function(HostAddressCandidate) begin, {
+  Stream<List<HostAddressCandidate>>? incoming,
+  Future<void>? cancelled,
+}) async {
   final failures = <HostCandidateFailure>[];
   final attempts = <HostAddressAttempt<T>>[];
-  final pending = <Future<void>>[];
-  final decided = Completer<void>();
+  final queue = [...candidates];
+  final decided = Completer<HostAddressRace<T>>();
   HostAddressAttempt<T>? selected;
-  T? winner;
-  Completer<void>? settled;
+  StreamSubscription<List<HostAddressCandidate>>? subscription;
+  Timer? stagger;
+  var active = 0;
+  var sourceDone = incoming == null;
+  Object? sourceFailure;
+  late void Function() advance;
+
+  void finish(T? winner) {
+    if (decided.isCompleted) return;
+    stagger?.cancel();
+    // Cancellation must not wait for a discovery backend that is still reading.
+    unawaited(subscription?.cancel());
+    for (final attempt in attempts) {
+      if (attempt != selected) attempt.cancel();
+    }
+    if (winner == null && failures.isEmpty && sourceFailure != null) {
+      decided.completeError(sourceFailure!);
+    } else {
+      decided.complete(HostAddressRace(winner, List.unmodifiable(failures)));
+    }
+  }
+
   Future<void> run(HostAddressCandidate candidate) async {
     HostAddressAttempt<T>? attempt;
+    active++;
     try {
       attempt = begin(candidate);
       attempts.add(attempt);
       final value = await attempt.result;
-      if (winner == null) {
+      if (!decided.isCompleted) {
         selected = attempt;
-        winner = value;
-        decided.complete();
+        finish(value);
       }
     } catch (error) {
       failures.add(HostCandidateFailure(candidate, error));
     } finally {
+      active--;
       if (attempt != selected) attempt?.cancel();
-      final waiting = settled;
-      settled = null;
-      if (waiting != null && !waiting.isCompleted) waiting.complete();
+      if (!decided.isCompleted) {
+        stagger?.cancel();
+        stagger = null;
+        advance();
+      }
     }
   }
 
-  if (candidates.isEmpty) return HostAddressRace(null, const []);
-  for (final candidate in candidates) {
-    settled = Completer<void>();
-    final completed = settled!.future;
-    pending.add(run(candidate));
-    final delayed = Completer<void>();
-    final timer = Timer(const Duration(milliseconds: 250), delayed.complete);
-    try {
-      await Future.any([completed, decided.future, delayed.future]);
-    } finally {
-      timer.cancel();
+  advance = () {
+    if (decided.isCompleted) return;
+    if (queue.isEmpty) {
+      if (sourceDone && active == 0) finish(null);
+      return;
     }
-    if (winner != null) break;
-  }
-  if (winner == null) await Future.any([decided.future, Future.wait(pending)]);
-  for (final attempt in attempts) {
-    if (attempt != selected) attempt.cancel();
-  }
-  return HostAddressRace(winner, List.unmodifiable(failures));
+    if (stagger != null) return;
+    final candidate = queue.removeAt(0);
+    stagger = Timer(const Duration(milliseconds: 250), () {
+      stagger = null;
+      advance();
+    });
+    unawaited(run(candidate));
+  };
+  subscription = incoming?.listen((tier) {
+    queue.addAll(tier);
+    advance();
+  }, onError: (Object error) {
+    sourceFailure ??= error;
+  }, onDone: () {
+    sourceDone = true;
+    advance();
+  });
+  cancelled?.then((_) {
+    if (decided.isCompleted) return;
+    sourceFailure = StateError('Host address race cancelled');
+    stagger?.cancel();
+    unawaited(subscription?.cancel());
+    decided.completeError(sourceFailure!);
+    for (final attempt in attempts) {
+      attempt.cancel();
+    }
+  });
+  advance();
+  return decided.future;
 }

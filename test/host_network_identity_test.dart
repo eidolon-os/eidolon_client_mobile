@@ -36,6 +36,125 @@ class Discovery implements LocalApiDiscovery {
 }
 
 void main() {
+  test(
+      'failed discovery still permits explicit BLE fallback with one probe retry',
+      () async {
+    var ble = 0;
+    var probes = 0;
+    final session = HostProductSession(
+      host: hostFixture(),
+      transport: NoopTransport(),
+      controllerKeys: FakeControllerKeys(),
+      locator: HostLocator.standard(
+          Discovery(() async => throw StateError('discovery failed')),
+          readPublished: (_) async {
+        ble++;
+        return ['https://10.0.0.33:9002'];
+      }),
+      clientFactory: (_) =>
+          LocalApiClient(httpClient: MockClient((request) async {
+        if (request.url.path.endsWith('/host') && ++probes == 1) {
+          throw TimeoutException('transient');
+        }
+        return hostSessionResponse(request);
+      })),
+    );
+    addTearDown(session.close);
+    await session.connect();
+    expect(ble, 1);
+    expect(probes, 2);
+    expect(session.connection!.endpoint.ipAddress, '10.0.0.33');
+  });
+
+  test('remembered IP connects while discovery is still pending and skips BLE',
+      () async {
+    final discovery = Completer<LocalApiSurvey>();
+    var ble = 0;
+    final session = HostProductSession(
+      host: hostFixture(lastKnownBaseUrl: 'https://192.168.1.33:9002'),
+      transport: NoopTransport(),
+      controllerKeys: FakeControllerKeys(),
+      locator: HostLocator.standard(Discovery(() => discovery.future),
+          readPublished: (_) async {
+        ble++;
+        return [];
+      }),
+      clientFactory: (_) =>
+          LocalApiClient(httpClient: MockClient(hostSessionResponse)),
+    );
+    addTearDown(session.close);
+    await session.connect().timeout(const Duration(seconds: 1));
+    expect(discovery.isCompleted, false);
+    expect(ble, 0);
+    discovery.complete(survey('192.168.1.99'));
+    expect(session.connection!.endpoint.ipAddress, '192.168.1.33');
+  });
+
+  test('discovered new IP wins without waiting for old IP timeout or retry',
+      () async {
+    final stalled = Completer<http.Response>();
+    final probes = <String>[];
+    final session = HostProductSession(
+      host: hostFixture(lastKnownBaseUrl: 'https://192.168.1.33:9002'),
+      transport: NoopTransport(),
+      controllerKeys: FakeControllerKeys(),
+      discovery: Discovery(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        return survey('10.0.0.33');
+      }),
+      clientFactory: (_) {
+        var slow = false;
+        return LocalApiClient(
+            ownsHttpClient: true,
+            httpClient: ClosingClient((request) async {
+              if (request.url.path.endsWith('/host')) {
+                probes.add(request.url.host);
+              }
+              slow = request.url.host == '192.168.1.33';
+              return slow ? stalled.future : hostSessionResponse(request);
+            }, () {
+              if (slow && !stalled.isCompleted) {
+                stalled.completeError(StateError('cancelled'));
+              }
+            }));
+      },
+    );
+    addTearDown(session.close);
+    await session.connect(allowBle: false).timeout(const Duration(seconds: 1));
+    expect(probes, ['192.168.1.33', '10.0.0.33']);
+    expect(session.connection!.endpoint.ipAddress, '10.0.0.33');
+    expect(stalled.isCompleted, true);
+  });
+
+  test('network change cancels pending discovery without waiting for it',
+      () async {
+    final old = Completer<LocalApiSurvey>();
+    var calls = 0;
+    var probes = 0;
+    final session = HostProductSession(
+      host: hostFixture(),
+      transport: NoopTransport(),
+      controllerKeys: FakeControllerKeys(),
+      discovery: Discovery(
+          () => ++calls == 1 ? old.future : Future.value(survey('10.0.0.33'))),
+      clientFactory: (_) =>
+          LocalApiClient(httpClient: MockClient((request) async {
+        if (request.url.path.endsWith('/host')) probes++;
+        return hostSessionResponse(request);
+      })),
+    );
+    addTearDown(session.close);
+    final connected = session.connect(allowBle: false);
+    await Future<void>.delayed(Duration.zero);
+    session.invalidateLocation();
+    await connected.timeout(const Duration(seconds: 1));
+    expect(old.isCompleted, false);
+    old.complete(survey('192.168.1.33'));
+    await Future<void>.delayed(Duration.zero);
+    expect(probes, 1);
+    expect(session.connection!.endpoint.ipAddress, '10.0.0.33');
+  });
+
   HostProductSession sessionFor(
           Future<http.Response> Function(http.Request) respond) =>
       HostProductSession(

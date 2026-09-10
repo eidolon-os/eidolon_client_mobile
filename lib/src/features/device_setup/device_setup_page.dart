@@ -63,22 +63,10 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   String? _error;
   String? _progress;
   bool _busy = false;
+  bool _networkConfigured = false;
 
-  /// A resumed setup the Host has already finished refusing.
-  ///
-  /// It is not "in progress" and no amount of asking the Host again will move
-  /// it, so the screen that offers only "recover from the Host" is the wrong
-  /// screen. Keeping it also keeps the entrance shut: `_resumePersistedAdmission`
-  /// treats every non-ready checkpoint as resumable, so one refused Enrollment
-  /// made this phone unable to set up any further device — including the same
-  /// board after a fresh start.
   bool _refused = false;
-
-  /// Set once the person has said "set up a device again" on this page.
-  ///
-  /// Without it, backgrounding and returning re-runs the resume scan and drags
-  /// them back into a checkpoint they have already dismissed.
-  bool _resumeDismissed = false;
+  List<DeviceSetupCheckpoint> _pendingSetups = const [];
   String? _activeSetupId;
   String? _activeRequestId;
 
@@ -87,6 +75,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     super.initState();
     _coordinator = DeviceSetupCoordinator(
       transport: widget.transport,
+      loadTarget: widget.loadTarget,
       admission: widget.admission,
       checkpoints: widget.checkpoints,
       ownerDirectoryVerifier: PlatformOwnerDomainDirectoryVerifier(),
@@ -95,14 +84,20 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     );
     _admissionObservation = AdmissionObservation(_resumePersistedAdmission);
     WidgetsBinding.instance.addObserver(this);
-    unawaited(_autoResumePersistedAdmission());
+    unawaited(_loadPendingSetups());
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _admissionObservation.resume();
-      if (!_busy) unawaited(_autoResumePersistedAdmission());
+      if (!_busy) {
+        if (_activeSetupId != null && _step == _Step.working && !_refused) {
+          unawaited(_resumePersistedAdmission());
+        } else if (_step == _Step.introduction) {
+          unawaited(_loadPendingSetups());
+        }
+      }
     } else {
       _admissionObservation.pause();
     }
@@ -131,6 +126,12 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         setState(() {
           _error = failureSentence(error);
           _progress = null;
+          if (_step == _Step.working &&
+              error is DeviceSetupException &&
+              !error.retryable) {
+            _refused = true;
+            _admissionObservation.setWaiting(false);
+          }
         });
       }
     } finally {
@@ -148,7 +149,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         // where the Host is not reachable at all — asking for it there failed
         // every setup after the device had already answered for itself, which
         // pointed the search at the device rather than at this ordering.
-        _target ??= await widget.loadTarget();
+        _target = await widget.loadTarget();
         final found = await widget.transport.discover();
         if (found.isEmpty) {
           throw Exception(
@@ -258,51 +259,52 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     });
   }
 
-  Future<void> _autoResumePersistedAdmission() async {
-    if (_activeSetupId == null &&
-        (_resumeDismissed || _step != _Step.introduction)) {
-      return;
+  Future<void> _loadPendingSetups() async {
+    try {
+      final pending = await _coordinator.resumableSetups();
+      if (mounted && _step == _Step.introduction) {
+        setState(() => _pendingSetups = pending);
+      }
+    } catch (error) {
+      if (mounted && _step == _Step.introduction) {
+        setState(() => _error = failureSentence(error));
+      }
     }
-    if (_activeSetupId != null && _step != _Step.working) return;
+  }
+
+  Future<void> _continueSetup(DeviceSetupCheckpoint checkpoint) async {
+    if (_busy) return;
+    _activeSetupId = checkpoint.setupId;
+    _activeRequestId = checkpoint.requestId;
     await _resumePersistedAdmission();
   }
 
   Future<void> _resumePersistedAdmission() => _run(() async {
-        final target = _target ??= await widget.loadTarget();
-        final checkpoints = await widget.checkpoints.list();
-        final resumable = checkpoints.where(
-          (item) =>
-              item.onboardingTarget.ownerDomainId == target.ownerDomainId &&
-              item.provisioningState ==
-                  DeviceProvisioningState.networkConfigured &&
-              !item.isReady,
-        );
-        final checkpoint = _activeSetupId == null
-            ? resumable.firstOrNull
-            : await widget.checkpoints.load(_activeSetupId!);
-        if (checkpoint == null) return;
-        _activeSetupId = checkpoint.setupId;
-        _activeRequestId = checkpoint.requestId;
-        if (mounted) {
-          setState(() {
-            _step = _Step.working;
-            _progress = '正在从主机恢复设备接入状态';
-          });
-        }
-        final recovered =
-            await _coordinator.resumeAdmission(checkpoint.setupId);
+        final setupId = _activeSetupId;
+        if (setupId == null) return;
+        setState(() {
+          _step = _Step.working;
+          _progress = '正在从主机恢复设备接入状态';
+        });
+        final recovered = await _coordinator.resumeAdmission(setupId);
         _showCheckpoint(recovered);
       });
 
   void _showCheckpoint(DeviceSetupCheckpoint checkpoint) {
     if (!mounted) return;
     setState(() {
+      _networkConfigured = checkpoint.provisioningState ==
+          DeviceProvisioningState.networkConfigured;
       if (checkpoint.provisioningState !=
           DeviceProvisioningState.networkConfigured) {
         _step = checkpoint.provisioningState == DeviceProvisioningState.failed
             ? _Step.choosingNetwork
             : _Step.working;
-        _progress = checkpoint.failure == null ? '正在配置设备网络…' : null;
+        _progress = checkpoint.failure != null
+            ? null
+            : checkpoint.provisioningState == DeviceProvisioningState.selected
+                ? '正在重新连接设备，发送网络配置…'
+                : '正在等待设备确认 Wi-Fi 和主机连接…';
         _error = checkpoint.failure?.message;
       } else if (checkpoint.isReady) {
         _step = _Step.complete;
@@ -332,11 +334,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     );
   }
 
-  /// Let go of a refused setup so the next device can be set up.
-  ///
-  /// Forgetting the checkpoint is the whole point: it is what the resume scan
-  /// reads, so a refused one that stays written is a permanently occupied
-  /// entrance rather than a stale screen.
+  /// Explicitly abandon only the selected phone-side attempt.
   Future<void> _startOver() => _run(() async {
         final setupId = _activeSetupId;
         if (setupId != null) {
@@ -350,7 +348,9 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           _activeSetupId = null;
           _activeRequestId = null;
           _refused = false;
-          _resumeDismissed = true;
+          _networkConfigured = false;
+          _pendingSetups =
+              _pendingSetups.where((item) => item.setupId != setupId).toList();
           _progress = null;
           _error = null;
           _candidates = const [];
@@ -364,15 +364,14 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
       });
 
   String _admissionProgress(DeviceAdmissionState state) => switch (state) {
-        DeviceAdmissionState.awaitingEnrollment => '网络已提交，等待设备创建 Enrollment',
-        DeviceAdmissionState.pendingReview => 'Enrollment 等待明确审批',
-        DeviceAdmissionState.approvedAwaitingHandoff =>
-          '已批准，等待设备领取 Grant；尚未 ClaimActive',
-        DeviceAdmissionState.grantDelivered => 'Grant 已交付；等待设备完成 ClaimActive',
-        DeviceAdmissionState.claimActive => '设备 Claim 已生效',
-        DeviceAdmissionState.rejected => 'Enrollment 已终止',
-        DeviceAdmissionState.failed => '暂时无法恢复 Admission；可安全重试',
-        DeviceAdmissionState.notStarted => '网络已提交，等待 Admission',
+        DeviceAdmissionState.awaitingEnrollment => '等待设备向主机登记，状态会自动更新',
+        DeviceAdmissionState.pendingReview => '设备已登记，正在提交你确认的接入批准',
+        DeviceAdmissionState.approvedAwaitingHandoff => '已批准，等待设备领取接入凭据',
+        DeviceAdmissionState.grantDelivered => '凭据已交付，等待设备确认接入完成',
+        DeviceAdmissionState.claimActive => '设备接入已生效',
+        DeviceAdmissionState.rejected => '这次设备接入已终止',
+        DeviceAdmissionState.failed => '正在自动重新查询主机接入状态',
+        DeviceAdmissionState.notStarted => '等待设备向主机登记',
       };
 
   @override
@@ -433,6 +432,23 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             icon: const Icon(Icons.search),
             label: const Text('查找设备'),
           ),
+          if (_pendingSetups.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Text('未完成的设备接入', style: Theme.of(context).textTheme.titleMedium),
+            const Text('可以继续上次接入，也可以直接查找新设备。'),
+            for (final checkpoint in _pendingSetups)
+              Card(
+                  child: ListTile(
+                title: Text(
+                    '设备 …${checkpoint.deviceId!.substring(max(0, checkpoint.deviceId!.length - 12))}'),
+                subtitle: Text('上次操作：${checkpoint.updatedAt.toLocal()}'),
+                trailing: TextButton(
+                  key: Key('continue-setup-${checkpoint.setupId}'),
+                  onPressed: _busy ? null : () => _continueSetup(checkpoint),
+                  child: const Text('继续接入'),
+                ),
+              )),
+          ],
         ],
       );
 
@@ -510,8 +526,9 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           ),
           const SizedBox(height: 16),
           const Text(
-            '这一次确认同时表达配网与审批意图：应用会先等待 network_committed，'
-            '再依据恢复到的 Enrollment 提交独立 ApprovalDecision；配网本身不代表批准。',
+            '确认后，应用会再次连接设备并发送 Wi-Fi 配置。'
+            '若系统弹出“连接到设备”，请点“连接”。'
+            '设备联网后，应用会自动批准它接入所选主机并更新结果。',
           ),
           const SizedBox(height: 12),
           FilledButton(
@@ -549,15 +566,20 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            _refused ? '这次接入进行不下去了' : '设备接入进行中',
+            _refused
+                ? '这次接入进行不下去了'
+                : _networkConfigured
+                    ? 'Wi-Fi 已配置，正在接入主机'
+                    : '正在配置设备网络',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 12),
           Text(
             _refused
-                ? '主机不会再为这次 Enrollment 交付 Grant。设备本身没有被改动，'
-                    '重新设置一次即可——包括同一台设备。'
-                : '配网完成不代表批准，批准也不代表 Claim 已生效。',
+                ? '这次接入已结束或失效。可以重新添加设备；已有设备的状态请在主机设备列表查看。'
+                : _networkConfigured
+                    ? '网络配置已保存，无需再次输入密码。接下来由设备向主机登记并完成接入。'
+                    : '正在把网络配置发送给设备，请保持设备通电。',
           ),
           const SizedBox(height: 16),
           if (!_refused) ...[

@@ -31,6 +31,7 @@ class DeviceSetupCoordinator {
     required this.admission,
     required this.checkpoints,
     required this.ownerDirectoryVerifier,
+    required this.loadTarget,
     this.allowDevelopmentTrust = false,
     this.onCheckpoint,
     this.enrollmentTimeout = const Duration(minutes: 3),
@@ -66,6 +67,53 @@ class DeviceSetupCoordinator {
   final DeviceAdmissionPort admission;
   final DeviceSetupCheckpointStore checkpoints;
   final OwnerDomainDirectoryVerifier ownerDirectoryVerifier;
+  final Future<DeviceOnboardingTarget> Function() loadTarget;
+
+  static bool belongsTo(
+    DeviceSetupCheckpoint checkpoint,
+    DeviceOnboardingTarget target,
+  ) =>
+      checkpoint.onboardingTarget.ownerDomainId == target.ownerDomainId &&
+      checkpoint.onboardingTarget.ownerDomainDescriptor.ownerDomainGeneration ==
+          target.ownerDomainDescriptor.ownerDomainGeneration;
+
+  static bool canResume(
+    DeviceSetupCheckpoint checkpoint,
+    DeviceOnboardingTarget target,
+  ) =>
+      belongsTo(checkpoint, target) &&
+      checkpoint.provisioningState ==
+          DeviceProvisioningState.networkConfigured &&
+      checkpoint.deviceId != null &&
+      !checkpoint.isReady &&
+      checkpoint.admissionState != DeviceAdmissionState.rejected &&
+      (checkpoint.failure == null || checkpoint.failure!.retryable);
+
+  Future<List<DeviceSetupCheckpoint>> resumableSetups() async {
+    final target = await loadTarget();
+    return (await checkpoints.list())
+        .where((checkpoint) => canResume(checkpoint, target))
+        .toList();
+  }
+
+  Future<DeviceOnboardingTarget> _verifyCurrentAuthority(
+      DeviceSetupCheckpoint checkpoint) async {
+    final target = await loadTarget();
+    if (checkpoint.onboardingTarget.ownerDomainId != target.ownerDomainId) {
+      throw const DeviceSetupException(
+        code: 'setup_identity_mismatch',
+        message: '这次接入属于另一台主机，请返回对应主机继续。',
+      );
+    }
+    if (!belongsTo(checkpoint, target)) {
+      throw const DeviceSetupException(
+        code: 'setup_authority_changed',
+        message: '主机的设备授权已更新，上次接入已失效。请重新添加设备。',
+      );
+    }
+    return target;
+  }
+
   final bool allowDevelopmentTrust;
   final Duration enrollmentTimeout;
   final Duration enrollmentInterval;
@@ -113,11 +161,7 @@ class DeviceSetupCoordinator {
   }) async {
     final saved = await checkpoints.load(setupId);
     if (saved != null) {
-      if (saved.requestId != requestId ||
-          saved.onboardingTarget.ownerDomainId !=
-              onboardingTarget.ownerDomainId ||
-          saved.onboardingTarget.ownerDomainDescriptor.ownerDomainGeneration !=
-              onboardingTarget.ownerDomainDescriptor.ownerDomainGeneration) {
+      if (saved.requestId != requestId || !belongsTo(saved, onboardingTarget)) {
         throw const DeviceSetupException(
             code: 'setup_identity_mismatch',
             message: 'This setup belongs to a different request or Owner');
@@ -125,7 +169,9 @@ class DeviceSetupCoordinator {
       if (saved.provisioningState ==
           DeviceProvisioningState.networkConfigured) {
         onCheckpoint?.call(saved);
-        return saved.isReady ? saved : _resume(saved, waitForEnrollment: false);
+        return canResume(saved, onboardingTarget)
+            ? _resume(saved, waitForEnrollment: false)
+            : saved;
       }
     }
     var checkpoint = DeviceSetupCheckpoint(
@@ -215,14 +261,6 @@ class DeviceSetupCoordinator {
         message: 'Device Setup checkpoint does not exist',
       );
     }
-    if (checkpoint.provisioningState !=
-            DeviceProvisioningState.networkConfigured ||
-        checkpoint.deviceId == null) {
-      throw const DeviceSetupException(
-        code: 'admission_not_resumable',
-        message: 'Device network commissioning has not committed',
-      );
-    }
     return _resume(checkpoint, waitForEnrollment: false);
   }
 
@@ -232,6 +270,11 @@ class DeviceSetupCoordinator {
   }) async {
     var current = checkpoint;
     try {
+      final target = await _verifyCurrentAuthority(current);
+      if (!canResume(current, target)) {
+        onCheckpoint?.call(current);
+        return current;
+      }
       var projection = current.enrollmentId == null
           ? null
           : await admission.recover(enrollmentId: current.enrollmentId!);
@@ -245,7 +288,7 @@ class DeviceSetupCoordinator {
             current,
             const DeviceSetupException(
               code: 'enrollment_not_seen',
-              message: 'Device has not created an Enrollment yet',
+              message: 'Wi-Fi 已配置，但主机尚未收到这台设备的登记。应用会自动继续查询，无需重新配网。',
               retryable: true,
             ),
             admissionStage: true,
@@ -264,6 +307,7 @@ class DeviceSetupCoordinator {
       if (stage == AdmissionProjectionStage.pendingReview) {
         // The immutable Decision payload is derived from the recovered Proposal.
         // Reply loss is recovered on the next entry before this ID is reused.
+        await _verifyCurrentAuthority(current);
         projection = await admission.decide(
           requestId: current.decisionRequestId,
           projection: projection,
@@ -278,6 +322,8 @@ class DeviceSetupCoordinator {
       }
       return current;
     } on DeviceSetupException catch (error) {
+      // Selecting the wrong Host must not invalidate another Owner's task.
+      if (error.code == 'setup_identity_mismatch') rethrow;
       return _fail(current, error, admissionStage: true);
     } catch (error) {
       return _fail(
@@ -300,6 +346,7 @@ class DeviceSetupCoordinator {
     final deadline = _now().add(enrollmentTimeout);
     var cursor = checkpoint.recoveryCursor;
     while (true) {
+      await _verifyCurrentAuthority(checkpoint);
       final page = await admission.listRecovery(after: cursor);
       for (final projection in page.projections) {
         projection.validateForOwner(
