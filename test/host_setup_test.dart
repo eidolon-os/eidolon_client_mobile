@@ -319,7 +319,11 @@ void main() {
     await tester
         .ensureVisible(find.byKey(const Key('open-managed-controllers')));
     expect(find.text('连接并查看'), findsOneWidget);
-    await tester.ensureVisible(find.byKey(const Key('controller-recovery')));
+    await tester.dragUntilVisible(
+      find.byKey(const Key('controller-recovery')),
+      find.byType(Scrollable).last,
+      const Offset(0, -250),
+    );
     expect(find.byKey(const Key('controller-recovery')), findsOneWidget);
     expect(find.text('尚未开放'), findsNothing);
     expect(find.byType(AlertDialog), findsNothing);

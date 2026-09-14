@@ -5,6 +5,7 @@ import 'commissioning_transport.dart';
 import 'controller_key_bridge.dart';
 import 'controller_recovery_page.dart';
 import 'host_registry.dart';
+import 'host_power_section.dart';
 import 'host_identity_summary.dart';
 import 'setup_wizard_page.dart';
 
@@ -152,6 +153,8 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
                       : '查看、添加或撤销管理这台主机的手机'),
                   onTap: _manageControllers,
                 ),
+                const SizedBox(height: 20),
+                HostPowerSection(controller: widget.controller),
                 const SizedBox(height: 20),
                 Text(
                   '恢复',

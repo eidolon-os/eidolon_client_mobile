@@ -176,6 +176,7 @@ class HostProductSession {
   HostOverview? _overview;
   LocalControllerSession? _controllerSession;
   bool _closed = false;
+  bool _suspended = false;
   final _closedSignal = Completer<void>();
   final _clientClosers = <void Function()>{};
 
@@ -236,6 +237,7 @@ class HostProductSession {
 
   Future<ManagedHost> connect(
       {HostConnectionProgress? onProgress, bool allowBle = true}) {
+    _suspended = false;
     _ensureOpen();
     if (_connecting != null) return _connecting!;
     _allowBle = allowBle;
@@ -428,6 +430,27 @@ class HostProductSession {
     }
   }
 
+  /// Power operations use the current authenticated route exactly once.
+  /// A lost response may mean the OS has already started shutting down.
+  Future<T> executeManagementOnce<T>(ManagementOperation<T> operation) async {
+    _ensureOpen();
+    final endpoint = _endpoint;
+    final session = _controllerSession;
+    if (_locationStale || endpoint == null || session == null) {
+      throw const HostControllerAuthorizationException('请先重新连接主机');
+    }
+    return _managementOnce(operation, endpoint, session);
+  }
+
+  /// Stop this session until an explicit connect, retaining the saved Host.
+  void suspend() {
+    _suspended = true;
+    _networkRevision += 1;
+    _locationStale = false;
+    _clearConnection();
+    _cancelRequests();
+  }
+
   Future<T> _managementOnce<T>(
     ManagementOperation<T> operation,
     LocalApiEndpoint endpoint,
@@ -487,6 +510,7 @@ class HostProductSession {
   /// Nothing above this layer learns that it happened: repositories never held
   /// an address, and the operation they asked for is simply carried out.
   Future<void> _relocate() async {
+    _ensureOpen();
     _locationStale = true;
     await connect();
   }
@@ -523,6 +547,7 @@ class HostProductSession {
   }
 
   Future<void> _reauthenticate() async {
+    _ensureOpen();
     final endpoint = _endpoint;
     if (endpoint == null) {
       throw const HostControllerAuthorizationException('请重新连接主机');
@@ -673,6 +698,9 @@ class HostProductSession {
 
   void _ensureOpen() {
     if (_closed) throw StateError('Host product session is closed');
+    if (_suspended) {
+      throw const HostControllerAuthorizationException('关机请求后需要手动重新连接主机');
+    }
   }
 
   Future<void> close() async {

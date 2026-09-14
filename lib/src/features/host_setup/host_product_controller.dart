@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -162,6 +163,53 @@ class HostProductController extends ChangeNotifier {
   bool _workspaceBusy = false;
   bool _devicesBusy = false;
   bool _disposed = false;
+  bool _powerOffBusy = false;
+  String? _powerOffOutcome;
+  bool get powerOffBusy => _powerOffBusy;
+  String? get powerOffOutcome => _powerOffOutcome;
+
+  Future<HostPowerStatusWire> hostPower() => _session.executeManagement(
+      (client, uri, token) => client.fetchHostPower(uri, accessToken: token));
+
+  Future<void> powerOff() async {
+    if (_disposed || _powerOffBusy || _connecting || _powerOffOutcome != null) {
+      return;
+    }
+    if (_connection == null) {
+      throw const HostControllerAuthorizationException('请先连接主机');
+    }
+    final random = Random.secure();
+    final requestId = List.generate(
+            16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'))
+        .join();
+    _powerOffBusy = true;
+    _notify();
+    try {
+      await _session.executeManagementOnce((client, uri, token) =>
+          client.powerOffHost(uri, accessToken: token, requestId: requestId));
+      _finishPowerOff('关机指令已接受。重新使用前请先开机。');
+    } on HostControllerAuthorizationException {
+      rethrow; // Nothing was sent.
+    } on ManagementRequestException catch (error) {
+      final status = error.statusCode;
+      if (status != null && status >= 400 && status < 500) rethrow;
+      _finishPowerOff('关机结果未确认。连接可能已中断，请检查主机状态，勿重复关机。');
+    } catch (_) {
+      _finishPowerOff('关机结果未确认。连接可能已中断，请检查主机状态，勿重复关机。');
+    } finally {
+      _powerOffBusy = false;
+      _notify();
+    }
+  }
+
+  void _finishPowerOff(String outcome) {
+    _powerOffOutcome = outcome;
+    _session.suspend();
+    _connection = null;
+    _connectionError = null;
+    _clearProductState();
+  }
+
   String? _progress;
   String? _connectionError;
   HostConnectionRecovery _connectionRecovery = HostConnectionRecovery.retry;
@@ -215,7 +263,7 @@ class HostProductController extends ChangeNotifier {
   String? get devicesError => _devicesError;
 
   Future<void> _observeConnectedHost(ManagedHost observed) async {
-    if (_disposed) return;
+    if (_disposed || _powerOffOutcome != null) return;
     _host = _host.copyWith(
       tlsSpkiFingerprint: observed.tlsSpkiFingerprint,
       lastKnownBaseUrl: observed.lastKnownBaseUrl,
@@ -228,7 +276,8 @@ class HostProductController extends ChangeNotifier {
 
   /// Concurrent callers wait for the same preparation, including product reads.
   Future<void> connect({bool allowBle = true}) {
-    if (_disposed) return Future.value();
+    if (_disposed || _powerOffBusy) return Future.value();
+    _powerOffOutcome = null;
     return _connectTask ??=
         _connect(allowBle: allowBle).whenComplete(() => _connectTask = null);
   }

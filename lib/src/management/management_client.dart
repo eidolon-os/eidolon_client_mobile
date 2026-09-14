@@ -369,6 +369,33 @@ class ManagementClient {
   /// Already phrased and already judged by the Host — this app does no
   /// arithmetic on bytes and applies no thresholds of its own, because the same
   /// decision made in two places drifts.
+  Future<HostPowerStatusWire> fetchHostPower(Uri baseUri,
+          {required String accessToken}) async =>
+      HostPowerStatusWire.fromJson(await _send(
+        'GET',
+        baseUri.resolve(ManagementV1.hostPowerPath),
+        accessToken: accessToken,
+        what: '读取关机能力',
+      ));
+
+  Future<HostPowerOffAccepted> powerOffHost(Uri baseUri,
+      {required String accessToken, required String requestId}) async {
+    final result = HostPowerOffAccepted.fromJson(await _send(
+      'POST',
+      baseUri.resolve(ManagementV1.hostPoweroffPath),
+      accessToken: accessToken,
+      what: '关闭主机',
+      body: HostPowerOffRequest(requestId: requestId).toJson(),
+      expectedStatus: 202,
+    ));
+    if (result.requestId != requestId ||
+        result.operation != 'system.poweroff' ||
+        result.status != 'accepted') {
+      throw const FormatException('主机未返回这次关机请求的有效确认');
+    }
+    return result;
+  }
+
   Future<HostMonitorWire> fetchHostMonitor(
     Uri baseUri, {
     required String accessToken,
@@ -1285,6 +1312,7 @@ class ManagementClient {
     required String what,
     Map<String, dynamic>? body,
     Duration? requestTimeout,
+    int expectedStatus = 200,
   }) async {
     final http.Response response;
     try {
@@ -1302,7 +1330,7 @@ class ManagementClient {
     } catch (error) {
       throw ManagementRequestException('$what失败：$error');
     }
-    if (response.statusCode != 200) {
+    if (response.statusCode != expectedStatus) {
       final body = _text(response);
       throw ManagementRequestException(
         '$what被拒绝',

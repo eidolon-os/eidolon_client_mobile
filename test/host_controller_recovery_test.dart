@@ -103,7 +103,11 @@ Future<void> _openHostDetail(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const Key('open-host-settings')));
   await tester.pumpAndSettle();
-  await tester.ensureVisible(find.byKey(const Key('controller-recovery')));
+  await tester.dragUntilVisible(
+    find.byKey(const Key('controller-recovery')),
+    find.byType(Scrollable).last,
+    const Offset(0, -250),
+  );
 }
 
 void main() {

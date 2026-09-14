@@ -750,6 +750,17 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                     widget.onHostSaved == null ? _openControllers : null,
               ),
             ],
+          ] else if (_controller.powerOffOutcome case final outcome?) ...[
+            Card(
+                child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(outcome, key: const Key('host-power-off-outcome')),
+            )),
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: () => _controller.connect(allowBle: false),
+              child: const Text('检查主机并重新连接'),
+            ),
           ] else if (_controller.connectionError case final error?) ...[
             Card(
               color: Theme.of(context).colorScheme.errorContainer,

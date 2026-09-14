@@ -64,6 +64,8 @@ class ManagementV1 {
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/removal';
   static const String homePath = '/api/management/v1/home';
   static const String hostMonitorPath = '/api/management/v1/host/monitor';
+  static const String hostPowerPath = '/api/management/v1/host/power';
+  static const String hostPoweroffPath = '/api/management/v1/host/poweroff';
   static const String hostServicesPath = '/api/management/v1/host/services';
   static String hostServicesByServiceIdByOperationPath(
     String serviceId,
@@ -1561,6 +1563,75 @@ class HostMonitorWire {
       if (servicesUnavailableReason != null)
         'services_unavailable_reason': servicesUnavailableReason,
       if (uptimeSeconds != null) 'uptime_seconds': uptimeSeconds,
+    };
+  }
+}
+
+class HostPowerOffAccepted {
+  const HostPowerOffAccepted({
+    this.operation,
+    required this.requestId,
+    this.status,
+  });
+
+  final String? operation;
+
+  final String requestId;
+
+  final String? status;
+
+  factory HostPowerOffAccepted.fromJson(Map<String, dynamic> value) {
+    return HostPowerOffAccepted(
+      operation: value['operation'] as String?,
+      requestId: value['request_id'] as String,
+      status: value['status'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (operation != null) 'operation': operation,
+      'request_id': requestId,
+      if (status != null) 'status': status,
+    };
+  }
+}
+
+class HostPowerOffRequest {
+  const HostPowerOffRequest({required this.requestId});
+
+  final String requestId;
+
+  factory HostPowerOffRequest.fromJson(Map<String, dynamic> value) {
+    return HostPowerOffRequest(requestId: value['request_id'] as String);
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'request_id': requestId};
+  }
+}
+
+class HostPowerStatusWire {
+  const HostPowerStatusWire({
+    required this.canPowerOff,
+    this.unavailableReason,
+  });
+
+  final bool canPowerOff;
+
+  final String? unavailableReason;
+
+  factory HostPowerStatusWire.fromJson(Map<String, dynamic> value) {
+    return HostPowerStatusWire(
+      canPowerOff: value['can_power_off'] as bool,
+      unavailableReason: value['unavailable_reason'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'can_power_off': canPowerOff,
+      if (unavailableReason != null) 'unavailable_reason': unavailableReason,
     };
   }
 }
