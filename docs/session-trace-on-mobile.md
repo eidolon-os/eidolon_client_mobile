@@ -565,6 +565,199 @@ C1 落地后，§5 的第 0 步只剩运维部分：打开 `observability.sessio
 
 ---
 
+## 10. 上线清单（运维，2026-09-15）
+
+> **先更正 §9.7 的一句话。** 那里写「打开 `observability.session_trace` 开关（默认关）」，
+> **不准确**：没有布尔开关，`session_trace_path` 本身就是开关（空串 = 关），而
+> `eidolon_channel/config/settings.yaml:199` 已经把它设成
+> `"$EIDOLON_LOG_ROOT/channel/traces"`。产品 Host 读的就是组件自己的这份
+> `config/settings.yaml`（`eidolon_ops/src/eidolon_ops/product_settings.py:57`），
+> 而 `PRODUCT_OVERLAY` 没有改这一项。
+>
+> **所以追踪本来就是开的。** 空的是 `settings.example.yaml`，不是产品配置。
+> 真正要做的只有「让新代码上机」和「重启 provider」两件。
+
+### 10.0 名词对照
+
+| 东西 | 值 | 出处 |
+|---|---|---|
+| 产品 log root | `/var/log/eidolon` | `eidolon_ops/src/eidolon_ops/paths.py:92` |
+| trace 落盘 | `/var/log/eidolon/channel/traces/<date>/<owner>__<companion>__<session>.ndjson` | `settings.yaml:199` |
+| provider 读的目录 | 同上，**只读** | `config/channel-provider.yaml:15` |
+| provider 监听 | `127.0.0.1:8767`（**不对外**） | `channel_provider/config.py:24` |
+| bearer | `EIDOLON_CHANNEL_PROVIDER_TOKEN` | `config/channel-provider.yaml:2` |
+| env 文件 | `/etc/eidolon/channel.env` | `eidolon_kernel/eidolon_deploy/manifest.py:200` |
+| worker 单元 / service_id | `eidolon-channel.service` / `channel` | `eidolon_kernel/config/system-services.yaml:250` |
+| provider 单元 / service_id | `eidolon-channel-provider.service` / `channel-provider` | 同上 `:259` |
+| dev（Mac/supervisord） | `channel:channel-worker`、`channel-provider:channel-provider` | 同上 |
+
+### 10.1 第一步：让 C1 的代码上机（**不能只重启**）
+
+C1 是代码改动（`ebf8f0f`），不是配置。Host 按 pin 住的 source revision 安装
+（`eidolon_ops/config.py:263`），所以**必须走一次部署**把 `eidolon_channel` 的 revision
+推到含 `ebf8f0f` 的提交，否则重启只是把旧代码再跑一遍。
+
+具体的发布命令按你这台 Host 的既有流程走（`eidolon-ops install --release-id ...`
+配合 inputs 里的 source pin）——**这一步我没有替你验证过**，因为它取决于这台机器当前
+pin 的是哪个 revision。
+
+上机后确认跑的是新代码：
+
+```bash
+ssh <host> "cd /opt/eidolon/current/eidolon_channel && git log --oneline -1"
+```
+
+### 10.2 第二步：重启 worker 和 provider
+
+两个都要，理由不同：
+
+- **worker**（`channel`）—— 装上 C1 的新代码
+- **provider**（`channel-provider`）—— P1 的两个只读路由是 2026-09-11 加的，而
+  跑着的进程是那之前的代码。**重启会短暂中断设备 channel provision。**
+
+从手机上做（Owner 自己就有这个能力，`MutationOperation = Literal["restart", ...]`，
+`eidolon_admin/.../local_api/host_services.py:33`）：
+
+> 主机运行状态 → 底座 → 找到 `channel` 与 `channel-provider` → 各自那一行上的重启
+
+或者 SSH：
+
+```bash
+ssh <host> "sudo systemctl restart eidolon-channel.service eidolon-channel-provider.service"
+```
+
+dev（Mac / supervisord）：
+
+```bash
+supervisorctl restart channel:channel-worker channel-provider:channel-provider
+```
+
+### 10.3 第三步：验收 —— **盯 `recording`，别只看界面**
+
+provider 只监听 127.0.0.1，所以这条必须在 Host 上跑：
+
+```bash
+ssh <host> 'curl -s -H "Authorization: Bearer $EIDOLON_CHANNEL_PROVIDER_TOKEN" http://127.0.0.1:8767/v1/session-traces?limit=5'
+```
+
+三种答案，含义完全不同：
+
+| 回答 | 含义 |
+|---|---|
+| HTTP 404 | **provider 还是旧代码**，路由不存在 → 第二步没生效 |
+| `{"recording": false, ...}` | 路由在了，但 **trace 目录不存在** → 追踪没在写（配置或权限） |
+| `{"recording": true, "sessions": [...]}` | 正常 |
+
+`recording: false` 与「一次会话都没发生过」**长得几乎一样**，这正是 §9.2 和 §3.4.1
+两次踩过的坑：失败和「本来就没开」同形。所以先看 `recording`，再看 `sessions`。
+
+### 10.4 第四步：确认 C1 真的生效 —— 看文件名
+
+跑一轮**设备**语音对话（不是手机），然后：
+
+```bash
+ssh <host> "ls /var/log/eidolon/channel/traces/$(date +%F)/"
+```
+
+- 出现 `unknown-owner__unknown-companion__*.ndjson` → **C1 没生效**（旧代码，回到 10.1）
+- 出现 `<owner_id>__<companion_id>__*.ndjson` → 成立
+
+这是唯一能区分「C1 上了没」的现场证据 —— 因为在此之前，语音一切正常、文件也照写，
+只是名字是占位符。
+
+再验按 owner 能查到（这是 mobile 第 3 步的前提）：
+
+```bash
+ssh <host> 'curl -s -H "Authorization: Bearer $EIDOLON_CHANNEL_PROVIDER_TOKEN" "http://127.0.0.1:8767/v1/session-traces?owner_id=<owner_id>&limit=5"'
+```
+
+返回非空才算通过。在 C1 之前这里**恒为空**（`_matches` 对 owner_id 精确相等）。
+
+### 10.5 一次会话的瀑布图（排障用，不需要 mobile）
+
+```bash
+ssh <host> "cd /opt/eidolon/current/eidolon_channel && .venv/bin/python scripts/report_session_trace.py --session <session_id>"
+```
+
+这就是 §6 说「第 3 步可以压后」的依据：排障要的东西，终端上已经有了。
+
+### 10.6 做完之后
+
+10.1–10.4 全过，才谈得上做第 3 步（mobile 的单会话瀑布屏）。在此之前那块屏即使做出来，
+列表也是空的。
+
+M1 已经把 `runtime_session_id` 送到了 `CockpitTurn` 上（§8），所以第 3 步一旦开工，
+「这条交互 → 那次会话」的跳转是现成的。
+
+---
+
+## 11. 实测 Host 状态（2026-09-15 18:20，eidolon-pi5）
+
+> **§10 开头那句更正，本身也是错的 —— 就当前 Host 而言。** 我当时读
+> `config/settings.yaml:199` 看到 `session_trace_path` 是设好的，据此断定「追踪本来就是
+> 开的」。但 `679bc4a fix(config): hold new settings keys back a release so rollback
+> survives` 之后把这四个键**注释掉了**，而部署到 Host 上的正是注释掉的那一版。
+>
+> **同一个判断我错了两次**：第一次说它默认关（错，因为 repo 里当时是开的），第二次说
+> 它本来就开（错，因为 main 随后把它关了，而且是**故意**的）。教训是这类「开关在哪」的
+> 结论必须以**部署产物**为准，不是以仓库里那一行为准 —— 两者可以合法地不一致。
+
+### 11.1 逐条对照 §10
+
+| 步 | 状态 | 证据 |
+|---|---|---|
+| 10.1 C1 代码上机 | ✅ **已完成** | release `20260915-observed-host-address-2`，18:16 激活；`context_resolver` 在部署产物的三个文件里都在（8 / 4 / 2 处），`begin_session_observation` 也在 |
+| 10.2 重启 worker + provider | ✅ **已完成** | 两者今天 18:16:30 / 18:16:40 启动；`eidolon-hub` 18:16:56 |
+| 10.2 P1 路由生效 | ✅ **已验证** | `GET /v1/session-traces` → **401**，而不存在的路由 → **404**。401 证明路由在，且不需要任何密钥就能证明 |
+| 10.3 `recording` | ❌ **会是 false** | `/var/log/eidolon/channel/traces/` **不存在** |
+| 10.4 文件名检查 | ⏸ 无从做起 | 没有 trace 文件 |
+
+**一个方法上的收获**：用「401 vs 404」判断路由是否存在，**不需要 bearer**。
+这比「拿 token 调一次」既安全又更早可做。
+
+### 11.2 唯一剩下的阻塞：那四行注释
+
+部署产物 `config/settings.yaml:222-236` 把话说得很清楚：
+
+> Per-session link trace (room join -> leave) waits for the next release …
+> **this is the release that adds the fields, so this is the release that may not name them.**
+> … Until then the schema default holds and **no trace is written anywhere**. That costs
+> this release the diagnosis, not the feature: the writer, the Provider endpoint that
+> serves the files and `scripts/report_session_trace.py` all ship here and **turn on with
+> one line in the release after**.
+
+这是一条**有意的分级发布约束**：引入新 schema 键的那个 release 不能同时使用它，否则回滚
+到上一版会遇到它不认识的键。
+
+**而引入这些字段的 release 已经部署了**（就是今天 18:16 这个）。所以「the release
+after」的条件从现在起成立 —— 把那四行取消注释、发下一个 release，追踪就开了。
+
+### 11.3 所以还缺什么
+
+**一行配置 + 一次发布。** 不是代码。
+
+- 不要在 Host 上手改 `/opt/eidolon/current/.../settings.yaml`：那是 release 产物，
+  下次发布就被覆盖，而且绕过了 reversible 发布的整个约束
+- 改在 `eidolon_channel/config/settings.yaml`（取消 227–230 行的注释），随下个 release 走
+
+**这件事本身归另一条工作线**（会话「修复 channel settings 字段挡住 reversible 发布」），
+所以本文只记录条件已成立，不代劳。
+
+### 11.4 顺带记下的现场事实
+
+- Host 在 18:16 前后整体重启过一轮；**18:15:51 那一刻去看，channel 与 hub 都是
+  `inactive`** —— 不是故障，是还没起完。**几十秒的差别足以把一次正常启动读成一次事故。**
+  下次判断服务状态，先看 `ActiveEnterTimestamp` 再下结论。
+- 台面直连（bench cable）这条链路：Host 侧按设计回落到 169.254/16，但这台 Mac 的 `en7`
+  被静态配成了 `10.42.0.1/24`，**没有 169.254 地址，所以 IPv4 走不通**（`10.42.0.2`
+  ARP incomplete）。
+  **IPv6 link-local 可以直接用**，不需要改任何网络设置：
+  `ping6 ff02::1%en7` 找到邻居，`ndp -an` 按 MAC 认出板子，然后
+  `ssh ... eidolon-pi5@fe80::<pad>%en7`，配合 ops 自己的
+  `HostKeyAlias=eidolon-pi5.local` + `known_hosts_file` 做信任固定。
+
+---
+
 ## 12. 上线结果（2026-09-15 23:35，eidolon-opi5max）
 
 **追踪已经开了，C1 也在板子上。** 但最后一步（真机设备对话验证命名）还没做，见 §12.4。
