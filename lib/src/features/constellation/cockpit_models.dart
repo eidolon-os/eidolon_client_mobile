@@ -228,6 +228,7 @@ class CockpitTurn {
     this.stages = const <CockpitTurnStage>[],
     this.breakdown = const <CockpitTurnPhase>[],
     this.deviceId = '',
+    this.runtimeSessionId = '',
   });
 
   final String turnId;
@@ -242,6 +243,20 @@ class CockpitTurn {
   final List<CockpitTurnPhase> breakdown;
   final List<CockpitTurnStage> stages;
   final String deviceId;
+
+  /// Which entry into a voice room this turn happened inside — and the name the
+  /// Host's recording of that session is filed under, so it is the one value
+  /// that lets this app ask for the engineering trace behind a turn it is
+  /// already showing.
+  ///
+  /// Deliberately not the conversation id. That one is the brain's own thread
+  /// and is stable across sessions by design, so asking for a trace by it would
+  /// name every session that device ever had rather than this one.
+  ///
+  /// Empty when the Host recorded none — a turn that never came through a
+  /// runtime session, or a Host older than the field. Empty means *do not
+  /// offer the drill-down*, never "look it up and show nothing".
+  final String runtimeSessionId;
 }
 
 class CockpitHop {

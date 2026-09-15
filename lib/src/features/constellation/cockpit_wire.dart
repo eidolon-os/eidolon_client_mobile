@@ -302,6 +302,10 @@ CockpitTurn _turn(Map<String, Object?> json) => CockpitTurn(
   memoryHits: _intOrNull(json['memory_hits']) ?? 0,
   toolNames: _strings(json['tool_names']),
   deviceId: _stringOr(json['device_id']),
+  // Absent, null and "" all land as empty, which is the same instruction to
+  // this app: there is no session to ask about, so do not offer to. A Host
+  // older than this field is not a malformed one.
+  runtimeSessionId: _stringOr(json['runtime_session_id']),
   stages: _items(
     json['stages'],
     (stage) => CockpitTurnStage(

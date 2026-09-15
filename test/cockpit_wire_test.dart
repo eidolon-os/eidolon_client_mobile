@@ -85,6 +85,48 @@ void main() {
       expect(json.containsKey('default_companion_id'), isFalse);
     });
 
+    test('一条轮次带着它发生在哪次会话里', () {
+      // 这是通往 Channel session trace 的唯一一把钥匙：拿着一条轮次的这个值，
+      // 才能去要那次会话的工程记录。少了它，这块屏只能说「这轮很慢」，
+      // 说不出哪一份录像解释了为什么。
+      final json = _golden('snapshot-healthy.json');
+      if (json == null) {
+        markTestSkipped('eidolon_sdk checkout 不在旁边');
+        return;
+      }
+      final turn = parseMissionControlRuntime(json).turns.value.single;
+
+      expect(turn.runtimeSessionId, 'rts-2026-08-24-0516-7f3a');
+    });
+
+    test('主机没记会话名时是空串，不是一个查不到的名字', () {
+      // 缺席、null 和 "" 对这个 App 是同一句话：没有会话可问，所以不要提供下钻。
+      // 会把它读成「有个名字，去查，然后查不到」的分支一条都不能留下 ——
+      // 那正是一块点进去什么都没有的死屏。
+      for (final raw in <Object?>[null, '', 'absent']) {
+        final turn = <String, Object?>{
+          'turn_id': 't-1',
+          'companion_id': 'c-1',
+          'status': 'completed',
+          if (raw != 'absent') 'runtime_session_id': raw,
+        };
+        final runtime = parseMissionControlRuntime(<String, Object?>{
+          'contract_version': '1',
+          'coverage': 'owner-runtime',
+          'generated_at': '2026-08-24T05:16:18Z',
+          'devices': {'state': 'ok', 'items': <Object?>[]},
+          'activities': {'state': 'ok', 'items': <Object?>[]},
+          'turns': {'state': 'ok', 'items': <Object?>[turn]},
+          'jobs': {'state': 'ok', 'items': <Object?>[]},
+          'memory': {'state': 'ok', 'value': null},
+          'services': {'state': 'ok', 'items': <Object?>[]},
+          'events': {'state': 'ok', 'items': <Object?>[]},
+        });
+
+        expect(runtime.turns.value.single.runtimeSessionId, isEmpty);
+      }
+    });
+
     test('在场：没人回答就是 unknown，不是离线', () {
       final json = _golden('snapshot-healthy.json');
       if (json == null) {
