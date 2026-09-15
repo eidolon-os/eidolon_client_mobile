@@ -562,3 +562,73 @@ C1 落地后，§5 的第 0 步只剩运维部分：打开 `observability.sessio
 验收时盯 `recording` 字段，别只看界面 —— 见 §9.2。
 
 之后就能按 owner 过滤查到真实会话，第 3 步（单会话瀑布屏）才有东西可显示。
+
+---
+
+## 12. 上线结果（2026-09-15 23:35，eidolon-opi5max）
+
+**追踪已经开了，C1 也在板子上。** 但最后一步（真机设备对话验证命名）还没做，见 §12.4。
+
+### 12.1 我用错了命令，被守卫拦下
+
+我跑的是 `eidolon-ops … install --apply`。**`install` 是给新板子做初装的，不是给已装好的 Host 发版的。** 正确的动词是 `deploy` / `update`。
+
+它失败了，而且失败得很干净：
+
+```
+used legacy identity has no hardware delivery evidence;
+use ordinary deploy to preserve the installed Host,
+or initialize independent inputs for a new board
+```
+
+这是**预检守卫**，在动板子之前就拒绝了 —— 事后核对 releases 目录、current 链接、服务状态，板子没有被我改动过一个字节。守卫写得好：错误信息直接说了该用哪个命令，以及另一条路（新板子初始化）是什么。
+
+### 12.2 目标是别人顺带带上去的
+
+23:32 另一个操作者发了 `rk3588-observed-host-address-2`。那一版从 main HEAD 构建，而我的
+`fa67925` 当时已经合进 main —— **所以配置是跟着他们那一版上去的，不是我发上去的。**
+
+这也说明 §10.1 那句「必须走一次部署」成立，但「必须由谁来走」不成立：在一个所有人都从
+main 打包的仓里，你的提交合进 main 之后，**下一个发版的人就会替你带上去。**
+
+### 12.3 已验证（实测，非推断）
+
+| 检查 | 结果 |
+|---|---|
+| release 里的 `config/settings.yaml` | 四个键都在，无 `#` |
+| **`/etc/eidolon/channel.yaml`（worker 真正读的那份）** | `session_trace_path` 在 |
+| C1 | `context_resolver` 8 处、`begin_session_observation` 2 处 |
+| worker | 23:34:19 带新版本起来 |
+| `GET /v1/session-traces` | **`recording: true`**，3 条会话 |
+
+**第三行是关键。** release 目录里的 settings.yaml 只是素材，Ops 渲染出来的
+`/etc/eidolon/channel.yaml` 才是 worker 读的那一份 —— 只看前者会得到一个看似成立、
+其实没验证到位的结论。
+
+### 12.4 唯一没做的：命名要靠一次真机对话
+
+磁盘上现在三条 trace，全是 `unknown-owner__unknown-companion__esp32-*`，时间是
+09-14 23:32 / 09-15 00:01 / 09-15 01:02 —— **全都早于 C1 上板**。所以它们证明不了 C1。
+
+C1 的效果只有**新的一次设备会话**才看得见：
+
+```bash
+ssh -i ~/.ssh/id_ed25519_eidolon_opi5max eidolon-opi5max@10.42.0.2 \
+  "sudo ls -t /var/log/eidolon/channel/traces/*/ | head -3"
+```
+
+- 还是 `unknown-owner__…` → C1 没生效，回到 §9 查 `resolve_event_context`
+- 变成 `<owner_id>__<companion_id>__…` → 整条线走通
+
+这一步需要有人对着设备说话，我做不了。
+
+### 12.5 记下来的两件事
+
+- **`install` ≠ `deploy`。** 对一台已经装好的 Host，`install` 会在预检处失败并告诉你用
+  `deploy`。先跑不带 `--apply` 的计划预览没能暴露这一点 —— 计划阶段通过了，守卫在
+  apply 时才跑。**计划成功不等于 apply 会成功。**
+- **release 按各仓 HEAD 打包，没有 pin**（`eidolon-rk3588.toml`:「A release is defined by
+  what the repositories hold」）。所以「只发我这一个提交」做不到，除非用
+  `--revision <source>=<40hex>` 把其余仓钉住。本次就是这么钉住 `eidolon_hub` 的 ——
+  当时它正在崩溃重启（几分钟内 `NRestarts` 144 → 153），而 pending 的两个 hub 提交
+  正是在修它。
