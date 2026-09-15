@@ -913,3 +913,77 @@ device event context incomplete: missing companion_id
 
 发一版带这个改动的 release，再说一轮话。日志会直接写明是哪一半、为什么 ——
 不用再推理。届时再回来改 §9 / §12 / 本节。
+
+---
+
+## 14. 走通了（2026-09-16 01:30）—— 兼 §9 / §12 / §13 的结论
+
+一次真机设备对话，写出的文件是：
+
+```
+owner_129153685f855ff3b2062301fb3ceda0__c_129153685f855ff3b2062301fb3ceda0__esp32-a3c0b315-84cf554b-00000004.ndjson
+```
+
+`session_open` 记录里 `owner_id` / `companion_id` 都在，部署后**再没有一条拒绝告警**。
+
+### 14.1 §5 的那个前置依赖已经解除
+
+```
+GET /v1/session-traces?owner_id=owner_129153685f855ff3b2062301fb3ceda0
+→ recording: true, matched: 1
+```
+
+§5 写的「在 C1 落地之前，按 owner 过滤的列表恒为空，这时候做第 3 步就是一块永远显示
+『没有记录』的屏」—— **这一条现在不成立了**，按 owner 能查到真实会话。第 3 步（单会话
+瀑布屏）的前置齐了。
+
+### 14.2 真正的根因：我读错了对象的形状
+
+C1 第一版在真机上完全不生效，三轮对话都写成 `unknown-owner__unknown-companion`。
+根因不是 Kernel、不是部署、不是配置：
+
+`_resolve_context` 的最后一行是 `return resolved.runtime` —— 它**把 wrapper 拆掉**
+再返回。所以 `resolve_room` 交给观测侧的是一个裸的 `ResolvedRuntimeIdentity`
+（pydantic），字段是 `['companion_id', 'device_id', 'owner_id', …]`：
+
+- 没有 `.runtime`
+- 没有 `.answering_companion_id`
+- `companion_id` 就摊在对象上
+
+而 C1 只认前两个形状，两个都落空，于是走兜底分支，**指着一个完好的 Kernel mount 说它
+没挂 Companion**。
+
+我是照着 `resolve_channel_context` **内部**返回的形状写的提取逻辑。
+**一个函数内部返回什么，和它的调用方往下传什么，是两件事。**
+
+### 14.3 为什么测试没拦住：假对象附和了错误
+
+C1 的测试用 `SimpleNamespace` 构造解析结果，而我给它戴上了 `.runtime` ——
+**那个替身是按我的误解捏的，所以它当然同意我**。真机上那个类型根本不是这个形状。
+
+修复后的测试改用**真的 `ResolvedRuntimeIdentity`** 构造。这是手搓替身给不了的唯一事实：
+调用方实际交出来的类型。把直读 `companion_id` 的两行删掉 → 该测试变红，精确复现线上故障。
+
+**教训**：替身可以证明逻辑自洽，证明不了它面对的是真实形状。跨模块边界的提取，
+至少要有一条测试拿对面真正的类型来构造。
+
+### 14.4 诊断本身是这轮最值钱的改动
+
+三轮里前两轮各废掉一次真机对话：第一轮代码没上板（`install` 用错，见 §12.1），
+第二轮上了但消息还是旧的。真正让事情结束的是 `eb79e63` —— 让拒绝说出**是哪一半缺了、
+以及找它的过程怎么结束的**。它一上线，一行日志就把范围从「整条链路」缩到「某个分支」，
+再一次真机探针（拿部署代码打真 Kernel）就锁死了根因。
+
+对照 §13.3：C1 原来把异常降到 DEBUG 吞掉，三种故障在日志里长得一模一样、且与
+「追踪根本没开」同形。**把原因说出来，比把失败藏干净，值钱得多。**
+
+### 14.5 现在的状态
+
+| | |
+|---|---|
+| 板子 | `eidolon-opi5max`，release `rk3588-trace-shape-1` |
+| 追踪 | `recording: true`，按 owner 可查 |
+| C1 | 生效，文件名带主人与 Companion |
+| M1 | `runtime_session_id` 已在 `CockpitTurn` 上（§8），还没人读 |
+
+**下一步是第 3 步**（mobile 单会话瀑布屏），它的所有前置现在都成立了。
