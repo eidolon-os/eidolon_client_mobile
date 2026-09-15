@@ -35,10 +35,15 @@ Map<String, Object?> _patchDevice(
 
 Map<String, Object?>? _golden(String name) {
   // Walk up looking for the SDK beside us. Not just `..`: this repository is
-  // also worked on from a git worktree, which sits one level deeper, and a test
-  // that silently skips because of that is a test that stops guarding anything.
+  // also worked on from a git worktree, and a test that silently skips because
+  // of that is a test that stops guarding anything.
   var directory = Directory.current;
-  for (var depth = 0; depth < 4; depth += 1) {
+  // Walk to the filesystem root, not a fixed number of levels. A depth budget
+  // is a guess about where the test happens to be run from, and when the guess
+  // is wrong the cost is silence: the walk stops short, the SDK is never found,
+  // and the test skips itself while reporting success. A worktree checkout
+  // sits three levels below the repo root and already broke a budget of four.
+  while (true) {
     final file = File(
       '${directory.path}/eidolon_sdk/contracts/mission_control/v1/golden/$name',
     );

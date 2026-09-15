@@ -16,7 +16,12 @@ import 'package:flutter_test/flutter_test.dart';
 /// it guards a feature branch as well.
 File? _sdkVocabulary() {
   var directory = Directory.current;
-  for (var depth = 0; depth < 4; depth += 1) {
+  // Walk to the filesystem root, not a fixed number of levels. A depth budget
+  // is a guess about where the test happens to be run from, and when the guess
+  // is wrong the cost is silence: the walk stops short, the SDK is never found,
+  // and the test skips itself while reporting success. A worktree checkout
+  // sits three levels below the repo root and already broke a budget of four.
+  while (true) {
     final file = File(
       '${directory.path}/eidolon_sdk/eidolon_sdk/biz/contracts/companion.py',
     );
