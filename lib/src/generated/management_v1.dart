@@ -96,6 +96,9 @@ class ManagementV1 {
       '/api/management/v1/persona-authoring-template';
   static const String personaPresetsPath = '/api/management/v1/persona-presets';
   static const String personaPreviewPath = '/api/management/v1/persona-preview';
+  static const String sessionTracesPath = '/api/management/v1/session-traces';
+  static String sessionTracesBySessionIdPath(String sessionId) =>
+      '/api/management/v1/session-traces/${Uri.encodeComponent(sessionId)}';
 }
 
 class ActivityMomentView {
