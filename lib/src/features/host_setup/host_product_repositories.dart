@@ -455,6 +455,19 @@ class HostManagementRepository {
         ),
       );
 
+  /// One recorded voice session's engineering trace.
+  ///
+  /// A session another Owner recorded answers as one that does not exist, so
+  /// there is no "not yours" case for a caller to handle.
+  Future<Map<String, Object?>> sessionTrace({required String sessionId}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchSessionTrace(
+          baseUri,
+          accessToken: accessToken,
+          sessionId: sessionId,
+        ),
+      );
+
   Future<CompanionRosterView> roster({String? cursor}) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.fetchRoster(

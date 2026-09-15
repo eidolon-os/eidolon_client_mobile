@@ -269,6 +269,49 @@ class ManagementClient {
     return _get(uri, accessToken: accessToken, what: '读取这里发生过的事');
   }
 
+  /// The voice sessions this Host recorded for the Owner, newest first.
+  ///
+  /// Raw, like the Mission Control payloads: the document's authority is the
+  /// Channel Provider's own, relayed unchanged by the Host, and a generated
+  /// view type here would be a second description of a shape this app does not
+  /// own.
+  ///
+  /// `recording` in the answer is the field that matters most and the one a
+  /// caller must not collapse: false means this Host records nothing, while an
+  /// empty `sessions` with true means nothing has been recorded *for this
+  /// Owner*. They are different sentences on a screen.
+  Future<Map<String, Object?>> fetchSessionTraces(
+    Uri baseUri, {
+    required String accessToken,
+    String? companionId,
+    int limit = 50,
+  }) async {
+    final query = <String, String>{'limit': '$limit'};
+    if (companionId != null && companionId.isNotEmpty) {
+      query['companion_id'] = companionId;
+    }
+    final uri = baseUri
+        .resolve(ManagementV1.sessionTracesPath)
+        .replace(queryParameters: query);
+    return _get(uri, accessToken: accessToken, what: '读取这台 Host 记录的语音会话');
+  }
+
+  /// One session's records, in the order the worker wrote them.
+  ///
+  /// A session belonging to another Owner answers exactly as one that does not
+  /// exist — the Host makes that indistinguishable on purpose, so this app has
+  /// no "not yours" state to render and must not invent one.
+  Future<Map<String, Object?>> fetchSessionTrace(
+    Uri baseUri, {
+    required String accessToken,
+    required String sessionId,
+  }) async {
+    final uri = baseUri.resolve(
+      ManagementV1.sessionTracesBySessionIdPath(sessionId),
+    );
+    return _get(uri, accessToken: accessToken, what: '读取这次会话的链路记录');
+  }
+
   /// One page of this Owner's Eidolons.
   ///
   /// [cursor] is a value a previous page handed back. It is stored and returned

@@ -9,6 +9,7 @@ import 'cockpit_feed.dart';
 import 'cockpit_header.dart';
 import 'cockpit_models.dart';
 import 'cockpit_theme.dart';
+import 'session_trace_page.dart';
 import 'cockpit_ambience.dart';
 import 'companion_inspector.dart';
 import 'constellation_geometry.dart';
@@ -29,7 +30,16 @@ class ConstellationCockpitPage extends StatefulWidget {
     super.key,
     required this.openFeed,
     this.readHistory,
+    this.readSessionTrace,
   });
+
+  /// How to read one voice session's engineering trace, if this Host serves
+  /// them.
+  ///
+  /// Optional for the same reason [readHistory] is: a staged world has no Host
+  /// to ask, and an entry that is offered and then fails teaches a reader that
+  /// the screen lies. Absent here means the drill-down is simply not drawn.
+  final SessionTraceReader? readSessionTrace;
 
   /// How to read one page of everything that has happened here, if anything can.
   ///
@@ -381,6 +391,21 @@ class _ConstellationCockpitPageState extends State<ConstellationCockpitPage>
         activity,
         _companionName(snapshot, activity.companionId),
         turn: _turnOf(snapshot, activity),
+        onOpenSessionTrace: widget.readSessionTrace == null
+            ? null
+            : (sessionId) => _openSessionTrace(sessionId),
+      ),
+    );
+  }
+
+  void _openSessionTrace(String sessionId) {
+    final read = widget.readSessionTrace;
+    if (read == null) return;
+    // Pushed over the sheet rather than replacing this screen: the reader came
+    // from one interaction and goes back to it.
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => SessionTracePage(sessionId: sessionId, read: read),
       ),
     );
   }

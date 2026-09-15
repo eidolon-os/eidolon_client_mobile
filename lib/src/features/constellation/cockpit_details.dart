@@ -268,6 +268,7 @@ Widget activitySheetBody(
   CockpitActivity activity,
   String companionName, {
   CockpitTurn? turn,
+  void Function(String sessionId)? onOpenSessionTrace,
 }) {
   final current = currentActivityHop(activity);
   return Column(
@@ -300,6 +301,27 @@ Widget activitySheetBody(
       if (turn != null && turn.breakdown.isNotEmpty) ...[
         const SizedBox(height: 14),
         _Breakdown(phases: turn.breakdown, totalMs: turn.latencyMs),
+      ],
+      // Offered only when there is a session to open. The id is what the Host
+      // files its recording under, so an empty one means there is nothing to
+      // ask for — and a button in front of that is the dead end this codebase
+      // keeps pulling out. Absent beats disabled: a control that cannot work
+      // should not be drawn.
+      if (onOpenSessionTrace != null &&
+          turn != null &&
+          turn.runtimeSessionId.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const Key('open-session-trace'),
+            onPressed: () => onOpenSessionTrace(turn.runtimeSessionId),
+            child: Text(
+              '工程细节 →',
+              style: Cockpit.mono(size: 10, color: Cockpit.cyan),
+            ),
+          ),
+        ),
       ],
       const SizedBox(height: 14),
       Text(

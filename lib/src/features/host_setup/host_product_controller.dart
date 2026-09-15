@@ -585,6 +585,10 @@ class HostProductController extends ChangeNotifier {
   Future<Map<String, Object?>> activityHistory({String? cursor}) =>
       _managementRepository.activityHistory(cursor: cursor);
 
+  /// One recorded voice session, as the Host wrote it down.
+  Future<Map<String, Object?>> sessionTrace({required String sessionId}) =>
+      _managementRepository.sessionTrace(sessionId: sessionId);
+
   /// One of them, opened.
   Future<CompanionDetailView> companion({required String companionId}) =>
       _managementRepository.companion(companionId: companionId);

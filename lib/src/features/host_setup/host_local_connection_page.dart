@@ -38,6 +38,7 @@ import '../constellation/cockpit_composition.dart';
 import '../constellation/cockpit_wire.dart';
 import '../constellation/constellation_cockpit_page.dart';
 import '../constellation/polled_cockpit_feed.dart';
+import '../constellation/session_trace_wire.dart';
 import 'host_models.dart';
 
 export 'host_product_controller.dart' show ManagedHostUpdater;
@@ -648,6 +649,12 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             // cockpit stays a screen that reads what it is given.
             readHistory: (cursor) async => activityPageFromJson(
               await _controller.activityHistory(cursor: cursor),
+            ),
+            // The engineering layer behind one interaction. Wired here rather
+            // than reached for, like the history above, so the cockpit stays a
+            // screen that reads what it is given.
+            readSessionTrace: (sessionId) async => sessionTraceFromJson(
+              await _controller.sessionTrace(sessionId: sessionId),
             ),
           ),
         ),
