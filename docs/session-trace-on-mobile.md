@@ -476,3 +476,89 @@ M1 落地后，`runtimeSessionId` 现在是 `CockpitTurn` 上一个**还没有�
 
 按 §5，真正的下一个前置仍然是 **C1 归属修复**（eidolon_channel）：在它落地之前，
 provider 的列表接口按 owner 过滤恒为空。M1 不依赖它，第 3 步依赖它。
+
+---
+
+## 9. C1 实施记录（2026-09-15）
+
+设备会话的 trace 现在按「主人 + 挂载应答的 Companion」命名，不再是
+`unknown-owner__unknown-companion`。落在 `eidolon_channel`，分支
+`claude/c1-trace-owner`（提交 `4c3dd32`）。
+
+### 9.1 根因，和为什么显而易见的那个修法是错的
+
+`resolve_event_context` 要求参与者元数据里有 `companion_id`。**设备 token 故意不带**
+—— provider 的原话是「server-side orchestration is declared where the room is declared,
+never routed through a credential handed to the device」。
+
+所以看起来最直接的修法（把 `companion_id` 塞进设备 token）**恰恰是错的**：那等于把
+服务端编排决定交给一份发到设备 flash 里、能用好几个小时的凭据。
+
+正确的来源就在旁边：设备 token 自己的解析器早就在读 Kernel mount 的
+`answering_companion_id`（`runtime/resolver.py:221`，
+`metadata.companion_id or connection.answering_companion_id`）。C1 只是让
+`resolve_event_context` 问同一个人 —— 而且问的是 `ChannelRuntimeServices.resolve_room`，
+它按会话记忆答案，所以 trace 命名的那一对，**就是凭据被签发时的那一对**，不是可能
+和它不一致的第二次查询。
+
+### 9.2 这个 bug 的形状：和「压根没开追踪」完全同形
+
+context 解析失败 → sink 记一行 warning 后自我关闭 → writer 回落到占位符。
+真机上语音一切正常、trace 文件在磁盘上、但按 owner 过滤查不到任何东西
+（`_matches` 对 owner_id 做精确相等）。
+
+和 §3.4.1 记的那个 systemd 路径问题是同一类：**失败和「本来就没开」长得一模一样。**
+
+### 9.3 改了什么
+
+| 文件 | 改动 |
+|---|---|
+| `observability/turn_events.py` | `resolve_event_context(room, *, context_resolver=None)`；device 分支回落到 mount；`sink.start` 透传 |
+| `full_duplex/lifecycle.py` | 抽出 `begin_session_observation(room)`，并传入 `factory.runtime_context_resolver` |
+| `half_duplex/pipeline.py` | PTT 调用点同样传入 |
+
+**抽出那个方法是为了能测。** 原先这段内联在 `run()` 里，只有立起一整个 AgentSession
+才够得着 —— 而这正是「忘了传 resolver」能不被发现的原因：解析本身的单测照样全绿，
+真机上每一次会话却依然无归属。
+
+### 9.4 变异验证
+
+| 变异 | 结果 |
+|---|---|
+| 新增测试（修复前） | ✅ 红（3 条） |
+| full_duplex 调用点删掉 `context_resolver=` | ✅ 红 —— 且日志里打出的正是线上那句 `Channel turn events disabled: device event context requires...` |
+| PTT 调用点删掉 `context_resolver=` | ✅ 红 |
+
+### 9.5 验证
+
+| 套件 | 结果 |
+|---|---|
+| `tests/agent/` 全量 | **1048 passed, 2 skipped, 11 xfailed** |
+| `tests/agent/test_channel_turn_events.py` + `test_session_trace.py` | 31 passed |
+| `ruff check`（5 个改动文件） | All checks passed |
+| `mypy turn_events.py` | 仅一条既有的 SDK 缺 stub 提示，非本次引入 |
+
+**一条既有红线，与本次改动无关**：`tests/scenarios/test_human_ptt.py` 全部 18 条在
+`main`（`de5ef01`）上就是红的 —— `half_duplex/pipeline.py:192` 读
+`self._factory.outputs`，而 scenario harness 的 `SimpleNamespace` 替身没有这个属性
+（近期 outputs/presentation 那条线造成的替身漂移）。把本次改动全部还原后复验：**同样 18 条红**。
+已另开任务，没有顺手改绿。
+
+### 9.6 关于「在途工作线」
+
+开工前核对过：那条 presentation/channel-provider 工作线**仍未落地**（worktree
+`amazing-ramanujan-7bdf5d`，24 个文件未提交），它在给 dispatch metadata 加
+`session_intent`。但它碰的是 `adapters/livekit/adapter.py`、`server.py`、
+`runtime/interaction_mode.py`；C1 碰的是 `observability/turn_events.py` 与两条管线
+—— **零重叠**，所以没有等它。
+
+顺带一提，它给出的理由和 C1 的约束是同一条：「intent 骑在 dispatch 上而不是设备 token 上，
+因为 dispatch 是唯一既按会话又不可被设备改写的东西」。
+
+### 9.7 下一步
+
+C1 落地后，§5 的第 0 步只剩运维部分：打开 `observability.session_trace` 开关，
+并**重启 `eidolon-channel-provider`**（P1 写明跑着的进程是加路由之前的代码）。
+验收时盯 `recording` 字段，别只看界面 —— 见 §9.2。
+
+之后就能按 owner 过滤查到真实会话，第 3 步（单会话瀑布屏）才有东西可显示。
