@@ -825,3 +825,91 @@ ssh -i ~/.ssh/id_ed25519_eidolon_opi5max eidolon-opi5max@10.42.0.2 \
   `--revision <source>=<40hex>` 把其余仓钉住。本次就是这么钉住 `eidolon_hub` 的 ——
   当时它正在崩溃重启（几分钟内 `NRestarts` 144 → 153），而 pending 的两个 hub 提交
   正是在修它。
+
+---
+
+## 13. C1 在真机上没生效（2026-09-16 00:26）—— 以及 §9/§12 的更正
+
+> **更正 §9 与 §12。** 两节都写着 C1 会让设备会话的 trace 变成
+> `<owner>__<companion>__…`。**实测没有。** 一次真实设备对话（00:26，72 秒，一个完整
+> 轮次）写出的仍然是
+> `unknown-owner__unknown-companion__esp32-9feaa164-9e0fcb8f-00000001.ndjson`。
+>
+> C1 的**代码**在板子上（`context_resolver` 8/4/2 处），配置也在（`recording: true`）。
+> 不生效的是**逻辑**，不是部署。
+
+### 13.1 证据链：相差一毫秒
+
+| 时刻 | 事件 |
+|---|---|
+| 00:26:38 | Kernel `GET /body-endpoints/<device>` → **200 OK** |
+| 00:26:39,017 | Data `GET /companions/c_1291536…/runtime-snapshot` → **200 OK** |
+| 00:26:39,**018** | `WARNING agent.observability.turn_events Channel turn events disabled: device event context requires an owner and a Companion mounted…` |
+
+解析器拿到了正确的 Companion，**下一毫秒** C1 判定「没有 Companion」。
+
+Kernel 侧数据是齐的（带 `X-Eidolon-Owner` 头查得到；不带头会拿到
+`{"detail":"trusted local owner hint is required"}` —— 我第一次就是把这个错误体当成
+文档读了，一度误判为「没有 assignment」）：
+
+```
+spec.companion_id             c_129153685f855ff3b2062301fb3ceda0
+status.effective_companion_id c_129153685f855ff3b2062301fb3ceda0
+conditions                    ["Realized"]
+```
+
+### 13.2 最可能的根因（未最终确认）
+
+`_resolve_context` 拿到 companion 之后有一道身份互校：
+
+```python
+context = await runtime.resolve_companion(companion_id, device_id=device_id)
+if (context.owner_id != owner_id
+    or context.companion_id != companion_id
+    or context.device_id != device_id):        # ← 嫌疑在这
+    raise DeviceTokenResolverError("Companion runtime does not match mounted Device owner/target")
+```
+
+而 `runtime-snapshot` 的返回**不含 `device_id`**（实测）：
+
+```
+owner_id     'owner_129153685f855ff3b2062301fb3ceda0'
+companion_id 'c_129153685f855ff3b2062301fb3ceda0'
+device_id    None          ← payload 里没有这个键
+```
+
+**一处没解释通**：同一个 `resolve_room` 也是设备 token 的来源，而这次对话是成功的。
+若互校真的抛了，token 路径也该失败。所以要么 token 走了别的分支，要么抛的是别的条件。
+**没有继续猜，改成让错误自己说话。**
+
+### 13.3 这是 C1 自己造成的：我把原因扔了
+
+```python
+except Exception as exc:
+    logger.debug("mounted Companion unresolved: %s", exc)   # DEBUG，线上不可见
+    return ""
+```
+
+当时的理由是「让调用方只报一个清晰的拒绝，而不是两种不同的错误」。**这个理由是错的** ——
+它丢掉了唯一能定位故障的信息，于是「mount 没挂人」「Kernel 连不上」「互校不匹配」
+三种完全不同的故障在日志里是同一句话，且与「追踪根本没开」同形。
+
+**这份文档从头到尾在骂的就是这个形状，而 C1 自己又造了一个。**
+
+已修（channel `claude/trace-why` → main）：`_mounted_companion` 改为返回
+`(companion_id, reason)`，拒绝信息指名缺的是哪一半、以及找它的过程怎么结束的：
+
+```
+device event context incomplete: missing companion_id
+  (the runtime resolver refused: Companion runtime does not match mounted Device owner/target)
+device event context incomplete: missing companion_id
+  (no runtime resolver was handed to this observation)
+```
+
+三条原因各有一条测试，并做了变异验证（把 reason 清空 → 三条全红）。
+`tests/agent/` 全量 1065 passed，ruff 干净。**除消息外无行为变化。**
+
+### 13.4 下一步
+
+发一版带这个改动的 release，再说一轮话。日志会直接写明是哪一半、为什么 ——
+不用再推理。届时再回来改 §9 / §12 / 本节。
