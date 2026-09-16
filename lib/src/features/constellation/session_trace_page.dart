@@ -327,28 +327,40 @@ class _TurnWaterfall extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 3),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: _Bar(ms: duration.ms, against: longest),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 64,
-                        child: Text(
-                          _ms(duration.ms),
-                          textAlign: TextAlign.right,
-                          style: Cockpit.mono(
-                            size: 9.5,
-                            color: duration.measured
-                                ? Cockpit.cyan
-                                : Cockpit.inkDim,
+                  // A measured stage puts its bar where the eye expects one and
+                  // its number at the right margin, so the numbers form a
+                  // column that can be scanned.
+                  //
+                  // An unmeasured one has no bar, and right-aligning 未测到
+                  // anyway left it floating alone across an empty band — near
+                  // enough to the *next* key to be read as its value. Most
+                  // stages in a clean session are unmeasured, so that was the
+                  // common case, not the exception. It now sits at the left,
+                  // exactly where the bar would have started, which attaches it
+                  // to the key above it.
+                  if (duration.measured)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: _Bar(ms: duration.ms, against: longest),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 64,
+                          child: Text(
+                            _ms(duration.ms),
+                            textAlign: TextAlign.right,
+                            style: Cockpit.mono(size: 9.5, color: Cockpit.cyan),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    )
+                  else
+                    Text(
+                      _ms(null),
+                      style: Cockpit.mono(size: 9.5, color: Cockpit.inkDim),
+                    ),
                 ],
               ),
             ),

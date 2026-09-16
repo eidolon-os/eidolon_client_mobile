@@ -135,6 +135,19 @@ void main() {
       expect(find.textContaining('0.0ms'), findsNothing);
     });
 
+    testWidgets('未测到贴在自己的键下面，不是飘在右边', (tester) async {
+      await _pumpPage(tester, (_) async => _trace());
+
+      final unmeasured = tester.widget<Text>(find.text('未测到'));
+      final measured = tester.widget<Text>(find.text('185.9ms'));
+
+      // 有条的行，数字右对齐成一列，方便扫。没条的行右对齐就会横跨一片空白，
+      // 离下一个键比离自己的键还近 —— 而干净的会话里大多数阶段都是没测到的，
+      // 所以那是常态不是例外。
+      expect(measured.textAlign, TextAlign.right);
+      expect(unmeasured.textAlign, isNot(TextAlign.right));
+    });
+
     testWidgets('还开着的会话不说它缺了什么', (tester) async {
       await _pumpPage(
         tester,
