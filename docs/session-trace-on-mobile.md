@@ -1045,3 +1045,91 @@ C1 的测试用 `SimpleNamespace` 构造解析结果，而我给它戴上了 `.r
 
 第 2 步本身就是 M1 的真机验证 —— 在此之前 `runtimeSessionId` 是一个**还没有人读过**
 的字段（§8.6）。
+
+---
+
+## 16. 真机跑通（2026-09-17 00:28，eidolon-opi5max + PHK110）
+
+§0 那个判断，现在是一块在手机上显示真实数据的屏。
+
+### 16.1 屏幕上的东西
+
+一次真实设备对话（00:08:15，70.95s）产生的记录：
+
+```
+这次会话持续 70.95s，以 session_ended 结束。
+会话   esp32-67931301-18aa2b1f-00000001
+伙伴   c_129153685f855ff3b2062301fb3ceda0
+模式   full_duplex
+
+会话建立
+  room_joined                  -87.7ms
+  runtime_participant_resolved   1.1ms
+  warmup_done                  177.0ms
+  session_started              315.7ms
+  first_turn                     5.00s
+没走到：avatar_ready
+
+轮次 1 · 事件 14
+91243950f06f4c50 · agent_audio_playback_done
+  speech_stop_to_commit           368.0ms  ▬
+  commit_to_llm_first_delta       634.2ms  ▬▬
+  commit_to_tts_first_audio         1.08s  ▬▬▬
+  vad_start_to_interrupt_resolved  未测到   （不画条）
+```
+
+设计里的每条纪律都在屏幕上成立：没测到的**说「未测到」且不画条**；用**写入方的词表**不翻译；
+条长按**最长的已测阶段**而非总时长；`没走到` 是主机给的名单，不是客户端算的。
+
+`first_turn 5.00s` —— 会话建立到第一轮花了五秒。这块屏存在的理由就是让这种数字有地方显形。
+
+### 16.2 为什么第一次没看到按钮：装的 App 比功能老
+
+第一次点没有「工程细节」。不是代码、不是主机：
+
+```
+手机上 App  lastUpdateTime = 2026-09-16 00:02:30
+下钻提交     c8a44fb        = 2026-09-16 01:57
+```
+
+**装机比功能早 1 小时 55 分。** 重新 `flutter build apk --debug` + `adb install -r`
+（`firstInstallTime` 不变 = 覆盖安装，配对与 Controller 会话保留）之后，一次就出来了。
+
+**记下来**：验证「功能在手机上有没有」之前，先核对 `lastUpdateTime` 和那个提交的时间。
+这和 §12.1 是同一类错误 —— 我当时也是对着一台没装新代码的 Host 反复验证。
+
+### 16.3 验证顺序：先核对进程，再信功能
+
+opi5max 部署完，先跑的是**进程 / release 一致性核对**，16 个单元全部 OK，然后才看功能。
+
+这个顺序是 §15 那次事故换来的：pi5 上 provider 跑着一个**已被删除的 release**，
+接口答 404，而 `systemctl`、`/health`、`current` 链接、`eidolon-ops pending`
+（"every source matches it"）**全部是绿的**。当时差点把它误判成「M2 没部署」。
+那个部署缺陷已另开任务。
+
+### 16.4 一处自己造的瑕疵，当场修掉
+
+长键名在 190px 标签列里从单词中间断行：`commit_to_brain_request_starte` / `d`。
+
+这块屏的读者正拿着日志逐字比对这些标识符，**把一个名字劈成两半的代价，高于这个布局
+省下的纵向空间**；截断加省略号更糟 —— 这些名字的区别正在尾部。改成
+**键名独占一行、条与数值在下一行**，任何长度都不再断。真机复验：
+`stt_speech_to_evidence_sufficient_transcript`（44 字符）与
+`interrupt_actionable_transcript_to_cancel_resolved`（49 字符）都在一行内。
+
+**残留一处，没修**：未测到的行没有条，于是 `未测到` 独自落在第二行，视觉上容易被读成
+下一个键名的值。节奏是一致的（键在上、值在下），可以学会，但不是一眼就对。
+下次做这块屏时值得再看一眼。
+
+### 16.5 完整链路
+
+| 环节 | 提交 | 真机验证 |
+|---|---|---|
+| C1 会话归属 | `ebf8f0f` → `d622069` | ✅ 文件名带主人与 Companion |
+| 诊断可读 | `eb79e63` | ✅ 一行日志定位到分支 |
+| 配置放开 | `fa67925` | ✅ `recording: true` |
+| M1 join key | `fe7cf1d` + `208703a` | ✅ turns lane 的 id 与 trace 文件名逐字相同 |
+| M2 透传路由 | `c86aed5` | ✅ Owner 面 401 / 假路由 404 / 内部面 200 |
+| A1–A3 下钻与瀑布 | `c8a44fb` | ✅ 手机截图 |
+
+四个仓，全部在 main。**§5 的前置依赖清单已全部解除。**
