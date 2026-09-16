@@ -302,40 +302,52 @@ class _TurnWaterfall extends StatelessWidget {
             style: Cockpit.mono(size: 10, color: Cockpit.magenta),
           ),
           const SizedBox(height: 8),
+          // The key gets a line to itself, and the bar the next one.
+          //
+          // It shared a row with them at first, in a 190px column, and the
+          // longest names — `brain_first_delta_to_tts_first_audio`,
+          // `stt_speech_to_actionable_transcript` — wrapped mid-token, so the
+          // screen showed `commit_to_brain_request_starte` / `d`. These
+          // identifiers are the reason this screen exists: the reader is
+          // holding a log and matching them by eye. Splitting one across two
+          // lines costs more than the vertical space this layout spends, and
+          // truncating with an ellipsis would cost more still — the tail is
+          // where these names differ.
           for (final duration in turn.durations)
             Padding(
-              padding: const EdgeInsets.only(bottom: 5),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              padding: const EdgeInsets.only(bottom: 7),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(
-                    width: 190,
-                    child: Text(
-                      duration.key,
-                      style: Cockpit.mono(
-                        size: 9.5,
-                        color: duration.measured
-                            ? Cockpit.ink
-                            : Cockpit.inkDim,
-                      ),
+                  Text(
+                    duration.key,
+                    style: Cockpit.mono(
+                      size: 9.5,
+                      color: duration.measured ? Cockpit.ink : Cockpit.inkDim,
                     ),
                   ),
-                  Expanded(
-                    child: _Bar(ms: duration.ms, against: longest),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 64,
-                    child: Text(
-                      _ms(duration.ms),
-                      textAlign: TextAlign.right,
-                      style: Cockpit.mono(
-                        size: 9.5,
-                        color: duration.measured
-                            ? Cockpit.cyan
-                            : Cockpit.inkDim,
+                  const SizedBox(height: 3),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: _Bar(ms: duration.ms, against: longest),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 64,
+                        child: Text(
+                          _ms(duration.ms),
+                          textAlign: TextAlign.right,
+                          style: Cockpit.mono(
+                            size: 9.5,
+                            color: duration.measured
+                                ? Cockpit.cyan
+                                : Cockpit.inkDim,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
