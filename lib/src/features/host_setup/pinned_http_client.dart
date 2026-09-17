@@ -22,10 +22,20 @@ class PinnedHttpException extends http.ClientException {
     required String message,
     Uri? uri,
     this.platformCode,
+    this.observedSpkiFingerprint,
   }) : super(message, uri);
 
   final PinnedHttpFailureKind kind;
   final String? platformCode;
+
+  /// The SPKI this Host actually presented, when a pin was the thing that
+  /// failed.
+  ///
+  /// A Host that rotates its transport key is still the same Host, and it
+  /// still signs a statement naming the key it now uses. Reading that
+  /// statement means dialling the key that was just refused, so the refusal
+  /// has to say which key that was. Null for every other kind of failure.
+  final String? observedSpkiFingerprint;
 
   factory PinnedHttpException.fromPlatform(
     PlatformException error, {
@@ -41,11 +51,14 @@ class PinnedHttpException extends http.ClientException {
       'PINNED_HTTPS_IO_FAILED' => PinnedHttpFailureKind.io,
       _ => PinnedHttpFailureKind.platform,
     };
+    final details = error.details;
     return PinnedHttpException(
       kind: kind,
       message: error.message ?? 'Pinned HTTPS platform request failed',
       uri: uri,
       platformCode: error.code,
+      observedSpkiFingerprint:
+          details is Map ? details['observedSpki'] as String? : null,
     );
   }
 }

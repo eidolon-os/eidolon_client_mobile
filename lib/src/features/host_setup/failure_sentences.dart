@@ -43,6 +43,17 @@ String failureSentence(Object error) {
     // tells the person about a request they never made.
     return '到不了这台主机。';
   }
+  if (error is TypeError) {
+    // A generated decoder refusing the answer it was given. The client is
+    // generated from one version of the management contract and the Host
+    // answers from another, so a field this build requires can simply be
+    // absent — and what reaches the screen is
+    // `type 'Null' is not a subtype of type 'Map<String, dynamic>'`, which
+    // describes the App's internals and names neither the cause nor the move.
+    // Said once here rather than at thirty decode sites, because the rule is
+    // about the pair of versions, not about any one field.
+    return '这台主机的版本比这台手机上的 App 旧，读不出这部分数据。更新主机后即可。';
+  }
   // A sentence somebody already wrote, wrapped in the one thing Dart adds to
   // it. `Exception('附近没有等待设置的设备…').toString()` is that sentence with
   // `Exception: ` glued to the front, and that prefix is how a written-for-a-

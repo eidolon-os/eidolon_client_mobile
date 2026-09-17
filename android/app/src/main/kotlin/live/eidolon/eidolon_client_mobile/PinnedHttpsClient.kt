@@ -124,14 +124,38 @@ internal class PinnedHttpsClient(private val mainHandler: Handler) {
 
     private fun fail(result: MethodChannel.Result, error: Exception, cancelled: Boolean = false) {
         val message = error.message?.take(180) ?: "Pinned HTTPS request failed"
-        Log.w("EidolonPinnedHttps", "${error.javaClass.simpleName}: $message")
+        val mismatch = spkiPinMismatch(error)
+        Log.w(
+            "EidolonPinnedHttps",
+            "${error.javaClass.simpleName}: $message" + (mismatch?.let {
+                " expected=${it.expectedPin} observed=${it.observedPin} subject=${it.observedSubject}"
+            } ?: ""),
+        )
+        val details = buildMap {
+            put("exceptionType", error.javaClass.simpleName)
+            // The key this Host actually presented, so the caller can dial it
+            // again to read the statement that would explain the change.
+            mismatch?.let { put("observedSpki", it.observedPin) }
+        }
         mainHandler.post {
             result.error(
                 if (cancelled) "PINNED_HTTPS_CANCELLED" else pinnedHttpsErrorCode(error),
                 message,
-                mapOf("exceptionType" to error.javaClass.simpleName),
+                details,
             )
         }
+    }
+
+    /// A handshake failure arrives wrapped; the pin verdict is further down it.
+    private fun spkiPinMismatch(error: Throwable?): SpkiPinMismatchException? {
+        var cause = error
+        var depth = 0
+        while (cause != null && depth < 8) {
+            if (cause is SpkiPinMismatchException) return cause
+            cause = cause.cause
+            depth++
+        }
+        return null
     }
 
     fun close() {

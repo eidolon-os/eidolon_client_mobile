@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
@@ -57,7 +58,14 @@ class HostLocationException extends LocalApiRequestException {
         f.error is PinnedHttpException &&
             (f.error as PinnedHttpException).kind ==
                 PinnedHttpFailureKind.secureChannel)) {
-      return '发现的服务未通过这台主机的身份校验 · 重新查找';
+      // Reaching here means the Host was asked for its signed statement and
+      // could not produce one this phone's paired identity had signed. A key
+      // this Host merely rotated is adopted before the failure is described,
+      // so what is left is not "try again" — it is a different Host, or one
+      // that has been reset. Saying "重新查找" here promised a retry that
+      // cannot succeed, which is why it is gone.
+      return '这个地址上的主机，不是这台手机配对过的那一台。'
+          '它可能被重置过，也可能是另一台设备占用了这个地址。$controllerResetGuidance';
     }
     if (relevant.any((f) =>
         f.error is PinnedHttpException &&
@@ -68,6 +76,19 @@ class HostLocationException extends LocalApiRequestException {
     return '未能完成主机连接验证 · 重新查找';
   }
 }
+
+/// A Host that proved a rotated transport key, and the addresses to re-dial.
+class _RotatedTlsIdentity {
+  const _RotatedTlsIdentity(this.host, this.candidates);
+  final ManagedHost host;
+  final List<HostAddressCandidate> candidates;
+}
+
+/// Read a Host's signed endpoint statement over the key it is presenting.
+typedef SignedEndpointReader = Future<String> Function(
+  String baseUrl,
+  String observedSpkiFingerprint,
+);
 
 typedef LocalApiClientFactory = LocalApiClient Function(String fingerprint);
 
@@ -139,8 +160,10 @@ class HostProductSession {
     LocalApiClientFactory? clientFactory,
     ManagementClientFactory? managementClientFactory,
     HostLocator? locator,
+    SignedEndpointReader? signedEndpointReader,
     this.onHostConnected,
   })  : _host = host,
+        _readSignedEndpoint = signedEndpointReader ?? _readSignedEndpointOverLan,
         _transport = transport ?? PlatformBleCommissioningTransport(),
         _controllerKeys = controllerKeys ?? PlatformControllerKeyBridge(),
         _clientFactory = clientFactory ?? _platformClientFactory,
@@ -170,6 +193,7 @@ class HostProductSession {
   final ControllerKeyBridge _controllerKeys;
   late final HostLocator _locator;
   final LocalApiClientFactory _clientFactory;
+  final SignedEndpointReader _readSignedEndpoint;
   final ManagementClientFactory _managementClientFactory;
 
   LocalApiEndpoint? _endpoint;
@@ -340,6 +364,18 @@ class HostProductSession {
       } catch (error) {
         _ensureRevision(revision);
         sourceFailure ??= error;
+      }
+    }
+    if (race.winner == null) {
+      final refreshed = await _adoptRotatedTlsIdentity(failures, revision);
+      if (refreshed != null) {
+        _host = refreshed.host;
+        onProgress?.call('正在连接主机');
+        race = await probe(refreshed.candidates);
+        failures.removeWhere((failure) => refreshed.candidates
+            .any((candidate) => candidate.endpoint.baseUrl ==
+                failure.candidate.endpoint.baseUrl));
+        failures.addAll(race.failures);
       }
     }
     final winner = race.winner;
@@ -622,6 +658,96 @@ class HostProductSession {
         );
       }
       rethrow;
+    }
+  }
+
+  /// Adopt a transport key this Host rotated, without anyone walking to it.
+  ///
+  /// The pin is not the identity. The identity is the Ed25519 key this phone
+  /// paired with, and the Host still signs a statement — the same one BLE
+  /// commissioning reads — naming whichever transport key it now serves. So a
+  /// pin that stopped matching is a question with an answer on the network,
+  /// not a reason to declare the Host a stranger and hand back a retry that
+  /// cannot work. Reinstalling the Local API, renewing its certificate or
+  /// redeploying the Host all land here, and none of them should reach a
+  /// person.
+  ///
+  /// The statement is read over the very key that was just refused, and is
+  /// believed only if it is signed by the paired identity *and* names that
+  /// same key. An impostor holding the address cannot produce the signature;
+  /// one holding an old signed statement cannot match the key it names.
+  Future<_RotatedTlsIdentity?> _adoptRotatedTlsIdentity(
+    List<HostCandidateFailure> failures,
+    int revision,
+  ) async {
+    final rotated = <HostAddressCandidate>[];
+    final seen = <String>{};
+    for (final failure in failures) {
+      final error = failure.error;
+      final observed =
+          error is PinnedHttpException ? error.observedSpkiFingerprint : null;
+      if (observed == null || !seen.add(failure.candidate.endpoint.baseUrl)) {
+        continue;
+      }
+      rotated.add(failure.candidate);
+      final String document;
+      try {
+        document = await _readSignedEndpoint(
+          failure.candidate.endpoint.baseUrl,
+          observed,
+        );
+      } on Object {
+        continue;
+      }
+      _ensureRevision(revision);
+      final CommissioningEndpoint endpoint;
+      try {
+        endpoint = await CommissioningEndpoint.parseAndVerifyHost(
+          document,
+          hostId: _host.hostId,
+          hostPublicKey: _host.hostPublicKey,
+          bleServiceUuid: _host.bleServiceUuid,
+        );
+      } on SetupTrustException {
+        // Signed by nobody this phone paired with. Not a rotation — leave the
+        // refusal standing so the caller can say so.
+        continue;
+      }
+      if (endpoint.tlsSpkiFingerprint != observed) continue;
+      return _RotatedTlsIdentity(
+        _host.copyWith(tlsSpkiFingerprint: observed),
+        rotated,
+      );
+    }
+    return null;
+  }
+
+  /// The Host's own signed statement, read over the key it is speaking with.
+  ///
+  /// Pinned to the observed key rather than trusting any certificate: the
+  /// signature is what authenticates the document, and binding the channel to
+  /// the key the document must name is what stops one Host's statement from
+  /// being replayed on another's address.
+  static Future<String> _readSignedEndpointOverLan(
+    String baseUrl,
+    String observed,
+  ) async {
+    final client = PlatformPinnedHttpClient(
+      tlsSpkiFingerprint: observed,
+      requestTimeout: const Duration(seconds: 5),
+    );
+    try {
+      final response = await client.get(
+        LocalApiClient.parseBaseUri(baseUrl)
+            .resolve('/api/local/v1/commissioning/endpoint'),
+        headers: const {'Accept': 'application/json'},
+      );
+      if (response.statusCode != 200 || response.bodyBytes.length > 64 * 1024) {
+        throw LocalApiRequestException('主机没有提供可校验的身份声明');
+      }
+      return utf8.decode(response.bodyBytes, allowMalformed: true);
+    } finally {
+      client.close();
     }
   }
 
