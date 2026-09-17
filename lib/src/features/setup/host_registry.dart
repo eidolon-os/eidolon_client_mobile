@@ -323,12 +323,25 @@ class HostMachineInfo {
       };
 }
 
+/// What may be written back about a Host this phone already knows.
+///
+/// The identity is the gate: the Ed25519 key, the Controller this phone holds,
+/// and when it was claimed. A record whose identity moved is a different Host
+/// wearing the same row, and the whole observation is refused.
+///
+/// The TLS fingerprint is deliberately *not* part of that gate. It used to be,
+/// and while a pin was the only thing proving who answered, that was right. It
+/// stopped being right once a rotated transport key could be adopted — proven,
+/// before an observation is ever built, by a statement the paired identity
+/// signed. Left in, it refused every write that carried the new key: the
+/// session connected, the registry declined to remember it, and the list went
+/// on showing an address and a "last connected" from the week before, with
+/// every refresh paying for the same rotation again. The pin is a fact about
+/// the transport, and this is where the newest one is recorded.
 ManagedHost? _mergeObservation(ManagedHost current, ManagedHost observed) {
   if (current.hostPublicKey != observed.hostPublicKey ||
       current.controllerId != observed.controllerId ||
-      current.claimedAt != observed.claimedAt ||
-      (current.tlsSpkiFingerprint != null &&
-          current.tlsSpkiFingerprint != observed.tlsSpkiFingerprint)) {
+      current.claimedAt != observed.claimedAt) {
     return null;
   }
   if (current.lastConnectedAt != null &&

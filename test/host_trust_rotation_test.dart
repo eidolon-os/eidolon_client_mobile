@@ -237,4 +237,42 @@ void main() {
     expect(failureSentence(error), contains('版本'));
     expect(failureSentence(error), isNot(contains('subtype')));
   });
+
+  test('a rotated pin is recorded, an identity that moved is refused', () async {
+    // The last place that treated the pin as the identity. While it did, a
+    // session could adopt a rotated key and the list would still show the
+    // address and "last connected" from before the rotation, forever, because
+    // the write carrying the new key was declined whole.
+    final identity = await _Identity.create(7);
+    final stored = _host(identity).copyWith(
+      lastKnownBaseUrl: 'https://192.168.1.9:9002',
+      lastConnectedAt: DateTime.utc(2026, 9, 10, 18, 26),
+    );
+    final registry = InMemoryHostRegistry([stored]);
+
+    final rotated = await registry.updateObservation(stored.copyWith(
+      tlsSpkiFingerprint: _rotatedPin,
+      lastKnownBaseUrl: 'https://192.168.100.15:9002',
+      lastConnectedAt: DateTime.utc(2026, 9, 18, 1, 39),
+    ));
+    expect(rotated?.tlsSpkiFingerprint, _rotatedPin);
+    expect(rotated?.lastKnownBaseUrl, 'https://192.168.100.15:9002');
+    expect(rotated?.lastConnectedAt, DateTime.utc(2026, 9, 18, 1, 39));
+
+    final stranger = await _Identity.create(9);
+    expect(
+      await registry.updateObservation(ManagedHost(
+        hostId: stored.hostId,
+        hostPublicKey: stranger.publicKey,
+        hostFingerprint: stored.hostFingerprint,
+        bleServiceUuid: stored.bleServiceUuid,
+        controllerId: stored.controllerId,
+        displayName: stored.displayName,
+        claimedAt: stored.claimedAt,
+        tlsSpkiFingerprint: _rotatedPin,
+      )),
+      isNull,
+      reason: 'an identity that moved is a different Host, not an observation',
+    );
+  });
 }
