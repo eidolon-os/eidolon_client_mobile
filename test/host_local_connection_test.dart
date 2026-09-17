@@ -191,6 +191,10 @@ Map<String, dynamic> _deviceInventory({bool withReadyDevice = false}) => {
                 'owner_domain_generation': 3,
                 'manifest_id': 'esp-box-3',
                 'manifest_revision': 1,
+                'outputs': {
+                  'capabilities': {'speech': true, 'dialogue_text': true},
+                  'revision': 0,
+                },
               },
             ]
           : [],

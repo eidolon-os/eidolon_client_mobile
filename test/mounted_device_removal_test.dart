@@ -25,6 +25,10 @@ MountedDevice _device({String state = 'ready'}) => MountedDevice.fromView(
         'owner_domain_generation': 3,
         'manifest_id': 'mobile-android',
         'manifest_revision': 1,
+        'outputs': {
+          'capabilities': {'speech': true, 'dialogue_text': true},
+          'revision': 0,
+        },
       }),
     );
 
@@ -73,6 +77,31 @@ Future<void> _open(
   await tester.pumpAndSettle();
 }
 
+
+/// Reach a control that is below the fold.
+///
+/// This page is a list and its buttons are at the bottom of it, which is where
+/// a person scrolls to find them. A test that taps without scrolling is
+/// asserting the page never grows.
+Future<void> _tapWhereverItIs(WidgetTester tester, Key key) async {
+  final control = find.byKey(key);
+  if (control.evaluate().isEmpty) {
+    await tester.scrollUntilVisible(
+      control,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('mounted-device-detail')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+  }
+  await tester.ensureVisible(control);
+  await tester.pumpAndSettle();
+  await tester.tap(control);
+}
+
 void main() {
   testWidgets('the note under the button does not invent a Host rule',
       (tester) async {
@@ -113,7 +142,7 @@ void main() {
       return _progress('done');
     });
 
-    await tester.tap(find.byKey(const Key('remove-mounted-device')));
+    await _tapWhereverItIs(tester, const Key('remove-mounted-device'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('confirm-device-removal')), findsOneWidget);
 
@@ -133,7 +162,7 @@ void main() {
       return _progress('done');
     });
 
-    await tester.tap(find.byKey(const Key('remove-mounted-device')));
+    await _tapWhereverItIs(tester, const Key('remove-mounted-device'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('confirm-device-removal-action')));
     await tester.pumpAndSettle();
@@ -150,7 +179,7 @@ void main() {
       (_, __) async => throw StateError('主机暂时不可用'),
     );
 
-    await tester.tap(find.byKey(const Key('remove-mounted-device')));
+    await _tapWhereverItIs(tester, const Key('remove-mounted-device'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('confirm-device-removal-action')));
     await tester.pumpAndSettle();
@@ -171,7 +200,7 @@ void main() {
     // to say which of the two is which.
     await _open(tester, (_, __) async => _progress('unfinished'));
 
-    await tester.tap(find.byKey(const Key('remove-mounted-device')));
+    await _tapWhereverItIs(tester, const Key('remove-mounted-device'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('confirm-device-removal-action')));
     await tester.pumpAndSettle();
@@ -202,7 +231,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const Key('remove-mounted-device')));
+    await _tapWhereverItIs(tester, const Key('remove-mounted-device'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('confirm-device-removal-action')));
     await tester.pumpAndSettle();
@@ -223,7 +252,7 @@ void main() {
       (_, __) async => throw const ManagementRequestException('移除设备没有完成'),
     );
 
-    await tester.tap(find.byKey(const Key('remove-mounted-device')));
+    await _tapWhereverItIs(tester, const Key('remove-mounted-device'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('confirm-device-removal-action')));
     await tester.pumpAndSettle();
@@ -238,7 +267,7 @@ void main() {
   testWidgets('a refusal is not offered as something to retry', (tester) async {
     await _open(tester, (_, __) async => _progress('refused'));
 
-    await tester.tap(find.byKey(const Key('remove-mounted-device')));
+    await _tapWhereverItIs(tester, const Key('remove-mounted-device'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('confirm-device-removal-action')));
     await tester.pumpAndSettle();
@@ -261,7 +290,7 @@ void main() {
       return _progress('unfinished');
     });
 
-    await tester.tap(find.byKey(const Key('remove-mounted-device')));
+    await _tapWhereverItIs(tester, const Key('remove-mounted-device'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('confirm-device-removal-action')));
     await tester.pumpAndSettle();
@@ -270,7 +299,7 @@ void main() {
 
     await tester.drag(find.byType(ListView).first, const Offset(0, -300));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('remove-mounted-device')));
+    await _tapWhereverItIs(tester, const Key('remove-mounted-device'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('confirm-device-removal-action')));
     await tester.pumpAndSettle();

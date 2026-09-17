@@ -34,6 +34,10 @@ MountedDevice _device({
         'owner_domain_generation': 3,
         'manifest_id': 'box3-device-manifest',
         'manifest_revision': 1,
+        'outputs': {
+          'capabilities': {'speech': true, 'dialogue_text': true},
+          'revision': 0,
+        },
       }),
     );
 
@@ -62,6 +66,31 @@ CompanionRosterView _roster() => CompanionRosterView.fromJson({
       ],
       'next_cursor': null,
     });
+
+
+/// Reach a control that is below the fold.
+///
+/// This page is a list and its buttons are at the bottom of it, which is where
+/// a person scrolls to find them. A test that taps without scrolling is
+/// asserting the page never grows.
+Future<void> _tapWhereverItIs(WidgetTester tester, Key key) async {
+  final control = find.byKey(key);
+  if (control.evaluate().isEmpty) {
+    await tester.scrollUntilVisible(
+      control,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('mounted-device-detail')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+  }
+  await tester.ensureVisible(control);
+  await tester.pumpAndSettle();
+  await tester.tap(control);
+}
 
 void main() {
   testWidgets('binding names the Companion, the device and the revision',
@@ -93,7 +122,7 @@ void main() {
     // Nobody has decided about this device yet, which is not the same as its
     // having gone quiet — and the revision it will send is the Body's.
     expect(find.text('还没有指定'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('bind-device-companion')));
+    await _tapWhereverItIs(tester, const Key('bind-device-companion'));
     await tester.pumpAndSettle();
 
     // An archived Eidolon is not offered: it cannot answer through anything.
@@ -135,7 +164,7 @@ void main() {
 
     // The name, not the identifier: the row says who answers.
     expect(find.text('小忆'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('bind-device-companion')));
+    await _tapWhereverItIs(tester, const Key('bind-device-companion'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('companion-choice-none')));
     await tester.pumpAndSettle();
@@ -162,7 +191,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const Key('bind-device-companion')));
+    await _tapWhereverItIs(tester, const Key('bind-device-companion'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('companion-choice-c_01')));
     await tester.pumpAndSettle();
@@ -194,7 +223,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const Key('bind-device-companion')));
+    await _tapWhereverItIs(tester, const Key('bind-device-companion'));
     await tester.pumpAndSettle();
 
     expect(

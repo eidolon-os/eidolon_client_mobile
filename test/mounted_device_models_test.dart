@@ -20,6 +20,7 @@ Map<String, dynamic> _wire({
   String kind = 'box3-device-manifest',
   String quietBecause = '',
   int revision = 2,
+  Map<String, dynamic>? outputs,
 }) =>
     <String, dynamic>{
       'device_id': _deviceId,
@@ -40,6 +41,11 @@ Map<String, dynamic> _wire({
       'owner_domain_generation': 3,
       'manifest_id': kind,
       'manifest_revision': 1,
+      'outputs': outputs ??
+          <String, dynamic>{
+            'capabilities': {'speech': true, 'dialogue_text': true},
+            'revision': 0,
+          },
     };
 
 MountedDeviceInventory _inventory({

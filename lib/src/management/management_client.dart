@@ -571,6 +571,32 @@ class ManagementClient {
     return DeviceView.fromJson(body);
   }
 
+  /// Say what one device of mine may present.
+  ///
+  /// [expectedRevision] is the outputs revision the screen was showing — zero
+  /// before anyone has decided — so two phones cannot quietly take turns
+  /// deciding. Allowing nothing is a decision this sends; it is how a device is
+  /// silenced, and it is not the same as never having decided.
+  Future<DeviceView> setDeviceOutputs(
+    Uri baseUri, {
+    required String accessToken,
+    required String deviceId,
+    required OutputSelection allowed,
+    required int expectedRevision,
+  }) async {
+    final body = await _send(
+      'PUT',
+      baseUri.resolve(ManagementV1.devicesByDeviceIdOutputsPath(deviceId)),
+      accessToken: accessToken,
+      what: '设置这台设备可以做什么',
+      body: {
+        'allowed': allowed.toJson(),
+        'expected_revision': expectedRevision,
+      },
+    );
+    return DeviceView.fromJson(body);
+  }
+
   /// Take a device off this Host.
   ///
   /// The answer says which facts are settled rather than a percentage: three

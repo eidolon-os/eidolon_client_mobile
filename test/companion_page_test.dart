@@ -32,6 +32,10 @@ MountedDeviceInventory _devices(List<String?> attachedTo) =>
               'owner_domain_generation': 3,
               'manifest_id': 'box3-device-manifest',
               'manifest_revision': 1,
+              'outputs': {
+                'capabilities': {'speech': true, 'dialogue_text': true},
+                'revision': 0,
+              },
             },
         ],
       }),

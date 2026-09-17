@@ -185,7 +185,11 @@ class _Harness {
               'trust_epoch': 1,
               'owner_domain_generation': 1,
               'manifest_id': 'mobile',
-              'manifest_revision': 1
+              'manifest_revision': 1,
+              'outputs': {
+                'capabilities': {'speech': true, 'dialogue_text': true},
+                'revision': 0,
+              }
             }));
           },
           assign: (

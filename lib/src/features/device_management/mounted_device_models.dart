@@ -37,9 +37,43 @@ enum MountedDeviceState {
   /// [MountedDevice.quietBecause], and it is a different sentence each way.
   awaitingCompanion,
 
+  /// An Eidolon answers through it and nobody has said what it may present, so
+  /// the Host will not give it a channel at all. Its own screen says the
+  /// service is not ready. The one thing that clears this is its Owner
+  /// deciding, which is why it is a state and not a footnote.
+  awaitingOutputs,
+
   /// Platform access is gone and the Host still lists it. The device is
   /// already off; what is left to retry is the unmount.
   accessRevoked,
+}
+
+/// What a device can present, and what its Owner has allowed it to.
+///
+/// Two facts kept apart: a device declares what it is capable of by asserting a
+/// Manifest, and nothing it declares grants it anything. [allowed] is null when
+/// nobody has decided — a question still open, which is not the same answer as
+/// a decision that allows nothing.
+class DeviceOutputs {
+  const DeviceOutputs({
+    required this.capabilities,
+    required this.allowed,
+    required this.revision,
+  });
+
+  factory DeviceOutputs.fromView(DeviceOutputsView view) => DeviceOutputs(
+        capabilities: view.capabilities,
+        allowed: view.allowed,
+        revision: view.revision,
+      );
+
+  final OutputSelection capabilities;
+  final OutputSelection? allowed;
+
+  /// What the next decision has to carry. Zero before the first one.
+  final int revision;
+
+  bool get decided => allowed != null;
 }
 
 class MountedDevice {
@@ -61,6 +95,7 @@ class MountedDevice {
     required this.trustEpoch,
     required this.ownerDomainGeneration,
     required this.manifestId,
+    required this.outputs,
   });
 
   /// Built from the Host's own answer.
@@ -78,6 +113,7 @@ class MountedDevice {
         state: switch (view.state) {
           'ready' => MountedDeviceState.ready,
           'awaiting_companion' => MountedDeviceState.awaitingCompanion,
+          'awaiting_outputs' => MountedDeviceState.awaitingOutputs,
           'access_revoked' => MountedDeviceState.accessRevoked,
           // A state this version has never heard of is shown as needing
           // attention rather than as fine: the Host knows something this app
@@ -105,6 +141,7 @@ class MountedDevice {
         trustEpoch: view.trustEpoch,
         ownerDomainGeneration: view.ownerDomainGeneration,
         manifestId: view.manifestId ?? '',
+        outputs: DeviceOutputs.fromView(view.outputs),
       );
 
   final String deviceId;
@@ -149,6 +186,9 @@ class MountedDevice {
   final int trustEpoch;
   final int ownerDomainGeneration;
   final String manifestId;
+
+  /// What it can present and what it is allowed to, as the Host answers it.
+  final DeviceOutputs outputs;
 }
 
 class MountedDeviceInventory {

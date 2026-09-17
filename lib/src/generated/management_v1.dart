@@ -60,6 +60,8 @@ class ManagementV1 {
   static const String devicesPath = '/api/management/v1/devices';
   static String devicesByDeviceIdCompanionPath(String deviceId) =>
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/companion';
+  static String devicesByDeviceIdOutputsPath(String deviceId) =>
+      '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/outputs';
   static String devicesByDeviceIdRemovalPath(String deviceId) =>
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/removal';
   static const String homePath = '/api/management/v1/home';
@@ -934,6 +936,64 @@ class DeviceCompanionRequest {
   }
 }
 
+class DeviceOutputsRequest {
+  const DeviceOutputsRequest({
+    required this.allowed,
+    required this.expectedRevision,
+  });
+
+  final OutputSelection allowed;
+
+  final int expectedRevision;
+
+  factory DeviceOutputsRequest.fromJson(Map<String, dynamic> value) {
+    return DeviceOutputsRequest(
+      allowed: OutputSelection.fromJson(
+        value['allowed'] as Map<String, dynamic>,
+      ),
+      expectedRevision: value['expected_revision'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'allowed': allowed.toJson(), 'expected_revision': expectedRevision};
+  }
+}
+
+class DeviceOutputsView {
+  const DeviceOutputsView({
+    this.allowed,
+    required this.capabilities,
+    required this.revision,
+  });
+
+  final OutputSelection? allowed;
+
+  final OutputSelection capabilities;
+
+  final int revision;
+
+  factory DeviceOutputsView.fromJson(Map<String, dynamic> value) {
+    return DeviceOutputsView(
+      allowed: value['allowed'] == null
+          ? null
+          : OutputSelection.fromJson(value['allowed'] as Map<String, dynamic>),
+      capabilities: OutputSelection.fromJson(
+        value['capabilities'] as Map<String, dynamic>,
+      ),
+      revision: value['revision'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (allowed != null) 'allowed': allowed?.toJson(),
+      'capabilities': capabilities.toJson(),
+      'revision': revision,
+    };
+  }
+}
+
 class DeviceRemovalConditionView {
   const DeviceRemovalConditionView({
     required this.authority,
@@ -1043,6 +1103,7 @@ class DeviceView {
     required this.mountRevision,
     this.online,
     this.onlineReason,
+    required this.outputs,
     required this.ownerDomainGeneration,
     this.quietBecause,
     required this.revision,
@@ -1075,6 +1136,8 @@ class DeviceView {
 
   final String? onlineReason;
 
+  final DeviceOutputsView outputs;
+
   final int ownerDomainGeneration;
 
   final String? quietBecause;
@@ -1101,6 +1164,9 @@ class DeviceView {
       mountRevision: value['mount_revision'] as int,
       online: value['online'] as String?,
       onlineReason: value['online_reason'] as String?,
+      outputs: DeviceOutputsView.fromJson(
+        value['outputs'] as Map<String, dynamic>,
+      ),
       ownerDomainGeneration: value['owner_domain_generation'] as int,
       quietBecause: value['quiet_because'] as String?,
       revision: value['revision'] as int,
@@ -1126,6 +1192,7 @@ class DeviceView {
       'mount_revision': mountRevision,
       if (online != null) 'online': online,
       if (onlineReason != null) 'online_reason': onlineReason,
+      'outputs': outputs.toJson(),
       'owner_domain_generation': ownerDomainGeneration,
       if (quietBecause != null) 'quiet_because': quietBecause,
       'revision': revision,
@@ -2697,6 +2764,46 @@ class MonitorService {
       if (unit != null) 'unit': unit,
       if (user != null) 'user': user,
       if (workingDirectory != null) 'working_directory': workingDirectory,
+    };
+  }
+}
+
+class OutputSelection {
+  const OutputSelection({
+    this.audioCue,
+    this.dialogueText,
+    this.expression,
+    this.motion,
+    this.speech,
+  });
+
+  final bool? audioCue;
+
+  final bool? dialogueText;
+
+  final bool? expression;
+
+  final bool? motion;
+
+  final bool? speech;
+
+  factory OutputSelection.fromJson(Map<String, dynamic> value) {
+    return OutputSelection(
+      audioCue: value['audio_cue'] as bool?,
+      dialogueText: value['dialogue_text'] as bool?,
+      expression: value['expression'] as bool?,
+      motion: value['motion'] as bool?,
+      speech: value['speech'] as bool?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (audioCue != null) 'audio_cue': audioCue,
+      if (dialogueText != null) 'dialogue_text': dialogueText,
+      if (expression != null) 'expression': expression,
+      if (motion != null) 'motion': motion,
+      if (speech != null) 'speech': speech,
     };
   }
 }

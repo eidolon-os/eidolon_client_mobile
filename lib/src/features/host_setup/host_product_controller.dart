@@ -129,6 +129,7 @@ class HostProductController extends ChangeNotifier {
     _devicesRepository = HostDevicesRepository(_session);
     _deviceAdmissionRepository = HostDeviceAdmissionRepository(_session);
     _deviceCompanionRepository = HostDeviceCompanionRepository(_session);
+    _deviceOutputsRepository = HostDeviceOutputsRepository(_session);
     _hostServicesRepository = HostServicesRepository(_session);
     _controllerGrantRepository = HostControllerGrantRepository(_session);
     _companionRepository = HostCompanionRepository(_session);
@@ -152,6 +153,7 @@ class HostProductController extends ChangeNotifier {
   late final HostDevicesRepository _devicesRepository;
   late final HostDeviceAdmissionRepository _deviceAdmissionRepository;
   late final HostDeviceCompanionRepository _deviceCompanionRepository;
+  late final HostDeviceOutputsRepository _deviceOutputsRepository;
   late final HostServicesRepository _hostServicesRepository;
   late final HostControllerGrantRepository _controllerGrantRepository;
   late final HostCompanionRepository _companionRepository;
@@ -945,6 +947,30 @@ class HostProductController extends ChangeNotifier {
       deviceId: deviceId,
       requestId: requestId,
       companionId: companionId,
+      expectedRevision: expectedRevision,
+    );
+    await refreshDevices();
+  }
+
+  /// Say what one device may present, or narrow what it already may.
+  ///
+  /// [expectedRevision] is the outputs revision this screen was showing — zero
+  /// before anyone has decided. Re-read afterwards for the same reason the
+  /// Companion choice is: the decision is the Host's to accept, and a screen
+  /// that edited its own copy would show one the Host refused.
+  Future<void> setDeviceOutputs({
+    required String deviceId,
+    required OutputSelection allowed,
+    required int expectedRevision,
+  }) async {
+    if (_connection == null) {
+      throw const HostControllerAuthorizationException(
+        '请先安全连接主机，再设置设备的表达方式',
+      );
+    }
+    await _deviceOutputsRepository.set(
+      deviceId: deviceId,
+      allowed: allowed,
       expectedRevision: expectedRevision,
     );
     await refreshDevices();

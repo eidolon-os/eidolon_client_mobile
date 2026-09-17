@@ -165,6 +165,7 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
                 onBindCompanion: _hostOffersAssignment
                     ? controller.setDeviceCompanion
                     : null,
+                onSetOutputs: controller.setDeviceOutputs,
               ),
             ),
           ],
@@ -222,6 +223,7 @@ class _MountedDeviceCard extends StatelessWidget {
     required this.onRemove,
     this.loadCompanions,
     this.onBindCompanion,
+    this.onSetOutputs,
   });
 
   final MountedDevice device;
@@ -236,6 +238,11 @@ class _MountedDeviceCard extends StatelessWidget {
     required String? companionId,
     required int expectedRevision,
   })? onBindCompanion;
+  final Future<void> Function({
+    required String deviceId,
+    required OutputSelection allowed,
+    required int expectedRevision,
+  })? onSetOutputs;
 
   @override
   Widget build(BuildContext context) {
@@ -246,6 +253,13 @@ class _MountedDeviceCard extends StatelessWidget {
         ),
       MountedDeviceState.awaitingCompanion => (
           '没有谁应答',
+          Theme.of(context).colorScheme.tertiary,
+        ),
+      // It has an Eidolon and still cannot be served. Saying 已接入 here is
+      // what left someone looking at a device whose own screen said the
+      // service was not ready.
+      MountedDeviceState.awaitingOutputs => (
+          '还没定它怎么表达',
           Theme.of(context).colorScheme.tertiary,
         ),
       // Its access is already gone; what is left is the mount. Saying so is
@@ -272,6 +286,7 @@ class _MountedDeviceCard extends StatelessWidget {
               onRemove: onRemove,
               loadCompanions: loadCompanions,
               onBindCompanion: onBindCompanion,
+              onSetOutputs: onSetOutputs,
             ),
           ),
         ),
@@ -287,6 +302,7 @@ class MountedDeviceDetailPage extends StatefulWidget {
     required this.onRemove,
     this.loadCompanions,
     this.onBindCompanion,
+    this.onSetOutputs,
   });
 
   final MountedDevice device;
@@ -308,6 +324,14 @@ class MountedDeviceDetailPage extends StatefulWidget {
     required String? companionId,
     required int expectedRevision,
   })? onBindCompanion;
+
+  /// What this device may present. Carries the outputs revision this screen
+  /// was showing, which is a different number from the mount's.
+  final Future<void> Function({
+    required String deviceId,
+    required OutputSelection allowed,
+    required int expectedRevision,
+  })? onSetOutputs;
 
   @override
   State<MountedDeviceDetailPage> createState() =>
@@ -361,6 +385,34 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
       if (mounted) setState(() => _notice = '关联没有完成：$error');
+    } finally {
+      if (mounted) setState(() => _binding = false);
+    }
+  }
+
+  Future<void> _decideOutputs() async {
+    final decide = widget.onSetOutputs;
+    if (decide == null || _binding || _removing) return;
+    final device = widget.device;
+    final chosen = await showModalBottomSheet<OutputSelection>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _OutputsPicker(outputs: device.outputs),
+    );
+    if (chosen == null || !mounted) return;
+    setState(() {
+      _binding = true;
+      _notice = null;
+    });
+    try {
+      await decide(
+        deviceId: device.deviceId,
+        allowed: chosen,
+        expectedRevision: device.outputs.revision,
+      );
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      if (mounted) setState(() => _notice = '没有保存成功：$error');
     } finally {
       if (mounted) setState(() => _binding = false);
     }
@@ -477,12 +529,33 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
         DeviceQuietBecause.unstated => '还没有指定',
       };
 
+  /// What it may present, in the words a person can act on.
+  ///
+  /// "Nobody has decided" and "decided on nothing" are different sentences on
+  /// purpose: the first is a device waiting for its Owner, and the second is a
+  /// device its Owner deliberately silenced.
+  static String _outputsText(DeviceOutputs outputs) {
+    final allowed = outputs.allowed;
+    if (allowed == null) return '还没有决定 —— 在定下来之前，主机不会让它开始对话';
+    final named = _outputNames(allowed);
+    return named.isEmpty ? '你把它设成了什么都不表达' : named.join('、');
+  }
+
+  static List<String> _outputNames(OutputSelection outputs) => [
+        if (outputs.speech ?? false) '说话',
+        if (outputs.dialogueText ?? false) '显示对话文字',
+        if (outputs.expression ?? false) '表情',
+        if (outputs.audioCue ?? false) '提示音',
+        if (outputs.motion ?? false) '动作',
+      ];
+
   @override
   Widget build(BuildContext context) {
     final device = widget.device;
     final stateLabel = switch (device.state) {
       MountedDeviceState.ready => '已接入',
       MountedDeviceState.awaitingCompanion => '没有谁应答',
+      MountedDeviceState.awaitingOutputs => '还没定它怎么表达',
       MountedDeviceState.accessRevoked => '已停用，待移除',
     };
     return Scaffold(
@@ -532,6 +605,20 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
                                 ? '指定'
                                 : '更换或解除',
                           ),
+                        ),
+                ),
+                ListTile(
+                  key: const Key('device-outputs'),
+                  title: const Text('它可以怎么表达'),
+                  subtitle: Text(_outputsText(device.outputs)),
+                  trailing: widget.onSetOutputs == null
+                      ? null
+                      : TextButton(
+                          key: const Key('decide-device-outputs'),
+                          onPressed: _binding || _removing || _platformRemoved
+                              ? null
+                              : _decideOutputs,
+                          child: Text(device.outputs.decided ? '更改' : '设置'),
                         ),
                 ),
                 ListTile(
@@ -602,6 +689,90 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
             '主机会在原记录上更新，不会多出一台设备。'
             '移除之后它反而回不来了 —— 要重新加入，得有人带着 Controller 再做一次现场确认。',
             style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Choose what one device may present.
+///
+/// Only what the device declared it can do is offered: allowing an output a
+/// device does not have would be a decision nothing could ever carry out, and
+/// it is the Authority that intersects the two anyway. Allowing nothing is
+/// reachable on purpose — it is how a device is silenced without taking it off
+/// the Host.
+class _OutputsPicker extends StatefulWidget {
+  const _OutputsPicker({required this.outputs});
+
+  final DeviceOutputs outputs;
+
+  @override
+  State<_OutputsPicker> createState() => _OutputsPickerState();
+}
+
+class _OutputsPickerState extends State<_OutputsPicker> {
+  late Map<String, bool> _chosen;
+
+  static const Map<String, String> _labels = {
+    'speech': '说话',
+    'dialogue_text': '显示对话文字',
+    'expression': '表情',
+    'audio_cue': '提示音',
+    'motion': '动作',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    final allowed = widget.outputs.allowed?.toJson() ?? const {};
+    _chosen = {
+      for (final name in _declared) name: allowed[name] == true,
+    };
+  }
+
+  /// The outputs this device said it has, in the order the labels are written.
+  List<String> get _declared {
+    final capabilities = widget.outputs.capabilities.toJson();
+    return [
+      for (final name in _labels.keys)
+        if (capabilities[name] == true) name,
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: ListView(
+        key: const Key('device-outputs-picker'),
+        shrinkWrap: true,
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text('它可以怎么表达', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            '只列出这台设备自己声明具备的能力。没有被打开的，主机不会为它生成，'
+            '也不会换一种方式送出去。',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          for (final name in _declared)
+            SwitchListTile(
+              key: Key('device-output-$name'),
+              title: Text(_labels[name]!),
+              value: _chosen[name] ?? false,
+              onChanged: (value) => setState(() => _chosen[name] = value),
+            ),
+          const SizedBox(height: 12),
+          FilledButton(
+            key: const Key('device-outputs-save'),
+            onPressed: () => Navigator.of(context).pop(
+              OutputSelection.fromJson({
+                for (final entry in _chosen.entries) entry.key: entry.value,
+              }),
+            ),
+            child: const Text('保存'),
           ),
         ],
       ),

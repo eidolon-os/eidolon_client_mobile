@@ -622,6 +622,29 @@ class HostDeviceCompanionRepository {
       );
 }
 
+class HostDeviceOutputsRepository {
+  const HostDeviceOutputsRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<MountedDevice> set({
+    required String deviceId,
+    required OutputSelection allowed,
+    required int expectedRevision,
+  }) async =>
+      MountedDevice.fromView(
+        await _session.executeManagement(
+          (client, baseUri, accessToken) => client.setDeviceOutputs(
+            baseUri,
+            accessToken: accessToken,
+            deviceId: deviceId,
+            allowed: allowed,
+            expectedRevision: expectedRevision,
+          ),
+        ),
+      );
+}
+
 class HostDeviceAdmissionRepository {
   const HostDeviceAdmissionRepository(this._session);
 
