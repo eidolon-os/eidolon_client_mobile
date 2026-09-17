@@ -8,6 +8,35 @@ import '../../protocol/canonical_json.dart';
 import 'device_setup_models.dart';
 import 'device_setup_ports.dart';
 
+/// This Host reports an older trust generation than this phone accepted.
+///
+/// Monotonicity is the only defence against replaying an older, still validly
+/// signed Owner directory — old material revokes nothing, so a lower number
+/// must never be taken on the Host's word alone. But a Host whose authority was
+/// reset or restored legitimately lands here too, and until it can prove which
+/// of the two it is, the two are indistinguishable from the wire. So the
+/// refusal carries both numbers and the domain they belong to, and a person who
+/// knows what happened to that Host can settle it.
+class OwnerDomainGenerationRollback implements Exception {
+  const OwnerDomainGenerationRollback({
+    required this.ownerDomainId,
+    required this.accepted,
+    required this.offered,
+  });
+
+  final String ownerDomainId;
+
+  /// The newest generation this phone has accepted from this domain.
+  final int accepted;
+
+  /// What the Host is publishing now.
+  final int offered;
+
+  @override
+  String toString() => 'Owner Domain generation rollback: '
+      'accepted $accepted, offered $offered';
+}
+
 abstract interface class OwnerDomainSignatureVerifierPort {
   Future<void> verify({
     required DeviceOnboardingTarget target,
@@ -46,6 +75,34 @@ class PlatformOwnerDomainDirectoryVerifier
     return PreferenceWrites.run(
         _preferences, _preferenceKey, () => _acceptVerified(target, canonical));
   }
+
+  /// Forget what this phone accepted from one Owner Domain.
+  ///
+  /// The record exists to refuse a lower generation than the one already seen.
+  /// It had no way out: nothing cleared it, so a Host whose authority was
+  /// legitimately reset stayed unreachable for onboarding forever, and even
+  /// removing the Host and adding it again walked back into the same refusal —
+  /// the record outlived the pairing it was about.
+  ///
+  /// Called when this phone gives up the Host, and when a person who knows the
+  /// Host was reset says so deliberately. Not called to make a warning go away:
+  /// the refusal it clears is the one thing standing between an Owner and a
+  /// replayed directory.
+  @override
+  Future<void> forget(String ownerDomainId) =>
+      PreferenceWrites.run(_preferences, _preferenceKey, () async {
+        final document =
+            _decodeState(await _preferences.readString(_preferenceKey));
+        final owners = Map<String, dynamic>.from(document['owners']! as Map);
+        if (owners.remove(ownerDomainId) == null) return;
+        await _preferences.writeString(
+          _preferenceKey,
+          jsonEncode({
+            'contract_version': _documentVersion,
+            'owners': owners,
+          }),
+        );
+      });
 
   void _validateWindow(DeviceOnboardingTarget target) {
     final descriptor = target.ownerDomainDescriptor;
@@ -86,7 +143,11 @@ class PlatformOwnerDomainDirectoryVerifier
       final currentRevision = current['directory_revision']! as int;
       final currentFingerprint = current['fingerprint']! as String;
       if (descriptor.ownerDomainGeneration < currentGeneration) {
-        throw const FormatException('Owner Domain generation rollback');
+        throw OwnerDomainGenerationRollback(
+          ownerDomainId: target.ownerDomainId,
+          accepted: currentGeneration,
+          offered: descriptor.ownerDomainGeneration,
+        );
       }
       if (descriptor.ownerDomainGeneration == currentGeneration) {
         if (descriptor.directoryRevision < currentRevision) {

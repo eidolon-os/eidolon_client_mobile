@@ -70,6 +70,11 @@ abstract interface class OwnerDomainDirectoryVerifier {
   /// Verifies Owner identity, delegated P-256 signer and descriptor signature.
   /// A transport-reachable endpoint or Host TLS leaf is never sufficient.
   Future<void> verify(DeviceOnboardingTarget target);
+
+  /// Drop what was accepted from one Owner Domain, so a Host whose authority
+  /// was reset can be met again. Accepting a lower generation is refused on
+  /// the Host's word; this is the Owner's word instead.
+  Future<void> forget(String ownerDomainId);
 }
 
 abstract interface class DeviceSetupCheckpointStore {

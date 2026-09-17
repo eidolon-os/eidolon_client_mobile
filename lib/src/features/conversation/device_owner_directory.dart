@@ -41,6 +41,51 @@ class DeviceOwnerDirectory {
   /// All Owner APIs resolve locations at send time through the same transport.
   http.Client transport(DeviceOnboardingTarget target) => _transport(target);
 
+  /// Give up everything this phone learned from one Host's Owner Domain.
+  ///
+  /// Both halves go, and they have to go together: the saved onboarding target
+  /// is what names the domain, and the accepted-generation record is what
+  /// refuses an older one. Dropping the first and keeping the second leaves a
+  /// record nothing can name and nothing can clear — which is how removing a
+  /// Host and adding it back still walked into the refusal it was meant to
+  /// escape.
+  Future<void> forgetHost(String hostId) async {
+    final saved = await _readSaved();
+    final target = saved[hostId];
+    final ownerDomainId =
+        target is Map ? target['owner_domain_id'] as String? : null;
+    await PreferenceWrites.run(_preferences, _key, () async {
+      final current = await _readSaved();
+      if (current.remove(hostId) == null) return;
+      await _preferences.writeString(_key, jsonEncode(current));
+    });
+    _targets.remove(hostId);
+    if (ownerDomainId == null) return;
+    _hosts.remove(ownerDomainId);
+    _selections.remove(ownerDomainId);
+    // Only when this phone keeps no other Host in that domain: the record is
+    // about the domain, not about one machine that speaks for it.
+    final remaining = await _readSaved();
+    final stillThere = remaining.values.any((value) =>
+        value is Map && value['owner_domain_id'] == ownerDomainId);
+    if (!stillThere) await _verifier.forget(ownerDomainId);
+  }
+
+  /// What this phone would refuse a lower generation than, for this Host.
+  Future<String?> ownerDomainOf(String hostId) async {
+    final target = (await _readSaved())[hostId];
+    return target is Map ? target['owner_domain_id'] as String? : null;
+  }
+
+  Future<Map<String, dynamic>> _readSaved() async {
+    final raw = await _preferences.readString(_key);
+    if (raw == null || raw.isEmpty) return <String, dynamic>{};
+    final decoded = jsonDecode(raw);
+    return decoded is Map
+        ? Map<String, dynamic>.from(decoded)
+        : <String, dynamic>{};
+  }
+
   Future<void> close() => _authorityRoutes.close();
 
   Future<void> _save(String hostId, DeviceOnboardingTarget target) {

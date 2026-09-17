@@ -59,6 +59,9 @@ class AcceptingOwnerDomainDirectoryVerifier
 
   @override
   Future<void> verify(DeviceOnboardingTarget target) async {}
+
+  @override
+  Future<void> forget(String ownerDomainId) async {}
 }
 
 class RejectingOwnerDomainDirectoryVerifier
@@ -69,4 +72,7 @@ class RejectingOwnerDomainDirectoryVerifier
   Future<void> verify(DeviceOnboardingTarget target) async {
     throw const FormatException('signature invalid');
   }
+
+  @override
+  Future<void> forget(String ownerDomainId) async {}
 }

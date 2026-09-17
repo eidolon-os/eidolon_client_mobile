@@ -70,6 +70,7 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
       home: EidolonAppShell(
         registry: widget.hostRegistry,
         deviceProvisioning: widget.deviceProvisioning,
+        onHostForgotten: _deviceRuntime.directory.forgetHost,
         conversationBuilder: (_, controller) {
           Future<void>? preparing;
           Future<void> prepareManagement() {

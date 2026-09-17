@@ -86,7 +86,35 @@ void main() {
 
     await verifier.verify(generationOne);
     await verifier.verify(generationTwo);
-    await expectLater(verifier.verify(generationOne), throwsFormatException);
+    // The refusal names both sides, because whoever has to settle it needs to
+    // know which generations are in play and which domain they belong to.
+    await expectLater(
+      verifier.verify(generationOne),
+      throwsA(isA<OwnerDomainGenerationRollback>()
+          .having((e) => e.accepted, 'accepted', 2)
+          .having((e) => e.offered, 'offered', 1)),
+    );
+  });
+
+  test('a domain this phone gives up stops fencing the Host that returns', () async {
+    // The lifecycle the record never had. Without it the fence outlived every
+    // pairing it was about: removing the Host and adding it again walked back
+    // into this same refusal, and nothing on a phone could clear it.
+    final preferences = InMemoryAppPreferences();
+    final verifier = PlatformOwnerDomainDirectoryVerifier(
+      preferences: preferences,
+      signatureVerifier: const _AcceptingSignatureVerifier(),
+    );
+    final two = _target(generation: 2, revision: 1, host: 'pi5.local', signature: 'A');
+    await verifier.verify(two);
+    await expectLater(
+      verifier.verify(_target(generation: 1, revision: 1, host: 'pi5.local', signature: 'B')),
+      throwsA(isA<OwnerDomainGenerationRollback>()),
+    );
+
+    await verifier.forget(two.ownerDomainId);
+
+    await verifier.verify(_target(generation: 1, revision: 1, host: 'pi5.local', signature: 'B'));
   });
 }
 

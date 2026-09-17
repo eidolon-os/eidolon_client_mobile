@@ -28,6 +28,7 @@ class EidolonAppShell extends StatefulWidget {
     this.controllerKeys,
     this.deviceProvisioning,
     this.conversationBuilder,
+    this.onHostForgotten,
   });
 
   final HostRegistry? registry;
@@ -37,6 +38,15 @@ class EidolonAppShell extends StatefulWidget {
   final ControllerKeyBridge? controllerKeys;
   final DeviceProvisioningTransport? deviceProvisioning;
   final HostConversationBuilder? conversationBuilder;
+
+  /// Everything outside the Host list that was learned from this Host.
+  ///
+  /// The list entry is not the whole memory of a Host: its Owner Domain
+  /// onboarding target and the generation this phone accepted from that domain
+  /// live elsewhere, and outlived it. A Host removed and added again used to
+  /// walk straight back into a refusal raised by a record the removal never
+  /// touched.
+  final Future<void> Function(String hostId)? onHostForgotten;
 
   @override
   State<EidolonAppShell> createState() => _EidolonAppShellState();
@@ -213,6 +223,7 @@ class _EidolonAppShellState extends State<EidolonAppShell>
                     await _load(refreshInfo: false);
                   },
                   onHostRemoved: (id) async {
+                    await widget.onHostForgotten?.call(id);
                     await _registry.remove(id);
                     await _load(refreshInfo: false);
                   },
@@ -252,6 +263,7 @@ class _EidolonAppShellState extends State<EidolonAppShell>
       onRefresh: _load,
       onLeave: _cancelRefresh,
       onHostRemoved: (hostId) async {
+        await widget.onHostForgotten?.call(hostId);
         await _registry.remove(hostId);
         await _load();
       },
