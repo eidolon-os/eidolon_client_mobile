@@ -7,12 +7,6 @@ import 'conversation_preferences_form.dart';
 
 /// Changing who an Eidolon is, after it has been someone for a while.
 ///
-/// One scrolling page rather than the four steps that creating one uses, and
-/// the difference is deliberate. Creating is a walk through questions somebody
-/// has not been asked yet; editing is almost always coming to change **one**
-/// thing, and making them page through three screens to reach it would be
-/// charging a guided tour for a sentence.
-///
 /// It opens on who the Eidolon currently is, never on the template. That is
 /// what makes saving safe: everything not touched goes back exactly as it came,
 /// including the parts this form does not show.

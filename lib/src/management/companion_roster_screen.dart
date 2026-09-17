@@ -33,6 +33,7 @@ class CompanionRosterScreen extends StatefulWidget {
     this.loadPersonaTemplate,
     this.loadPersonaPresets,
     this.preview,
+    this.startConversation,
     this.newOperationId,
   });
 
@@ -85,6 +86,7 @@ class CompanionRosterScreen extends StatefulWidget {
   final Future<PersonaAuthoring> Function()? loadPersonaTemplate;
   final Future<PersonaPresetCatalog> Function()? loadPersonaPresets;
   final PreviewPersona? preview;
+  final Future<void> Function(CreatedCompanion)? startConversation;
 
   /// Injected so a test can pin the id; a real screen mints a random one.
   final String Function()? newOperationId;
@@ -105,7 +107,22 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
   /// Held across retries, exactly like the device-removal request id: the whole
   /// point of the operation id is that a second attempt is the *same* attempt.
   /// Cleared only once the Host has answered for it, one way or the other.
-  String? _pendingOperationId;
+  _CreationSubmission? _pendingSubmission;
+  CompanionCreationDrafts? _drafts;
+  PersonaPresetCatalog? _catalog;
+  PersonaAuthoring? _template;
+  bool _preparing = false;
+  final _retiredDrafts = <CompanionCreationDrafts>[];
+
+  @override
+  void dispose() {
+    _drafts?.dispose();
+    for (final drafts in _retiredDrafts) {
+      drafts.dispose();
+    }
+    super.dispose();
+  }
+
   final Random _random = Random.secure();
 
   @override
@@ -222,59 +239,93 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
   Future<void> _add() async {
     final create = widget.createCompanion;
     final loadTemplate = widget.loadPersonaTemplate;
-    if (create == null || loadTemplate == null) return;
-
+    if (create == null || loadTemplate == null || _preparing) return;
     setState(() {
+      _preparing = true;
       _refusal = null;
       _notice = null;
     });
-
-    final PersonaAuthoring template;
-    List<PersonaPreset> presets = const [];
     try {
-      if (widget.loadPersonaPresets != null) {
-        presets = (await widget.loadPersonaPresets!()).presets;
+      if (_drafts == null) {
+        _catalog = widget.loadPersonaPresets == null
+            ? const PersonaPresetCatalog(presets: [])
+            : await widget.loadPersonaPresets!();
+        _template = await loadTemplate();
+        if (!mounted) return;
+        _drafts = CompanionCreationDrafts(_template!, _catalog!.presets);
       }
-      template =
-          presets.isNotEmpty ? presets.first.persona : await loadTemplate();
-    } catch (error) {
-      if (!mounted) return;
-      // No form rather than a form full of guesses: a starting point this
-      // client invented would describe an Eidolon the Host will not create.
-      setState(() => _refusal = _refusalSentence(error));
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _preparing = false;
+          _refusal = '伙伴模板暂时没能加载，请重试新建伙伴。';
+        });
+      }
       return;
     }
     if (!mounted) return;
-
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => _AuthoringRoute(
-          preview: widget.preview,
-          template: template,
-          presets: presets,
-          create: (displayName, persona, preferences) async {
-            final operationId = _pendingOperationId ??= _newOperationId();
-            final created =
-                await create(operationId, displayName, persona, preferences);
-            // Answered, so this operation is finished — a later "add" is a new
-            // one.
-            _pendingOperationId = null;
-            return created;
-          },
-          refusalSentence: _refusalSentence,
-          onCreated: (created) {
-            if (!mounted) return;
-            setState(() {
-              _notice = created.memoryReady
-                  ? '${created.displayName} 已经在这台主机上了'
-                  : '${created.displayName} 已经建好，记忆还在启动';
-            });
-          },
-        ),
+    setState(() => _preparing = false);
+    final created =
+        await Navigator.of(context).push<CreatedCompanion>(MaterialPageRoute(
+      builder: (_) => _AuthoringRoute(
+        template: _template!,
+        catalog: _catalog!,
+        drafts: _drafts!,
+        preview: widget.preview,
+        uncertain: () => _pendingSubmission?.uncertain == true,
+        create: (name, persona, preferences) async {
+          _pendingSubmission ??= _CreationSubmission(
+              _newOperationId(), name, persona, preferences);
+          final submission = _pendingSubmission!;
+          try {
+            final answer = await create(submission.operationId, submission.name,
+                submission.persona, submission.preferences);
+            _pendingSubmission = null;
+            return answer;
+          } catch (error) {
+            // A deterministic validation refusal can be edited. A lost response
+            // must be resolved by retrying the exact same submission.
+            if (error is ManagementRequestException &&
+                (error.statusCode ?? 0) >= 400 &&
+                (error.statusCode ?? 0) < 500 &&
+                error.statusCode != 408) {
+              _pendingSubmission = null;
+            } else {
+              submission.uncertain = true;
+            }
+            rethrow;
+          }
+        },
       ),
-    );
+    ));
     if (!mounted) return;
+    if (created != null) {
+      _retiredDrafts.add(_drafts!);
+      _drafts = null;
+      setState(() => _notice = created.memoryReady
+          ? '${created.displayName} 已经在这台主机上了'
+          : '${created.displayName} 已经建好，记忆还在启动');
+    }
     await _read();
+    if (!mounted || created == null || widget.startConversation == null) return;
+    final talk = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+              title: Text('认识一下，${created.displayName}'),
+              content: Text(created.memoryReady
+                  ? '伙伴已经准备好了，聊一句试试吧。'
+                  : '伙伴已创建，记忆服务还在准备。你可以稍后开始对话。'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: const Text('稍后再聊')),
+                FilledButton(
+                    key: const Key('created-start-conversation'),
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    child: const Text('开始对话')),
+              ],
+            ));
+    if (mounted && talk == true) await widget.startConversation!(created);
   }
 
   String _newOperationId() {
@@ -311,7 +362,8 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
             busyCompanionId: _changing,
             refusal: _refusal,
             notice: _notice,
-            onAdd: widget.createCompanion == null ||
+            onAdd: _preparing ||
+                    widget.createCompanion == null ||
                     _context == null ||
                     !hostCan(_context!, 'companion.create')
                 ? null
@@ -352,27 +404,51 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
 /// and hands back what was typed. Keeping the request here also means the
 /// refusal is shown *on* the form, next to the words that caused it, instead of
 /// behind a pop back to the list.
+/// Why the creation did not happen, in words the person can act on.
+///
+/// Written here rather than borrowed from the composition root: that folder
+/// composes this surface, so depending on it would invert the direction that
+/// keeps this layer generated from the contract — and the boundary test says
+/// so. The Host's own sentence is the fallback, not the first choice, because
+/// it is written for an operator reading a log.
+String _creationRefusal(Object error) {
+  if (error is! ManagementRequestException) {
+    return '创建未完成：当前网络到不了这台主机。';
+  }
+  if (error.statusCode == 400 || error.statusCode == 422) {
+    return '创建未完成：${error.reason ?? '这台主机不接受这份设定'}';
+  }
+  if (error.statusCode == 409) {
+    return '创建未完成：${error.reason ?? '这台主机上已经有同名的伙伴'}';
+  }
+  return '创建未完成：${error.reason ?? '这台主机没有完成这次创建'}';
+}
+
+class _CreationSubmission {
+  _CreationSubmission(
+      this.operationId, this.name, this.persona, this.preferences);
+  final String operationId;
+  final String name;
+  final PersonaAuthoring? persona;
+  final ConversationPreferences? preferences;
+  bool uncertain = false;
+}
+
 class _AuthoringRoute extends StatefulWidget {
-  const _AuthoringRoute({
-    required this.template,
-    this.preview,
-    this.presets = const [],
-    required this.create,
-    required this.refusalSentence,
-    required this.onCreated,
-  });
-
-  final PreviewPersona? preview;
+  const _AuthoringRoute(
+      {required this.template,
+      required this.catalog,
+      required this.drafts,
+      required this.create,
+      required this.uncertain,
+      this.preview});
   final PersonaAuthoring template;
-  final List<PersonaPreset> presets;
+  final PersonaPresetCatalog catalog;
+  final CompanionCreationDrafts drafts;
+  final PreviewPersona? preview;
+  final bool Function() uncertain;
   final Future<CreatedCompanion> Function(
-    String displayName,
-    PersonaAuthoring? persona,
-    ConversationPreferences? preferences,
-  ) create;
-  final String Function(Object error) refusalSentence;
-  final void Function(CreatedCompanion created) onCreated;
-
+      String, PersonaAuthoring?, ConversationPreferences?) create;
   @override
   State<_AuthoringRoute> createState() => _AuthoringRouteState();
 }
@@ -380,38 +456,33 @@ class _AuthoringRoute extends StatefulWidget {
 class _AuthoringRouteState extends State<_AuthoringRoute> {
   bool _busy = false;
   String? _refusal;
-
   @override
-  Widget build(BuildContext context) {
-    return CompanionAuthoringPage(
-      template: widget.template,
-      preview: widget.preview,
-      presets: widget.presets,
-      busy: _busy,
-      refusal: _refusal,
-      onCreate: (displayName, persona, preferences) async {
-        setState(() {
-          _busy = true;
-          _refusal = null;
-        });
-        try {
-          final navigator = Navigator.of(context);
-          final created =
-              await widget.create(displayName, persona, preferences);
-          if (!mounted) return;
-          widget.onCreated(created);
-          // Captured before the await: the analyzer is right that a context
-          // read after one is a different context, and the navigator this
-          // route was pushed onto is the one that has to pop it.
-          navigator.pop();
-        } catch (error) {
-          if (!mounted) return;
+  Widget build(BuildContext context) => CompanionAuthoringPage(
+        template: widget.template,
+        presets: widget.catalog.presets,
+        drafts: widget.drafts,
+        preview: widget.preview,
+        busy: _busy,
+        locked: widget.uncertain(),
+        refusal: _refusal,
+        onCreate: (name, persona, preferences) async {
+          if (_busy) return;
           setState(() {
-            _busy = false;
-            _refusal = widget.refusalSentence(error);
+            _busy = true;
+            _refusal = null;
           });
-        }
-      },
-    );
-  }
+          try {
+            final created = await widget.create(name, persona, preferences);
+            if (context.mounted) Navigator.of(context).pop(created);
+          } catch (error) {
+            if (!mounted) return;
+            setState(() {
+              _busy = false;
+              _refusal = widget.uncertain()
+                  ? '还没能确认创建结果。草稿已保留，请重试确认这次创建。'
+                  : _creationRefusal(error);
+            });
+          }
+        },
+      );
 }

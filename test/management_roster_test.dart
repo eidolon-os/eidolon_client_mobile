@@ -860,7 +860,7 @@ void creationTests() {
 
       expect(sentName, '小南');
       expect(operations, [operation]);
-      expect(authored, 0, reason: 'nobody wrote anything');
+      expect(authored, 1, reason: 'creation sends the exact visible template snapshot');
       expect(find.text('小南 已经在这台主机上了'), findsOneWidget);
     });
 

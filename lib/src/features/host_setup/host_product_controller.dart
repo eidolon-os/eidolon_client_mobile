@@ -103,6 +103,7 @@ enum WorkspaceRecovery {
 }
 
 class HostProductController extends ChangeNotifier {
+  String? conversationTargetCompanionId;
   HostProductController({
     required ManagedHost host,
     required ManagedHostUpdater onHostUpdated,

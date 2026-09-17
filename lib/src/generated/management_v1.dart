@@ -3063,16 +3063,25 @@ class PersonaHistoryView {
 
 class PersonaPreset {
   const PersonaPreset({
+    required this.defaultName,
+    required this.description,
     required this.examples,
     required this.persona,
+    required this.preferences,
     required this.presetId,
     this.revision,
     required this.title,
   });
 
+  final String defaultName;
+
+  final String description;
+
   final List<String> examples;
 
   final PersonaAuthoring persona;
+
+  final ConversationPreferences preferences;
 
   final String presetId;
 
@@ -3082,11 +3091,16 @@ class PersonaPreset {
 
   factory PersonaPreset.fromJson(Map<String, dynamic> value) {
     return PersonaPreset(
+      defaultName: value['default_name'] as String,
+      description: value['description'] as String,
       examples: ((value['examples'] as List<dynamic>)
           .map((entry) => entry as String)
           .toList()),
       persona: PersonaAuthoring.fromJson(
         value['persona'] as Map<String, dynamic>,
+      ),
+      preferences: ConversationPreferences.fromJson(
+        value['preferences'] as Map<String, dynamic>,
       ),
       presetId: value['preset_id'] as String,
       revision: value['revision'] as String?,
@@ -3096,8 +3110,11 @@ class PersonaPreset {
 
   Map<String, dynamic> toJson() {
     return {
+      'default_name': defaultName,
+      'description': description,
       'examples': examples,
       'persona': persona.toJson(),
+      'preferences': preferences.toJson(),
       'preset_id': presetId,
       if (revision != null) 'revision': revision,
       'title': title,

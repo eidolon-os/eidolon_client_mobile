@@ -73,7 +73,8 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
         conversationBuilder: (_, controller) {
           Future<void>? preparing;
           Future<void> prepareManagement() {
-            if (controller.workspace?.isReady == true && !controller.connecting) {
+            if (controller.workspace?.isReady == true &&
+                !controller.connecting) {
               return Future<void>.value();
             }
             return preparing ??=
@@ -82,32 +83,37 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
 
           return ProductConversationPage(
             hostName: controller.host.readableName,
-            createFlow: () => _deviceRuntime.open(
-                hostId: controller.host.hostId,
-                hostName: controller.host.readableName,
-                bootstrap: () async {
-                  await prepareManagement();
-                  return controller.fetchDeviceOnboardingTarget();
-                },
-                management: ConversationManagement(
-                    controllerId: controller.host.controllerId,
-                    admission: HostControllerDeviceAdmission(controller,
-                        prepare: prepareManagement),
-                    roster: ({cursor}) async {
-                      await prepareManagement();
-                      return controller.roster(cursor: cursor);
-                    },
-                    device: (id) async {
-                      await prepareManagement();
-                      await controller.refreshDevices();
-                      if (controller.devicesError != null) {
-                        throw StateError(controller.devicesError!);
-                      }
-                      return controller.devices?.devices
-                          .where((d) => d.deviceId == id)
-                          .firstOrNull;
-                    },
-                    assign: controller.setDeviceCompanion)),
+            createFlow: () async {
+              final target = controller.conversationTargetCompanionId;
+              final flow = await _deviceRuntime.open(
+                  hostId: controller.host.hostId,
+                  hostName: controller.host.readableName,
+                  bootstrap: () async {
+                    await prepareManagement();
+                    return controller.fetchDeviceOnboardingTarget();
+                  },
+                  management: ConversationManagement(
+                      controllerId: controller.host.controllerId,
+                      admission: HostControllerDeviceAdmission(controller,
+                          prepare: prepareManagement),
+                      roster: ({cursor}) async {
+                        await prepareManagement();
+                        return controller.roster(cursor: cursor);
+                      },
+                      device: (id) async {
+                        await prepareManagement();
+                        await controller.refreshDevices();
+                        if (controller.devicesError != null) {
+                          throw StateError(controller.devicesError!);
+                        }
+                        return controller.devices?.devices
+                            .where((d) => d.deviceId == id)
+                            .firstOrNull;
+                      },
+                      assign: controller.setDeviceCompanion));
+              if (target != null) flow.selectedCompanionId = target;
+              return flow;
+            },
             openDevices: (context) => Navigator.of(context).push<void>(
                 MaterialPageRoute(
                     builder: (_) =>

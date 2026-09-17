@@ -149,15 +149,17 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     if (mounted) await _controller.connect();
   }
 
-  Future<void> _openConversation() async {
+  Future<void> _openConversation({String? companionId}) async {
     final builder = widget.conversationBuilder;
     if (builder == null || _openingConversation) return;
     _openingConversation = true;
+    _controller.conversationTargetCompanionId = companionId;
     try {
       await Navigator.of(context).push<void>(MaterialPageRoute(
           builder: (context) => builder(context, _controller)));
     } finally {
       _openingConversation = false;
+      _controller.conversationTargetCompanionId = null;
     }
   }
 
@@ -416,6 +418,10 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             ),
             loadPersonaTemplate: _controller.personaAuthoringTemplate,
             loadPersonaPresets: _controller.personaPresets,
+            startConversation: widget.conversationBuilder == null
+                ? null
+                : (created) =>
+                    _openConversation(companionId: created.companionId),
             preview: _controller.previewPersona,
           ),
         ),

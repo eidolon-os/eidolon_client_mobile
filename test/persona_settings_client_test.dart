@@ -21,7 +21,8 @@ void main() {
             'persona': {'voice_portrait': '短句'},
             'preferences': {'response_length': 'brief'}
           }),
-          200, headers: {"content-type": "application/json; charset=utf-8"});
+          200,
+          headers: {"content-type": "application/json; charset=utf-8"});
     }));
     const edit = PersonaEditRequest(
         expectedBaseGenomeId: 'g1',
@@ -68,11 +69,17 @@ void main() {
     final presets = [
       const PersonaPreset(
           presetId: 'gentle',
+          defaultName: '小禾',
+          description: '愿意倾听',
+          preferences: ConversationPreferences(),
           title: '温和陪伴',
           persona: PersonaAuthoring(characterPortrait: '温和'),
           examples: ['示例 A']),
       const PersonaPreset(
           presetId: 'direct',
+          defaultName: '知夏',
+          description: '直接沟通',
+          preferences: ConversationPreferences(responseLength: 'detailed'),
           title: '直接务实',
           persona: PersonaAuthoring(characterPortrait: '直接'),
           examples: ['示例 B']),
@@ -86,16 +93,11 @@ void main() {
               sent = persona;
               prefs = preferences;
             })));
-    await tester.tap(find.text('直接务实'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('authoring-name')), '小南');
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('authoring-next')));
+    expect(find.byKey(const Key('authoring-name')), findsNothing);
+    await tester.tap(find.byKey(const Key('preset-direct')));
     await tester.pumpAndSettle();
     expect(calls, 0);
     expect(find.text('示例 B'), findsOneWidget);
-    await tester.tap(find.text('详细'));
-    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('authoring-create')));
     expect(calls, 1);
     expect(sent?.characterPortrait, '直接');
