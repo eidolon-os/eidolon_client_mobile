@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../device_setup/device_setup_models.dart';
 import 'package:flutter/material.dart';
 import '../device_setup/owner_domain_directory_verifier.dart';
 import '../naming/ask_for_a_name.dart';
@@ -25,6 +26,7 @@ class HostSettingsPage extends StatefulWidget {
     required this.onRenameOwner,
     required this.onChangeNetwork,
     this.onRealignOwnerDomain,
+    this.verifyOwnerDomain,
   });
 
   /// Accept that this Host's Owner Domain lineage was re-established.
@@ -33,7 +35,9 @@ class HostSettingsPage extends StatefulWidget {
   /// worded as taking the Host's current state rather than as clearing a
   /// warning — a standing "clear the safety record" control is precisely what
   /// someone would be talked into pressing.
-  final Future<void> Function(String ownerDomainId)? onRealignOwnerDomain;
+  final Future<void> Function(DeviceOnboardingTarget target)?
+      onRealignOwnerDomain;
+  final Future<void> Function(DeviceOnboardingTarget target)? verifyOwnerDomain;
 
   final ManagedHost host;
   final ManagedHostUpdater onHostUpdated;
@@ -61,18 +65,30 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
   /// entry below exists for exactly one situation and must not appear for the
   /// rest.
   OwnerDomainGenerationRollback? _rollback;
+  DeviceOnboardingTarget? _offeredTarget;
+  bool _realigning = false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.onRealignOwnerDomain != null) unawaited(_detectRollback());
+    if (widget.onRealignOwnerDomain != null &&
+        widget.verifyOwnerDomain != null) {
+      unawaited(_detectRollback());
+    }
   }
 
   Future<void> _detectRollback() async {
+    DeviceOnboardingTarget? target;
     try {
-      await widget.controller.fetchDeviceOnboardingTarget();
+      target = await widget.controller.fetchDeviceOnboardingTarget();
+      await widget.verifyOwnerDomain!(target);
     } on OwnerDomainGenerationRollback catch (rollback) {
-      if (mounted) setState(() => _rollback = rollback);
+      if (mounted) {
+        setState(() {
+          _rollback = rollback;
+          _offeredTarget = target;
+        });
+      }
     } on Object {
       // Not this problem. Say nothing rather than offer a control that would
       // drop a safety record for a reason nobody established.
@@ -221,7 +237,9 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
                       '主机被重置或从备份恢复过会这样；也可能是有人在用旧凭据冒充它。',
                     ),
                     isThreeLine: true,
-                    onTap: () => _confirmRealign(context, rollback),
+                    onTap: _realigning
+                        ? null
+                        : () => _confirmRealign(context, rollback),
                   ),
                 ListTile(
                   key: const Key('forget-managed-host'),
@@ -308,6 +326,8 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
     BuildContext context,
     OwnerDomainGenerationRollback rollback,
   ) async {
+    final target = _offeredTarget;
+    if (target == null || _realigning) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -332,9 +352,24 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
         ],
       ),
     );
-    if (confirmed != true) return;
-    await widget.onRealignOwnerDomain!(rollback.ownerDomainId);
-    if (mounted) setState(() => _rollback = null);
+    if (confirmed != true || !mounted) return;
+    setState(() => _realigning = true);
+    try {
+      await widget.onRealignOwnerDomain!(target);
+      if (mounted) {
+        setState(() {
+          _rollback = null;
+          _offeredTarget = null;
+        });
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('暂时无法接受主机当前状态，请重新打开设置后再试。')));
+      }
+    } finally {
+      if (mounted) setState(() => _realigning = false);
+    }
   }
 
   Future<void> _confirmForget(BuildContext context) async {

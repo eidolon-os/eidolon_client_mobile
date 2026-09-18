@@ -94,6 +94,56 @@ void main() {
         4);
   }, skip: origin.isEmpty ? 'Requires isolated Persona network stack' : false);
 
+  testWidgets(
+      'a selected preset creates directly and persists its whole snapshot over HTTP',
+      (tester) async {
+    final overrides = HttpOverrides.current;
+    HttpOverrides.global = null;
+    addTearDown(() => HttpOverrides.global = overrides);
+    tester.view.physicalSize = const Size(1080, 1920);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final client = ManagementClient();
+    addTearDown(client.close);
+    final base = Uri.parse(origin);
+    final catalog = (await tester
+        .runAsync(() => client.personaPresets(base, accessToken: token)))!;
+    final selected = catalog.presets.last;
+    final created = Completer<CreatedCompanion>();
+    await tester.pumpWidget(MaterialApp(
+        home: CompanionAuthoringPage(
+      template: catalog.presets.first.persona,
+      presets: catalog.presets,
+      onCreate: (name, persona, preferences, source) async {
+        expect(source?.presetId, selected.presetId);
+        expect(source?.revision, selected.revision);
+        created.complete(await client.createCompanion(base,
+            accessToken: token,
+            operationId: '90b4a07c-9fbe-40cb-b71f-fd88989fabd0',
+            displayName: name,
+            persona: persona,
+            preferences: preferences,
+            sourcePreset: source));
+      },
+    )));
+    final card = find.byKey(Key('preset-${selected.presetId}'));
+    await tester.ensureVisible(card);
+    await tester.tap(card);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('authoring-name')), findsNothing);
+    await tester.runAsync(() async {
+      await tester.tap(find.byKey(const Key('authoring-create')));
+      await created.future.timeout(const Duration(seconds: 15));
+    });
+    final id = (await created.future).companionId;
+    final persisted = (await tester.runAsync(
+        () => client.fetchPersona(base, accessToken: token, companionId: id)))!;
+    expect(persisted.displayName, selected.defaultName);
+    expect(persisted.persona.toJson(), selected.persona.toJson());
+    expect(persisted.preferences!.toJson(), selected.preferences.toJson());
+  }, skip: origin.isEmpty);
+
   testWidgets('real forms preview, create, edit and persist through HTTP',
       (tester) async {
     // Opt-in real-network widget test: disable Flutter's default HTTP 400 stub.
@@ -127,15 +177,25 @@ void main() {
             operationId: '90b4a07c-9fbe-40cb-b71f-fd88989fabcf',
             displayName: name,
             persona: persona,
-            preferences: preferences));
+            preferences: preferences,
+            sourcePreset: source));
       },
     )));
+    await tester.ensureVisible(find.byKey(const Key('authoring-custom')));
+    await tester.tap(find.byKey(const Key('authoring-custom')));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('authoring-name')), '表单伙伴');
     await tester.enterText(
         find.byKey(const Key('authoring-short-description')), '安静但有主见');
     await tester.tap(find.byKey(const Key('authoring-next')));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('authoring-preferences')));
+    await tester.tap(find.byKey(const Key('authoring-preferences')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('适中'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('先试聊一句（可选）'));
+    await tester.tap(find.text('先试聊一句（可选）'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('试聊'));
     await tester.runAsync(() async {

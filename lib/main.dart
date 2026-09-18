@@ -72,6 +72,7 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
         deviceProvisioning: widget.deviceProvisioning,
         onHostForgotten: _deviceRuntime.directory.forgetHost,
         onRealignOwnerDomain: _deviceRuntime.directory.realignOwnerDomain,
+        verifyOwnerDomain: _deviceRuntime.directory.verify,
         conversationBuilder: (_, controller) {
           Future<void>? preparing;
           Future<void> prepareManagement() {

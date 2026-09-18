@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../naming/ask_for_a_name.dart';
 
 import '../device_management/mounted_devices_page.dart';
+import '../device_setup/device_setup_models.dart';
 import '../device_setup/device_setup_ports.dart';
 import '../setup/change_network_page.dart';
 import '../setup/commissioning_transport.dart';
@@ -63,6 +64,7 @@ class HostLocalConnectionPage extends StatefulWidget {
     this.deviceProvisioning,
     this.conversationBuilder,
     this.onRealignOwnerDomain,
+    this.verifyOwnerDomain,
     this.facePicker,
   });
 
@@ -85,7 +87,9 @@ class HostLocalConnectionPage extends StatefulWidget {
   final NetworkChanges? networkChanges;
   final DeviceProvisioningTransport? deviceProvisioning;
   final HostConversationBuilder? conversationBuilder;
-  final Future<void> Function(String ownerDomainId)? onRealignOwnerDomain;
+  final Future<void> Function(DeviceOnboardingTarget target)?
+      onRealignOwnerDomain;
+  final Future<void> Function(DeviceOnboardingTarget target)? verifyOwnerDomain;
 
   /// Where the picture an Eidolon wears comes from. The gallery, unless a
   /// test says otherwise.
@@ -187,6 +191,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         setupTransport: widget.transport,
         controllerKeys: widget.controllerKeys,
         onRealignOwnerDomain: widget.onRealignOwnerDomain,
+        verifyOwnerDomain: widget.verifyOwnerDomain,
         onOpenControllers: _openControllers,
         onRenameOwner: _renameOwner,
         onChangeNetwork: _openNetworkChange,
@@ -412,9 +417,9 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               companionId: companionId,
               expectedRevision: expectedRevision,
             ),
-            createCompanion:
-                (operationId, displayName, persona, preferences, sourcePreset) =>
-                    _controller.createCompanion(
+            createCompanion: (operationId, displayName, persona, preferences,
+                    sourcePreset) =>
+                _controller.createCompanion(
               operationId: operationId,
               displayName: displayName,
               persona: persona,

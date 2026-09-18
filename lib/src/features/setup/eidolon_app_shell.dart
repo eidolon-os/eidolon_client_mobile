@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../device_setup/device_setup_models.dart';
 
 import 'package:flutter/material.dart';
 
@@ -30,6 +31,7 @@ class EidolonAppShell extends StatefulWidget {
     this.conversationBuilder,
     this.onHostForgotten,
     this.onRealignOwnerDomain,
+    this.verifyOwnerDomain,
   });
 
   final HostRegistry? registry;
@@ -51,7 +53,9 @@ class EidolonAppShell extends StatefulWidget {
 
   /// Accept that one Owner Domain's lineage was re-established, without giving
   /// up the Host that speaks for it.
-  final Future<void> Function(String ownerDomainId)? onRealignOwnerDomain;
+  final Future<void> Function(DeviceOnboardingTarget target)?
+      onRealignOwnerDomain;
+  final Future<void> Function(DeviceOnboardingTarget target)? verifyOwnerDomain;
 
   @override
   State<EidolonAppShell> createState() => _EidolonAppShellState();
@@ -219,6 +223,7 @@ class _EidolonAppShellState extends State<EidolonAppShell>
               MaterialPageRoute(
                 builder: (localContext) => HostLocalConnectionPage(
                   onRealignOwnerDomain: widget.onRealignOwnerDomain,
+                  verifyOwnerDomain: widget.verifyOwnerDomain,
                   host: registered,
                   onHostUpdated: _observeHost,
                   transport: widget.setupTransport,
@@ -269,6 +274,7 @@ class _EidolonAppShellState extends State<EidolonAppShell>
       onRefresh: _load,
       onLeave: _cancelRefresh,
       onRealignOwnerDomain: widget.onRealignOwnerDomain,
+      verifyOwnerDomain: widget.verifyOwnerDomain,
       onHostRemoved: (hostId) async {
         await widget.onHostForgotten?.call(hostId);
         await _registry.remove(hostId);
@@ -346,6 +352,7 @@ class _HostsPage extends StatelessWidget {
     required this.onLeave,
     required this.onHostRemoved,
     this.onRealignOwnerDomain,
+    this.verifyOwnerDomain,
     this.setupTransport,
     this.controllerKeys,
     this.deviceProvisioning,
@@ -361,7 +368,9 @@ class _HostsPage extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final VoidCallback onLeave;
   final Future<void> Function(String hostId) onHostRemoved;
-  final Future<void> Function(String ownerDomainId)? onRealignOwnerDomain;
+  final Future<void> Function(DeviceOnboardingTarget target)?
+      onRealignOwnerDomain;
+  final Future<void> Function(DeviceOnboardingTarget target)? verifyOwnerDomain;
   final CommissioningTransport? setupTransport;
   final ControllerKeyBridge? controllerKeys;
   final DeviceProvisioningTransport? deviceProvisioning;
@@ -407,6 +416,7 @@ class _HostsPage extends StatelessWidget {
                     MaterialPageRoute(
                       builder: (_) => HostLocalConnectionPage(
                         onRealignOwnerDomain: onRealignOwnerDomain,
+                        verifyOwnerDomain: verifyOwnerDomain,
                         host: host,
                         onHostUpdated: onHostObserved,
                         onHostSaved: onHostUpdated,

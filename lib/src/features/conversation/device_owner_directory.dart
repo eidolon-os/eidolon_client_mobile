@@ -37,6 +37,26 @@ class DeviceOwnerDirectory {
   final Map<String, String> _hosts = {};
   final Map<String, int> _selections = {};
   int _sequence = 0;
+  int _trustRevision = 0;
+  bool _changingTrust = false;
+
+  Future<void> _changeTrust(Future<void> Function() action) async {
+    if (_changingTrust) throw StateError('Owner 信任正在更新，请稍后重试');
+    _changingTrust = true;
+    _trustRevision++;
+    _authorityRoutes.invalidate();
+    try {
+      await action();
+    } finally {
+      _changingTrust = false;
+    }
+  }
+
+  void _checkRevision(int revision) {
+    if (_changingTrust || revision != _trustRevision) {
+      throw StateError('Owner 信任已更新，请重试');
+    }
+  }
 
   /// All Owner APIs resolve locations at send time through the same transport.
   http.Client transport(DeviceOnboardingTarget target) => _transport(target);
@@ -49,37 +69,77 @@ class DeviceOwnerDirectory {
   /// record nothing can name and nothing can clear — which is how removing a
   /// Host and adding it back still walked into the refusal it was meant to
   /// escape.
-  Future<void> forgetHost(String hostId) async {
+  Future<void> forgetHost(String hostId) => _changeTrust(() async {
+        final saved = await _readSaved();
+        final target = saved[hostId];
+        final ownerDomainId =
+            target is Map ? target['owner_domain_id'] as String? : null;
+        await PreferenceWrites.run(_preferences, _key, () async {
+          final current = await _readSaved();
+          if (current.remove(hostId) == null) return;
+          await _preferences.writeString(_key, jsonEncode(current));
+        });
+        if (ownerDomainId == null) return;
+        // Only when this phone keeps no other Host in that domain: the record is
+        // about the domain, not about one machine that speaks for it.
+        final remaining = await _readSaved();
+        final otherHosts = remaining.entries.where((entry) =>
+            entry.value is Map &&
+            entry.value['owner_domain_id'] == ownerDomainId);
+        if (otherHosts.isEmpty) {
+          _targets.remove(ownerDomainId);
+          _hosts.remove(ownerDomainId);
+          _selections.remove(ownerDomainId);
+          await _verifier.forget(ownerDomainId);
+        } else if (_hosts[ownerDomainId] == hostId) {
+          _hosts[ownerDomainId] = otherHosts.first.key;
+        }
+      });
+
+  /// Validate the actual offered directory, without substituting a cached one.
+  Future<void> verify(DeviceOnboardingTarget target) async {
     final saved = await _readSaved();
-    final target = saved[hostId];
-    final ownerDomainId =
-        target is Map ? target['owner_domain_id'] as String? : null;
-    await PreferenceWrites.run(_preferences, _key, () async {
-      final current = await _readSaved();
-      if (current.remove(hostId) == null) return;
-      await _preferences.writeString(_key, jsonEncode(current));
-    });
-    _targets.remove(hostId);
-    if (ownerDomainId == null) return;
-    _hosts.remove(ownerDomainId);
-    _selections.remove(ownerDomainId);
-    // Only when this phone keeps no other Host in that domain: the record is
-    // about the domain, not about one machine that speaks for it.
-    final remaining = await _readSaved();
-    final stillThere = remaining.values.any((value) =>
-        value is Map && value['owner_domain_id'] == ownerDomainId);
-    if (!stillThere) await _verifier.forget(ownerDomainId);
+    final installed = [
+      if (_targets[target.ownerDomainId] case final current?) _wire(current),
+      ...saved.values.whereType<Map>(),
+    ];
+    for (final entry in installed) {
+      if (entry['owner_domain_id'] == target.ownerDomainId &&
+          entry['owner_root_certificate'] != target.ownerRootCertificate) {
+        throw const FormatException('不能替换此设备已安装的 Owner 信任');
+      }
+    }
+    await _verifier.verify(target);
   }
 
   /// Accept, once, that this domain's lineage was re-established.
   ///
   /// Separate from [forgetHost] on purpose: giving up a Host throws away the
   /// pairing too, which is a heavy price for a record that is merely stale.
-  /// This drops the fence and keeps everything else, and it exists because the
+  /// This installs the exact directory the person confirmed, and exists because the
   /// Host cannot yet prove a legitimate reset on its own — until it can, the
   /// person who knows what happened to that machine is the evidence.
-  Future<void> realignOwnerDomain(String ownerDomainId) =>
-      _verifier.forget(ownerDomainId);
+  Future<void> realignOwnerDomain(DeviceOnboardingTarget target) =>
+      _changeTrust(() async {
+        // Recheck signatures, expiry and the installed root before clearing anything.
+        // Only the generation refusal is overridden by the person's confirmation.
+        try {
+          await verify(target);
+        } on OwnerDomainGenerationRollback {
+          await _verifier.forget(target.ownerDomainId);
+          await _verifier.verify(target);
+        }
+        await PreferenceWrites.run(_preferences, _key, () async {
+          final saved = await _readSaved();
+          for (final hostId in saved.keys.toList()) {
+            if (saved[hostId]['owner_domain_id'] == target.ownerDomainId) {
+              saved[hostId] = _wire(target);
+            }
+          }
+          await _preferences.writeString(_key, jsonEncode(saved));
+          _targets[target.ownerDomainId] = target;
+        });
+      });
 
   /// What this phone would refuse a lower generation than, for this Host.
   Future<String?> ownerDomainOf(String hostId) async {
@@ -98,12 +158,14 @@ class DeviceOwnerDirectory {
 
   Future<void> close() => _authorityRoutes.close();
 
-  Future<void> _save(String hostId, DeviceOnboardingTarget target) {
+  Future<void> _save(
+      String hostId, DeviceOnboardingTarget target, int revision) {
     return PreferenceWrites.run(_preferences, _key, () async {
       final raw = await _preferences.readString(_key);
       final saved = raw == null || raw.isEmpty
           ? <String, dynamic>{}
           : Map<String, dynamic>.from(jsonDecode(raw) as Map);
+      _checkRevision(revision);
       saved[hostId] = _wire(target);
       await _preferences.writeString(_key, jsonEncode(saved));
     });
@@ -128,6 +190,8 @@ class DeviceOwnerDirectory {
   Future<DeviceOnboardingTarget> open(
       {required String hostId,
       required Future<DeviceOnboardingTarget> Function() bootstrap}) async {
+    final revision = _trustRevision;
+    _checkRevision(revision);
     final attempt = ++_sequence;
     final raw = await _preferences.readString(_key);
     final saved = raw == null || raw.isEmpty
@@ -138,6 +202,7 @@ class DeviceOwnerDirectory {
         ? await bootstrap()
         : DeviceOnboardingTarget.fromJson(
             Map<String, dynamic>.from(value as Map));
+    _checkRevision(revision);
     // Persisted trust can be used without a Controller session. The address
     // formerly embedded in this record is not trust and is deliberately ignored.
     target = DeviceOnboardingTarget.fromJson(_wire(target));
@@ -148,18 +213,22 @@ class DeviceOwnerDirectory {
     }
     target = _currentDescriptor(target);
     if (value == null) await _verifier.verify(target);
+    _checkRevision(revision);
     if (attempt > (_selections[target.ownerDomainId] ?? 0)) {
       _selections[target.ownerDomainId] = attempt;
       _hosts[target.ownerDomainId] = hostId;
       _targets[target.ownerDomainId] = target;
     }
     final accepted = await load(target.ownerDomainId, refresh: value != null);
-    await _save(hostId, accepted);
+    _checkRevision(revision);
+    await _save(hostId, accepted, revision);
     return accepted;
   }
 
   Future<DeviceOnboardingTarget> load(String ownerDomainId,
       {bool refresh = false}) async {
+    final revision = _trustRevision;
+    _checkRevision(revision);
     final installed = _targets[ownerDomainId];
     if (installed == null) throw StateError('尚未安装此 Owner 的可信目录');
     DeviceOnboardingTarget target = installed;
@@ -171,6 +240,7 @@ class DeviceOwnerDirectory {
         final response = await client
             .get(Uri.parse(target.ownerDomainDescriptor.descriptorUri))
             .timeout(const Duration(seconds: 15));
+        _checkRevision(revision);
         if (response.statusCode != 200) {
           throw StateError('无法更新 Owner 目录（HTTP ${response.statusCode}）');
         }
@@ -187,9 +257,11 @@ class DeviceOwnerDirectory {
             authoritySigningCertificate: target.authoritySigningCertificate);
         final accepted = _currentDescriptor(next);
         await _verifier.verify(accepted);
+        _checkRevision(revision);
         target = _currentDescriptor(accepted);
         _targets[ownerDomainId] = target;
         await PreferenceWrites.run(_preferences, _key, () async {
+          _checkRevision(revision);
           final raw = await _preferences.readString(_key);
           final saved = raw == null
               ? <String, dynamic>{}
@@ -203,6 +275,7 @@ class DeviceOwnerDirectory {
           await _preferences.writeString(_key, jsonEncode(saved));
         });
       } catch (_) {
+        _checkRevision(revision);
         if (!DateTime.now().isBefore(expires)) rethrow;
         // Refresh is opportunistic while the installed descriptor is valid.
         // Never use it past expiry; the final verifier remains authoritative.
@@ -212,7 +285,9 @@ class DeviceOwnerDirectory {
     }
     // Revalidate expiry, signatures and anti-rollback even for cached content.
     target = _currentDescriptor(target);
+    _checkRevision(revision);
     await _verifier.verify(target);
+    _checkRevision(revision);
     return target;
   }
 
