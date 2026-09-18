@@ -41,6 +41,6 @@
 
 - 没有把 Data / Admin 改动部署到任何 Host。
 - 真机没有见过迁移后的四份模板，没有创建过测试伙伴，没有验证过持久化人格一致性。
-- 模板来源（preset id 与 revision）仍未写入 provenance；而且 Mobile 现在总是发送完整
-  人格快照，所以原封不动选一个官方模板建出来的伙伴，Data 会记成 `owner_authored`。
-  这是已知的、待决定的一项，不要当成已完成。
+- ~~模板来源仍未写入 provenance~~ 已完成：`source_preset_id` / `source_preset_revision`
+  记入 provenance，原封不动取用时 `origin` 回到 `template`。声明由 Mobile 给出，因为
+  只有它知道草稿有没有被改过；改名不算改写。它只是记录，没有任何读取路径回读它。
