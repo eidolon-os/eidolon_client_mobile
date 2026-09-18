@@ -46,7 +46,22 @@
 - Data：Owner Workspace、Companion provision、模板资源共 51 项通过；修改文件的 Ruff 检查通过。
 - 隔离真实 HTTP 测试：Agent 的 `test_actual_flutter_management_client_over_network` 通过，内含 Flutter 客户端生命周期、模板直建、自定义表单三个流程。使用临时数据库和回环端口，不读写正在使用的 Host 数据。
 - 两个项目 `git diff --check` 通过。
-- `flutter build apk --debug --no-pub`：构建成功，产物为 `build/app/outputs/flutter-apk/app-debug.apk`。本次未覆盖安装，也未部署 Host。
+- `flutter build apk --debug --no-pub`：构建成功，产物为 `build/app/outputs/flutter-apk/app-debug.apk`。本次未覆盖安装。
+
+## 部署
+
+pi5 已部署并激活 `pi5-preset-provenance-20260918c`，bundle → activate → doctor →
+app_ready 各步骤均为 applied，20/20 服务正常，`pending` 显示每个源都与该 release 一致。
+
+这一版确实在跑：workspace authority 进程的 argv 指向该 release 自己的 venv，而该
+release 内安装的 `owner_workspace.py` 含本次两处 Data 改动。这一步单独取证，因为
+"部署过"和"跑的就是它"不是同一句话。
+
+未做，不要当成已验证：这台 Host 上没有新建测试伙伴，既有行也没有读（Host 数据库
+读取在本次环境下被拒）。因此"新建的记录里 `source_type` 真的是 `companion_preset`"
+只有本地 Data 的 225 项测试作保，板上没有取证。`20260918b` 期间建出来的伙伴，其
+`source_type` 仍是 `owner_authored` 而 `origin` 已是 `template`；没有读取路径依赖
+该列，详见 `eidolon_data/docs/companion-presets.md`。
 
 跨项目网络测试从 `eidolon_agent` 运行，Flutter 放入 PATH，并配置：
 
