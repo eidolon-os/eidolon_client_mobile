@@ -1,4 +1,5 @@
 import '../../generated/management_v1.dart';
+import '../../models/when.dart';
 
 /// What is mine, right now — the one read this app makes when it opens.
 ///
@@ -46,7 +47,7 @@ class HostHomeCounts {
 /// One of this Owner's Eidolons, as the list shows it.
 ///
 /// Deliberately thin. A row says which Eidolon this is, what state its life is
-/// in, and whether the Host is running it — enough to choose one. Everything
+/// in, and when this person last spoke to it — enough to choose one. Everything
 /// else is read when that one is opened, which is also what stops the list from
 /// making N calls to fill in facts nobody has asked for yet.
 class HostCompanion {
@@ -56,8 +57,7 @@ class HostCompanion {
     required this.kind,
     required this.lifecycleState,
     required this.revision,
-    required this.running,
-    required this.lastActiveAt,
+    required this.lastSpokenAt,
   });
 
   factory HostCompanion.fromView(CompanionSummaryView view) => HostCompanion(
@@ -66,8 +66,7 @@ class HostCompanion {
         kind: view.kind,
         lifecycleState: view.lifecycleState,
         revision: view.revision,
-        running: view.running,
-        lastActiveAt: view.lastActiveAt ?? '',
+        lastSpokenAt: parseInstant(view.lastActiveAt),
       );
 
   final String companionId;
@@ -79,20 +78,20 @@ class HostCompanion {
   final String lifecycleState;
   final int revision;
 
-  /// Whether the Host is running it at this moment.
+  /// When this person last spoke to it, or null when they never have.
   ///
-  /// **Three states, and null is "nobody could say".** Rendering unknown as
-  /// "not running" is the same class of mistake as the one this replaced: the
-  /// screen used to show 运行中 whenever the Owner had a default Companion, so
-  /// it was reading a routing setting and calling it runtime state.
+  /// Null is only "never" when the answer it came from had no
+  /// [HostHome.activityUnavailable]; with one, nobody could ask and a screen
+  /// has nothing truthful to say about recency.
   ///
-  /// It is not presence either. True means the Host is holding a runtime, not
-  /// that any body is reachable — nothing on the Host tracks that, which is why
-  /// devices still report their own online state as unknown.
-  final bool? running;
-
-  /// When anything last addressed it. Empty when unknown or when nothing has.
-  final String lastActiveAt;
+  /// It is not presence, and there is no field here for that. Nothing on the
+  /// Host tracks whether a body is reachable, which is why devices still report
+  /// their own online state as unknown. Two fields tried to stand in for it:
+  /// 运行中 whenever the Owner had a default Companion — a routing setting read
+  /// as runtime state — and then whether the Agent process happened to hold a
+  /// live object, which emptied on every restart and printed 「未运行」 on
+  /// Eidolons that were perfectly fine.
+  final DateTime? lastSpokenAt;
 
   bool get isPutAway => lifecycleState == 'archived';
 }
@@ -103,7 +102,7 @@ class HostHome {
     required this.ownerRevision,
     required this.companions,
     required this.defaultCompanionId,
-    required this.runtimeUnavailable,
+    required this.activityUnavailable,
     required this.memory,
     required this.companionCounts,
     required this.devices,
@@ -119,7 +118,7 @@ class HostHome {
             HostCompanion.fromView(row),
         ],
         defaultCompanionId: view.defaultCompanionId,
-        runtimeUnavailable: view.runtimeUnavailable ?? '',
+        activityUnavailable: view.activityUnavailable ?? '',
         memory: view.memory ?? '',
         companionCounts: HostHomeCounts.fromView(view.companionCounts),
         devices: HostHomeCounts.fromView(view.devices),
@@ -138,9 +137,10 @@ class HostHome {
   /// this app must not resolve it by picking one.
   final String? defaultCompanionId;
 
-  /// Why every row's [HostCompanion.running] is unknown, when it is. Empty
-  /// means the runtime answered, so each row carries a real answer.
-  final String runtimeUnavailable;
+  /// Why no row carries a [HostCompanion.lastSpokenAt], when none does. Empty
+  /// means the Host asked and got an answer, so a row with no time is a row
+  /// this person has never spoken to.
+  final String activityUnavailable;
 
   /// What this Owner's memory holds, in words. **Theirs** — one Realm per
   /// Owner, every Eidolon reading and writing it through an audience. This used

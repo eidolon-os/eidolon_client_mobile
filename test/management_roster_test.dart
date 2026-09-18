@@ -14,10 +14,12 @@ Map<String, dynamic> rosterWire({
   String? defaultCompanionId = 'companion-a',
   String? nextCursor,
   List<Map<String, dynamic>>? companions,
+  String activityUnavailable = '',
 }) =>
     {
       'contract_version': '1',
       'default_companion_id': defaultCompanionId,
+      'activity_unavailable': activityUnavailable,
       'companions': companions ??
           [
             {
@@ -25,7 +27,7 @@ Map<String, dynamic> rosterWire({
               'display_name': '小忆',
               'kind': 'standard',
               'lifecycle_state': 'active',
-              'running': true,
+              'last_active_at': '2026-09-18T09:30:00+00:00',
               'revision': 2,
               'created_at': '2026-08-24T09:30:00+00:00',
               'updated_at': '2026-08-24T09:30:00+00:00',
@@ -47,12 +49,14 @@ CompanionRosterView roster({
   String? defaultCompanionId = 'companion-a',
   String? nextCursor,
   List<Map<String, dynamic>>? companions,
+  String activityUnavailable = '',
 }) =>
     CompanionRosterView.fromJson(
       rosterWire(
         defaultCompanionId: defaultCompanionId,
         nextCursor: nextCursor,
         companions: companions,
+        activityUnavailable: activityUnavailable,
       ),
     );
 
@@ -377,8 +381,99 @@ void main() {
         MaterialApp(home: CompanionRosterPage(roster: roster())),
       );
 
+      // Life outranks recency: one that was put away says that, and not when it
+      // was last spoken to.
       expect(find.text('你已归档，记忆还留着'), findsOneWidget);
-      expect(find.text('现在可以应答'), findsOneWidget);
+      expect(find.textContaining('上次对话：'), findsOneWidget);
+    });
+
+    testWidgets('an active row says when it was last spoken to', (tester) async {
+      // Built from now rather than from a fixed instant: what the row prints
+      // depends on the reader's own day, and a hard-coded string would pass or
+      // fail on where the machine running it happens to be.
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterPage(
+            roster: roster(
+              companions: [
+                {
+                  'companion_id': 'companion-a',
+                  'display_name': '小忆',
+                  'kind': 'standard',
+                  'lifecycle_state': 'active',
+                  'last_active_at': yesterday.toUtc().toIso8601String(),
+                  'revision': 2,
+                  'created_at': '2026-08-24T09:30:00+00:00',
+                  'updated_at': '2026-08-24T09:30:00+00:00',
+                },
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('上次对话：昨天 '), findsOneWidget);
+    });
+
+    testWidgets('a row nothing is unusual about carries no badge', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(home: CompanionRosterPage(roster: roster())),
+      );
+
+      // The badge that used to sit on every row said 在册 at best and 未运行 at
+      // worst — a column of one value, and a word that sounded like a fault.
+      // Only a life state worth seeing puts one there now.
+      expect(find.byKey(const Key('roster-state-companion-a')), findsNothing);
+      expect(find.byKey(const Key('roster-state-companion-b')), findsOneWidget);
+    });
+
+    testWidgets('one nobody has talked to yet says so, and leads somewhere',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterPage(
+            roster: roster(
+              companions: [
+                {
+                  'companion_id': 'companion-a',
+                  'display_name': '小忆',
+                  'kind': 'standard',
+                  'lifecycle_state': 'active',
+                  'last_active_at': '',
+                  'revision': 2,
+                  'created_at': '2026-08-24T09:30:00+00:00',
+                  'updated_at': '2026-08-24T09:30:00+00:00',
+                },
+              ],
+            ),
+          ),
+        ),
+      );
+
+      // The state every new Eidolon is in. What stood here before was 「未运行」,
+      // which sounded like a fault and pointed at nothing.
+      expect(find.text('还没有聊过'), findsOneWidget);
+    });
+
+    testWidgets('a Host that could not read conversations says nothing per row',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompanionRosterPage(
+            roster: roster(activityUnavailable: 'runtime_starting'),
+          ),
+        ),
+      );
+
+      // Not 「还没有聊过」 — that would be false about an Eidolon somebody talks
+      // to daily. The reason is said once, for the page.
+      expect(find.text('还没有聊过'), findsNothing);
+      expect(find.textContaining('上次对话：'), findsNothing);
+      expect(
+        find.text('这台主机暂时读不到对话记录，所以没有显示上次对话'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('uses a labelled add action and summarizes default and state',
@@ -392,7 +487,10 @@ void main() {
       expect(find.text('你的伙伴'), findsOneWidget);
       expect(find.text('新建伙伴'), findsOneWidget);
       expect(find.text('默认应答：小忆'), findsOneWidget);
-      expect(find.text('当前没有需要关注的运行状态'), findsOneWidget);
+      // One put away, said once for the set. The line it replaces counted rows
+      // the Agent was not holding in memory and called them 需要关注.
+      expect(find.text('其中 1 位已经收起来了'), findsOneWidget);
+      expect(find.textContaining('需要关注'), findsNothing);
       expect(find.byType(IconButton), findsNothing);
     });
 

@@ -371,6 +371,9 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             return CompanionPage(
               companion: current,
               devices: _controller.devices,
+              // From the read that produced this row, so the page says nothing
+              // about recency rather than guessing when the Host could not say.
+              activityUnavailable: _controller.home?.activityUnavailable ?? '',
               // Read once when the Host was connected, so a row this Host
               // cannot serve says so instead of opening onto a page that fails.
               hostContext: _controller.managementCapabilities,
@@ -1146,13 +1149,11 @@ class _WorkspaceCard extends StatelessWidget {
 
     if (home.companionCounts.waiting > 0) {
       parts.add('${home.companionCounts.waiting} 位正在准备');
-    } else if (home.runtimeUnavailable.isNotEmpty) {
-      parts.add('运行状态暂不可用');
-    } else {
-      final stopped = home.companions
-          .where((row) => !row.isPutAway && row.running == false)
-          .length;
-      if (stopped > 0) parts.add('$stopped 位没有运行');
+    } else if (home.companionCounts.total > 1) {
+      // How many, once there is more than one. The card used to count Eidolons
+      // the Agent process was not holding in memory — 「N 位没有运行」 — which
+      // named a number nothing was wrong with and nothing could change.
+      parts.add('共 ${home.companionCounts.total} 位');
     }
     return parts.join(' · ');
   }

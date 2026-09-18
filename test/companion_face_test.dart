@@ -54,7 +54,6 @@ HostCompanion _companion({String name = '小忆', String id = 'companion_primary
         'revision': 4,
         'created_at': '2026-08-01T00:00:00+00:00',
         'updated_at': '2026-08-01T00:00:00+00:00',
-        'running': true,
         'last_active_at': '2026-08-26T09:30:00+00:00',
       }),
     );

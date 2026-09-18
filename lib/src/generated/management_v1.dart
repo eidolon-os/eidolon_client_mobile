@@ -311,6 +311,7 @@ class CompanionCreatedView {
 
 class CompanionDetailView {
   const CompanionDetailView({
+    this.activityUnavailable,
     required this.companionId,
     this.contractVersion,
     this.displayName,
@@ -320,8 +321,9 @@ class CompanionDetailView {
     required this.lifecycleState,
     this.personaChapter,
     required this.revision,
-    this.running,
   });
+
+  final String? activityUnavailable;
 
   final String companionId;
 
@@ -341,10 +343,9 @@ class CompanionDetailView {
 
   final int revision;
 
-  final bool? running;
-
   factory CompanionDetailView.fromJson(Map<String, dynamic> value) {
     return CompanionDetailView(
+      activityUnavailable: value['activity_unavailable'] as String?,
       companionId: value['companion_id'] as String,
       contractVersion: value['contract_version'] as String?,
       displayName: value['display_name'] as String?,
@@ -354,12 +355,13 @@ class CompanionDetailView {
       lifecycleState: value['lifecycle_state'] as String,
       personaChapter: value['persona_chapter'] as String?,
       revision: value['revision'] as int,
-      running: value['running'] as bool?,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
+      if (activityUnavailable != null)
+        'activity_unavailable': activityUnavailable,
       'companion_id': companionId,
       if (contractVersion != null) 'contract_version': contractVersion,
       if (displayName != null) 'display_name': displayName,
@@ -369,7 +371,6 @@ class CompanionDetailView {
       'lifecycle_state': lifecycleState,
       if (personaChapter != null) 'persona_chapter': personaChapter,
       'revision': revision,
-      if (running != null) 'running': running,
     };
   }
 }
@@ -532,12 +533,14 @@ class CompanionNameView {
 
 class CompanionRosterView {
   const CompanionRosterView({
+    this.activityUnavailable,
     required this.companions,
     this.contractVersion,
     this.defaultCompanionId,
     this.nextCursor,
-    this.runtimeUnavailable,
   });
+
+  final String? activityUnavailable;
 
   final List<CompanionSummaryView> companions;
 
@@ -547,10 +550,9 @@ class CompanionRosterView {
 
   final String? nextCursor;
 
-  final String? runtimeUnavailable;
-
   factory CompanionRosterView.fromJson(Map<String, dynamic> value) {
     return CompanionRosterView(
+      activityUnavailable: value['activity_unavailable'] as String?,
       companions: ((value['companions'] as List<dynamic>)
           .map(
             (entry) =>
@@ -560,18 +562,18 @@ class CompanionRosterView {
       contractVersion: value['contract_version'] as String?,
       defaultCompanionId: value['default_companion_id'] as String?,
       nextCursor: value['next_cursor'] as String?,
-      runtimeUnavailable: value['runtime_unavailable'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
+      if (activityUnavailable != null)
+        'activity_unavailable': activityUnavailable,
       'companions': companions.map((entry) => entry.toJson()).toList(),
       if (contractVersion != null) 'contract_version': contractVersion,
       if (defaultCompanionId != null)
         'default_companion_id': defaultCompanionId,
       if (nextCursor != null) 'next_cursor': nextCursor,
-      if (runtimeUnavailable != null) 'runtime_unavailable': runtimeUnavailable,
     };
   }
 }
@@ -587,7 +589,6 @@ class CompanionSummaryView {
     required this.lifecycleState,
     this.memoryRealmId,
     required this.revision,
-    this.running,
     required this.updatedAt,
   });
 
@@ -609,8 +610,6 @@ class CompanionSummaryView {
 
   final int revision;
 
-  final bool? running;
-
   final String updatedAt;
 
   factory CompanionSummaryView.fromJson(Map<String, dynamic> value) {
@@ -624,7 +623,6 @@ class CompanionSummaryView {
       lifecycleState: value['lifecycle_state'] as String,
       memoryRealmId: value['memory_realm_id'] as String?,
       revision: value['revision'] as int,
-      running: value['running'] as bool?,
       updatedAt: value['updated_at'] as String,
     );
   }
@@ -640,7 +638,6 @@ class CompanionSummaryView {
       'lifecycle_state': lifecycleState,
       if (memoryRealmId != null) 'memory_realm_id': memoryRealmId,
       'revision': revision,
-      if (running != null) 'running': running,
       'updated_at': updatedAt,
     };
   }
@@ -1452,6 +1449,7 @@ class HomeCountsView {
 
 class HomeView {
   const HomeView({
+    this.activityUnavailable,
     required this.companionCounts,
     this.companions,
     this.contractVersion,
@@ -1461,9 +1459,10 @@ class HomeView {
     this.memory,
     this.ownerDisplayName,
     required this.ownerRevision,
-    this.runtimeUnavailable,
     this.unavailable,
   });
+
+  final String? activityUnavailable;
 
   final HomeCountsView companionCounts;
 
@@ -1483,12 +1482,11 @@ class HomeView {
 
   final int ownerRevision;
 
-  final String? runtimeUnavailable;
-
   final Map<String, String>? unavailable;
 
   factory HomeView.fromJson(Map<String, dynamic> value) {
     return HomeView(
+      activityUnavailable: value['activity_unavailable'] as String?,
       companionCounts: HomeCountsView.fromJson(
         value['companion_counts'] as Map<String, dynamic>,
       ),
@@ -1514,7 +1512,6 @@ class HomeView {
       memory: value['memory'] as String?,
       ownerDisplayName: value['owner_display_name'] as String?,
       ownerRevision: value['owner_revision'] as int,
-      runtimeUnavailable: value['runtime_unavailable'] as String?,
       unavailable: value['unavailable'] == null
           ? null
           : ((value['unavailable'] as Map<String, dynamic>).map(
@@ -1525,6 +1522,8 @@ class HomeView {
 
   Map<String, dynamic> toJson() {
     return {
+      if (activityUnavailable != null)
+        'activity_unavailable': activityUnavailable,
       'companion_counts': companionCounts.toJson(),
       if (companions != null)
         'companions': companions?.map((entry) => entry.toJson()).toList(),
@@ -1536,7 +1535,6 @@ class HomeView {
       if (memory != null) 'memory': memory,
       if (ownerDisplayName != null) 'owner_display_name': ownerDisplayName,
       'owner_revision': ownerRevision,
-      if (runtimeUnavailable != null) 'runtime_unavailable': runtimeUnavailable,
       if (unavailable != null) 'unavailable': unavailable,
     };
   }

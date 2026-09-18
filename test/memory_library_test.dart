@@ -353,7 +353,6 @@ void main() {
             'updated_at': '2026-08-28T08:00:00Z',
             'genome_id': 'genome-a',
             'memory_realm_id': 'realm-owner-1',
-            'running': true,
             'last_active_at': '2026-08-28T08:00:00Z',
           }),
           CompanionSummaryView.fromJson({
@@ -366,7 +365,6 @@ void main() {
             'updated_at': '2026-08-28T08:01:00Z',
             'genome_id': 'genome-b',
             'memory_realm_id': 'realm-owner-1',
-            'running': true,
             'last_active_at': '2026-08-28T08:01:00Z',
           }),
         ];

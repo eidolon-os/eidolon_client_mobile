@@ -157,8 +157,8 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
                 defaultCompanionId: page.defaultCompanionId,
                 companions: [..._roster!.companions, ...page.companions],
                 nextCursor: page.nextCursor,
-                runtimeUnavailable:
-                    page.runtimeUnavailable ?? _roster!.runtimeUnavailable,
+                activityUnavailable:
+                    page.activityUnavailable ?? _roster!.activityUnavailable,
               );
         _busy = false;
       });

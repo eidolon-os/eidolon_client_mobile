@@ -45,12 +45,14 @@ Future<void> _open(
   WidgetTester tester, {
   MountedDeviceInventory? devices,
   HostCompanion? companion,
+  String activityUnavailable = '',
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       home: CompanionPage(
         companion: companion ?? _companion(),
         devices: devices,
+        activityUnavailable: activityUnavailable,
         onRename: () {},
         onOpenPersona: () {},
       ),
@@ -68,7 +70,7 @@ Future<void> _open(
 HostCompanion _companion({
   String name = '小忆',
   String id = _companionId,
-  bool? running = true,
+  String? lastSpokenAt,
   String lifecycleState = 'active',
 }) => HostCompanion.fromView(
   CompanionSummaryView.fromJson({
@@ -79,8 +81,13 @@ HostCompanion _companion({
     'revision': 4,
     'created_at': '2026-08-01T00:00:00+00:00',
     'updated_at': '2026-08-01T00:00:00+00:00',
-    'running': running,
-    'last_active_at': running == true ? '2026-08-26T09:30:00+00:00' : '',
+    // Yesterday by the reader's own calendar, so the rendered line does not
+    // depend on which day or timezone this test runs in.
+    'last_active_at': lastSpokenAt ??
+        DateTime.now()
+            .subtract(const Duration(days: 1))
+            .toUtc()
+            .toIso8601String(),
   }),
 );
 
@@ -95,7 +102,7 @@ void main() {
     // What state *this Eidolon* is in, where it used to greet the Owner —
     // 「你好，Manson」 under the Eidolon's name, beside a pencil, made the card
     // read as the person's own profile.
-    expect(find.text('这台主机正在运行它'), findsOneWidget);
+    expect(find.textContaining('上次对话：昨天 '), findsOneWidget);
     expect(find.textContaining('你好'), findsNothing);
     // Nothing about the Host, the session or the parts it is built from.
     expect(find.textContaining('Host IP'), findsNothing);
@@ -107,6 +114,43 @@ void main() {
     expect(find.text('伙伴设置'), findsOneWidget);
     expect(find.byKey(const Key('companion-rename')), findsOneWidget);
     expect(find.byKey(const Key('companion-open-persona')), findsOneWidget);
+  });
+
+  testWidgets('a new Eidolon says nobody has talked to it yet', (
+    tester,
+  ) async {
+    // The state this page could not express. It printed 「这台主机现在没有在运行
+    // 它」 — a fact about whether the Agent process held it in memory, which
+    // sounded like a fault, applied to an Eidolon that was simply new.
+    await _open(tester, companion: _companion(lastSpokenAt: ''));
+
+    expect(find.text('还没有聊过'), findsOneWidget);
+  });
+
+  testWidgets('a Host that could not read conversations says nothing here', (
+    tester,
+  ) async {
+    // 「还没有聊过」 about an Eidolon somebody talks to daily is the same lie in
+    // a friendlier voice, so the line is absent instead.
+    await _open(
+      tester,
+      companion: _companion(lastSpokenAt: ''),
+      activityUnavailable: 'runtime_starting',
+    );
+
+    expect(find.text('还没有聊过'), findsNothing);
+    expect(find.textContaining('上次对话'), findsNothing);
+    expect(find.text('小忆'), findsWidgets, reason: 'the rest of the page stays');
+  });
+
+  testWidgets('one that was put away says that, whatever else is true', (
+    tester,
+  ) async {
+    // The person's own decision outranks any reading about recency.
+    await _open(tester, companion: _companion(lifecycleState: 'archived'));
+
+    expect(find.text('已经收起来了'), findsOneWidget);
+    expect(find.textContaining('上次对话'), findsNothing);
   });
 
   testWidgets('shows only the devices attached to this Eidolon', (

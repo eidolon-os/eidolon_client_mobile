@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
+import '../models/when.dart';
 import '../protocol/companion_contract.dart';
 
 /// Every partner this Owner has, on one screen.
@@ -136,7 +137,7 @@ class CompanionRosterPage extends StatelessWidget {
                 onOpen: onOpen,
                 onMakeDefault: onMakeDefault,
                 busy: busyCompanionId == companion.companionId,
-                runtimeUnavailable: roster.runtimeUnavailable,
+                activityUnavailable: roster.activityUnavailable,
               );
             },
           );
@@ -160,16 +161,25 @@ class _RosterSummary extends StatelessWidget {
     return '默认应答伙伴在尚未加载的列表中';
   }
 
-  String get _attentionLine {
-    final unavailable = roster.runtimeUnavailable ?? '';
-    if (unavailable.isNotEmpty) return '运行状态暂时无法读取';
-    final attention = roster.companions
-        .where(
-          (row) => isCompanionActive(row.lifecycleState) && row.running != true,
-        )
+  /// What the page says about the whole set, under the count.
+  ///
+  /// Null when there is nothing to say, and the line is then absent rather than
+  /// present and empty. This used to count Eidolons the Agent process did not
+  /// happen to hold in memory and offer them as 「N 位伙伴需要关注运行状态」 —
+  /// asking a person to attend to something that was not happening, and that no
+  /// control on this screen could have changed.
+  ///
+  /// What is left is the one thing worth saying about the set: how many are put
+  /// away. That is a decision this person made, so seeing it counted is a
+  /// reminder rather than an alarm.
+  String? get _asideLine {
+    if ((roster.activityUnavailable ?? '').isNotEmpty) {
+      return '这台主机暂时读不到对话记录，所以没有显示上次对话';
+    }
+    final putAway = roster.companions
+        .where((row) => !isCompanionActive(row.lifecycleState))
         .length;
-    if (attention == 0) return '当前没有需要关注的运行状态';
-    return '$attention 位伙伴需要关注运行状态';
+    return putAway == 0 ? null : '其中 $putAway 位已经收起来了';
   }
 
   @override
@@ -190,12 +200,14 @@ class _RosterSummary extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(_defaultLine, key: const Key('roster-default-summary')),
-                const SizedBox(height: 2),
-                Text(
-                  _attentionLine,
-                  key: const Key('roster-attention-summary'),
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+                if (_asideLine case final aside?) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    aside,
+                    key: const Key('roster-aside-summary'),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
                 if (onAdd != null) ...[
                   const SizedBox(height: 14),
                   FilledButton.icon(
@@ -219,7 +231,7 @@ class _RosterRow extends StatelessWidget {
     required this.onOpen,
     required this.onMakeDefault,
     required this.busy,
-    required this.runtimeUnavailable,
+    required this.activityUnavailable,
   });
 
   final CompanionSummaryView companion;
@@ -227,7 +239,7 @@ class _RosterRow extends StatelessWidget {
   final void Function(CompanionSummaryView companion)? onOpen;
   final void Function(CompanionSummaryView companion)? onMakeDefault;
   final bool busy;
-  final String? runtimeUnavailable;
+  final String? activityUnavailable;
 
   /// Offered on a row that is not already the default and is not on its way
   /// out. Whether it is *allowed* stays the Host's answer — a guard is refused
@@ -263,12 +275,16 @@ class _RosterRow extends StatelessWidget {
                   label: Text('默认应答'),
                   visualDensity: VisualDensity.compact,
                 ),
-              Chip(
-                key: Key('roster-state-${companion.companionId}'),
-                label: Text(_stateLabel),
-                visualDensity: VisualDensity.compact,
-              ),
-              Text(_stateSentence),
+              // Only when there is something to say. A badge that reads 在册 on
+              // every row is a column of one value, and it used to be worse
+              // than that: it read 未运行 on rows nothing was wrong with.
+              if (!isCompanionActive(companion.lifecycleState))
+                Chip(
+                  key: Key('roster-state-${companion.companionId}'),
+                  label: Text(companionLifecycleLabel(companion.lifecycleState)),
+                  visualDensity: VisualDensity.compact,
+                ),
+              if (_stateSentence case final sentence?) Text(sentence),
             ],
           ),
         ),
@@ -278,27 +294,20 @@ class _RosterRow extends StatelessWidget {
     );
   }
 
-  String get _stateLabel {
-    if (!isCompanionActive(companion.lifecycleState)) {
-      return companionLifecycleLabel(companion.lifecycleState);
-    }
-    return switch (companion.running) {
-      true => '运行中',
-      false => '未运行',
-      null => '状态未知',
-    };
-  }
-
-  String get _stateSentence {
+  /// The one line under the name, or null when the row has nothing to add.
+  ///
+  /// Life first: an Eidolon this person put away is put away whatever else is
+  /// true, because that is their own decision and it outranks any reading.
+  ///
+  /// Otherwise it is when they last spoke to it — and nothing at all when the
+  /// Host could not say. 「还没有聊过」 on an Eidolon somebody talks to daily is
+  /// a lie, and a row that says nothing while the page says why is not.
+  String? get _stateSentence {
     if (!isCompanionActive(companion.lifecycleState)) {
       return companionLifecycleSentence(companion.lifecycleState);
     }
-    return switch (companion.running) {
-      true => '现在可以应答',
-      false => '当前没有运行',
-      null when (runtimeUnavailable ?? '').isNotEmpty => '运行状态暂时无法读取',
-      null => '还没有读到运行状态',
-    };
+    if ((activityUnavailable ?? '').isNotEmpty) return null;
+    return lastSpokenLine(parseInstant(companion.lastActiveAt));
   }
 
   Widget? _trailing() {

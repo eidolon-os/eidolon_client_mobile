@@ -245,7 +245,6 @@ Map<String, dynamic> _homeAnswer(_OwnerName ownerName) => {
           'revision': 4,
           'created_at': '2026-08-01T00:00:00+00:00',
           'updated_at': '2026-08-01T00:00:00+00:00',
-          'running': true,
           'last_active_at': '2026-08-26T09:30:00+00:00',
         },
         {
@@ -256,12 +255,11 @@ Map<String, dynamic> _homeAnswer(_OwnerName ownerName) => {
           'revision': 2,
           'created_at': '2026-08-02T00:00:00+00:00',
           'updated_at': '2026-08-02T00:00:00+00:00',
-          'running': true,
           'last_active_at': '2026-08-26T09:20:00+00:00',
         },
       ],
       'default_companion_id': 'companion_primary',
-      'runtime_unavailable': '',
+      'activity_unavailable': '',
       'memory': '还没记下什么',
       'companion_counts': {'total': 2, 'ready': 2, 'waiting': 0, 'put_away': 0},
       'devices': {'total': 0, 'ready': 0, 'waiting': 0, 'put_away': 0},
@@ -1311,7 +1309,10 @@ void main() {
     // "all Eidolons" row are now one clear entry.
     expect(find.text('你的伙伴'), findsOneWidget);
     expect(find.text('2 位'), findsOneWidget);
-    expect(find.textContaining('默认应答：小忆'), findsOneWidget);
+    // Exact, so the card's summary line is pinned rather than merely present.
+    // It used to end in 「N 位没有运行」 — a count of Eidolons the Agent process
+    // did not happen to be holding, which nothing on this screen could change.
+    expect(find.text('默认应答：小忆 · 共 2 位'), findsOneWidget);
     expect(find.text('阿力'), findsNothing);
     expect(
       find.byKey(const Key('home-companion-companion_primary')),

@@ -1,5 +1,10 @@
 import '../../protocol/companion_contract.dart';
 
+// [formatWhen] moved to a shared module once the Companion roster needed the
+// same sentence. Re-exported so every star-map file that already imports this
+// one keeps working, and so there is still only one way to write a time.
+export '../../models/when.dart' show formatWhen;
+
 // The view model the constellation is drawn from.
 //
 // It is deliberately the console cockpit's information model — Owner ▸
@@ -765,35 +770,6 @@ String formatClock(DateTime at) {
   final local = at.toLocal();
   String two(int value) => value.toString().padLeft(2, '0');
   return '${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
-}
-
-/// When something happened, at the grain a history needs.
-///
-/// [formatClock] is for the live map, where everything is within the minute and
-/// only the seconds matter. A history spans days, so a bare clock there tells a
-/// reader nothing about which day they are looking at.
-///
-/// Local time, because the reader is in it. Null renders as an em dash rather
-/// than as now: an activity with no start is one the Host did not say the start
-/// of, and defaulting it to the present would make the oldest row look newest.
-String formatWhen(DateTime? at, {DateTime? now}) {
-  if (at == null) return '—';
-  final local = at.toLocal();
-  final today = (now ?? DateTime.now()).toLocal();
-  String two(int value) => value.toString().padLeft(2, '0');
-  final clock = '${two(local.hour)}:${two(local.minute)}';
-  final sameDay =
-      local.year == today.year &&
-      local.month == today.month &&
-      local.day == today.day;
-  if (sameDay) return '今天 $clock';
-  final yesterday = today.subtract(const Duration(days: 1));
-  final wasYesterday =
-      local.year == yesterday.year &&
-      local.month == yesterday.month &&
-      local.day == yesterday.day;
-  if (wasYesterday) return '昨天 $clock';
-  return '${local.month}月${local.day}日 $clock';
 }
 
 /// A short, human form of an opaque identifier. Presentation only — never a key.

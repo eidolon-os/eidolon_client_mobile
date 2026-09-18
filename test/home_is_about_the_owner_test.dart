@@ -18,7 +18,7 @@ void main() {
   HostHome home({
     List<Map<String, dynamic>>? companions,
     String? defaultId = 'c-a',
-    String runtimeUnavailable = '',
+    String activityUnavailable = '',
   }) =>
       HostHome.fromView(
         HomeView.fromJson({
@@ -35,8 +35,7 @@ void main() {
                   'revision': 4,
                   'created_at': '2026-08-01T00:00:00+00:00',
                   'updated_at': '2026-08-01T00:00:00+00:00',
-                  'running': true,
-                  'last_active_at': '2026-08-26T09:30:00+00:00',
+                  'last_active_at': '2026-09-18T09:30:00+00:00',
                 },
                 {
                   'companion_id': 'c-b',
@@ -46,12 +45,11 @@ void main() {
                   'revision': 2,
                   'created_at': '2026-08-02T00:00:00+00:00',
                   'updated_at': '2026-08-02T00:00:00+00:00',
-                  'running': true,
-                  'last_active_at': '2026-08-26T09:20:00+00:00',
+                  'last_active_at': '2026-09-15T20:00:00+00:00',
                 },
               ],
           'default_companion_id': defaultId,
-          'runtime_unavailable': runtimeUnavailable,
+          'activity_unavailable': activityUnavailable,
           'memory': '记着 42 条',
           'companion_counts': {
             'total': 2,
@@ -65,9 +63,16 @@ void main() {
         }),
       );
 
-  test('several Eidolons can be running at the same time', () {
-    // The case a single promoted Companion could not express at all.
-    expect(home().companions.where((row) => row.running == true).length, 2);
+  test('every row carries when this person last spoke to it', () {
+    // The fact that tells a used Eidolon from a forgotten one, and the one
+    // people were reading 「运行中 / 未运行」 as an answer to.
+    expect(
+      home().companions.map((row) => row.lastSpokenAt),
+      [
+        DateTime.parse('2026-09-18T09:30:00+00:00'),
+        DateTime.parse('2026-09-15T20:00:00+00:00'),
+      ],
+    );
   });
 
   test('who replies unaddressed is a marker, not the subject', () {
@@ -90,7 +95,10 @@ void main() {
     expect(answer.companions, hasLength(2));
   });
 
-  test('an unreadable runtime leaves running unknown, not false', () {
+  test('an unreadable runtime is named, so a blank time is not read as never', () {
+    // Both cases arrive as no time. Only the named one is unknown, and a screen
+    // that showed 「还没有聊过」 for it would be saying something false about an
+    // Eidolon this person may talk to every day.
     final answer = home(
       companions: [
         {
@@ -101,15 +109,14 @@ void main() {
           'revision': 4,
           'created_at': '2026-08-01T00:00:00+00:00',
           'updated_at': '2026-08-01T00:00:00+00:00',
-          'running': null,
           'last_active_at': '',
         },
       ],
-      runtimeUnavailable: 'runtime_starting',
+      activityUnavailable: 'runtime_starting',
     );
 
-    expect(answer.companions.single.running, isNull);
-    expect(answer.runtimeUnavailable, 'runtime_starting');
+    expect(answer.companions.single.lastSpokenAt, isNull);
+    expect(answer.activityUnavailable, 'runtime_starting');
   });
 
   test('the memory belongs to the person, not to one of their Eidolons', () {

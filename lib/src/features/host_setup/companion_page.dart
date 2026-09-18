@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../generated/management_v1.dart';
 import '../../management/management_client.dart';
+import '../../models/when.dart';
 import '../device_management/mounted_device_models.dart';
 import 'home_models.dart';
 
@@ -28,6 +29,7 @@ class CompanionPage extends StatelessWidget {
     this.isDefault = false,
     this.onChangeLifecycle,
     required this.devices,
+    this.activityUnavailable = '',
     required this.onRename,
     required this.onOpenPersona,
     this.onOpenMemory,
@@ -58,6 +60,14 @@ class CompanionPage extends StatelessWidget {
   /// Everything this Host has mounted. Which of them belong to this Eidolon is
   /// decided here rather than asked for separately: the Host already answered.
   final MountedDeviceInventory? devices;
+
+  /// Why this Eidolon carries no 「上次对话」, when that is why.
+  ///
+  /// A property of the read that produced the row rather than of the Eidolon —
+  /// the Host names it once for the whole answer, and a copy per Companion
+  /// would be several places able to disagree about one failure. Empty means
+  /// the Host asked and got an answer, so no time means never spoken to.
+  final String activityUnavailable;
   final VoidCallback onRename;
 
   /// Open who it is, to change it.
@@ -153,10 +163,12 @@ class CompanionPage extends StatelessWidget {
                           // with a pencil beside it — which made the card read as
                           // the person's own profile and the pencil look like it
                           // renamed them. It renames the Eidolon.
-                          Text(
-                            _stateLine(companion),
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
+                          if (_stateLine(companion, activityUnavailable)
+                              case final line?)
+                            Text(
+                              line,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
                           if (isDefault) ...[
                             const SizedBox(height: 6),
                             const Chip(
@@ -344,18 +356,24 @@ class _FeatureRow extends StatelessWidget {
   }
 }
 
-/// What state this Eidolon is in, for the line under its name.
+/// The line under this Eidolon's name, or null when there is nothing to put
+/// there.
 ///
-/// Life first: one that has been put away is put away whatever the runtime
-/// says, because that is the person's own decision and it outranks a machine
-/// state. Unknown is said rather than rendered as "not running" — the screens
-/// this replaces printed 运行中 whenever the Owner had a default Eidolon, which
-/// read a routing setting as a runtime fact.
-String _stateLine(HostCompanion companion) {
+/// Life first: one that has been put away is put away whatever else is true,
+/// because that is the person's own decision and it outranks any reading.
+///
+/// Otherwise it is when they last spoke to it. Two machine facts stood here
+/// before and neither was about the Eidolon: 运行中 whenever the Owner had a
+/// default one — a routing setting read as a runtime fact — and then whether
+/// the Agent process was holding it in memory, which emptied on every restart
+/// and printed 「这台主机现在没有在运行它」 about an Eidolon nothing was wrong
+/// with. Nobody could act on either.
+///
+/// Null when the Host could not read its conversations, because there is no
+/// true sentence for that case: 「还没有聊过」 about an Eidolon somebody talks to
+/// daily is the same lie in a friendlier voice.
+String? _stateLine(HostCompanion companion, String activityUnavailable) {
   if (companion.isPutAway) return '已经收起来了';
-  return switch (companion.running) {
-    true => '这台主机正在运行它',
-    false => '这台主机现在没有在运行它',
-    _ => '运行状态读不到',
-  };
+  if (activityUnavailable.isNotEmpty) return null;
+  return lastSpokenLine(companion.lastSpokenAt);
 }
