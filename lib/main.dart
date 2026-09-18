@@ -71,6 +71,7 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
         registry: widget.hostRegistry,
         deviceProvisioning: widget.deviceProvisioning,
         onHostForgotten: _deviceRuntime.directory.forgetHost,
+        onRealignOwnerDomain: _deviceRuntime.directory.realignOwnerDomain,
         conversationBuilder: (_, controller) {
           Future<void>? preparing;
           Future<void> prepareManagement() {

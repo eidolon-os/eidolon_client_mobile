@@ -62,6 +62,7 @@ class HostLocalConnectionPage extends StatefulWidget {
     this.networkChanges,
     this.deviceProvisioning,
     this.conversationBuilder,
+    this.onRealignOwnerDomain,
     this.facePicker,
   });
 
@@ -84,6 +85,7 @@ class HostLocalConnectionPage extends StatefulWidget {
   final NetworkChanges? networkChanges;
   final DeviceProvisioningTransport? deviceProvisioning;
   final HostConversationBuilder? conversationBuilder;
+  final Future<void> Function(String ownerDomainId)? onRealignOwnerDomain;
 
   /// Where the picture an Eidolon wears comes from. The gallery, unless a
   /// test says otherwise.
@@ -184,6 +186,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         },
         setupTransport: widget.transport,
         controllerKeys: widget.controllerKeys,
+        onRealignOwnerDomain: widget.onRealignOwnerDomain,
         onOpenControllers: _openControllers,
         onRenameOwner: _renameOwner,
         onChangeNetwork: _openNetworkChange,

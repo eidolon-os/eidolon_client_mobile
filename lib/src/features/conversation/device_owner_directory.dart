@@ -71,6 +71,16 @@ class DeviceOwnerDirectory {
     if (!stillThere) await _verifier.forget(ownerDomainId);
   }
 
+  /// Accept, once, that this domain's lineage was re-established.
+  ///
+  /// Separate from [forgetHost] on purpose: giving up a Host throws away the
+  /// pairing too, which is a heavy price for a record that is merely stale.
+  /// This drops the fence and keeps everything else, and it exists because the
+  /// Host cannot yet prove a legitimate reset on its own — until it can, the
+  /// person who knows what happened to that machine is the evidence.
+  Future<void> realignOwnerDomain(String ownerDomainId) =>
+      _verifier.forget(ownerDomainId);
+
   /// What this phone would refuse a lower generation than, for this Host.
   Future<String?> ownerDomainOf(String hostId) async {
     final target = (await _readSaved())[hostId];

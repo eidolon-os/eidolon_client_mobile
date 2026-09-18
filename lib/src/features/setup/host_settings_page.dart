@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import '../device_setup/owner_domain_directory_verifier.dart';
 import '../naming/ask_for_a_name.dart';
 import '../host_setup/host_product_controller.dart';
 import 'commissioning_transport.dart';
@@ -22,7 +24,16 @@ class HostSettingsPage extends StatefulWidget {
     required this.onOpenControllers,
     required this.onRenameOwner,
     required this.onChangeNetwork,
+    this.onRealignOwnerDomain,
   });
+
+  /// Accept that this Host's Owner Domain lineage was re-established.
+  ///
+  /// Offered only when this phone has actually refused the Host over it, and
+  /// worded as taking the Host's current state rather than as clearing a
+  /// warning — a standing "clear the safety record" control is precisely what
+  /// someone would be talked into pressing.
+  final Future<void> Function(String ownerDomainId)? onRealignOwnerDomain;
 
   final ManagedHost host;
   final ManagedHostUpdater onHostUpdated;
@@ -41,6 +52,32 @@ class HostSettingsPage extends StatefulWidget {
 
 class _HostSettingsPageState extends State<HostSettingsPage> {
   ManagedHost get host => widget.controller.host;
+
+  /// The refusal this Host is currently producing, if it is producing one.
+  ///
+  /// Asked for rather than waited for: a person opens this page *because*
+  /// something is wrong, and the one thing they can act on should already be
+  /// here when they arrive. Any other failure means nothing is offered — the
+  /// entry below exists for exactly one situation and must not appear for the
+  /// rest.
+  OwnerDomainGenerationRollback? _rollback;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.onRealignOwnerDomain != null) unawaited(_detectRollback());
+  }
+
+  Future<void> _detectRollback() async {
+    try {
+      await widget.controller.fetchDeviceOnboardingTarget();
+    } on OwnerDomainGenerationRollback catch (rollback) {
+      if (mounted) setState(() => _rollback = rollback);
+    } on Object {
+      // Not this problem. Say nothing rather than offer a control that would
+      // drop a safety record for a reason nobody established.
+    }
+  }
 
   CommissioningTransport? get setupTransport => widget.setupTransport;
   ControllerKeyBridge? get controllerKeys => widget.controllerKeys;
@@ -173,6 +210,19 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
                   subtitle: const Text('需要有人在主机旁边开一次限时窗口；会撤销所有已授权手机'),
                   onTap: () => _openControllerRecovery(context),
                 ),
+                if (_rollback case final rollback?)
+                  ListTile(
+                    key: const Key('realign-owner-domain'),
+                    leading: const Icon(Icons.history_toggle_off),
+                    title: const Text('以主机当前状态为准'),
+                    subtitle: Text(
+                      '这台主机报告的信任代次（${rollback.offered}）比这台手机记得的'
+                      '（${rollback.accepted}）旧，所以添加设备会被拒绝。'
+                      '主机被重置或从备份恢复过会这样；也可能是有人在用旧凭据冒充它。',
+                    ),
+                    isThreeLine: true,
+                    onTap: () => _confirmRealign(context, rollback),
+                  ),
                 ListTile(
                   key: const Key('forget-managed-host'),
                   leading: const Icon(Icons.delete_outline),
@@ -252,6 +302,39 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
     if (context.mounted && recovered != null) {
       Navigator.of(context).pop(recovered);
     }
+  }
+
+  Future<void> _confirmRealign(
+    BuildContext context,
+    OwnerDomainGenerationRollback rollback,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('confirm-realign-owner-domain'),
+        title: const Text('以这台主机当前的状态为准？'),
+        content: Text(
+          '这台手机会接受一个更旧的信任代次（${rollback.accepted} → ${rollback.offered}），'
+          '之后就能继续给这台主机添加设备。\n\n'
+          '只有在你知道这台主机确实被重置或恢复过时才这样做。'
+          '如果你不知道发生过什么，先别做——旧的凭据可能因此重新被接受。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const Key('confirm-realign-owner-domain-action'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('我知道，继续'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await widget.onRealignOwnerDomain!(rollback.ownerDomainId);
+    if (mounted) setState(() => _rollback = null);
   }
 
   Future<void> _confirmForget(BuildContext context) async {

@@ -116,6 +116,34 @@ void main() {
 
     await verifier.verify(_target(generation: 1, revision: 1, host: 'pi5.local', signature: 'B'));
   });
+
+  test('realigning one domain leaves every other one fenced', () async {
+    // What the settings entry does, under the widget. Taking one Host's
+    // current state is not a general amnesty: a domain nobody vouched for
+    // keeps refusing an older directory, because the whole value of the fence
+    // is that it is not lifted by accident.
+    final preferences = InMemoryAppPreferences();
+    final verifier = PlatformOwnerDomainDirectoryVerifier(
+      preferences: preferences,
+      signatureVerifier: const _AcceptingSignatureVerifier(),
+    );
+    const other = 'owner-elsewhere';
+    await verifier.verify(_target(generation: 9, revision: 1, host: 'a', signature: 'A'));
+    await verifier.verify(_target(
+        generation: 5, revision: 1, host: 'b', signature: 'B', ownerDomainId: other));
+
+    await verifier.forget(ownerDomainIdFixture);
+
+    // Vouched for: the older directory is taken.
+    await verifier.verify(_target(generation: 8, revision: 1, host: 'a', signature: 'C'));
+    // Not vouched for: still refused.
+    await expectLater(
+      verifier.verify(_target(
+          generation: 4, revision: 1, host: 'b', signature: 'D', ownerDomainId: other)),
+      throwsA(isA<OwnerDomainGenerationRollback>()
+          .having((e) => e.ownerDomainId, 'domain', other)),
+    );
+  });
 }
 
 DeviceOnboardingTarget _target({
@@ -123,6 +151,7 @@ DeviceOnboardingTarget _target({
   required int revision,
   required String host,
   required String signature,
+  String? ownerDomainId,
 }) {
   final endpoints = ownerDomainDescriptorJsonFixture['endpoints']! as List;
   final value = Map<String, dynamic>.from(ownerDomainDescriptorJsonFixture)
@@ -137,7 +166,7 @@ DeviceOnboardingTarget _target({
       endpoints[1],
     ];
   return DeviceOnboardingTarget(
-    ownerDomainId: ownerDomainIdFixture,
+    ownerDomainId: ownerDomainId ?? ownerDomainIdFixture,
     ownerDomainDescriptor: OwnerDomainDescriptorV1.fromJson(value),
     ownerRootCertificate: ownerRootCertificateFixture,
     authoritySigningCertificate: authoritySigningCertificateFixture,
