@@ -53,8 +53,12 @@ class CompanionAuthoringPage extends StatefulWidget {
   final PersonaAuthoring template;
   final List<PersonaPreset> presets;
   final CompanionCreationDrafts? drafts;
-  final Future<void> Function(
-      String, PersonaAuthoring?, ConversationPreferences?) onCreate;
+  /// The fourth argument is the preset this came from, when it came from one
+  /// and nobody touched it. Only this screen can say: it holds the draft and
+  /// saw whether anything was edited. A record of where the Eidolon began —
+  /// nothing reads it back, and nothing about it follows the preset afterwards.
+  final Future<void> Function(String, PersonaAuthoring?,
+      ConversationPreferences?, PersonaPreset?) onCreate;
   final PreviewPersona? preview;
   final bool busy;
   final bool locked;
@@ -72,6 +76,17 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
   bool get _custom => _drafts.selectedId == null;
   bool get _disabled => widget.busy || widget.locked;
   bool get _valid => _draft.name.text.trim().isNotEmpty;
+  /// The preset this is still exactly, or null the moment it stops being one.
+  ///
+  /// Editing the authoring makes it the person's own, and saying otherwise
+  /// would record a provenance that is not true. The name is deliberately not
+  /// part of that test: naming an Eidolon is not rewriting who it is.
+  PersonaPreset? _untouchedPreset() {
+    final id = _drafts.selectedId;
+    if (id == null || !_draft.form.unchanged) return null;
+    return widget.presets.where((p) => p.presetId == id).firstOrNull;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -175,7 +190,8 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
                                           widget.onCreate(
                                               _draft.name.text.trim(),
                                               _draft.form.authoring,
-                                              _draft.preferences);
+                                              _draft.preferences,
+                                              _untouchedPreset());
                                         }
                                       },
                             icon: widget.busy

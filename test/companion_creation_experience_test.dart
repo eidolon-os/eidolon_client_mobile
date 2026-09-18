@@ -38,7 +38,7 @@ void main() {
             template: const PersonaAuthoring(),
             presets: presets,
             drafts: drafts,
-            onCreate: (_, __, ___) async {}));
+            onCreate: (_, __, ___, ____) async {}));
     await tester.pumpWidget(page());
     await tester.ensureVisible(find.byKey(const Key('authoring-customize')));
     await tester.tap(find.byKey(const Key('authoring-customize')));
@@ -87,7 +87,7 @@ void main() {
       startConversation: (created) async {
         started = created;
       },
-      createCompanion: (id, name, persona, preferences) async {
+      createCompanion: (id, name, persona, preferences, source) async {
         submissions.add([
           id,
           name,
@@ -151,7 +151,7 @@ void main() {
       loadPersonaPresets: () async =>
           const PersonaPresetCatalog(presets: presets),
       newOperationId: () => 'operation-${operations.length + 1}',
-      createCompanion: (id, name, persona, preferences) async {
+      createCompanion: (id, name, persona, preferences, source) async {
         operations.add(id);
         throw const ManagementRequestException('rejected',
             statusCode: 422,
@@ -176,5 +176,44 @@ void main() {
     await tester.pumpAndSettle();
     expect(operations, ['operation-1', 'operation-2'],
         reason: 'an edited attempt is a new one');
+  });
+
+  testWidgets('an untouched preset says where it came from; an edited one does not',
+      (tester) async {
+    // Provenance has to be earned. Taking a preset and leaving it alone is a
+    // fact worth recording; writing over its words makes the Eidolon the
+    // person's own, and claiming a preset then would record something untrue.
+    // Naming it is not rewriting it, so the name is deliberately not part of
+    // the test.
+    final claims = <String?>[];
+    Widget page(CompanionCreationDrafts drafts) => MaterialApp(
+        home: CompanionAuthoringPage(
+            template: const PersonaAuthoring(),
+            presets: presets,
+            drafts: drafts,
+            onCreate: (_, __, ___, source) async {
+              claims.add(source?.presetId);
+            }));
+
+    final untouched = CompanionCreationDrafts(const PersonaAuthoring(), presets);
+    addTearDown(untouched.dispose);
+    await tester.pumpWidget(page(untouched));
+    await tester.tap(find.byKey(const Key('authoring-create')));
+    await tester.pumpAndSettle();
+    expect(claims, ['gentle']);
+
+    final edited = CompanionCreationDrafts(const PersonaAuthoring(), presets);
+    addTearDown(edited.dispose);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(page(edited));
+    await tester.ensureVisible(find.byKey(const Key('authoring-customize')));
+    await tester.tap(find.byKey(const Key('authoring-customize')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('authoring-short-description')), '我自己写的');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('authoring-create')));
+    await tester.pumpAndSettle();
+    expect(claims, ['gentle', null]);
   });
 }

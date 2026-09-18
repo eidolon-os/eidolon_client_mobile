@@ -759,8 +759,8 @@ void creationTests() {
 
   Future<void> pumpRoster(
     WidgetTester tester, {
-    required Future<CreatedCompanion> Function(
-            String, String, PersonaAuthoring?, ConversationPreferences?)
+    required Future<CreatedCompanion> Function(String, String, PersonaAuthoring?,
+            ConversationPreferences?, PersonaPreset?)
         create,
     Future<CompanionRosterView> Function({String? cursor})? load,
     Future<PersonaAuthoring> Function()? loadTemplate,
@@ -817,7 +817,7 @@ void creationTests() {
         await pumpRoster(
           tester,
           canCreate: allowed,
-          create: (_, __, ___, ____) async => const CreatedCompanion(
+          create: (_, __, ___, ____, _____) async => const CreatedCompanion(
             companionId: 'cp-1',
             displayName: '小南',
             created: true,
@@ -843,7 +843,7 @@ void creationTests() {
       var authored = 0;
       await pumpRoster(
         tester,
-        create: (operationId, name, persona, preferences) async {
+        create: (operationId, name, persona, preferences, source) async {
           operations.add(operationId);
           sentName = name;
           if (persona != null) authored++;
@@ -870,7 +870,7 @@ void creationTests() {
       // they can read.
       await pumpRoster(
         tester,
-        create: (_, __, ___, ____) async => const CreatedCompanion(
+        create: (_, __, ___, ____, _____) async => const CreatedCompanion(
           companionId: 'cp-1',
           displayName: '小南',
           created: true,
@@ -893,7 +893,7 @@ void creationTests() {
       PersonaAuthoring? sent;
       await pumpRoster(
         tester,
-        create: (_, __, persona, preferences) async {
+        create: (_, __, persona, preferences, ____) async {
           sent = persona;
           return const CreatedCompanion(
             companionId: 'cp-1',
@@ -942,7 +942,7 @@ void creationTests() {
     testWidgets('a name is the one thing it will not default', (tester) async {
       await pumpRoster(
         tester,
-        create: (_, __, ___, ____) async => const CreatedCompanion(
+        create: (_, __, ___, ____, _____) async => const CreatedCompanion(
           companionId: 'cp-1',
           displayName: '小南',
           created: true,
@@ -966,7 +966,7 @@ void creationTests() {
       // person wondering why it is quiet.
       await pumpRoster(
         tester,
-        create: (_, __, ___, ____) async => const CreatedCompanion(
+        create: (_, __, ___, ____, _____) async => const CreatedCompanion(
           companionId: 'cp-1',
           displayName: '小南',
           created: true,
@@ -990,7 +990,7 @@ void creationTests() {
       var attempts = 0;
       await pumpRoster(
         tester,
-        create: (operationId, name, persona, preferences) async {
+        create: (operationId, name, persona, preferences, source) async {
           operations.add(operationId);
           attempts++;
           if (attempts == 1) {
@@ -1027,7 +1027,7 @@ void creationTests() {
           reads++;
           return CompanionRosterView.fromJson(twoActiveWire());
         },
-        create: (_, __, ___, ____) async => const CreatedCompanion(
+        create: (_, __, ___, ____, _____) async => const CreatedCompanion(
           companionId: 'cp-1',
           displayName: '小南',
           created: true,
@@ -1045,7 +1045,7 @@ void creationTests() {
       var calls = 0;
       await pumpRoster(
         tester,
-        create: (_, __, ___, ____) async {
+        create: (_, __, ___, ____, _____) async {
           calls++;
           return const CreatedCompanion(
             companionId: 'cp-1',
@@ -1073,7 +1073,7 @@ void creationTests() {
         tester,
         loadTemplate: () async =>
             throw const ManagementRequestException('读取失败', statusCode: 503),
-        create: (_, __, ___, ____) async => const CreatedCompanion(
+        create: (_, __, ___, ____, _____) async => const CreatedCompanion(
           companionId: 'cp-1',
           displayName: '小南',
           created: true,

@@ -606,12 +606,14 @@ class HostProductController extends ChangeNotifier {
     required String displayName,
     PersonaAuthoring? persona,
     ConversationPreferences? preferences,
+    PersonaPreset? sourcePreset,
   }) =>
       _managementRepository.createCompanion(
         operationId: operationId,
         displayName: displayName,
         persona: persona,
         preferences: preferences,
+        sourcePreset: sourcePreset,
       );
 
   /// Who this Eidolon is now, in the words somebody wrote.

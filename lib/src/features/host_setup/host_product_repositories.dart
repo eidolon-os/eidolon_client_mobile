@@ -161,6 +161,7 @@ class HostManagementRepository {
     required String displayName,
     PersonaAuthoring? persona,
     ConversationPreferences? preferences,
+    PersonaPreset? sourcePreset,
   }) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.createCompanion(
@@ -170,6 +171,7 @@ class HostManagementRepository {
           displayName: displayName,
           persona: persona,
           preferences: preferences,
+          sourcePreset: sourcePreset,
         ),
       );
 

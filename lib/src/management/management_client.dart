@@ -1002,6 +1002,7 @@ class ManagementClient {
     required String displayName,
     PersonaAuthoring? persona,
     ConversationPreferences? preferences,
+    PersonaPreset? sourcePreset,
   }) async {
     final body = await _send(
       'PUT',
@@ -1016,6 +1017,12 @@ class ManagementClient {
         // retry after a lost answer into a conflict instead of a replay.
         if (persona != null) 'persona': persona.toJson(),
         if (preferences != null) 'preferences': preferences.toJson(),
+        // Same rule, same reason: a client with nothing to say about presets
+        // sends the bytes it always sent, so its retry stays a replay.
+        if (sourcePreset != null) ...{
+          'source_preset_id': sourcePreset.presetId,
+          'source_preset_revision': sourcePreset.revision,
+        },
       },
     );
     final view = CompanionCreatedView.fromJson(body);

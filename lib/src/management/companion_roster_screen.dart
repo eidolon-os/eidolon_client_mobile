@@ -76,6 +76,7 @@ class CompanionRosterScreen extends StatefulWidget {
     String displayName,
     PersonaAuthoring? persona,
     ConversationPreferences? preferences,
+    PersonaPreset? sourcePreset,
   )? createCompanion;
 
   /// What the Host would write if the authoring form came back untouched.
@@ -273,13 +274,17 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
         drafts: _drafts!,
         preview: widget.preview,
         uncertain: () => _pendingSubmission?.uncertain == true,
-        create: (name, persona, preferences) async {
+        create: (name, persona, preferences, sourcePreset) async {
           _pendingSubmission ??= _CreationSubmission(
-              _newOperationId(), name, persona, preferences);
+              _newOperationId(), name, persona, preferences, sourcePreset);
           final submission = _pendingSubmission!;
           try {
-            final answer = await create(submission.operationId, submission.name,
-                submission.persona, submission.preferences);
+            final answer = await create(
+                submission.operationId,
+                submission.name,
+                submission.persona,
+                submission.preferences,
+                submission.sourcePreset);
             _pendingSubmission = null;
             return answer;
           } catch (error) {
@@ -425,12 +430,13 @@ String _creationRefusal(Object error) {
 }
 
 class _CreationSubmission {
-  _CreationSubmission(
-      this.operationId, this.name, this.persona, this.preferences);
+  _CreationSubmission(this.operationId, this.name, this.persona,
+      this.preferences, this.sourcePreset);
   final String operationId;
   final String name;
   final PersonaAuthoring? persona;
   final ConversationPreferences? preferences;
+  final PersonaPreset? sourcePreset;
   bool uncertain = false;
 }
 
@@ -447,8 +453,8 @@ class _AuthoringRoute extends StatefulWidget {
   final CompanionCreationDrafts drafts;
   final PreviewPersona? preview;
   final bool Function() uncertain;
-  final Future<CreatedCompanion> Function(
-      String, PersonaAuthoring?, ConversationPreferences?) create;
+  final Future<CreatedCompanion> Function(String, PersonaAuthoring?,
+      ConversationPreferences?, PersonaPreset?) create;
   @override
   State<_AuthoringRoute> createState() => _AuthoringRouteState();
 }
@@ -465,14 +471,15 @@ class _AuthoringRouteState extends State<_AuthoringRoute> {
         busy: _busy,
         locked: widget.uncertain(),
         refusal: _refusal,
-        onCreate: (name, persona, preferences) async {
+        onCreate: (name, persona, preferences, sourcePreset) async {
           if (_busy) return;
           setState(() {
             _busy = true;
             _refusal = null;
           });
           try {
-            final created = await widget.create(name, persona, preferences);
+            final created =
+                await widget.create(name, persona, preferences, sourcePreset);
             if (context.mounted) Navigator.of(context).pop(created);
           } catch (error) {
             if (!mounted) return;

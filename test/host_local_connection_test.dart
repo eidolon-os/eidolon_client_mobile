@@ -633,7 +633,11 @@ void main() {
     expect(transport.scans, 1);
     expect(find.byKey(const Key('local-connection-complete')), findsNothing);
     expect(find.byKey(const Key('local-connection-error')), findsOneWidget);
-    expect(find.textContaining('未通过这台主机的身份校验'), findsOneWidget);
+    // Named as what it is — a different machine — rather than as a check that
+    // failed, and with no offer to search again, because searching cannot turn
+    // this responder into the saved Host.
+    expect(find.textContaining('不是这台手机配对过的那一台'), findsOneWidget);
+    expect(find.textContaining('重新查找'), findsNothing);
   });
 
   testWidgets(

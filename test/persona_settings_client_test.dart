@@ -88,7 +88,7 @@ void main() {
         home: CompanionAuthoringPage(
             template: presets[0].persona,
             presets: presets,
-            onCreate: (name, persona, preferences) async {
+            onCreate: (name, persona, preferences, source) async {
               calls++;
               sent = persona;
               prefs = preferences;

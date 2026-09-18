@@ -121,7 +121,7 @@ void main() {
         previewed.complete(reply);
         return reply;
       },
-      onCreate: (name, persona, preferences) async {
+      onCreate: (name, persona, preferences, source) async {
         created.complete(await client.createCompanion(base,
             accessToken: token,
             operationId: '90b4a07c-9fbe-40cb-b71f-fd88989fabcf',

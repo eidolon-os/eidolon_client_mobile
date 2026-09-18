@@ -204,6 +204,8 @@ class CompanionCreateRequest {
     required this.operationId,
     this.persona,
     this.preferences,
+    this.sourcePresetId,
+    this.sourcePresetRevision,
   });
 
   final String displayName;
@@ -215,6 +217,10 @@ class CompanionCreateRequest {
   final PersonaAuthoring? persona;
 
   final ConversationPreferences? preferences;
+
+  final String? sourcePresetId;
+
+  final String? sourcePresetRevision;
 
   factory CompanionCreateRequest.fromJson(Map<String, dynamic> value) {
     return CompanionCreateRequest(
@@ -229,6 +235,8 @@ class CompanionCreateRequest {
           : ConversationPreferences.fromJson(
               value['preferences'] as Map<String, dynamic>,
             ),
+      sourcePresetId: value['source_preset_id'] as String?,
+      sourcePresetRevision: value['source_preset_revision'] as String?,
     );
   }
 
@@ -239,6 +247,9 @@ class CompanionCreateRequest {
       'operation_id': operationId,
       if (persona != null) 'persona': persona?.toJson(),
       if (preferences != null) 'preferences': preferences?.toJson(),
+      if (sourcePresetId != null) 'source_preset_id': sourcePresetId,
+      if (sourcePresetRevision != null)
+        'source_preset_revision': sourcePresetRevision,
     };
   }
 }

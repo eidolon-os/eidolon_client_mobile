@@ -409,12 +409,14 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               companionId: companionId,
               expectedRevision: expectedRevision,
             ),
-            createCompanion: (operationId, displayName, persona, preferences) =>
-                _controller.createCompanion(
+            createCompanion:
+                (operationId, displayName, persona, preferences, sourcePreset) =>
+                    _controller.createCompanion(
               operationId: operationId,
               displayName: displayName,
               persona: persona,
               preferences: preferences,
+              sourcePreset: sourcePreset,
             ),
             loadPersonaTemplate: _controller.personaAuthoringTemplate,
             loadPersonaPresets: _controller.personaPresets,
