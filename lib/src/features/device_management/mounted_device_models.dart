@@ -206,3 +206,33 @@ class MountedDeviceInventory {
   /// paraphrased: a short list must not be allowed to imply a quiet house.
   final String coverage;
 }
+
+/// The devices whose Owner still has to decide something, hardest blocker first.
+///
+/// Provisioning a device gets it onto the network and claimed, and neither of
+/// those makes it usable: a Companion device is refused a channel until its
+/// Owner says what it may present, and a device with a channel says nothing
+/// until an Eidolon answers through it. Both decisions already had screens;
+/// what nobody had was a reason to go to them, so the product said 设备已设置完成
+/// and left a device whose own display read "service is not ready".
+///
+/// Outputs come before a Companion deliberately. Without that decision the Host
+/// gives the device no channel at all, so binding an Eidolon first changes
+/// nothing anyone can see — and a person who did it in that order would
+/// reasonably conclude the binding had failed.
+///
+/// A device whose access is already revoked is not unfinished work: nothing its
+/// Owner decides brings it back, and offering to finish setting it up would be
+/// a second false promise where this one was.
+List<MountedDevice> devicesAwaitingOwner(Iterable<MountedDevice> devices) {
+  const rank = {
+    MountedDeviceState.awaitingOutputs: 0,
+    MountedDeviceState.awaitingCompanion: 1,
+  };
+  final waiting = [
+    for (final device in devices)
+      if (rank.containsKey(device.state)) device,
+  ];
+  waiting.sort((a, b) => rank[a.state]!.compareTo(rank[b.state]!));
+  return waiting;
+}

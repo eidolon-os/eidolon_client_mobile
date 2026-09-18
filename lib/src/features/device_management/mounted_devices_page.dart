@@ -84,12 +84,48 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
         ),
       ),
     );
-    if (mounted) await widget.controller.refreshDevices();
+    if (mounted) await _refreshThenFinish();
   }
 
   Future<void> _openAdmission() async {
     await openDeviceAdmissionQueue(context, widget.controller);
-    if (mounted) await widget.controller.refreshDevices();
+    if (mounted) await _refreshThenFinish();
+  }
+
+  /// Take whoever just added a device to the decision that device is waiting on.
+  ///
+  /// Provisioning and claiming are the two steps a person set out to do, and
+  /// neither of them makes the device usable. Landing back on a list and
+  /// expecting someone to notice a chip, open the device, and know which of two
+  /// controls unblocks it is how this ended with a board that said "service is
+  /// not ready" and an Owner with nowhere to go. Nothing is invented here: the
+  /// Host already says which devices are waiting and on what.
+  Future<void> _refreshThenFinish() async {
+    await widget.controller.refreshDevices();
+    if (!mounted) return;
+    final inventory = widget.controller.devices;
+    if (inventory == null) return;
+    final waiting = devicesAwaitingOwner(inventory.devices);
+    if (waiting.isEmpty) return;
+    await _openDevice(waiting.first);
+  }
+
+  Future<void> _openDevice(MountedDevice device) async {
+    final controller = widget.controller;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => MountedDeviceDetailPage(
+          device: device,
+          onRemove: (deviceId, requestId) =>
+              controller.removeDevice(deviceId: deviceId, requestId: requestId),
+          loadCompanions: controller.roster,
+          onBindCompanion:
+              _hostOffersAssignment ? controller.setDeviceCompanion : null,
+          onSetOutputs: controller.setDeviceOutputs,
+        ),
+      ),
+    );
+    if (mounted) await controller.refreshDevices();
   }
 
   @override
@@ -549,6 +585,84 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
         if (outputs.motion ?? false) '动作',
       ];
 
+  Widget _companionTile(MountedDevice device) => ListTile(
+        key: const Key('device-companion-binding'),
+        title: const Text('由谁应答'),
+        subtitle: Text(
+          device.attachedCompanionName.isNotEmpty
+              ? device.attachedCompanionName
+              : device.attachedCompanionId ?? _quietText(device),
+        ),
+        trailing: widget.onBindCompanion == null
+            ? null
+            : TextButton(
+                key: const Key('bind-device-companion'),
+                onPressed: _binding || _removing || _platformRemoved
+                    ? null
+                    : _bindCompanion,
+                child: Text(
+                  device.attachedCompanionId == null ? '指定' : '更换或解除',
+                ),
+              ),
+      );
+
+  Widget _outputsTile(MountedDevice device) => ListTile(
+        key: const Key('device-outputs'),
+        title: const Text('它可以怎么表达'),
+        subtitle: Text(_outputsText(device.outputs)),
+        trailing: widget.onSetOutputs == null
+            ? null
+            : TextButton(
+                key: const Key('decide-device-outputs'),
+                onPressed: _binding || _removing || _platformRemoved
+                    ? null
+                    : _decideOutputs,
+                child: Text(device.outputs.decided ? '更改' : '设置'),
+              ),
+      );
+
+  /// Why this device cannot be used yet, and the one thing that changes it.
+  ///
+  /// In the Owner's terms. The device's own screen already says "service is not
+  /// ready", which is true and is exactly the sentence nobody can act on — it
+  /// names a service, when what is missing is a decision only a person can make.
+  Widget? _unfinishedLead(BuildContext context, MountedDevice device) {
+    final (why, action, act) = switch (device.state) {
+      MountedDeviceState.awaitingOutputs => (
+          '这台设备还不能开始对话：你还没决定它可以怎么表达。'
+              '在定下来之前，主机不会给它通道——它自己的屏幕会一直说服务没有就绪。',
+          '决定它可以怎么表达',
+          widget.onSetOutputs == null ? null : _decideOutputs,
+        ),
+      MountedDeviceState.awaitingCompanion => (
+          '这台设备还不能开始对话：还没有哪个 Eidolon 通过它应答。',
+          '指定由谁应答',
+          widget.onBindCompanion == null ? null : _bindCompanion,
+        ),
+      _ => (null, null, null),
+    };
+    if (why == null || act == null) return null;
+    return Card(
+      key: const Key('device-unfinished-lead'),
+      color: Theme.of(context).colorScheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(why),
+            const SizedBox(height: 12),
+            FilledButton(
+              key: const Key('device-unfinished-action'),
+              onPressed: _binding || _removing || _platformRemoved ? null : act,
+              child: Text(action!),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final device = widget.device;
@@ -558,6 +672,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
       MountedDeviceState.awaitingOutputs => '还没定它怎么表达',
       MountedDeviceState.accessRevoked => '已停用，待移除',
     };
+    final lead = _unfinishedLead(context, device);
     return Scaffold(
       key: const Key('mounted-device-detail'),
       appBar: AppBar(
@@ -566,6 +681,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          if (lead != null) ...[lead, const SizedBox(height: 16)],
           Text('设备身份', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Card(
@@ -585,42 +701,13 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
                   title: const Text('挂载 revision'),
                   trailing: Text('${device.mountRevision}'),
                 ),
-                ListTile(
-                  key: const Key('device-companion-binding'),
-                  title: const Text('由谁应答'),
-                  subtitle: Text(
-                    device.attachedCompanionName.isNotEmpty
-                        ? device.attachedCompanionName
-                        : device.attachedCompanionId ?? _quietText(device),
-                  ),
-                  trailing: widget.onBindCompanion == null
-                      ? null
-                      : TextButton(
-                          key: const Key('bind-device-companion'),
-                          onPressed: _binding || _removing || _platformRemoved
-                              ? null
-                              : _bindCompanion,
-                          child: Text(
-                            device.attachedCompanionId == null
-                                ? '指定'
-                                : '更换或解除',
-                          ),
-                        ),
-                ),
-                ListTile(
-                  key: const Key('device-outputs'),
-                  title: const Text('它可以怎么表达'),
-                  subtitle: Text(_outputsText(device.outputs)),
-                  trailing: widget.onSetOutputs == null
-                      ? null
-                      : TextButton(
-                          key: const Key('decide-device-outputs'),
-                          onPressed: _binding || _removing || _platformRemoved
-                              ? null
-                              : _decideOutputs,
-                          child: Text(device.outputs.decided ? '更改' : '设置'),
-                        ),
-                ),
+                // Drawn in the order they unblock the device, not the order
+                // they were built in: until the outputs are decided the Host
+                // gives it no channel, so an Eidolon bound first answers into
+                // nothing and looks like a binding that failed.
+                ...(device.state == MountedDeviceState.awaitingOutputs
+                    ? [_outputsTile(device), _companionTile(device)]
+                    : [_companionTile(device), _outputsTile(device)]),
                 ListTile(
                   title: const Text('最后更新'),
                   subtitle: Text(
@@ -764,7 +851,26 @@ class _OutputsPickerState extends State<_OutputsPicker> {
               value: _chosen[name] ?? false,
               onChanged: (value) => setState(() => _chosen[name] = value),
             ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
+          // Nothing arrives switched on: a pre-ticked box is the system
+          // deciding and asking the Owner to notice, which is the one thing
+          // this decision exists to prevent. Allowing everything is still one
+          // tap, and it is still the Owner who takes it — and it can never
+          // reach past what the device declared, because it only fills in the
+          // switches that are drawn.
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const Key('device-outputs-allow-all'),
+              onPressed: () => setState(() {
+                for (final name in _declared) {
+                  _chosen[name] = true;
+                }
+              }),
+              child: const Text('全部允许'),
+            ),
+          ),
+          const SizedBox(height: 8),
           FilledButton(
             key: const Key('device-outputs-save'),
             onPressed: () => Navigator.of(context).pop(

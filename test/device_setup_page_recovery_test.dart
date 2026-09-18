@@ -35,7 +35,7 @@ void main() {
     expect(admission.recoverCalls, 1);
     expect(find.text('Wi-Fi 已配置，正在接入主机'), findsOneWidget);
     expect(find.text('已批准，等待设备领取接入凭据'), findsOneWidget);
-    expect(find.text('设备已设置完成'), findsNothing);
+    expect(find.text('设备已接入这台主机'), findsNothing);
 
     admission.current = _projection(
       state: 'grant_acknowledged',
@@ -51,10 +51,10 @@ void main() {
     ));
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await _pumpUntil(tester, () => find.text('设备已设置完成').evaluate().isNotEmpty);
+    await _pumpUntil(tester, () => find.text('设备已接入这台主机').evaluate().isNotEmpty);
 
     expect(admission.recoverCalls, 1);
-    expect(find.text('设备已设置完成'), findsOneWidget);
+    expect(find.text('设备已接入这台主机'), findsOneWidget);
     expect(admission.decideCalls, 0);
   });
 
@@ -99,9 +99,9 @@ void main() {
       claimState: 'active',
     );
     await tester.pump(const Duration(seconds: 3));
-    await _pumpUntil(tester, () => find.text('设备已设置完成').evaluate().isNotEmpty);
+    await _pumpUntil(tester, () => find.text('设备已接入这台主机').evaluate().isNotEmpty);
 
-    expect(find.text('设备已设置完成'), findsOneWidget);
+    expect(find.text('设备已接入这台主机'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
     final settled = admission.recoverCalls;
     await tester.pump(const Duration(seconds: 9));

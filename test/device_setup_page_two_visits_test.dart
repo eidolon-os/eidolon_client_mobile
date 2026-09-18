@@ -102,7 +102,7 @@ void main() {
       // Waiting must not reopen SoftAP or need a refresh/approval tap.
       expect(find.text('Wi-Fi 已配置，正在接入主机'), findsOneWidget);
       expect(find.text('等待设备向主机登记，状态会自动更新'), findsOneWidget);
-      expect(find.text('设备已设置完成'), findsNothing);
+      expect(find.text('设备已接入这台主机'), findsNothing);
       expect(admission.decisions, 0);
       await tester.pump(const Duration(seconds: 30));
       expect(transport.opened, 2);
@@ -124,7 +124,7 @@ void main() {
       );
       await tester.pump(const Duration(seconds: 3));
       await tester.pumpAndSettle();
-      expect(find.text('设备已设置完成'), findsOneWidget);
+      expect(find.text('设备已接入这台主机'), findsOneWidget);
       expect(transport.opened, 2);
       expect(transport.sessions.fold<int>(0, (sum, s) => sum + s.writes), 1);
       expect(admission.decisions, 1);

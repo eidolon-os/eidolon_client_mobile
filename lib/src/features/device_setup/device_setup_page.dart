@@ -539,15 +539,25 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         ],
       );
 
+  /// What this screen is allowed to claim: the network and the Claim, and not
+  /// a finished setup.
+  ///
+  /// It used to say 设备已设置完成 and pop. A Companion device at that moment is
+  /// claimed and still unusable — its Owner has not said what it may present,
+  /// so the Host gives it no channel and its own display reads "service is not
+  /// ready". Telling someone the setup is finished and then showing them that
+  /// is how a person concludes the product is broken. What is left is not this
+  /// screen's to list, because whether anything is left depends on what the
+  /// Host says about the device; the caller reads that and takes them there.
   Widget _complete() => Column(
         children: [
           const Icon(Icons.check_circle, size: 64, color: Colors.green),
           const SizedBox(height: 12),
-          const Text('设备已设置完成', textAlign: TextAlign.center),
+          const Text('设备已接入这台主机', textAlign: TextAlign.center),
           const SizedBox(height: 16),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('完成'),
+            child: const Text('继续'),
           ),
         ],
       );
