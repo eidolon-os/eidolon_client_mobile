@@ -103,6 +103,30 @@ void main() {
     expect(prepared.sessionId, 'setup_session_01');
   });
 
+  test('authenticated preparation explicitly permits voucher-free maintenance',
+      () async {
+    final digest = 'a' * 64;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'openProvisioningSession') return descriptorJson();
+      return jsonEncode({
+        'contract_version': '1',
+        'prepared': true,
+        'owner_domain_id': target.ownerDomainId,
+        'device_id': 'device-instance-$digest',
+        'identity_fingerprint': 'sha256:$digest',
+        'requires_voucher': false,
+      });
+    });
+    final session = await build().open(const DeviceProvisioningCandidate(
+      transportId: 'eidolon-test',
+      displayName: 'eidolon-test',
+      transportKind: 'softap',
+      trust: SetupDescriptorTrustV1.developmentTofu,
+    ));
+    expect(session.descriptor.requiresVoucher, isTrue);
+    expect((await session.prepareOwner(target)).requiresVoucher, isFalse);
+  });
+
   test('refuses preparation responses from a different Owner or key', () async {
     for (final wrongOwner in [true, false]) {
       messenger.setMockMethodCallHandler(channel, (call) async {

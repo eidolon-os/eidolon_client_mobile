@@ -64,9 +64,13 @@ class DeviceProvisioningDescriptor {
   const DeviceProvisioningDescriptor({
     required this.setup,
     required this.expiresAt,
+    this.requiresVoucher = true,
   });
 
   final SetupDescriptorV1 setup;
+
+  /// Only an authenticated prepare response may authorize credential reuse.
+  final bool requiresVoucher;
 
   /// When this setup offer stops being valid, or null when it does not end.
   ///

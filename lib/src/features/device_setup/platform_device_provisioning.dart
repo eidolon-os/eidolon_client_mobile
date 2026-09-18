@@ -205,6 +205,7 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
         'identity_fingerprint': 'p256:${fingerprint.substring(7)}',
       }),
       expiresAt: descriptor.expiresAt,
+      requiresVoucher: value['requires_voucher'] != false,
     );
     return descriptor;
   }

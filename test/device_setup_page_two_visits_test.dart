@@ -131,6 +131,50 @@ void main() {
     });
   }
 
+  testWidgets(
+      'same Owner network maintenance reuses admission without a voucher',
+      (tester) async {
+    const channel = MethodChannel('live.eidolon.mobile/platform');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        (call) async =>
+            call.method == 'verifyOwnerDomainDescriptor' ? true : null);
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null));
+    final transport = _Transport()..requiresVoucher = false;
+    final admission = _Admission(transport)
+      ..current = canonicalProjection(
+        state: 'grant_acknowledged',
+        ownerDomainId: ownerDomainIdFixture,
+        deviceId: 'device-instance-${'a' * 64}',
+        withDecision: true,
+        withDelivery: true,
+        claimState: 'active',
+        claimOwnerDomainGeneration: 1,
+      );
+    await tester.pumpWidget(MaterialApp(
+        home: DeviceSetupPage(
+      transport: transport,
+      admission: admission,
+      checkpoints: InMemoryDeviceSetupCheckpointStore(),
+      loadTarget: () async => deviceOnboardingTargetFixture(),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查找设备'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await tester.pumpAndSettle();
+    expect(admission.sessionsOpenWhenAsked, isEmpty);
+    await tester.tap(find.byKey(const Key('network-owner-wifi')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirm-device-setup')));
+    await tester.pumpAndSettle();
+    expect(transport.sessions.last.sentVoucher, isNull);
+    expect(transport.sessions.last.writes, 1);
+    expect(admission.decisions, 0);
+    expect(find.text('设备已接入这台主机'), findsOneWidget);
+  });
+
   testWidgets('the Host is asked only while no session is held',
       (tester) async {
     final transport = _Transport();
@@ -219,6 +263,7 @@ class _Admission implements DeviceAdmissionPort {
 }
 
 class _Transport implements DeviceProvisioningTransport {
+  bool requiresVoucher = true;
   final List<_Session> sessions = [];
   int opened = 0;
   Future<void>? configurationGate;
@@ -243,7 +288,9 @@ class _Transport implements DeviceProvisioningTransport {
     DeviceProvisioningCandidate candidate,
   ) async {
     opened += 1;
-    final session = _Session()..configurationGate = configurationGate;
+    final session = _Session()
+      ..configurationGate = configurationGate
+      ..requiresVoucher = requiresVoucher;
     sessions.add(session);
     return session;
   }
@@ -253,6 +300,8 @@ class _Transport implements DeviceProvisioningTransport {
 }
 
 class _Session implements DeviceProvisioningSession {
+  bool requiresVoucher = true;
+  String? sentVoucher;
   Future<void>? configurationGate;
   int writes = 0;
   bool prepared = false;
@@ -267,6 +316,7 @@ class _Session implements DeviceProvisioningSession {
         'identity_fingerprint': 'p256:${'a' * 64}',
       }),
       expiresAt: descriptor.expiresAt,
+      requiresVoucher: requiresVoucher,
     );
   }
 
@@ -304,6 +354,7 @@ class _Session implements DeviceProvisioningSession {
     required String collectCommandId,
     required String ackCommandId,
   }) async {
+    sentVoucher = onboardingTarget.commissioningVoucher;
     writes += 1;
     await configurationGate;
     return const CommissioningStatusEvidenceV1(

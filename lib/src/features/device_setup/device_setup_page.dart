@@ -189,7 +189,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         // present is signed between them, for the key it just showed us.
         if (!mounted) return;
         setState(() => _progress = '正在向主机取得这台设备的准入凭据');
-        final voucher = await _issueVoucher(descriptor);
+        final voucher =
+            descriptor.requiresVoucher ? await _issueVoucher(descriptor) : null;
         if (!mounted) return;
         setState(() {
           _candidate = candidate;
@@ -242,7 +243,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         throw Exception('还没有读到这台 Host 的信息,请退回上一步重新查找设备。');
       }
       final voucher = _voucher;
-      if (voucher == null) {
+      if (voucher == null && (_descriptor?.requiresVoucher ?? true)) {
         throw Exception('还没有这台设备的准入凭据,请退回上一步重新选择设备。');
       }
       _activeSetupId ??= _uuidV4();

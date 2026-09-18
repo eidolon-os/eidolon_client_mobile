@@ -134,7 +134,7 @@ class DeviceSetupCoordinator {
     /// the device's own network, where the Host is not reachable at all — the
     /// same ordering the Host target is read under, and the same failure if it
     /// is ignored: an 8-second timeout at the one moment the device is ready.
-    required CommissioningVoucher voucher,
+    CommissioningVoucher? voucher,
     String? companionId,
   }) async {
     return _run(
@@ -156,7 +156,7 @@ class DeviceSetupCoordinator {
     required DeviceProvisioningCandidate candidate,
     required DeviceWifiCredentials credentials,
     required DeviceOnboardingTarget onboardingTarget,
-    required CommissioningVoucher voucher,
+    CommissioningVoucher? voucher,
     String? companionId,
   }) async {
     final saved = await checkpoints.load(setupId);
@@ -211,9 +211,9 @@ class DeviceSetupCoordinator {
       await _save(checkpoint);
       final evidence = await session.configureNetwork(
         credentials: credentials,
-        onboardingTarget: onboardingTarget.withCommissioningVoucher(
-          voucher.voucher,
-        ),
+        onboardingTarget: voucher == null
+            ? onboardingTarget
+            : onboardingTarget.withCommissioningVoucher(voucher.voucher),
         createCommandId: checkpoint.createCommandId,
         collectCommandId: checkpoint.collectCommandId,
         ackCommandId: checkpoint.ackCommandId,
