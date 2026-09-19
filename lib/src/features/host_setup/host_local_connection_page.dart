@@ -1147,13 +1147,13 @@ class _WorkspaceCard extends StatelessWidget {
       parts.add('已设置默认应答伙伴');
     }
 
+    // How many is on the badge at the end of this row, so it is not repeated
+    // here. What is left for this line is who answers, and the one thing that
+    // is still in motion. The line used to end in 「N 位没有运行」 — a count of
+    // Eidolons the Agent process was not holding in memory, which named a
+    // number nothing was wrong with and nothing could change.
     if (home.companionCounts.waiting > 0) {
       parts.add('${home.companionCounts.waiting} 位正在准备');
-    } else if (home.companionCounts.total > 1) {
-      // How many, once there is more than one. The card used to count Eidolons
-      // the Agent process was not holding in memory — 「N 位没有运行」 — which
-      // named a number nothing was wrong with and nothing could change.
-      parts.add('共 ${home.companionCounts.total} 位');
     }
     return parts.join(' · ');
   }

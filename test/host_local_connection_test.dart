@@ -1312,7 +1312,9 @@ void main() {
     // Exact, so the card's summary line is pinned rather than merely present.
     // It used to end in 「N 位没有运行」 — a count of Eidolons the Agent process
     // did not happen to be holding, which nothing on this screen could change.
-    expect(find.text('默认应答：小忆 · 共 2 位'), findsOneWidget);
+    // How many is the badge's job, and this line does not say it twice.
+    expect(find.text('默认应答：小忆'), findsOneWidget);
+    expect(find.text('2 位'), findsOneWidget);
     expect(find.text('阿力'), findsNothing);
     expect(
       find.byKey(const Key('home-companion-companion_primary')),
