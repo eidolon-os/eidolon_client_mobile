@@ -211,8 +211,16 @@ class HostHome {
   /// ask whether it was the promoted one. A newly created Eidolon is not
   /// necessarily the one that answers, and treating that as a mismatch refused
   /// to show a person their own Host.
+  ///
+  /// A roster nobody could read is not a roster that disagrees. Without
+  /// [companionsUnread] here, a Host whose Companion authority was down failed
+  /// the membership test on an empty list and the whole answer was refused —
+  /// under a sentence saying the Host named a different Eidolon, which it had
+  /// not: it had named none. There is nothing to be wrong about in that state,
+  /// because no Companion is shown at all; the row says it could not be read.
   bool answersFor(String? companionId) =>
       companionId == null ||
+      companionsUnread ||
       companions.any((row) => row.companionId == companionId);
 }
 

@@ -231,6 +231,27 @@ void main() {
       expect(home().moreCompanions, isFalse);
     });
 
+    test('a roster nobody could read is not a roster that disagrees', () {
+      // The membership guard in front of this answer asks whether the Eidolon
+      // this device helped create is among the rows. An empty list fails that
+      // test, so a Host whose Companion authority was down had its whole home
+      // refused — under 「主机说的伙伴与刚刚建好的不是同一个」, which the Host
+      // had not said: it had named none at all. It also put that refusal in
+      // front of the row that would have said so honestly.
+      final unread = home(
+        companions: const [],
+        unavailable: const {'companions': 'companion authority is away'},
+      );
+
+      expect(unread.answersFor('c-a'), isTrue);
+    });
+
+    test('a roster that was read and really disagrees is still refused', () {
+      // The other half: the guard exists so this device cannot put somebody
+      // else's Companion behind this person's name, and that has to survive.
+      expect(home().answersFor('c-somebody-else'), isFalse);
+    });
+
     test('a part that was read is not reported as missing', () {
       final whole = home();
 
