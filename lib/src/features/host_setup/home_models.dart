@@ -157,9 +157,29 @@ class HostHome {
   /// Which parts the Host could not read, and why. A screen shows what it got
   /// and says this much is unknown — a blank with no explanation cannot be told
   /// from a blank that is true.
+  ///
+  /// The values are the Host's own diagnostic sentences and are not rendered:
+  /// what a screen needs is *which* part is missing, and it says that in its
+  /// own words. The keys are the Host's names for the five reads this answer
+  /// is composed from.
   final Map<String, String> unavailable;
 
   bool get sawEverything => unavailable.isEmpty;
+
+  /// True when nobody could read this Owner's roster.
+  ///
+  /// [companions] and [companionCounts] are then empty because the Host could
+  /// not look, not because there is nothing to find. A screen that cannot tell
+  /// those apart shows 「还没有伙伴，去新建第一位」 to somebody who has three —
+  /// which is not only wrong but an invitation to do the wrong thing.
+  bool get companionsUnread => unavailable.containsKey('companions');
+
+  /// True when nobody could read the Owner's memory.
+  ///
+  /// [memory] is then empty for the same reason, and 「还没记下什么」 in front of
+  /// a person whose Eidolon has been remembering for months is the same mistake
+  /// in a more reassuring voice.
+  bool get memoryUnread => unavailable.containsKey('memory');
 
   /// The Eidolon that replies when nobody was named, if this answer lists it.
   HostCompanion? get answering {
@@ -183,4 +203,60 @@ class HostHome {
   bool answersFor(String? companionId) =>
       companionId == null ||
       companions.any((row) => row.companionId == companionId);
+}
+
+/// What the 你的伙伴 row says under its name.
+///
+/// Read order matters and it is not the obvious one. A roster nobody could read
+/// arrives as an empty list and a zero count — the same shape as an Owner who
+/// genuinely has none — so the unread case is answered first. Getting that
+/// backwards put 「还没有伙伴，去新建第一位」 in front of people with three of
+/// them: not only a false statement but an invitation to act on it.
+///
+/// How many is the row's badge, and this line does not repeat it. What is left
+/// is who answers when nobody was named, and the one thing still in motion.
+String companionsSummaryLine(HostHome? home) {
+  if (home == null) return '查看、新建和管理你的伙伴';
+  if (home.companionsUnread) return '这台主机这次没能读到你的伙伴';
+  if (home.companionCounts.total == 0) return '还没有伙伴，去新建第一位';
+
+  final parts = <String>[];
+  final answering = home.answering;
+  if (answering != null) {
+    final name =
+        answering.displayName.isEmpty ? '未命名伙伴' : answering.displayName;
+    parts.add('默认应答：$name');
+  } else if (home.defaultCompanionId == null) {
+    parts.add('尚未设置默认应答伙伴');
+  } else {
+    parts.add('已设置默认应答伙伴');
+  }
+  if (home.companionCounts.waiting > 0) {
+    parts.add('${home.companionCounts.waiting} 位正在准备');
+  }
+  return parts.join(' · ');
+}
+
+/// What the 你的记忆 row says under its name.
+///
+/// The words for what is in there are the Host's. It already says 「还没记下什么」
+/// for a memory nothing has been written into, and a second copy of that
+/// sentence on this side would be a second place for it to drift. What this
+/// adds is where it lives, and the one thing the Host's sentence cannot carry:
+/// that there was no sentence.
+///
+/// An empty summary and a declared failure are treated the same way, because
+/// the Host only leaves the summary empty when the read failed. A blank that
+/// arrived without being declared is still a blank nobody can vouch for, and
+/// 「还没记下什么」 over it would be inventing an answer on the one screen a
+/// person opens to check their memory is still there.
+///
+/// [failed] distinguishes the two ways there is no answer yet at all: a read
+/// still in flight, and one that came back refused.
+String memorySummaryLine(HostHome? home, {required bool failed}) {
+  if (home == null) return failed ? '暂时无法读取记忆概览' : '正在读取记忆概览';
+  if (home.memoryUnread || home.memory.isEmpty) {
+    return '这台主机这次没能读到记忆概览';
+  }
+  return '${home.memory}，留在这台主机上，没有离开过';
 }

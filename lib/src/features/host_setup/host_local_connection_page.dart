@@ -1131,33 +1131,6 @@ class _WorkspaceCard extends StatelessWidget {
         companionDisplayName: companionName.text,
       );
 
-  String _companionSummary(HostHome? home) {
-    if (home == null) return '查看、新建和管理你的伙伴';
-    if (home.companionCounts.total == 0) return '还没有伙伴，去新建第一位';
-
-    final parts = <String>[];
-    final answering = home.answering;
-    if (answering != null) {
-      final name =
-          answering.displayName.isEmpty ? '未命名伙伴' : answering.displayName;
-      parts.add('默认应答：$name');
-    } else if (home.defaultCompanionId == null) {
-      parts.add('尚未设置默认应答伙伴');
-    } else {
-      parts.add('已设置默认应答伙伴');
-    }
-
-    // How many is on the badge at the end of this row, so it is not repeated
-    // here. What is left for this line is who answers, and the one thing that
-    // is still in motion. The line used to end in 「N 位没有运行」 — a count of
-    // Eidolons the Agent process was not holding in memory, which named a
-    // number nothing was wrong with and nothing could change.
-    if (home.companionCounts.waiting > 0) {
-      parts.add('${home.companionCounts.waiting} 位正在准备');
-    }
-    return parts.join(' · ');
-  }
-
   Widget _buildReady(BuildContext context, WorkspaceStatus workspace) {
     final home = controller.home;
     return Card(
@@ -1203,9 +1176,12 @@ class _WorkspaceCard extends StatelessWidget {
               openTooltip: '打开你的伙伴',
               icon: Icons.groups_2_outlined,
               label: '你的伙伴',
-              statusLabel:
-                  home == null ? '可查看' : '${home.companionCounts.total} 位',
-              detail: _companionSummary(home),
+              statusLabel: switch (home) {
+                null => '可查看',
+                _ when home.companionsUnread => '读不到',
+                _ => '${home.companionCounts.total} 位',
+              },
+              detail: companionsSummaryLine(home),
             ),
             _WorkspaceResourceStatus(
               key: const Key('memory-library-row'),
@@ -1222,7 +1198,14 @@ class _WorkspaceCard extends StatelessWidget {
               // about this Host's memory service; the old label read
               // 「有没有默认伙伴」 and printed 运行中, which was a guess about a
               // different thing entirely.
-              statusLabel: memoryHold == null ? '可查看' : '暂不可用',
+              // Three different reasons a person cannot read this, and they
+              // lead to different places: this Host cannot do memory at all,
+              // this read did not come back, or it did and you can open it.
+              statusLabel: switch ((memoryHold, home)) {
+                (final hold?, _) when hold.isNotEmpty => '暂不可用',
+                (_, final answer?) when answer.memoryUnread => '读不到',
+                _ => '可查看',
+              },
               // Not the realm identifier. That line was the only thing this
               // row ever said, and it named a thing an Owner cannot open,
               // search or act on — an identifier standing in for the fact
@@ -1230,11 +1213,10 @@ class _WorkspaceCard extends StatelessWidget {
               // What it actually holds when the Host could say, and an honest
               // placeholder when it could not: a memory nothing has been
               // written into yet is a real and ordinary state.
-              detail: home == null
-                  ? (controller.homeError != null ? '暂时无法读取记忆概览' : '正在读取记忆概览')
-                  : home.memory.isNotEmpty
-                      ? '${home.memory}，留在这台主机上，没有离开过'
-                      : '还没记下什么，留在这台主机上，没有离开过',
+              detail: memorySummaryLine(
+                home,
+                failed: controller.homeError != null,
+              ),
             ),
             if (controller.homeError case final error?) ...[
               const SizedBox(height: 12),
