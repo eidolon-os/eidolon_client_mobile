@@ -319,7 +319,6 @@ class CompanionDetailView {
     required this.kind,
     this.lastActiveAt,
     required this.lifecycleState,
-    this.personaChapter,
     required this.revision,
   });
 
@@ -339,8 +338,6 @@ class CompanionDetailView {
 
   final String lifecycleState;
 
-  final String? personaChapter;
-
   final int revision;
 
   factory CompanionDetailView.fromJson(Map<String, dynamic> value) {
@@ -353,7 +350,6 @@ class CompanionDetailView {
       kind: value['kind'] as String,
       lastActiveAt: value['last_active_at'] as String?,
       lifecycleState: value['lifecycle_state'] as String,
-      personaChapter: value['persona_chapter'] as String?,
       revision: value['revision'] as int,
     );
   }
@@ -369,7 +365,6 @@ class CompanionDetailView {
       'kind': kind,
       if (lastActiveAt != null) 'last_active_at': lastActiveAt,
       'lifecycle_state': lifecycleState,
-      if (personaChapter != null) 'persona_chapter': personaChapter,
       'revision': revision,
     };
   }
@@ -1447,6 +1442,7 @@ class HomeView {
     required this.devices,
     this.machineAttention,
     this.memory,
+    this.moreCompanions,
     this.ownerDisplayName,
     required this.ownerRevision,
     this.unavailable,
@@ -1467,6 +1463,8 @@ class HomeView {
   final List<String>? machineAttention;
 
   final String? memory;
+
+  final bool? moreCompanions;
 
   final String? ownerDisplayName;
 
@@ -1500,6 +1498,7 @@ class HomeView {
                 .map((entry) => entry as String)
                 .toList()),
       memory: value['memory'] as String?,
+      moreCompanions: value['more_companions'] as bool?,
       ownerDisplayName: value['owner_display_name'] as String?,
       ownerRevision: value['owner_revision'] as int,
       unavailable: value['unavailable'] == null
@@ -1523,6 +1522,7 @@ class HomeView {
       'devices': devices.toJson(),
       if (machineAttention != null) 'machine_attention': machineAttention,
       if (memory != null) 'memory': memory,
+      if (moreCompanions != null) 'more_companions': moreCompanions,
       if (ownerDisplayName != null) 'owner_display_name': ownerDisplayName,
       'owner_revision': ownerRevision,
       if (unavailable != null) 'unavailable': unavailable,

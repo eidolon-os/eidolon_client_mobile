@@ -26,6 +26,7 @@ void main() {
     String activityUnavailable = '',
     String memory = '记着 42 条',
     Map<String, String> unavailable = const {},
+    bool moreCompanions = false,
   }) {
     final rows = companions ??
         [
@@ -69,6 +70,7 @@ void main() {
         },
         'devices': {'total': 0, 'ready': 0, 'waiting': 0, 'put_away': 0},
         'machine_attention': <String>[],
+        'more_companions': moreCompanions,
         'unavailable': unavailable,
       }),
     );
@@ -213,6 +215,20 @@ void main() {
     test('nothing read yet is told apart from a read that came back refused', () {
       expect(memorySummaryLine(null, failed: false), '正在读取记忆概览');
       expect(memorySummaryLine(null, failed: true), '暂时无法读取记忆概览');
+    });
+
+    test('a page of the roster is not reported as the whole of it', () {
+      // The home reads one page. Counting it and printing the number as a
+      // total tells anybody past the page boundary that the page size is how
+      // many Eidolons they have — and it never grows again to say otherwise.
+      final page = home(moreCompanions: true);
+
+      expect(page.moreCompanions, isTrue);
+      expect(page.companionCounts.total, 2, reason: 'what this answer carries');
+    });
+
+    test('a roster that fits does not look truncated', () {
+      expect(home().moreCompanions, isFalse);
     });
 
     test('a part that was read is not reported as missing', () {

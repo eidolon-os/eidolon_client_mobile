@@ -1179,6 +1179,11 @@ class _WorkspaceCard extends StatelessWidget {
               statusLabel: switch (home) {
                 null => '可查看',
                 _ when home.companionsUnread => '读不到',
+                // What this answer carries, and whether it is all of them. The
+                // home reads one page of the roster, so an unqualified number
+                // here told anybody past that page the page size was their
+                // total — a count that stops growing without saying it stopped.
+                _ when home.moreCompanions => '${home.companionCounts.total}+ 位',
                 _ => '${home.companionCounts.total} 位',
               },
               detail: companionsSummaryLine(home),

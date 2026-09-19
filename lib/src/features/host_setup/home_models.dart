@@ -103,6 +103,7 @@ class HostHome {
     required this.companions,
     required this.defaultCompanionId,
     required this.activityUnavailable,
+    required this.moreCompanions,
     required this.memory,
     required this.companionCounts,
     required this.devices,
@@ -119,6 +120,7 @@ class HostHome {
         ],
         defaultCompanionId: view.defaultCompanionId,
         activityUnavailable: view.activityUnavailable ?? '',
+        moreCompanions: view.moreCompanions ?? false,
         memory: view.memory ?? '',
         companionCounts: HostHomeCounts.fromView(view.companionCounts),
         devices: HostHomeCounts.fromView(view.devices),
@@ -148,6 +150,15 @@ class HostHome {
   final String memory;
 
   final HostHomeCounts companionCounts;
+
+  /// Whether this Owner has more Eidolons than [companions] carries.
+  ///
+  /// The home is one page of the roster and [companionCounts] counts the page,
+  /// so a screen that printed the total without this said the page size was how
+  /// many somebody has. This answer cannot be paged — the list screen is where
+  /// the rest are — so what arrives is the fact, not a cursor.
+  final bool moreCompanions;
+
   final HostHomeCounts devices;
 
   /// What the Host said needs attention, already phrased on that side. Empty
