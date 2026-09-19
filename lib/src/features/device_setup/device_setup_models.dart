@@ -4,6 +4,16 @@ import '../../generated/management_v1.dart';
 
 import '../../generated/device_foundation_v1.dart';
 
+class DeviceProvisioningTransportException implements Exception {
+  const DeviceProvisioningTransportException(this.code, this.message);
+
+  final String code;
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 enum DeviceProvisioningState {
   notStarted,
   discovering,

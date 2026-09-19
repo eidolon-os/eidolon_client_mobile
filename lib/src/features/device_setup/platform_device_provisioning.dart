@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../generated/device_foundation_v1.dart';
 import 'device_setup_models.dart';
+export 'device_setup_models.dart' show DeviceProvisioningTransportException;
 import 'device_setup_ports.dart';
 
 /// The provisioning transport as this app actually speaks it.
@@ -15,16 +16,6 @@ import 'device_setup_ports.dart';
 /// not to the contract: a device class that speaks something else is another
 /// adapter beside this one, and nothing above has to learn about it.
 ///
-class DeviceProvisioningTransportException implements Exception {
-  const DeviceProvisioningTransportException(this.code, this.message);
-
-  final String code;
-  final String message;
-
-  @override
-  String toString() => message;
-}
-
 class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
   PlatformDeviceProvisioning({
     MethodChannel? channel,

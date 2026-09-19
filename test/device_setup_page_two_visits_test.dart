@@ -20,6 +20,27 @@ import 'support/admission_fixtures.dart';
 /// then failed. So the session must be closed before the Host is asked, and
 /// re-opened afterwards to hand over what the Host said.
 void main() {
+  testWidgets('Owner preparation refusal remains visible and releases the session',
+      (tester) async {
+    final transport = _Transport()..preparationFailure =
+        const DeviceProvisioningTransportException('owner_preparation_failed',
+            '设备尚未完成归属准备，请保持配置连接后重试。');
+    await tester.pumpWidget(MaterialApp(home: DeviceSetupPage(
+      transport: transport,
+      admission: _Admission(transport),
+      checkpoints: InMemoryDeviceSetupCheckpointStore(),
+      loadTarget: () async => deviceOnboardingTargetFixture(),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查找设备'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await tester.pumpAndSettle();
+    expect(find.text('设备尚未完成归属准备，请保持配置连接后重试。'), findsOneWidget);
+    expect(find.text('这台手机没能完成这次操作。'), findsNothing);
+    expect(transport.sessions.single.closed, isTrue);
+  });
+
   for (final restart in [false, true]) {
     testWidgets(
         'duplicate confirmation converges without replay (restart: $restart)',
@@ -263,6 +284,7 @@ class _Admission implements DeviceAdmissionPort {
 }
 
 class _Transport implements DeviceProvisioningTransport {
+  Object? preparationFailure;
   bool requiresVoucher = true;
   final List<_Session> sessions = [];
   int opened = 0;
@@ -290,6 +312,7 @@ class _Transport implements DeviceProvisioningTransport {
     opened += 1;
     final session = _Session()
       ..configurationGate = configurationGate
+      ..preparationFailure = preparationFailure
       ..requiresVoucher = requiresVoucher;
     sessions.add(session);
     return session;
@@ -300,6 +323,7 @@ class _Transport implements DeviceProvisioningTransport {
 }
 
 class _Session implements DeviceProvisioningSession {
+  Object? preparationFailure;
   bool requiresVoucher = true;
   String? sentVoucher;
   Future<void>? configurationGate;
@@ -308,6 +332,7 @@ class _Session implements DeviceProvisioningSession {
   @override
   Future<DeviceProvisioningDescriptor> prepareOwner(
       DeviceOnboardingTarget target) async {
+    if (preparationFailure != null) throw preparationFailure!;
     prepared = true;
     return DeviceProvisioningDescriptor(
       setup: SetupDescriptorV1.fromJson({

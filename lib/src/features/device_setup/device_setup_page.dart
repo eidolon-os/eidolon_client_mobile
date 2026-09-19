@@ -124,7 +124,11 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     } catch (error) {
       if (mounted) {
         setState(() {
-          _error = failureSentence(error);
+          _error = switch (error) {
+            DeviceProvisioningTransportException failure => failure.message,
+            DeviceSetupException failure => failure.message,
+            _ => failureSentence(error),
+          };
           _progress = null;
           if (_step == _Step.working &&
               error is DeviceSetupException &&
