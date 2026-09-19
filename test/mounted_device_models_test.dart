@@ -163,12 +163,12 @@ void main() {
     expect(device.detail, _deviceId);
   });
 
-  test('online is whatever the Host said, and it says unknown', () {
-    // Never inferred here: an active Claim and a live mount both say the device
-    // is *known*, and neither says it is switched on.
-    final device = _inventory().devices.single;
+  test('what this list does not cover comes from the Host, not from here', () {
+    // Relayed rather than restated. Two copies of this sentence lived on this
+    // side and both had gone stale about presence — which is decided neither
+    // here nor in a screen's string literal.
+    final inventory = _inventory();
 
-    expect(device.online, 'unknown');
-    expect(device.onlineReason, isNotEmpty);
+    expect(inventory.coverage, isNotEmpty);
   });
 }

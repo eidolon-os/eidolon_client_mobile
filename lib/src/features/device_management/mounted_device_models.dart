@@ -88,8 +88,6 @@ class MountedDevice {
     required this.revision,
     required this.mountRevision,
     required this.updatedAt,
-    required this.online,
-    required this.onlineReason,
     required this.claimState,
     required this.claimGeneration,
     required this.trustEpoch,
@@ -134,8 +132,6 @@ class MountedDevice {
         revision: view.revision,
         mountRevision: view.mountRevision,
         updatedAt: DateTime.tryParse(view.updatedAt)?.toUtc(),
-        online: view.online ?? 'unknown',
-        onlineReason: view.onlineReason ?? '',
         claimState: view.claimState,
         claimGeneration: view.claimGeneration,
         trustEpoch: view.trustEpoch,
@@ -173,11 +169,6 @@ class MountedDevice {
   /// wrong, and it is a different number from the one above.
   final int mountRevision;
   final DateTime? updatedAt;
-
-  /// Always `unknown` today. Nothing on the Host observes presence, and this
-  /// app must not read an active Claim or a live mount as "switched on".
-  final String online;
-  final String onlineReason;
 
   /// The canonical facts, kept for the technical corner of a screen: they are
   /// what a person will be asked for when something is wrong.

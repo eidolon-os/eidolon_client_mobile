@@ -154,7 +154,7 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const _InventoryMeaningCard(),
+          _InventoryMeaningCard(coverage: inventory?.coverage ?? ''),
           if (controller.devicesError case final error?) ...[
             const SizedBox(height: 16),
             Card(
@@ -230,27 +230,38 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
   }
 }
 
+/// What this list does not include, in the Host's own words.
+///
+/// Relayed rather than restated. The Host composes this sentence beside the
+/// list it describes, and the copy that used to be written here drifted from it
+/// — both halves of what they said about presence had gone stale by the time
+/// anybody noticed, because neither one was where the answer is decided.
+///
+/// Absent until there is a sentence: before the list arrives there is nothing
+/// to be misread, and an empty card is not a caveat.
 class _InventoryMeaningCard extends StatelessWidget {
-  const _InventoryMeaningCard();
+  const _InventoryMeaningCard({required this.coverage});
+
+  final String coverage;
 
   @override
-  Widget build(BuildContext context) => const Card(
-        child: Padding(
-          padding: EdgeInsets.all(18),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.verified_outlined),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  '这里仅显示由主机权威确认挂载到当前 Owner 的设备。配网完成但尚未安全认领的设备不会出现在这里。',
+  Widget build(BuildContext context) => coverage.isEmpty
+      ? const SizedBox.shrink()
+      : Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.verified_outlined),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(coverage, key: const Key('device-coverage')),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      );
+        );
 }
 
 class _MountedDeviceCard extends StatelessWidget {
@@ -721,7 +732,13 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
           ),
           const SizedBox(height: 12),
           const Text(
-            '这里展示主机权威确认的挂载关系，不代表设备当前在线。在线状态需要独立的运行时遥测投影。',
+            // About this page, and only what is true of it. The sentence here
+            // used to add that nothing on this Host observes presence, which
+            // stopped being exactly right: the channel provider knows which
+            // bodies are on a channel. That is "in a call", not "switched on",
+            // so this page still cannot say — and no longer says anything
+            // about what the rest of the Host can see.
+            '这些是主机权威确认的挂载关系，不是设备此刻的状态：这台主机不观测设备有没有通电。',
           ),
           const SizedBox(height: 24),
           if (_notice case final notice?) ...[

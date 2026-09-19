@@ -1109,8 +1109,6 @@ class DeviceView {
     this.manifestId,
     this.manifestRevision,
     required this.mountRevision,
-    this.online,
-    this.onlineReason,
     required this.outputs,
     required this.ownerDomainGeneration,
     this.quietBecause,
@@ -1140,10 +1138,6 @@ class DeviceView {
 
   final int mountRevision;
 
-  final String? online;
-
-  final String? onlineReason;
-
   final DeviceOutputsView outputs;
 
   final int ownerDomainGeneration;
@@ -1170,8 +1164,6 @@ class DeviceView {
       manifestId: value['manifest_id'] as String?,
       manifestRevision: value['manifest_revision'] as int?,
       mountRevision: value['mount_revision'] as int,
-      online: value['online'] as String?,
-      onlineReason: value['online_reason'] as String?,
       outputs: DeviceOutputsView.fromJson(
         value['outputs'] as Map<String, dynamic>,
       ),
@@ -1198,8 +1190,6 @@ class DeviceView {
       if (manifestId != null) 'manifest_id': manifestId,
       if (manifestRevision != null) 'manifest_revision': manifestRevision,
       'mount_revision': mountRevision,
-      if (online != null) 'online': online,
-      if (onlineReason != null) 'online_reason': onlineReason,
       'outputs': outputs.toJson(),
       'owner_domain_generation': ownerDomainGeneration,
       if (quietBecause != null) 'quiet_because': quietBecause,

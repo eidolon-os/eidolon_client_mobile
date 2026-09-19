@@ -170,7 +170,9 @@ Map<String, dynamic> _workspaceRuntime() => {
 
 Map<String, dynamic> _deviceInventory({bool withReadyDevice = false}) => {
       'contract_version': '1',
-      'coverage': '只包含已经属于你的设备。',
+      // The Host's own sentence about what this list leaves out. The screen
+      // relays it; it used to write its own copy, which drifted.
+      'coverage': '只包含已经属于你的设备。还在等你确认的设备是另一份清单。',
       'devices': withReadyDevice
           ? [
               {
@@ -1123,7 +1125,8 @@ void main() {
     // the tail of the identifier, which is at least something to read out.
     expect(find.textContaining('revision 2'), findsNothing);
     expect(find.textContaining('waveshare-1'), findsWidgets);
-    expect(find.textContaining('尚未安全认领'), findsOneWidget);
+    // Relayed from the Host, not a literal in the screen.
+    expect(find.textContaining('还在等你确认的设备是另一份清单'), findsOneWidget);
 
     await tester.tap(
       find.byKey(const Key('mounted-device-device-waveshare-1')),
@@ -1134,7 +1137,11 @@ void main() {
     // it is — that was the last screen naming a thing after its own machinery.
     expect(find.text('设备详情'), findsNothing);
     expect(find.byKey(const Key('mounted-device-detail')), findsOneWidget);
-    expect(find.textContaining('不代表设备当前在线'), findsOneWidget);
+    // What this page is and is not. It no longer claims that nothing on this
+    // Host observes presence — the channel provider does, for a narrower
+    // question than this page would be read as answering.
+    expect(find.textContaining('不是设备此刻的状态'), findsOneWidget);
+    expect(find.textContaining('运行时遥测投影'), findsNothing);
   });
 
   testWidgets('initialization completes on the home without redoing claim',
