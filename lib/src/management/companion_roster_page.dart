@@ -31,9 +31,11 @@ class CompanionRosterPage extends StatelessWidget {
     this.refusal,
     this.onAdd,
     this.notice,
+    this.resumingCreation = false,
   });
 
   final CompanionRosterView roster;
+  final bool resumingCreation;
 
   /// Opening one is a later slice; null while nothing is behind the tap.
   final void Function(CompanionSummaryView companion)? onOpen;
@@ -86,7 +88,8 @@ class CompanionRosterPage extends StatelessWidget {
               content: Text(notice!),
               actions: const [SizedBox.shrink()],
             ),
-          _RosterSummary(roster: roster, onAdd: onAdd),
+          _RosterSummary(
+              roster: roster, onAdd: onAdd, resumingCreation: resumingCreation),
           Expanded(child: _list(rows)),
         ],
       ),
@@ -145,9 +148,13 @@ class CompanionRosterPage extends StatelessWidget {
 }
 
 class _RosterSummary extends StatelessWidget {
-  const _RosterSummary({required this.roster, required this.onAdd});
+  const _RosterSummary(
+      {required this.roster,
+      required this.onAdd,
+      required this.resumingCreation});
 
   final CompanionRosterView roster;
+  final bool resumingCreation;
   final VoidCallback? onAdd;
 
   String get _defaultLine {
@@ -214,7 +221,7 @@ class _RosterSummary extends StatelessWidget {
                     key: const Key('roster-add'),
                     onPressed: onAdd,
                     icon: const Icon(Icons.person_add_alt_1_outlined),
-                    label: const Text('新建伙伴'),
+                    label: Text(resumingCreation ? '继续确认创建' : '新建伙伴'),
                   ),
                 ],
               ],
@@ -281,7 +288,8 @@ class _RosterRow extends StatelessWidget {
               if (!isCompanionActive(companion.lifecycleState))
                 Chip(
                   key: Key('roster-state-${companion.companionId}'),
-                  label: Text(companionLifecycleLabel(companion.lifecycleState)),
+                  label:
+                      Text(companionLifecycleLabel(companion.lifecycleState)),
                   visualDensity: VisualDensity.compact,
                 ),
               if (_stateSentence case final sentence?) Text(sentence),

@@ -144,6 +144,7 @@ class AuthoringProse extends StatelessWidget {
     this.help,
     this.minLines = 3,
     this.fieldKey,
+    this.onChanged,
   });
 
   final String label;
@@ -151,6 +152,7 @@ class AuthoringProse extends StatelessWidget {
   final TextEditingController controller;
   final int minLines;
   final Key? fieldKey;
+  final VoidCallback? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -172,6 +174,7 @@ class AuthoringProse extends StatelessWidget {
         TextField(
           key: fieldKey,
           controller: controller,
+          onChanged: (_) => onChanged?.call(),
           minLines: minLines,
           maxLines: null,
           keyboardType: TextInputType.multiline,

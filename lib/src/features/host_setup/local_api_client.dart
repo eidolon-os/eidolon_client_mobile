@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:http/http.dart' as http;
 
 import '../../generated/device_foundation_v1.dart';
+import '../../generated/management_v1.dart';
 import '../device_setup/device_setup_models.dart';
 import '../setup/controller_key_bridge.dart';
 import '../setup/setup_trust.dart';
@@ -164,6 +165,9 @@ class LocalApiClient {
     required String accessToken,
     required String ownerDisplayName,
     required String companionDisplayName,
+    PersonaAuthoring? persona,
+    ConversationPreferences? preferences,
+    PersonaPreset? sourcePreset,
   }) async {
     final response = await _httpClient
         .put(
@@ -172,6 +176,12 @@ class LocalApiClient {
           body: jsonEncode({
             'owner_display_name': ownerDisplayName,
             'companion_display_name': companionDisplayName,
+            if (persona != null) 'persona': persona.toJson(),
+            if (preferences != null) 'preferences': preferences.toJson(),
+            if (sourcePreset != null) ...{
+              'source_preset_id': sourcePreset.presetId,
+              'source_preset_revision': sourcePreset.revision,
+            },
           }),
         )
         .timeout(timeout);

@@ -37,6 +37,7 @@ class MountedDevicesPage extends StatefulWidget {
     required this.controller,
     this.deviceProvisioning,
     this.checkpoints,
+    this.companionName,
   });
 
   final HostProductController controller;
@@ -45,6 +46,9 @@ class MountedDevicesPage extends StatefulWidget {
   /// the only transport this app speaks to a device.
   final DeviceProvisioningTransport? deviceProvisioning;
   final DeviceSetupCheckpointStore? checkpoints;
+
+  /// Guidance only: choosing a device never silently changes its binding.
+  final String? companionName;
 
   @override
   State<MountedDevicesPage> createState() => _MountedDevicesPageState();
@@ -154,6 +158,15 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          if (widget.companionName case final name?)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Text(
+                    '让 $name 来到桌面：添加或选择一台设备，在设备详情中将回应伙伴设为 $name，再选择它的表达方式。已有设备切换伙伴时，请确认当前绑定。',
+                    key: const Key('companion-device-guidance')),
+              ),
+            ),
           _InventoryMeaningCard(coverage: inventory?.coverage ?? ''),
           if (controller.devicesError case final error?) ...[
             const SizedBox(height: 16),
@@ -569,7 +582,8 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
   /// quiet are not the same event and only one of them is something the person
   /// did to this device. A single "尚未关联" would tell someone whose Eidolon was
   /// put away that they had never set the speaker up.
-  static String _quietText(MountedDevice device) => switch (device.quietBecause) {
+  static String _quietText(MountedDevice device) =>
+      switch (device.quietBecause) {
         DeviceQuietBecause.ownerCleared => '你把它设成了不由谁应答',
         DeviceQuietBecause.companionPutAway => '原本应答的 Eidolon 被收起来了',
         DeviceQuietBecause.hostReleased => '主机把它放开了',

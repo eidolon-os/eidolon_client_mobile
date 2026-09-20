@@ -25,6 +25,9 @@ class HostWorkspaceRepository {
   Future<WorkspaceStatus> initialize({
     required String ownerDisplayName,
     required String companionDisplayName,
+    PersonaAuthoring? persona,
+    ConversationPreferences? preferences,
+    PersonaPreset? sourcePreset,
   }) =>
       _session.execute(
         (client, baseUrl, accessToken) => client.initializeWorkspace(
@@ -32,6 +35,9 @@ class HostWorkspaceRepository {
           accessToken: accessToken,
           ownerDisplayName: ownerDisplayName,
           companionDisplayName: companionDisplayName,
+          persona: persona,
+          preferences: preferences,
+          sourcePreset: sourcePreset,
         ),
       );
 }

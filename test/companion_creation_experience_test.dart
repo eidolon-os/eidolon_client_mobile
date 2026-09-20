@@ -29,6 +29,42 @@ const presets = [
 ];
 
 void main() {
+  testWidgets('creation can continue to devices without a phone conversation',
+      (tester) async {
+    CreatedCompanion? connecting;
+    await tester.pumpWidget(MaterialApp(
+        home: CompanionRosterScreen(
+      load: ({String? cursor}) async =>
+          const CompanionRosterView(companions: []),
+      loadContext: () async => ManagementContextView.fromJson({
+        'owner': {'owner_id': 'owner', 'display_name': '我', 'revision': 1},
+        'capabilities': {'companion.create': true},
+        'limits': <String, int?>{}
+      }),
+      loadPersonaTemplate: () async => const PersonaAuthoring(),
+      loadPersonaPresets: () async =>
+          const PersonaPresetCatalog(presets: presets),
+      createCompanion: (_, name, __, ___, ____) async => CreatedCompanion(
+          companionId: 'new-companion',
+          displayName: name,
+          created: true,
+          memoryReady: true),
+      connectDevice: (created) async {
+        connecting = created;
+      },
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('roster-add')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('authoring-create')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('created-start-conversation')), findsNothing);
+    expect(connecting, isNull);
+    await tester.tap(find.byKey(const Key('created-connect-device')));
+    await tester.pumpAndSettle();
+    expect(connecting?.companionId, 'new-companion');
+  });
+
   testWidgets('each preset and custom retain edits when switching or reopening',
       (tester) async {
     final drafts = CompanionCreationDrafts(const PersonaAuthoring(), presets);
@@ -132,7 +168,8 @@ void main() {
     expect(started?.companionId, 'created');
   });
 
-  testWidgets('a refusal the Host explains stays editable and says what it said',
+  testWidgets(
+      'a refusal the Host explains stays editable and says what it said',
       (tester) async {
     // The other half of the uncertain case: a 4xx is a decision, not a lost
     // answer, so the draft must stay editable and the next press must be a new
@@ -178,7 +215,8 @@ void main() {
         reason: 'an edited attempt is a new one');
   });
 
-  testWidgets('an untouched preset says where it came from; an edited one does not',
+  testWidgets(
+      'an untouched preset says where it came from; an edited one does not',
       (tester) async {
     // Provenance has to be earned. Taking a preset and leaving it alone is a
     // fact worth recording; writing over its words makes the Eidolon the
@@ -195,7 +233,8 @@ void main() {
               claims.add(source?.presetId);
             }));
 
-    final untouched = CompanionCreationDrafts(const PersonaAuthoring(), presets);
+    final untouched =
+        CompanionCreationDrafts(const PersonaAuthoring(), presets);
     addTearDown(untouched.dispose);
     await tester.pumpWidget(page(untouched));
     await tester.tap(find.byKey(const Key('authoring-create')));

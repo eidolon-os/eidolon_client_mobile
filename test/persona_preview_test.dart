@@ -3,8 +3,47 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:eidolon_client_mobile/src/management/persona_preview_panel.dart';
+import 'package:eidolon_client_mobile/src/management/persona_form.dart';
 
 void main() {
+  testWidgets('detailed prose edits invalidate a completed preview',
+      (tester) async {
+    final form = PersonaForm(const PersonaAuthoring(selfConcept: '原来的我'));
+    addTearDown(form.dispose);
+    final requests = <PersonaPreviewRequest>[];
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: StatefulBuilder(
+      builder: (context, setState) => SingleChildScrollView(
+          child: Column(children: [
+        ...form.whoItIs(() => setState(() {})),
+        PersonaPreviewPanel(
+          draft: PersonaPreviewRequest(
+              name: '澄澄', persona: form.authoring, text: ''),
+          preview: (draft) async {
+            requests.add(draft);
+            return const PersonaPreviewResponse(
+                draftDigest: 'one', reply: '旧设定的回复', finishReason: 'stop');
+          },
+        ),
+      ])),
+    ))));
+    await tester.ensureVisible(find.text('试聊'));
+    await tester.tap(find.text('试聊'));
+    await tester.pumpAndSettle();
+    expect(find.text('旧设定的回复'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('authoring-self-concept')));
+    await tester.enterText(
+        find.byKey(const Key('authoring-self-concept')), '修改后的我');
+    await tester.pumpAndSettle();
+    expect(find.text('旧设定的回复'), findsNothing);
+    await tester.ensureVisible(find.text('试聊'));
+    await tester.tap(find.text('试聊'));
+    await tester.pumpAndSettle();
+    expect(requests.last.persona.selfConcept, '修改后的我');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('preview sends current draft and drops results after edits',
       (tester) async {
     final first = Completer<PersonaPreviewResponse>();

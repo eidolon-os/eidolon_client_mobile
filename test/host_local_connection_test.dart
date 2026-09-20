@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:eidolon_client_mobile/src/platform/app_preferences.dart';
+import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_product_controller.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -1226,10 +1228,15 @@ void main() {
                 request.method == 'PUT') {
               expect(request.headers['authorization'],
                   'Bearer $validHostChallenge');
-              expect(jsonDecode(request.body), {
-                'owner_display_name': 'Manson',
-                'companion_display_name': 'Eidolon',
-              });
+              final submitted =
+                  jsonDecode(request.body) as Map<String, dynamic>;
+              expect(submitted['owner_display_name'], 'Manson');
+              expect(submitted['companion_display_name'], '澄澄');
+              expect(submitted['persona']['character_portrait'], '温柔倾听');
+              expect(submitted['preferences'],
+                  const ConversationPreferences().toJson());
+              expect(submitted['source_preset_id'], 'water');
+              expect(submitted['source_preset_revision'], '1');
               initialized = true;
               return http.Response(
                 jsonEncode({
@@ -1263,6 +1270,27 @@ void main() {
           // a fake built once.
           managementClientFactory: (_) => ManagementClient(
             httpClient: MockClient((request) async {
+              if (request.url.path ==
+                  '/api/management/v1/persona-authoring-template') {
+                return _jsonResponse(const PersonaAuthoring().toJson());
+              }
+              if (request.url.path == '/api/management/v1/persona-presets') {
+                return _jsonResponse({
+                  'presets': [
+                    const PersonaPreset(
+                      presetId: 'water',
+                      revision: '1',
+                      defaultName: '澄澄',
+                      title: '水 · 温柔倾听',
+                      description: '愿意听你说完',
+                      persona: PersonaAuthoring(characterPortrait: '温柔倾听'),
+                      examples: ['我在听'],
+                      preferences: ConversationPreferences(),
+                    ).toJson()
+                  ]
+                });
+              }
+
               if (request.url.path == '/api/management/v1/home') {
                 if (!overviewAvailable) {
                   return _jsonResponse({'detail': '概览暂时读不到'}, 503);
@@ -1296,6 +1324,12 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, -500));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('initialize-workspace')));
+    await tester.pumpAndSettle();
+    expect(initialized, isFalse);
+    expect(find.byKey(const Key('preset-water')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('authoring-create')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('回到主机'));
     await tester.pumpAndSettle();
 
     expect(initialized, isTrue);
@@ -1641,6 +1675,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
+          creationPreferences: InMemoryAppPreferences(),
           host: _host(tlsSpkiFingerprint: _tlsFingerprint),
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),

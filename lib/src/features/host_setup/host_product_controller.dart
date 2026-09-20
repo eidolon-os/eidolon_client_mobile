@@ -378,6 +378,10 @@ class HostProductController extends ChangeNotifier {
   Future<void> initializeWorkspace({
     required String ownerDisplayName,
     required String companionDisplayName,
+    PersonaAuthoring? persona,
+    ConversationPreferences? preferences,
+    PersonaPreset? sourcePreset,
+    bool rethrowFailure = false,
   }) async {
     if (_workspaceBusy || _connection == null || _disposed) return;
     final ownerName = ownerDisplayName.trim();
@@ -407,6 +411,9 @@ class HostProductController extends ChangeNotifier {
       final workspace = await _workspaceRepository.initialize(
         ownerDisplayName: ownerName,
         companionDisplayName: companionName,
+        persona: persona,
+        preferences: preferences,
+        sourcePreset: sourcePreset,
       );
       if (!workspace.isReady) {
         throw const FormatException('Workspace 初始化没有返回 ready');
@@ -416,20 +423,25 @@ class HostProductController extends ChangeNotifier {
       _connection = _session.connection;
     } on HostControllerAuthorizationException catch (error) {
       _failAuthorization(error);
+      if (rethrowFailure) rethrow;
     } on LocalApiRequestException catch (error) {
       _refuseWorkspace(_workspaceRefusal(error));
+      if (rethrowFailure) rethrow;
     } on PinnedHttpException catch (error) {
       _refuseWorkspace(_pinnedHttpWorkspaceRefusal(error));
+      if (rethrowFailure) rethrow;
     } on FormatException {
       _refuseWorkspace((
         sentence: '主机没有返回完整的 Workspace 结果，请重试。',
         recovery: WorkspaceRecovery.retry,
       ));
+      if (rethrowFailure) rethrow;
     } catch (_) {
       _refuseWorkspace((
         sentence: 'Workspace 暂时未能完成；主机认领和 Wi-Fi 不会回滚。',
         recovery: WorkspaceRecovery.retry,
       ));
+      if (rethrowFailure) rethrow;
     } finally {
       _workspaceBusy = false;
       _notify();

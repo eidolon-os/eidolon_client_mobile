@@ -17,10 +17,13 @@ import '../setup/host_registry.dart';
 import '../setup/host_settings_page.dart';
 import '../setup/host_identity_summary.dart';
 import 'face_picker.dart';
+import 'first_companion_page.dart';
 import 'failure_sentences.dart';
 import 'host_product_controller.dart';
 import '../../management/management_client.dart';
 import '../../management/companion_roster_screen.dart';
+import '../../management/companion_creation_checkpoint.dart';
+import '../../platform/app_preferences.dart';
 import '../../management/memory_library_screen.dart';
 import '../../management/lifecycle_sheet.dart';
 import '../../management/persona_edit_page.dart';
@@ -66,6 +69,7 @@ class HostLocalConnectionPage extends StatefulWidget {
     this.onRealignOwnerDomain,
     this.verifyOwnerDomain,
     this.facePicker,
+    this.creationPreferences,
   });
 
   final ManagedHost host;
@@ -94,6 +98,7 @@ class HostLocalConnectionPage extends StatefulWidget {
   /// Where the picture an Eidolon wears comes from. The gallery, unless a
   /// test says otherwise.
   final FacePicker? facePicker;
+  final AppPreferences? creationPreferences;
 
   @override
   State<HostLocalConnectionPage> createState() =>
@@ -104,7 +109,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   late HostProductController _controller;
   bool _openingConversation = false;
   final _ownerName = TextEditingController();
-  final _companionName = TextEditingController(text: 'Eidolon');
 
   @override
   void initState() {
@@ -134,7 +138,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       ..removeListener(_refresh)
       ..dispose();
     _ownerName.dispose();
-    _companionName.dispose();
     super.dispose();
   }
 
@@ -403,6 +406,56 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     );
   }
 
+  Future<void> _chooseFirstCompanion() async {
+    final ownerName = _ownerName.text.trim();
+    if (ownerName.isEmpty || ownerName.length > 128) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('请先填写 1–128 个字符的称呼。')));
+      return;
+    }
+    // Re-read durable Host state before another setup attempt. A previous
+    // phone/process may already have completed this Host-scoped operation.
+    await _controller.refreshWorkspace();
+    if (!mounted || (_controller.workspace?.isReady ?? false)) return;
+    if (_controller.workspace == null) return;
+    final name = await Navigator.of(context).push<String>(MaterialPageRoute(
+      builder: (_) => FirstCompanionPage(
+        loadTemplate: _controller.personaAuthoringTemplate,
+        loadPresets: _controller.personaPresets,
+        initialize: (name, persona, preferences, source) async {
+          await _controller.initializeWorkspace(
+            ownerDisplayName: ownerName,
+            companionDisplayName: name,
+            persona: persona,
+            preferences: preferences,
+            sourcePreset: source,
+            rethrowFailure: true,
+          );
+          if (!(_controller.workspace?.isReady ?? false)) {
+            throw StateError('Workspace initialization was not confirmed');
+          }
+        },
+      ),
+    ));
+    if (!mounted || name == null) return;
+    final connect = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+              title: Text('认识一下，$name'),
+              content:
+                  const Text('你的第一位伙伴已经创建。可以回到主机页面开始相处，也可以现在连接陪伴设备，选择由 TA 回应。'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: const Text('回到主机')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(dialogContext, true),
+                    child: const Text('连接陪伴设备')),
+              ],
+            ));
+    if (mounted && connect == true) await _openDevices(companionName: name);
+  }
+
   /// Every Eidolon this Owner has, not just the one this Host runs by default.
   ///
   /// The workspace card above can only ever show one, because the runtime it
@@ -410,6 +463,12 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   Future<void> _openRoster() => Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => CompanionRosterScreen(
+            creationCheckpoints: CompanionCreationCheckpointStore(
+              hostId: _controller.host.hostId,
+              controllerId: _controller.host.controllerId,
+              ownerId: _controller.workspace!.owner!.ownerId,
+              preferences: widget.creationPreferences,
+            ),
             load: ({String? cursor}) => _controller.roster(cursor: cursor),
             // The same page the home rows open. One Eidolon, one page,
             // wherever it was tapped from.
@@ -431,6 +490,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             ),
             loadPersonaTemplate: _controller.personaAuthoringTemplate,
             loadPersonaPresets: _controller.personaPresets,
+            connectDevice: (created) =>
+                _openDevices(companionName: created.displayName),
             startConversation: widget.conversationBuilder == null
                 ? null
                 : (created) =>
@@ -679,11 +740,13 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         ),
       );
 
-  Future<void> _openDevices() => Navigator.of(context).push<void>(
+  Future<void> _openDevices({String? companionName}) =>
+      Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => MountedDevicesPage(
             controller: _controller,
             deviceProvisioning: widget.deviceProvisioning,
+            companionName: companionName,
           ),
         ),
       );
@@ -757,7 +820,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             _WorkspaceCard(
               controller: _controller,
               ownerName: _ownerName,
-              companionName: _companionName,
+              onChooseCompanion: _chooseFirstCompanion,
               onReconnect: _controller.connect,
               onOpenRoster: _openRoster,
               onOpenMemoryLibrary: _openMemoryLibrary,
@@ -944,7 +1007,7 @@ class _WorkspaceCard extends StatelessWidget {
   const _WorkspaceCard({
     required this.controller,
     required this.ownerName,
-    required this.companionName,
+    required this.onChooseCompanion,
     required this.onReconnect,
     required this.onOpenRoster,
     required this.onOpenMemoryLibrary,
@@ -954,7 +1017,7 @@ class _WorkspaceCard extends StatelessWidget {
 
   final HostProductController controller;
   final TextEditingController ownerName;
-  final TextEditingController companionName;
+  final Future<void> Function() onChooseCompanion;
   final Future<void> Function() onReconnect;
 
   /// Reachable whether or not the runtime answered: "what do I have" is a
@@ -996,7 +1059,7 @@ class _WorkspaceCard extends StatelessWidget {
           children: [
             Text('完成你的 Eidolon', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            const Text('主机已经安全接入。现在创建首个 Owner、主 Companion 和 Workspace。'),
+            const Text('主机已经连接。告诉我们怎么称呼你，再认识第一位伙伴。你可以选择预设，也可以自己定义。'),
             if (controller.workspaceError case final error?) ...[
               const SizedBox(height: 12),
               Text(
@@ -1019,29 +1082,16 @@ class _WorkspaceCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            TextField(
-              key: const Key('workspace-companion-name'),
-              controller: companionName,
-              enabled: !controller.workspaceBusy,
-              maxLength: 128,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _initialize(),
-              decoration: const InputDecoration(
-                labelText: 'Eidolon 的名字',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 8),
             FilledButton.icon(
               key: const Key('initialize-workspace'),
-              onPressed: controller.workspaceBusy ? null : _initialize,
+              onPressed: controller.workspaceBusy ? null : onChooseCompanion,
               icon: controller.workspaceBusy
                   ? const SizedBox.square(
                       dimension: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.auto_awesome),
-              label: Text(controller.workspaceBusy ? '正在创建' : '创建我的 Eidolon'),
+              label: Text(controller.workspaceBusy ? '正在创建' : '选择第一位伙伴'),
             ),
             const SizedBox(height: 8),
             TextButton.icon(
@@ -1126,11 +1176,6 @@ class _WorkspaceCard extends StatelessWidget {
         ),
       );
 
-  void _initialize() => controller.initializeWorkspace(
-        ownerDisplayName: ownerName.text,
-        companionDisplayName: companionName.text,
-      );
-
   Widget _buildReady(BuildContext context, WorkspaceStatus workspace) {
     final home = controller.home;
     return Card(
@@ -1183,7 +1228,8 @@ class _WorkspaceCard extends StatelessWidget {
                 // home reads one page of the roster, so an unqualified number
                 // here told anybody past that page the page size was their
                 // total — a count that stops growing without saying it stopped.
-                _ when home.moreCompanions => '${home.companionCounts.total}+ 位',
+                _ when home.moreCompanions =>
+                  '${home.companionCounts.total}+ 位',
                 _ => '${home.companionCounts.total} 位',
               },
               detail: companionsSummaryLine(home),

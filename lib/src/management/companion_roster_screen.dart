@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
 import 'companion_authoring_page.dart';
+import 'companion_creation_checkpoint.dart';
 import 'persona_preview_panel.dart';
 import 'companion_roster_page.dart';
 import 'management_client.dart';
@@ -34,7 +35,9 @@ class CompanionRosterScreen extends StatefulWidget {
     this.loadPersonaPresets,
     this.preview,
     this.startConversation,
+    this.connectDevice,
     this.newOperationId,
+    this.creationCheckpoints,
   });
 
   /// Asks the Host for one page. Given a cursor when asking for a later one.
@@ -88,9 +91,11 @@ class CompanionRosterScreen extends StatefulWidget {
   final Future<PersonaPresetCatalog> Function()? loadPersonaPresets;
   final PreviewPersona? preview;
   final Future<void> Function(CreatedCompanion)? startConversation;
+  final Future<void> Function(CreatedCompanion)? connectDevice;
 
   /// Injected so a test can pin the id; a real screen mints a random one.
   final String Function()? newOperationId;
+  final CompanionCreationCheckpointStore? creationCheckpoints;
 
   @override
   State<CompanionRosterScreen> createState() => _CompanionRosterScreenState();
@@ -108,7 +113,7 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
   /// Held across retries, exactly like the device-removal request id: the whole
   /// point of the operation id is that a second attempt is the *same* attempt.
   /// Cleared only once the Host has answered for it, one way or the other.
-  _CreationSubmission? _pendingSubmission;
+  CompanionCreationSubmission? _pendingSubmission;
   CompanionCreationDrafts? _drafts;
   PersonaPresetCatalog? _catalog;
   PersonaAuthoring? _template;
@@ -145,8 +150,22 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
           ? await widget.loadContext!()
           : _context;
       final page = await widget.load(cursor: cursor);
+      CompanionCreationSubmission? recovered;
+      String? recoveryError;
+      if (cursor == null && _pendingSubmission == null) {
+        try {
+          recovered = await widget.creationCheckpoints?.load();
+        } catch (_) {
+          recoveryError = '手机暂时读不到创建进度。伙伴列表仍可查看，重试读取前不会发送新的创建请求。';
+        }
+      }
       if (!mounted) return;
       setState(() {
+        _pendingSubmission ??= recovered;
+        if (recovered != null) {
+          _notice = '${recovered.name} 的上次创建尚未确认，请继续确认同一次创建。';
+        }
+        if (recoveryError != null) _refusal = recoveryError;
         _context = context;
         // Pages are appended rather than replacing what is on screen: asking
         // for more must not make what a person was already reading disappear.
@@ -247,6 +266,17 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
       _notice = null;
     });
     try {
+      _pendingSubmission ??= await widget.creationCheckpoints?.load();
+      if (_drafts == null && _pendingSubmission != null) {
+        // A submitted snapshot must survive catalogue retirement or outage.
+        final saved = _pendingSubmission!;
+        _template = saved.persona ?? const PersonaAuthoring();
+        _catalog = const PersonaPresetCatalog(presets: []);
+        _drafts = CompanionCreationDrafts(_template!, const []);
+        _drafts!.custom.name.text = saved.name;
+        _drafts!.custom.preferences =
+            saved.preferences ?? const ConversationPreferences();
+      }
       if (_drafts == null) {
         _catalog = widget.loadPersonaPresets == null
             ? const PersonaPresetCatalog(presets: [])
@@ -259,7 +289,9 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
       if (mounted) {
         setState(() {
           _preparing = false;
-          _refusal = '伙伴模板暂时没能加载，请重试新建伙伴。';
+          _refusal = widget.creationCheckpoints == null
+              ? '伙伴模板暂时没能加载，请重试新建伙伴。'
+              : '创建进度或伙伴设定暂时读不到。请重试；为避免重复创建，暂未发送新请求。';
         });
       }
       return;
@@ -275,28 +307,32 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
         preview: widget.preview,
         uncertain: () => _pendingSubmission?.uncertain == true,
         create: (name, persona, preferences, sourcePreset) async {
-          _pendingSubmission ??= _CreationSubmission(
+          _pendingSubmission ??= CompanionCreationSubmission(
               _newOperationId(), name, persona, preferences, sourcePreset);
           final submission = _pendingSubmission!;
+          final wasUncertain = submission.uncertain;
           try {
+            // Durable before dispatch, including the "saved but never sent" case.
+            await widget.creationCheckpoints?.save(submission);
             final answer = await create(
                 submission.operationId,
                 submission.name,
                 submission.persona,
                 submission.preferences,
                 submission.sourcePreset);
+            await widget.creationCheckpoints?.clear(submission.operationId);
             _pendingSubmission = null;
             return answer;
           } catch (error) {
-            // A deterministic validation refusal can be edited. A lost response
-            // must be resolved by retrying the exact same submission.
-            if (error is ManagementRequestException &&
-                (error.statusCode ?? 0) >= 400 &&
-                (error.statusCode ?? 0) < 500 &&
-                error.statusCode != 408) {
+            // Only a first-attempt validation refusal proves no creation took
+            // place. Auth failures/conflicts after a lost reply do not erase
+            // the original operation, even when the later response is 4xx.
+            submission.uncertain = true;
+            if (!wasUncertain &&
+                error is ManagementRequestException &&
+                (error.statusCode == 400 || error.statusCode == 422)) {
+              await widget.creationCheckpoints?.clear(submission.operationId);
               _pendingSubmission = null;
-            } else {
-              submission.uncertain = true;
             }
             rethrow;
           }
@@ -312,25 +348,37 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
           : '${created.displayName} 已经建好，记忆还在启动');
     }
     await _read();
-    if (!mounted || created == null || widget.startConversation == null) return;
-    final talk = await showDialog<bool>(
+    if (!mounted ||
+        created == null ||
+        (widget.startConversation == null && widget.connectDevice == null)) {
+      return;
+    }
+    final next = await showDialog<String>(
         context: context,
         builder: (dialogContext) => AlertDialog(
               title: Text('认识一下，${created.displayName}'),
               content: Text(created.memoryReady
-                  ? '伙伴已经准备好了，聊一句试试吧。'
+                  ? '伙伴已经保存在这台主机上。可以先在手机上聊聊，或连接陪伴设备，选择由 TA 回应，再设置说话、字幕和表情。可用表达方式取决于设备。'
                   : '伙伴已创建，记忆服务还在准备。你可以稍后开始对话。'),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.pop(dialogContext, false),
+                    onPressed: () => Navigator.pop(dialogContext),
                     child: const Text('稍后再聊')),
-                FilledButton(
-                    key: const Key('created-start-conversation'),
-                    onPressed: () => Navigator.pop(dialogContext, true),
-                    child: const Text('开始对话')),
+                if (widget.connectDevice != null)
+                  OutlinedButton(
+                      key: const Key('created-connect-device'),
+                      onPressed: () => Navigator.pop(dialogContext, 'device'),
+                      child: const Text('连接陪伴设备')),
+                if (widget.startConversation != null)
+                  FilledButton(
+                      key: const Key('created-start-conversation'),
+                      onPressed: () => Navigator.pop(dialogContext, 'talk'),
+                      child: const Text('开始对话')),
               ],
             ));
-    if (mounted && talk == true) await widget.startConversation!(created);
+    if (!mounted) return;
+    if (next == 'talk') await widget.startConversation!(created);
+    if (next == 'device') await widget.connectDevice!(created);
   }
 
   String _newOperationId() {
@@ -367,6 +415,7 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
             busyCompanionId: _changing,
             refusal: _refusal,
             notice: _notice,
+            resumingCreation: _pendingSubmission != null,
             onAdd: _preparing ||
                     widget.createCompanion == null ||
                     _context == null ||
@@ -429,17 +478,6 @@ String _creationRefusal(Object error) {
   return '创建未完成：${error.reason ?? '这台主机没有完成这次创建'}';
 }
 
-class _CreationSubmission {
-  _CreationSubmission(this.operationId, this.name, this.persona,
-      this.preferences, this.sourcePreset);
-  final String operationId;
-  final String name;
-  final PersonaAuthoring? persona;
-  final ConversationPreferences? preferences;
-  final PersonaPreset? sourcePreset;
-  bool uncertain = false;
-}
-
 class _AuthoringRoute extends StatefulWidget {
   const _AuthoringRoute(
       {required this.template,
@@ -453,8 +491,9 @@ class _AuthoringRoute extends StatefulWidget {
   final CompanionCreationDrafts drafts;
   final PreviewPersona? preview;
   final bool Function() uncertain;
-  final Future<CreatedCompanion> Function(String, PersonaAuthoring?,
-      ConversationPreferences?, PersonaPreset?) create;
+  final Future<CreatedCompanion> Function(
+          String, PersonaAuthoring?, ConversationPreferences?, PersonaPreset?)
+      create;
   @override
   State<_AuthoringRoute> createState() => _AuthoringRouteState();
 }
