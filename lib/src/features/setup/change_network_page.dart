@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+
+import '../../theme/eidolon_theme.dart';
 import 'package:flutter/services.dart';
 
 import 'commissioning_transport.dart';
@@ -306,7 +308,7 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
               ),
             ],
             if (_complete) ...[
-              const Icon(Icons.check_circle, size: 64, color: Colors.green),
+              const Icon(Icons.check_circle, size: 64, color: Neon.ok),
               const SizedBox(height: 12),
               const Text('Wi-Fi 已更换', textAlign: TextAlign.center),
               const SizedBox(height: 16),

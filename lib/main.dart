@@ -23,6 +23,7 @@ import 'src/features/device_setup/host_controller_device_admission.dart';
 import 'src/features/setup/eidolon_app_shell.dart';
 import 'src/features/setup/host_registry.dart';
 import 'src/platform/platform_bridge.dart';
+import 'src/theme/eidolon_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,14 +60,9 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
     return MaterialApp(
       title: 'Eidolon Mobile',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6F61FF),
-          brightness: Brightness.dark,
-        ),
-        scaffoldBackgroundColor: const Color(0xFF0D0D13),
-        useMaterial3: true,
-      ),
+      theme: EidolonTheme.dark(),
+      builder: (context, child) =>
+          EidolonBackdrop(child: child ?? const SizedBox.shrink()),
       home: EidolonAppShell(
         registry: widget.hostRegistry,
         deviceProvisioning: widget.deviceProvisioning,
@@ -354,12 +350,17 @@ class _Header extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 38,
-                height: 38,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
                   gradient: const LinearGradient(
-                      colors: [Color(0xFF7B6CFF), Color(0xFF35D6C3)]),
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFFA78BFA), Color(0xFF3AD9F0)]),
+                  border:
+                      Border.all(color: Colors.white.withValues(alpha: .18)),
+                  boxShadow: Neon.glow(Neon.cyan, blur: 16, alpha: .3),
                 ),
                 child: const Icon(Icons.auto_awesome,
                     color: Colors.white, size: 21),
@@ -371,9 +372,11 @@ class _Header extends StatelessWidget {
                   children: [
                     Text('Eidolon Mobile',
                         style: TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 18)),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                            letterSpacing: -.2)),
                     Text('本地 Companion 客户端',
-                        style: TextStyle(color: Colors.white54, fontSize: 12)),
+                        style: TextStyle(color: Neon.inkDim, fontSize: 12)),
                   ],
                 ),
               ),
@@ -459,9 +462,9 @@ class _StageState extends State<_Stage> {
             decoration: const BoxDecoration(
               gradient: RadialGradient(
                 colors: [
-                  Color(0xFF292253),
-                  Color(0xFF15131E),
-                  Color(0xFF101017)
+                  Color(0xFF1B2440),
+                  Color(0xFF0D1324),
+                  Color(0xFF090D19)
                 ],
                 radius: 1.15,
               ),
@@ -523,7 +526,7 @@ class _StageState extends State<_Stage> {
                           borderRadius: BorderRadius.circular(28),
                           border: Border.all(
                             color:
-                                const Color(0xFF50E3C2).withValues(alpha: .75),
+                                const Color(0xFF3AD9F0).withValues(alpha: .75),
                             width: 3,
                           ),
                         ),
@@ -541,20 +544,20 @@ class _StageState extends State<_Stage> {
                         vertical: 11,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE7A23B).withValues(alpha: .18),
+                        color: const Color(0xFFFBBF24).withValues(alpha: .18),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: const Color(0xFFE7A23B).withValues(alpha: .4),
+                          color: const Color(0xFFFBBF24).withValues(alpha: .4),
                         ),
                       ),
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.mic_off_rounded,
-                              size: 18, color: Color(0xFFFFC96B)),
+                              size: 18, color: Color(0xFFFBBF24)),
                           SizedBox(width: 8),
                           Text('麦克风已静音',
-                              style: TextStyle(color: Color(0xFFFFD38B))),
+                              style: TextStyle(color: Color(0xFFFDE68A))),
                         ],
                       ),
                     ),
@@ -581,11 +584,11 @@ class _AvatarPlaceholder extends StatelessWidget {
       height: 104,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Colors.white.withValues(alpha: .05),
-        border:
-            Border.all(color: Colors.white.withValues(alpha: .16), width: 1.5),
+        color: Neon.cyan.withValues(alpha: .05),
+        border: Border.all(color: Neon.hairStrong, width: 1.5),
+        boxShadow: Neon.glow(Neon.cyan, blur: 28, alpha: .18),
       ),
-      child: const Icon(Icons.person_rounded, size: 52, color: Colors.white38),
+      child: const Icon(Icons.person_rounded, size: 52, color: Neon.inkDim),
     );
   }
 }
@@ -609,22 +612,22 @@ class _AgentStatePanel extends StatelessWidget {
         : state.agentTurn;
     final (Color color, IconData icon, String label) = switch (displayedTurn) {
       AgentTurnState.listening => (
-          const Color(0xFF50E3C2),
+          const Color(0xFF3AD9F0),
           Icons.hearing_rounded,
           '正在聆听',
         ),
       AgentTurnState.thinking => (
-          const Color(0xFF9B92FF),
+          const Color(0xFFA78BFA),
           Icons.auto_awesome_rounded,
           '思考中',
         ),
       AgentTurnState.speaking => (
-          const Color(0xFF7B6CFF),
+          const Color(0xFFA78BFA),
           Icons.graphic_eq_rounded,
           '说话中',
         ),
       AgentTurnState.idle => (
-          const Color(0xFF8A8AA0),
+          const Color(0xFF94A1C6),
           Icons.hourglass_empty_rounded,
           state.phase == ClientPhase.ready ? '通道在线 · 待命' : '待命',
         ),
@@ -635,7 +638,7 @@ class _AgentStatePanel extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
-        color: const Color(0xFF171720),
+        color: const Color(0xFF0E1425),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: color.withValues(alpha: active ? .5 : .16)),
       ),
@@ -656,10 +659,10 @@ class _AgentStatePanel extends StatelessWidget {
           if (muted) ...[
             const Spacer(),
             const Icon(Icons.mic_off_rounded,
-                size: 16, color: Color(0xFFFFC96B)),
+                size: 16, color: Color(0xFFFBBF24)),
             const SizedBox(width: 6),
             const Text('已静音',
-                style: TextStyle(color: Color(0xFFFFD38B), fontSize: 12)),
+                style: TextStyle(color: Color(0xFFFDE68A), fontSize: 12)),
           ],
         ],
       ),
@@ -769,9 +772,9 @@ class _StageBadge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: .28),
+          color: Colors.black.withValues(alpha: .38),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white12),
+          border: Border.all(color: Neon.hair),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -797,7 +800,7 @@ class _StatusCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-          color: const Color(0xFF171720),
+          color: const Color(0xFF0E1425),
           borderRadius: BorderRadius.circular(20)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -915,14 +918,14 @@ class _ProvisioningProgress extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: completed
-                      ? const Color(0xFF50E3C2)
+                      ? const Color(0xFF3AD9F0)
                       : active
-                          ? const Color(0xFF7B6CFF)
+                          ? const Color(0xFFA78BFA)
                           : Colors.white12,
                 ),
                 child: completed
                     ? const Icon(Icons.check_rounded,
-                        size: 14, color: Color(0xFF071A17))
+                        size: 14, color: Color(0xFF05101C))
                     : Center(
                         child: Text(
                           '${index + 1}',
@@ -960,16 +963,16 @@ class _NoticeCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFF6F61FF).withValues(alpha: .12),
+          color: const Color(0xFFA78BFA).withValues(alpha: .12),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: const Color(0xFF8A7FFF).withValues(alpha: .28),
+            color: const Color(0xFFA78BFA).withValues(alpha: .28),
           ),
         ),
         child: Row(
           children: [
             const Icon(Icons.info_outline_rounded,
-                size: 19, color: Color(0xFFB8B1FF)),
+                size: 19, color: Color(0xFFC9B6FF)),
             const SizedBox(width: 10),
             Expanded(child: Text(message)),
           ],
@@ -991,10 +994,10 @@ class _FailureCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         decoration: BoxDecoration(
-          color: const Color(0xFFFF6B6B).withValues(alpha: .09),
+          color: const Color(0xFFF472B6).withValues(alpha: .09),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: const Color(0xFFFF8D8D).withValues(alpha: .25),
+            color: const Color(0xFFFB7185).withValues(alpha: .25),
           ),
         ),
         child: Column(
@@ -1008,7 +1011,7 @@ class _FailureCard extends StatelessWidget {
                   const Padding(
                     padding: EdgeInsets.only(top: 2),
                     child: Icon(Icons.error_outline_rounded,
-                        size: 20, color: Color(0xFFFF9A9A)),
+                        size: 20, color: Color(0xFFFB7185)),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -1300,7 +1303,7 @@ class _ConversationControls extends StatelessWidget {
         Expanded(
           child: FilledButton.icon(
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFB54747),
+              backgroundColor: const Color(0xFFB4456F),
               foregroundColor: Colors.white,
             ),
             onPressed: controller.leave,
@@ -1337,7 +1340,7 @@ class _Transcript extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF15151D),
+        color: const Color(0xFF0C111F),
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
@@ -1358,7 +1361,7 @@ class _Transcript extends StatelessWidget {
                 title: Text(
                   line.speaker,
                   style: const TextStyle(
-                    color: Color(0xFF9B92FF),
+                    color: Color(0xFFA78BFA),
                     fontSize: 12,
                   ),
                 ),
@@ -1404,7 +1407,7 @@ class _Tag extends StatelessWidget {
           Icon(
             icon,
             size: 14,
-            color: active ? const Color(0xFF8BE5D9) : Colors.white54,
+            color: active ? const Color(0xFF7FE9F8) : Colors.white54,
           ),
           const SizedBox(width: 6),
           Text(label,
@@ -1421,15 +1424,15 @@ class _ConnectionBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = switch (state.phase) {
-      ClientPhase.ready || ClientPhase.conversation => const Color(0xFF50E3C2),
+      ClientPhase.ready || ClientPhase.conversation => const Color(0xFF3AD9F0),
       ClientPhase.awaitingApproval ||
       ClientPhase.awaitingBinding =>
-        const Color(0xFFFFC96B),
+        const Color(0xFFFBBF24),
       // Not amber. Amber is "in progress", and this state is stopped.
       ClientPhase.bodyBlocked => Colors.white38,
-      ClientPhase.error => const Color(0xFFFF8D8D),
+      ClientPhase.error => const Color(0xFFFB7185),
       ClientPhase.idle => Colors.white38,
-      _ => const Color(0xFF9B92FF),
+      _ => const Color(0xFFA78BFA),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),

@@ -235,7 +235,7 @@ void main() {
     expect(find.text('添加'), findsOneWidget);
     await tester.tap(find.text('添加'));
     await tester.pumpAndSettle();
-    expect(find.text('输入 Setup 码'), findsOneWidget);
+    expect(find.byKey(const Key('setup-code-title')), findsOneWidget);
     expect(find.byKey(const Key('lan-controller-name')), findsNothing);
     await tester.enterText(
         find.byKey(const Key('development-setup-code')), '12345678');

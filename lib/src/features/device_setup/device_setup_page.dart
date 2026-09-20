@@ -3,6 +3,8 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../../theme/eidolon_theme.dart';
+
 import 'device_setup_coordinator.dart';
 import 'admission_observation.dart';
 import 'device_setup_models.dart';
@@ -556,7 +558,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   /// Host says about the device; the caller reads that and takes them there.
   Widget _complete() => Column(
         children: [
-          const Icon(Icons.check_circle, size: 64, color: Colors.green),
+          const Icon(Icons.check_circle, size: 64, color: Neon.ok),
           const SizedBox(height: 12),
           const Text('设备已接入这台主机', textAlign: TextAlign.center),
           const SizedBox(height: 16),

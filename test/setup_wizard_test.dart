@@ -259,7 +259,7 @@ void main() {
     await tester.tap(find.text('Eidolon-4c0285'));
     await tester.pumpAndSettle();
 
-    expect(find.text('输入 Setup 码'), findsOneWidget);
+    expect(find.byKey(const Key('setup-code-title')), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('development-setup-code')),
       '12345678',
@@ -414,9 +414,12 @@ void main() {
     // 主机接入 (the outcome of that conversation) — listing those made setup
     // look half again as long as it is, while the naming step that actually
     // follows went unmentioned.
-    expect(
-      find.text('选一台主机  ·  输入 Setup 码  ·  连上 Wi-Fi  ·  起名字'),
-      findsOneWidget,
-    );
+    // The steps are drawn as one chip each now, so the row is read chip by
+    // chip rather than as a single joined string.
+    for (final step in ['选一台主机', '输入 Setup 码', '连上 Wi-Fi', '起名字']) {
+      expect(find.text(step), findsOneWidget, reason: step);
+    }
+    expect(find.text('认领'), findsNothing);
+    expect(find.text('主机接入'), findsNothing);
   });
 }

@@ -3,6 +3,9 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import '../../theme/eidolon_theme.dart';
+import '../../theme/neon_components.dart';
 import 'package:flutter/services.dart';
 
 import 'commissioning_transport.dart';
@@ -623,7 +626,8 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
             constraints: const BoxConstraints(maxWidth: 720),
             child: ListView(
               key: const Key('setup-wizard-page'),
-              padding: const EdgeInsets.all(24),
+              padding:
+                  const EdgeInsets.fromLTRB(Neon.s5, Neon.s4, Neon.s5, Neon.s7),
               children: [
                 _ProgressHeader(
                     stage: _stage, alreadyNetworked: _selectedLanHost != null),
@@ -657,20 +661,27 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('查找主机', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 8),
-        Text(kDebugMode
-            ? '给主机接通电源，让它靠近手机或与手机连接同一局域网。App 会自动查找可用的接入方式。'
-            : '给主机接通电源，并让手机保持在主机附近。首次设置不要求主机已经联网。'),
-        const SizedBox(height: 8),
-        const Text('新主机需要 Setup 码；已添加的主机会单独列出，可以直接连接。'),
-        const SizedBox(height: 16),
+        Text('查找主机', style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: Neon.s3),
+        Text(
+            kDebugMode
+                ? '给主机接通电源，让它靠近手机或与手机连接同一局域网。App 会自动查找可用的接入方式。'
+                : '给主机接通电源，并让手机保持在主机附近。首次设置不要求主机已经联网。',
+            style:
+                const TextStyle(fontSize: 14, height: 1.7, color: Neon.inkDim)),
+        const SizedBox(height: Neon.s2),
+        const Text('新主机需要 Setup 码；已添加的主机会单独列出，可以直接连接。',
+            style: TextStyle(fontSize: 13, height: 1.65, color: Neon.inkFaint)),
+        const SizedBox(height: Neon.s6),
         if (hosts.isEmpty)
-          FilledButton.icon(
-            key: const Key('scan-nearby-hosts'),
-            onPressed: _busy ? null : _scanNearby,
-            icon: const Icon(Icons.search),
-            label: const Text('查找主机'),
+          NeonCta(
+            enabled: !_busy,
+            child: FilledButton.icon(
+              key: const Key('scan-nearby-hosts'),
+              onPressed: _busy ? null : _scanNearby,
+              icon: const Icon(Icons.search),
+              label: const Text('查找主机'),
+            ),
           ),
         HostDiscoverySections(
           identifying: _discovering,
@@ -779,7 +790,9 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   Widget _buildSetupCode() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('输入 Setup 码', style: Theme.of(context).textTheme.headlineSmall),
+          Text('输入 Setup 码',
+              key: const Key('setup-code-title'),
+              style: Theme.of(context).textTheme.headlineMedium),
           const SizedBox(height: 8),
           Text(
             '正在添加 ${_selectedLanHost?.displayName ?? _selectedNearbyHost?.name ?? 'Eidolon Host'}。'
@@ -980,7 +993,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
 
   Widget _buildComplete() => Column(
         children: [
-          const Icon(Icons.check_circle, size: 72, color: Colors.green),
+          const Icon(Icons.check_circle, size: 72, color: Neon.ok),
           const SizedBox(height: 16),
           Text('主机接入已完成', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
@@ -1047,19 +1060,107 @@ class _ProgressHeader extends StatelessWidget {
       _SetupStage.complete =>
         alreadyNetworked ? 2 : 3,
     };
+    final steps = _steps;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('设置', style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: 8),
-        LinearProgressIndicator(value: done / _steps.length),
-        const SizedBox(height: 8),
-        Text(
-          _steps.indexed
-              .map((entry) => entry.$1 < done ? '✓ ${entry.$2}' : entry.$2)
-              .join('  ·  '),
+        Row(children: [
+          const NeonEyebrow('Setup'),
+          const Spacer(),
+          Text('$done / ${steps.length}',
+              style: Neon.mono(size: 11, color: Neon.inkFaint)),
+        ]),
+        const SizedBox(height: Neon.s3),
+        // One segment per step rather than a single bar: a bar says how far
+        // along you are, segments say how many moves are left.
+        Row(children: [
+          for (var i = 0; i < steps.length; i++)
+            Expanded(
+              child: Container(
+                height: 3,
+                margin: EdgeInsets.only(
+                    right: i == steps.length - 1 ? 0 : Neon.s1 + 2),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(99),
+                  color: i < done
+                      ? Neon.cyan
+                      : Colors.white.withValues(alpha: .08),
+                  boxShadow: i < done
+                      ? Neon.glow(Neon.cyan, blur: 8, alpha: .5)
+                      : null,
+                ),
+              ),
+            ),
+        ]),
+        const SizedBox(height: Neon.s4),
+        Wrap(
+          spacing: Neon.s2,
+          runSpacing: Neon.s2,
+          children: [
+            for (final entry in steps.indexed)
+              _StepChip(
+                index: entry.$1,
+                label: entry.$2,
+                done: entry.$1 < done,
+                current: entry.$1 == done,
+              ),
+          ],
         ),
       ],
+    );
+  }
+}
+
+/// One step in the setup row: a number that becomes a tick, and a label that
+/// brightens when it is your turn.
+class _StepChip extends StatelessWidget {
+  const _StepChip({
+    required this.index,
+    required this.label,
+    required this.done,
+    required this.current,
+  });
+
+  final int index;
+  final String label;
+  final bool done;
+  final bool current;
+
+  @override
+  Widget build(BuildContext context) {
+    final lit = done || current;
+    final color = done ? Neon.ok : (current ? Neon.cyan : Neon.inkFaint);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(7, 5, 12, 5),
+      decoration: BoxDecoration(
+        color: lit ? color.withValues(alpha: .09) : Colors.transparent,
+        borderRadius: BorderRadius.circular(99),
+        border:
+            Border.all(color: lit ? color.withValues(alpha: .3) : Neon.hair),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 18,
+          height: 18,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: done ? color : Colors.transparent,
+            border:
+                done ? null : Border.all(color: color.withValues(alpha: .5)),
+          ),
+          child: done
+              ? const Icon(Icons.check_rounded,
+                  size: 12, color: Color(0xFF04140E))
+              : Text('${index + 1}', style: Neon.mono(size: 9.5, color: color)),
+        ),
+        const SizedBox(width: 7),
+        Text(label,
+            style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: lit ? Neon.ink : Neon.inkFaint)),
+      ]),
     );
   }
 }
@@ -1102,9 +1203,21 @@ class _Notice extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context) => Card(
-        color: color,
-        child: ListTile(leading: Icon(icon), title: Text(text)),
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(Neon.s4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .16),
+          borderRadius: BorderRadius.circular(Neon.radiusM),
+          border: Border.all(color: color.withValues(alpha: .38)),
+        ),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, size: 18, color: Neon.warn),
+          const SizedBox(width: Neon.s3),
+          Expanded(
+              child: Text(text,
+                  style: const TextStyle(
+                      fontSize: 13, height: 1.6, color: Neon.ink))),
+        ]),
       );
 }
 

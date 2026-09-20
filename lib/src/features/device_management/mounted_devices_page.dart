@@ -2,6 +2,9 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../../theme/eidolon_theme.dart';
+import '../../theme/neon_components.dart';
+
 import '../device_setup/device_setup_models.dart';
 import '../device_setup/device_setup_checkpoint_store.dart';
 import '../device_setup/device_setup_ports.dart';
@@ -475,17 +478,40 @@ class _MountedDeviceCard extends StatelessWidget {
           Theme.of(context).colorScheme.error,
         ),
     };
-    return Card(
-      child: ListTile(
-        key: Key('mounted-device-${device.deviceId}'),
-        contentPadding: const EdgeInsets.all(16),
-        leading: Icon(Icons.developer_board_outlined, color: color),
-        title: Text(device.label),
-        // What kind of thing it is. The revision is a fact about a mount
-        // record, and nobody reading this list is asking about a mount record.
-        subtitle: Text(device.detail),
-        trailing: Chip(label: Text(label)),
-        onTap: onOpen,
+    return NeonPanel(
+      key: Key('mounted-device-${device.deviceId}'),
+      padding: const EdgeInsets.all(Neon.s4),
+      onTap: onOpen,
+      child: Row(
+        children: [
+          GlyphBadge(Icons.developer_board_outlined, color: color, size: 42),
+          const SizedBox(width: Neon.s3 + 2),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(device.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Neon.ink)),
+                const SizedBox(height: Neon.s1),
+                // What kind of thing it is. The revision is a fact about a
+                // mount record, and nobody reading this list is asking about a
+                // mount record. When the Host cannot say, this is a long
+                // identifier — set as one, and clipped rather than wrapped.
+                Text(device.detail,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Neon.mono(size: 11.5, color: Neon.inkFaint)),
+              ],
+            ),
+          ),
+          const SizedBox(width: Neon.s3),
+          StatusPill(label, color: color),
+        ],
       ),
     );
   }

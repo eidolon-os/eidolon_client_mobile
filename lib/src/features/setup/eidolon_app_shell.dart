@@ -18,6 +18,8 @@ import '../host_setup/local_api_candidate_sources.dart';
 import '../host_setup/local_api_discovery.dart';
 import '../host_setup/network_changes.dart';
 import 'setup_wizard_page.dart';
+import '../../theme/eidolon_theme.dart';
+import '../../theme/neon_components.dart';
 
 class EidolonAppShell extends StatefulWidget {
   const EidolonAppShell({
@@ -301,31 +303,65 @@ class _WelcomePage extends StatelessWidget {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 640),
               child: Padding(
-                padding: const EdgeInsets.all(32),
+                padding: const EdgeInsets.all(28),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(Icons.blur_on, size: 72),
-                    const SizedBox(height: 24),
+                    Center(
+                      child: SizedBox(
+                        width: 152,
+                        height: 152,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            _ring(152, .10),
+                            _ring(112, .20),
+                            Container(
+                              width: 74,
+                              height: 74,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: const LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: Neon.accentGradient,
+                                ),
+                                boxShadow:
+                                    Neon.glow(Neon.cyan, blur: 44, alpha: .38),
+                              ),
+                              child: const Icon(Icons.blur_on,
+                                  size: 36, color: Neon.onCyan),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: Neon.s7),
+                    const Center(child: NeonEyebrow('Eidolon · Host Setup')),
+                    const SizedBox(height: Neon.s3),
                     Text(
                       '让 Eidolon 主机准备就绪',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineMedium,
+                      style: Theme.of(context).textTheme.headlineLarge,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: Neon.s3),
                     const Text(
                       '无需屏幕、SSH 或预先联网。手机会找到主机、配置 Wi-Fi、完成本地认领，并创建你的 Eidolon Workspace。',
                       textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 14, height: 1.7, color: Neon.inkDim),
                     ),
-                    const SizedBox(height: 28),
-                    FilledButton.icon(
-                      key: const Key('start-host-setup'),
-                      onPressed: onSetup,
-                      icon: const Icon(Icons.add_circle_outline),
-                      label: const Text('设置新主机'),
+                    const SizedBox(height: Neon.s7),
+                    NeonCta(
+                      child: FilledButton.icon(
+                        key: const Key('start-host-setup'),
+                        onPressed: onSetup,
+                        icon: const Icon(Icons.add_circle_outline),
+                        label: const Text('设置新主机'),
+                      ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: Neon.s4),
                     Text(
                       '主机认领完成后会立即保存；如果 Workspace 暂不可用，可以稍后继续。',
                       textAlign: TextAlign.center,
@@ -339,6 +375,15 @@ class _WelcomePage extends StatelessWidget {
         ),
       );
 }
+
+Widget _ring(double size, double alpha) => Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: Neon.cyan.withValues(alpha: alpha)),
+      ),
+    );
 
 class _HostsPage extends StatelessWidget {
   const _HostsPage({
@@ -395,21 +440,54 @@ class _HostsPage extends StatelessWidget {
           ],
         ),
         body: ListView.separated(
-          padding: const EdgeInsets.all(20),
+          padding:
+              const EdgeInsets.fromLTRB(Neon.s5, Neon.s1, Neon.s5, Neon.s7),
           itemCount: hosts.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          separatorBuilder: (_, __) => const SizedBox(height: Neon.s3 + 2),
           itemBuilder: (context, index) {
             final host = hosts[index];
-            return Card(
-              child: ListTile(
-                contentPadding: const EdgeInsets.all(18),
-                leading: const CircleAvatar(child: Icon(Icons.memory)),
-                title: Text(host.readableName),
-                subtitle: HostIdentitySummary(
-                    host: host,
-                    showAddress: true,
-                    status: statuses[host.hostId] ?? '待确认连接'),
-                trailing: const Icon(Icons.chevron_right),
+            final status = statuses[host.hostId] ?? '待确认连接';
+            return NeonPanel(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      const GlyphBadge(Icons.memory, size: 46),
+                      const SizedBox(width: Neon.s3 + 2),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(host.readableName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 16.5,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -.2,
+                                    color: Colors.white)),
+                            const SizedBox(height: 7),
+                            StatusPill(status,
+                                tone: hostStatusTone(status),
+                                busy: hostStatusBusy(status)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: Neon.s2),
+                      const Icon(Icons.chevron_right_rounded,
+                          color: Neon.inkFaint, size: 22),
+                    ]),
+                    const SizedBox(height: Neon.s4),
+                    const Divider(height: 1),
+                    const SizedBox(height: Neon.s4),
+                    HostIdentitySummary(
+                        host: host,
+                        showAddress: true,
+                        showStatus: false,
+                        status: status),
+                  ],
+                ),
                 onTap: () async {
                   onLeave();
                   await Navigator.of(context).push<void>(
@@ -430,9 +508,7 @@ class _HostsPage extends StatelessWidget {
                     ),
                   );
                   await onRefresh();
-                },
-              ),
-            );
+                });
           },
         ),
       );

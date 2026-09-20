@@ -2,6 +2,9 @@ import 'dart:async';
 import '../../management/companion_portrait.dart';
 import '../../models/conversation_mode.dart';
 import 'package:flutter/material.dart';
+
+import '../../theme/eidolon_theme.dart';
+import '../../theme/neon_components.dart';
 import 'package:livekit_client/livekit_client.dart';
 
 import '../device_setup/mobile_body_enrollment_session.dart';
@@ -173,7 +176,8 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                           flow.client.canLeave
                               ? '更换伙伴会结束当前对话，返回准备页。'
                               : '选好伙伴和对话方式后，点击开始对话。',
-                          style: TextStyle(color: Colors.white60, height: 1.5)),
+                          style: TextStyle(
+                              color: Neon.inkDim, height: 1.6, fontSize: 13.5)),
                       const SizedBox(height: 16),
                       if (flow.companions.isEmpty)
                         Padding(
@@ -196,7 +200,7 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                                 : null,
                             trailing: c.companionId == flow.selectedCompanionId
                                 ? const Icon(Icons.check_circle_rounded,
-                                    color: Color(0xff8ee4cf))
+                                    color: Neon.cyan)
                                 : null,
                             onTap: () => Navigator.pop(context, c.companionId)),
                     ]))));
@@ -227,33 +231,40 @@ class _ProductConversationPageState extends State<ProductConversationPage>
         true;
   }
 
-  Widget _modes(ConversationFlow f) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text('对话方式',
-              style: TextStyle(color: Colors.white60, fontSize: 12)),
-          const SizedBox(height: 10),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final mode in ConversationMode.values)
-              ChoiceChip(
-                  key: ValueKey('mode-${mode.wireValue}'),
-                  label: Text(mode.label),
-                  selected: f.selectedMode == mode,
-                  onSelected: f.busy || f.client.isBusy
-                      ? null
-                      : (_) async {
-                          if (mode != f.selectedMode &&
-                              await _confirmChange()) {
-                            await f.chooseMode(mode);
-                          }
-                        }),
-          ]),
-          const SizedBox(height: 8),
-          Text(f.selectedMode?.description ?? '请选择一种对话方式',
-              style: const TextStyle(
-                  color: Colors.white54, fontSize: 12, height: 1.5)),
-        ],
-      );
+  Widget _modes(ConversationFlow f) {
+    final locked = f.busy || f.client.isBusy;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text('对话方式',
+            style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                letterSpacing: .6,
+                color: Neon.inkFaint)),
+        const SizedBox(height: Neon.s2 + 2),
+        Wrap(spacing: Neon.s2, runSpacing: Neon.s2, children: [
+          for (final mode in ConversationMode.values)
+            NeonChoice(
+              key: ValueKey('mode-${mode.wireValue}'),
+              label: mode.label,
+              selected: f.selectedMode == mode,
+              onTap: locked
+                  ? null
+                  : () async {
+                      if (mode != f.selectedMode && await _confirmChange()) {
+                        await f.chooseMode(mode);
+                      }
+                    },
+            ),
+        ]),
+        const SizedBox(height: Neon.s3),
+        Text(f.selectedMode?.description ?? '请选择一种对话方式',
+            style: const TextStyle(
+                color: Neon.inkFaint, fontSize: 12.5, height: 1.55)),
+      ],
+    );
+  }
 
   Widget _pttButton(ConversationFlow f) {
     final c = f.client;
@@ -266,13 +277,21 @@ class _ProductConversationPageState extends State<ProductConversationPage>
         onPointerDown: enabled ? (_) => unawaited(c.setPttHeld(true)) : null,
         onPointerUp: (_) => unawaited(c.setPttHeld(false)),
         onPointerCancel: (_) => unawaited(c.setPttHeld(false)),
-        child: FilledButton.tonalIcon(
-          style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(54),
-              backgroundColor: c.pttHeld ? const Color(0xff358e79) : null),
-          onPressed: enabled ? () {} : null,
-          icon: const Icon(Icons.mic_rounded),
-          label: Text(c.pttHeld ? '松开发送' : '按住说话'),
+        child: NeonCta(
+          enabled: enabled,
+          color: c.pttHeld ? Neon.cyanSoft : Neon.cyan,
+          child: FilledButton.icon(
+            style: EidolonTheme.primaryButton(
+                    colors: c.pttHeld
+                        ? const [Neon.cyanSoft, Neon.cyan]
+                        : Neon.accentGradient)
+                .copyWith(
+                    minimumSize:
+                        const WidgetStatePropertyAll(Size.fromHeight(56))),
+            onPressed: enabled ? () {} : null,
+            icon: const Icon(Icons.mic_rounded),
+            label: Text(c.pttHeld ? '松开发送' : '按住说话'),
+          ),
         ),
       ),
     );
@@ -356,10 +375,12 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                   children: [
                     const Text('对话',
                         style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.w600)),
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -.2)),
+                    const SizedBox(height: 1),
                     Text(widget.hostName,
-                        style: const TextStyle(
-                            fontSize: 12, color: Colors.white54)),
+                        style: Neon.mono(size: 11, color: Neon.inkFaint)),
                   ]),
               actions: [
                 if (flow != null || _error != null)
@@ -381,9 +402,9 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                           padding: const EdgeInsets.all(28),
                           child:
                               Column(mainAxisSize: MainAxisSize.min, children: [
-                            const Icon(Icons.cloud_off_rounded,
-                                size: 40, color: Colors.white54),
-                            const SizedBox(height: 16),
+                            const GlyphBadge(Icons.cloud_off_rounded,
+                                color: Neon.warn, size: 58),
+                            const SizedBox(height: Neon.s5),
                             Text('暂时无法连接',
                                 style: Theme.of(context).textTheme.titleLarge),
                             const SizedBox(height: 12),
@@ -393,7 +414,7 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                                 child: Text(_error!,
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
-                                        color: Colors.white60, height: 1.6))),
+                                        color: Neon.inkDim, height: 1.65))),
                             const SizedBox(height: 20),
                             FilledButton(
                                 onPressed: _load, child: const Text('重新连接'))
@@ -411,9 +432,9 @@ class _ProductConversationPageState extends State<ProductConversationPage>
             error == flow.client.uiState.supportingText;
         final content = <Widget>[
           _partner(flow),
-          const SizedBox(height: 22),
+          const SizedBox(height: 18),
           _modes(flow),
-          const SizedBox(height: 22),
+          const SizedBox(height: 18),
           _status(flow),
           if (flow.client.enrollmentAct == MobileBodyEnrollmentAct.approve) ...[
             const SizedBox(height: 18),
@@ -430,7 +451,7 @@ class _ProductConversationPageState extends State<ProductConversationPage>
           if (flow.managementError != null && !flow.client.canLeave) ...[
             const SizedBox(height: 12),
             Text('伙伴信息暂不可用，可下拉刷新。已获得的设备授权不受影响。',
-                style: const TextStyle(color: Colors.white54, fontSize: 12))
+                style: const TextStyle(color: Neon.inkFaint, fontSize: 12.5))
           ],
           const SizedBox(height: 20),
           _transcript(flow),
@@ -465,10 +486,18 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                                   Expanded(child: details),
                                 ])),
                       Container(
-                          padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
-                          decoration: const BoxDecoration(
-                              border: Border(
-                                  top: BorderSide(color: Colors.white10))),
+                          padding: const EdgeInsets.fromLTRB(
+                              Neon.s5, Neon.s4, Neon.s5, Neon.s5),
+                          decoration: BoxDecoration(
+                              border: const Border(
+                                  top: BorderSide(color: Neon.hair)),
+                              gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.transparent,
+                                    Neon.void_.withValues(alpha: .8),
+                                  ])),
                           child: Center(
                               child: ConstrainedBox(
                                   constraints:
@@ -479,61 +508,105 @@ class _ProductConversationPageState extends State<ProductConversationPage>
 
   Widget _stage(ConversationFlow f, double size) {
     final track = f.client.remoteVideoTrack;
+    final live = f.client.canLeave;
+    final halo = live ? Neon.cyan : Neon.indigo;
     return Semantics(
         label: '伙伴形象',
-        child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const RadialGradient(
-                    colors: [Color(0xff51476d), Color(0xff252337), Color(0xff12131d)]),
-                border: Border.all(color: f.client.canLeave ? const Color(0xff8ee4cf) : Colors.white12),
-                boxShadow: [
-                  BoxShadow(
-                      color: const Color(0xff8675df).withValues(alpha: .10),
-                      blurRadius: 45)
-                ]),
-            child: ClipOval(
-                child: track != null
-                    ? VideoTrackRenderer(track)
-                    : Center(
-                        child: f.selectedCompanionId == null
-                            ? Text('✦',
-                                style: TextStyle(
-                                    fontSize: size * .3,
-                                    color: const Color(0xffe5dfff)))
-                            : CompanionPortrait(
-                                companionId: f.selectedCompanionId!,
-                                name: f.companionName,
-                                artworkId: f.companions
-                                    .where((c) => c.companionId == f.selectedCompanionId)
-                                    .firstOrNull
-                                    ?.artworkId,
-                                loadFace: f.management.loadFace,
-                                size: size)))));
+        child: SizedBox(
+            width: size + 36,
+            height: size + 36,
+            child: Stack(alignment: Alignment.center, children: [
+              // Two quiet rings hold the portrait in the middle of the screen.
+              // Without them the avatar floated in empty space and the page had
+              // no centre.
+              _halo(size + 36, halo, live ? .20 : .09),
+              _halo(size + 18, halo, live ? .32 : .14),
+              AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  width: size,
+                  height: size,
+                  decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const RadialGradient(colors: [
+                        Color(0xFF1B2440),
+                        Color(0xFF0D1324),
+                        Color(0xFF070A14)
+                      ]),
+                      border: Border.all(
+                          color: live
+                              ? Neon.cyan.withValues(alpha: .75)
+                              : Colors.white.withValues(alpha: .10),
+                          width: live ? 2 : 1),
+                      boxShadow:
+                          Neon.glow(halo, blur: 48, alpha: live ? .30 : .16)),
+                  child: ClipOval(
+                      child: track != null
+                          ? VideoTrackRenderer(track)
+                          : Center(
+                              child: f.selectedCompanionId == null
+                                  ? Text('✦',
+                                      style: TextStyle(
+                                          fontSize: size * .28,
+                                          color:
+                                              Neon.cyan.withValues(alpha: .55)))
+                                  : CompanionPortrait(
+                                      companionId: f.selectedCompanionId!,
+                                      name: f.companionName,
+                                      artworkId: f.companions
+                                          .where((c) =>
+                                              c.companionId ==
+                                              f.selectedCompanionId)
+                                          .firstOrNull
+                                          ?.artworkId,
+                                      loadFace: f.management.loadFace,
+                                      size: size)))),
+            ])));
   }
 
-  Widget _partner(ConversationFlow f) => Center(
-          child: Column(children: [
-        const Text('本机应答伙伴',
-            style: TextStyle(color: Colors.white54, fontSize: 12)),
-        const SizedBox(height: 6),
-        TextButton(
-            onPressed: f.busy || f.client.isBusy ? null : _pickCompanion,
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Flexible(
-                  child: Text(f.companionName,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 26,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600))),
-              const SizedBox(width: 8),
-              const Icon(Icons.expand_more_rounded, color: Colors.white54),
-            ])),
-      ]));
+  Widget _halo(double size, Color color, double alpha) => Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: color.withValues(alpha: alpha))));
+
+  Widget _partner(ConversationFlow f) {
+    final enabled = !(f.busy || f.client.isBusy);
+    return Center(
+        child: Column(children: [
+      const Text('本机应答伙伴',
+          style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              letterSpacing: .6,
+              color: Neon.inkFaint)),
+      const SizedBox(height: Neon.s3),
+      Material(
+          color: Colors.white.withValues(alpha: .035),
+          borderRadius: BorderRadius.circular(99),
+          child: InkWell(
+              onTap: enabled ? _pickCompanion : null,
+              borderRadius: BorderRadius.circular(99),
+              child: Container(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
+                  decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(color: Neon.hair)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Flexible(
+                        child: Text(f.companionName,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 20,
+                                letterSpacing: -.3,
+                                color: enabled ? Colors.white : Neon.inkDim,
+                                fontWeight: FontWeight.w700))),
+                    const SizedBox(width: Neon.s2),
+                    const Icon(Icons.expand_more_rounded,
+                        color: Neon.inkDim, size: 20),
+                  ])))),
+    ]));
+  }
 
   Widget _status(ConversationFlow f) {
     final c = f.client;
@@ -550,87 +623,152 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                 !c.userMuted
             ? '伙伴正在说话'
             : c.uiState.headline;
-    return Column(children: [
-      Text(
-          c.activationExhausted
-              ? '对话尚未就绪'
-              : c.canJoin
-                  ? '准备开始对话'
-                  : headline,
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w500)),
-      const SizedBox(height: 8),
-      Text(
-          c.canJoin
-              ? '选好伙伴和对话方式后再接通。准备期间麦克风关闭。'
-              : c.canLeave
-                  ? (c.conversationStanding == ConversationStanding.farEndGone
-                      ? '伙伴已离开，麦克风已关闭。可以重新开始。'
-                      : c.conversationStanding == ConversationStanding.asked
-                          ? '正在等待伙伴接通，麦克风保持静音。'
-                          : c.mode == ConversationMode.halfDuplex &&
-                                  c.agentSpeaking
-                              ? '伙伴正在说话，结束后将恢复聆听。'
-                              : c.mode.description)
-                  : c.uiState.supportingText,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-              color: Colors.white60, height: 1.6, fontSize: 13)),
-    ]);
+    final tone = c.activationExhausted
+        ? NeonTone.warn
+        : active
+            ? NeonTone.ok
+            : c.canJoin
+                ? NeonTone.accent
+                : NeonTone.idle;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+          horizontal: Neon.s4 + 2, vertical: Neon.s4 + 2),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .025),
+        borderRadius: BorderRadius.circular(Neon.radiusL),
+        border: Border.all(color: Neon.hair),
+      ),
+      child: Column(children: [
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: neonToneColor(tone),
+                boxShadow: Neon.glow(neonToneColor(tone), blur: 7, alpha: .9)),
+          ),
+          const SizedBox(width: Neon.s2 + 2),
+          Flexible(
+            child: Text(
+                c.activationExhausted
+                    ? '对话尚未就绪'
+                    : c.canJoin
+                        ? '准备开始对话'
+                        : headline,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -.1,
+                    color: Colors.white)),
+          ),
+        ]),
+        const SizedBox(height: Neon.s3),
+        Text(
+            c.canJoin
+                ? '选好伙伴和对话方式后再接通。准备期间麦克风关闭。'
+                : c.canLeave
+                    ? (c.conversationStanding == ConversationStanding.farEndGone
+                        ? '伙伴已离开，麦克风已关闭。可以重新开始。'
+                        : c.conversationStanding == ConversationStanding.asked
+                            ? '正在等待伙伴接通，麦克风保持静音。'
+                            : c.mode == ConversationMode.halfDuplex &&
+                                    c.agentSpeaking
+                                ? '伙伴正在说话，结束后将恢复聆听。'
+                                : c.mode.description)
+                    : c.uiState.supportingText,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                color: Neon.inkDim, height: 1.65, fontSize: 13)),
+      ]),
+    );
   }
 
-  Widget _approval(ConversationFlow f) => Container(
+  Widget _approval(ConversationFlow f) => NeonPanel(
+      accent: Neon.cyan,
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-          color: const Color(0xff1d2530),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-              color: const Color(0xff8ee4cf).withValues(alpha: .25))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Row(children: [
-          Icon(Icons.phonelink_lock_rounded, color: Color(0xff8ee4cf)),
-          SizedBox(width: 10),
+          GlyphBadge(Icons.phonelink_lock_rounded, size: 34),
+          SizedBox(width: Neon.s3),
           Expanded(
               child: Text('这是你手上这台手机',
-                  style: TextStyle(fontWeight: FontWeight.w600)))
+                  style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: Neon.ink)))
         ]),
-        const SizedBox(height: 12),
-        Text(f.reviewedProposal == null
-            ? (f.error == null ? '正在核对本机提案…' : '本机提案尚未核对成功，请重试。')
-            : '设备身份与本机密钥匹配。确认后，本机将作为虚拟设备接入。'),
-        const SizedBox(height: 10),
-        SelectableText('密钥指纹\n${f.client.identity?.fingerprint ?? ""}',
+        const SizedBox(height: Neon.s3),
+        Text(
+            f.reviewedProposal == null
+                ? (f.error == null ? '正在核对本机提案…' : '本机提案尚未核对成功，请重试。')
+                : '设备身份与本机密钥匹配。确认后，本机将作为虚拟设备接入。',
             style: const TextStyle(
-                color: Colors.white54, fontSize: 11, height: 1.5)),
+                fontSize: 13.5, height: 1.6, color: Neon.inkDim)),
+        const SizedBox(height: Neon.s3),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(Neon.s3),
+          decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: .28),
+              borderRadius: BorderRadius.circular(Neon.radiusS),
+              border: Border.all(color: Neon.hair)),
+          child: SelectableText('密钥指纹\n${f.client.identity?.fingerprint ?? ""}',
+              style: Neon.mono(size: 11, color: Neon.inkFaint)),
+        ),
         if (f.selectedCompanionId == null)
-          TextButton(onPressed: _pickCompanion, child: const Text('选择应答伙伴')),
+          Padding(
+            padding: const EdgeInsets.only(top: Neon.s2),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                  onPressed: _pickCompanion, child: const Text('选择应答伙伴')),
+            ),
+          ),
       ]));
 
   Widget _transcript(ConversationFlow f) {
     final lines = f.client.transcript;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('本次对话', style: TextStyle(fontSize: 12, color: Colors.white38)),
-      const SizedBox(height: 12),
+      Row(children: [
+        const Text('本次对话',
+            style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                letterSpacing: .6,
+                color: Neon.inkFaint)),
+        const SizedBox(width: Neon.s3),
+        const Expanded(child: Divider(height: 1)),
+      ]),
+      const SizedBox(height: Neon.s4),
       if (lines.isEmpty)
         const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
+            padding: EdgeInsets.symmetric(vertical: Neon.s4),
             child: Text('对话开始后，文字会显示在这里。',
-                style: TextStyle(color: Colors.white38, fontSize: 13))),
+                style: TextStyle(color: Neon.inkFaint, fontSize: 13))),
       for (final line in lines)
         Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(line.speaker,
-                  style: const TextStyle(fontSize: 11, color: Colors.white38)),
-              const SizedBox(height: 4),
-              Text(line.text,
-                  style: TextStyle(
-                      height: 1.55,
-                      color: line.isFinal
-                          ? Colors.white.withValues(alpha: .88)
-                          : Colors.white54)),
-            ])),
+            padding: const EdgeInsets.only(bottom: Neon.s4),
+            child: Container(
+              padding: const EdgeInsets.only(left: Neon.s3),
+              decoration: const BoxDecoration(
+                  border: Border(
+                      left: BorderSide(color: Neon.hairStrong, width: 2))),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(line.speaker,
+                        style: Neon.mono(size: 10.5, color: Neon.inkFaint)),
+                    const SizedBox(height: Neon.s1),
+                    Text(line.text,
+                        style: TextStyle(
+                            fontSize: 14,
+                            height: 1.6,
+                            color: line.isFinal ? Neon.ink : Neon.inkDim)),
+                  ]),
+            )),
     ]);
   }
 
@@ -640,23 +778,27 @@ class _ProductConversationPageState extends State<ProductConversationPage>
     Widget button(String label, VoidCallback? action, IconData icon) =>
         SizedBox(
             width: double.infinity,
-            child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(54),
-                    backgroundColor: const Color(0xffb5a8f2),
-                    foregroundColor: const Color(0xff211d35)),
-                onPressed: busy ? null : action,
-                icon: Icon(icon, size: 21),
-                label: Text(label)));
+            child: NeonCta(
+                enabled: !busy && action != null,
+                child: FilledButton.icon(
+                    style: EidolonTheme.primaryButton().copyWith(
+                        minimumSize:
+                            const WidgetStatePropertyAll(Size.fromHeight(56))),
+                    onPressed: busy ? null : action,
+                    icon: Icon(icon, size: 20),
+                    label: Text(label))));
     if (c.canLeave &&
         c.conversationStanding != ConversationStanding.farEndGone) {
       return Row(children: [
         Expanded(
             child: c.mode == ConversationMode.ptt
                 ? _pttButton(f)
-                : FilledButton.tonalIcon(
-                    style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(54)),
+                // Secondary weight: muting is not the action this bar is for,
+                // and a second filled button beside "结束对话" made the two read
+                // as equals.
+                : OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56)),
                     onPressed: busy || !c.conversationStanding.answered
                         ? null
                         : c.toggleMicrophone,
@@ -664,15 +806,21 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                         ? Icons.mic_rounded
                         : Icons.mic_off_rounded),
                     label: Text(c.userMuted ? '解除静音' : '静音'))),
-        const SizedBox(width: 12),
+        const SizedBox(width: Neon.s3),
         Expanded(
-            child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(54),
-                    backgroundColor: const Color(0xffa34754)),
-                onPressed: busy ? null : c.leave,
-                icon: const Icon(Icons.call_end_rounded),
-                label: const Text('结束对话')))
+            child: NeonCta(
+                color: Neon.bad,
+                enabled: !busy,
+                child: FilledButton.icon(
+                    style: EidolonTheme.primaryButton(
+                            colors: Neon.dangerGradient,
+                            foreground: Colors.white)
+                        .copyWith(
+                            minimumSize: const WidgetStatePropertyAll(
+                                Size.fromHeight(56))),
+                    onPressed: busy ? null : c.leave,
+                    icon: const Icon(Icons.call_end_rounded),
+                    label: const Text('结束对话'))))
       ]);
     }
     if (c.canLeave) {
@@ -723,26 +871,38 @@ class _ProductConversationPageState extends State<ProductConversationPage>
       return button('恢复已有登记', _recoverRegistration, Icons.link_rounded);
     }
     if (busy) {
-      return const SizedBox(
-          height: 54,
+      return SizedBox(
+          height: 56,
           child: Center(
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-            SizedBox(
-                width: 18,
-                height: 18,
+            const SizedBox(
+                width: 16,
+                height: 16,
                 child: CircularProgressIndicator(strokeWidth: 2)),
-            SizedBox(width: 12),
-            Text('正在准备…')
+            const SizedBox(width: Neon.s3),
+            Text('正在准备…', style: Neon.mono(size: 13, color: Neon.inkDim)),
           ])));
     }
     return button('重新检查', f.retry, Icons.refresh_rounded);
   }
 
-  Widget _notice(String text, {bool error = false}) => Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-          color: error ? const Color(0xff38232c) : const Color(0xff202331),
-          borderRadius: BorderRadius.circular(14)),
-      child: Text(text, style: const TextStyle(height: 1.5, fontSize: 13)));
+  Widget _notice(String text, {bool error = false}) {
+    final tone = error ? Neon.bad : Neon.warn;
+    return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(Neon.s4),
+        decoration: BoxDecoration(
+            color: tone.withValues(alpha: .08),
+            borderRadius: BorderRadius.circular(Neon.radiusM),
+            border: Border.all(color: tone.withValues(alpha: .24))),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(error ? Icons.error_outline_rounded : Icons.info_outline_rounded,
+              size: 17, color: tone),
+          const SizedBox(width: Neon.s3),
+          Expanded(
+              child: Text(text,
+                  style: const TextStyle(
+                      height: 1.6, fontSize: 13, color: Neon.ink))),
+        ]));
+  }
 }

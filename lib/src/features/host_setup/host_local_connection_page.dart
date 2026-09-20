@@ -5,6 +5,9 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../theme/eidolon_theme.dart';
+import '../../theme/neon_components.dart';
+
 import '../naming/ask_for_a_name.dart';
 
 import '../device_management/mounted_devices_page.dart';
@@ -938,38 +941,93 @@ class _ConversationCard extends StatelessWidget {
   final VoidCallback onOpen;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) => NeonPanel(
         key: const Key('conversation-card'),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.graphic_eq,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      '对话',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Text('选择应答伙伴和对话方式，准备好后再开始。'),
-              const SizedBox(height: 14),
-              FilledButton.icon(
+        accent: Neon.cyan,
+        glow: true,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SectionHeading(
+              eyebrow: 'Live session',
+              title: '对话',
+              icon: Icons.graphic_eq_rounded,
+            ),
+            const SizedBox(height: Neon.s4),
+            const Text('选择应答伙伴和对话方式，准备好后再开始。',
+                style:
+                    TextStyle(fontSize: 14, height: 1.6, color: Neon.inkDim)),
+            const SizedBox(height: Neon.s5),
+            NeonCta(
+              child: FilledButton.icon(
                 key: const Key('open-conversation'),
                 onPressed: onOpen,
                 icon: const Icon(Icons.chat_bubble_outline),
                 label: const Text('进入对话'),
               ),
-            ],
+            ),
+          ],
+        ),
+      );
+}
+
+/// One tappable destination row.
+///
+/// Replaces a bare [ListTile], whose leading icon, title and chevron all sat
+/// at the same weight: nothing in the row said which part was the subject and
+/// which was the hint.
+class _NavRow extends StatelessWidget {
+  const _NavRow({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.color = Neon.cyan,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(Neon.radiusM),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(Neon.radiusM),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: Neon.s2, vertical: Neon.s3 + 2),
+            child: Row(
+              children: [
+                GlyphBadge(icon, color: color, size: 38),
+                const SizedBox(width: Neon.s3),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: Neon.ink)),
+                      const SizedBox(height: 3),
+                      Text(subtitle,
+                          style: const TextStyle(
+                              fontSize: 12.5,
+                              height: 1.4,
+                              color: Neon.inkFaint)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded,
+                    color: Neon.inkFaint, size: 20),
+              ],
+            ),
           ),
         ),
       );
@@ -983,26 +1041,29 @@ class _ConnectedHostCard extends StatelessWidget {
   final VoidCallback? onOpenConstellation;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) => NeonPanel(
         key: const Key('local-connection-complete'),
+        padding:
+            const EdgeInsets.symmetric(horizontal: Neon.s3, vertical: Neon.s2),
         child: Column(children: [
-          ListTile(
+          _NavRow(
             key: const Key('open-host-runtime-status'),
-            leading: const Icon(Icons.monitor_heart_outlined),
-            title: const Text('主机监控'),
-            subtitle: const Text('CPU、NPU、内存、服务与进程'),
-            trailing: const Icon(Icons.chevron_right),
+            icon: Icons.monitor_heart_outlined,
+            title: '主机监控',
+            subtitle: 'CPU、NPU、内存、服务与进程',
             onTap: onOpenSystem,
           ),
-          if (onOpenConstellation != null)
-            ListTile(
+          if (onOpenConstellation != null) ...[
+            const Divider(height: 1, indent: Neon.s2, endIndent: Neon.s2),
+            _NavRow(
               key: const Key('open-constellation'),
-              leading: const Icon(Icons.hub_outlined),
-              title: const Text('驾驶舱'),
-              subtitle: const Text('伙伴、设备与活动关系'),
-              trailing: const Icon(Icons.chevron_right),
+              icon: Icons.hub_outlined,
+              title: '驾驶舱',
+              subtitle: '伙伴、设备与活动关系',
+              color: Neon.purple,
               onTap: onOpenConstellation,
             ),
+          ],
         ]),
       );
 }
@@ -1182,111 +1243,127 @@ class _WorkspaceCard extends StatelessWidget {
 
   Widget _buildReady(BuildContext context, WorkspaceStatus workspace) {
     final home = controller.home;
-    return Card(
+    return NeonPanel(
       key: const Key('workspace-ready'),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.check_circle,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '主机设置已完成',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-              ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SectionHeading(
+            eyebrow: 'Workspace',
+            title: '主机设置已完成',
+            icon: Icons.verified_outlined,
+            color: Neon.ok,
+          ),
+          const SizedBox(height: Neon.s5),
+          Container(
+            padding: const EdgeInsets.fromLTRB(
+                Neon.s3 + 2, Neon.s2, Neon.s2, Neon.s2),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: .03),
+              borderRadius: BorderRadius.circular(Neon.radiusM),
+              border: Border.all(color: Neon.hair),
             ),
-            const SizedBox(height: 12),
-            Row(
+            child: Row(
               children: [
-                Expanded(child: Text('主人：${workspace.owner!.displayName}')),
+                const Icon(Icons.person_outline,
+                    size: 18, color: Neon.inkFaint),
+                const SizedBox(width: Neon.s3),
+                Expanded(
+                    child: Text('主人：${workspace.owner!.displayName}',
+                        style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Neon.ink))),
                 if (onRenameOwner != null)
                   IconButton(
                     key: const Key('rename-owner'),
                     onPressed: onRenameOwner,
                     tooltip: '改名',
+                    iconSize: 18,
                     icon: const Icon(Icons.edit_outlined),
                   ),
               ],
             ),
-            const SizedBox(height: 12),
-            _WorkspaceResourceStatus(
-              key: const Key('companion-roster-row'),
-              onOpen: onOpenRoster,
-              openKey: const Key('open-companion-roster'),
-              openTooltip: '打开你的伙伴',
-              icon: Icons.groups_2_outlined,
-              label: '你的伙伴',
-              statusLabel: switch (home) {
-                null => '可查看',
-                _ when home.companionsUnread => '读不到',
-                // What this answer carries, and whether it is all of them. The
-                // home reads one page of the roster, so an unqualified number
-                // here told anybody past that page the page size was their
-                // total — a count that stops growing without saying it stopped.
-                _ when home.moreCompanions =>
-                  '${home.companionCounts.total}+ 位',
-                _ => '${home.companionCounts.total} 位',
-              },
-              detail: companionsSummaryLine(home),
+          ),
+          const SizedBox(height: Neon.s4),
+          _WorkspaceResourceStatus(
+            key: const Key('companion-roster-row'),
+            onOpen: onOpenRoster,
+            openKey: const Key('open-companion-roster'),
+            openTooltip: '打开你的伙伴',
+            icon: Icons.groups_2_outlined,
+            label: '你的伙伴',
+            statusLabel: switch (home) {
+              null => '可查看',
+              _ when home.companionsUnread => '读不到',
+              // What this answer carries, and whether it is all of them. The
+              // home reads one page of the roster, so an unqualified number
+              // here told anybody past that page the page size was their
+              // total — a count that stops growing without saying it stopped.
+              _ when home.moreCompanions => '${home.companionCounts.total}+ 位',
+              _ => '${home.companionCounts.total} 位',
+            },
+            detail: companionsSummaryLine(home),
+          ),
+          _WorkspaceResourceStatus(
+            key: const Key('memory-library-row'),
+            onOpen: onOpenMemoryLibrary,
+            hold: memoryHold,
+            openKey: const Key('open-memory-library'),
+            openTooltip: '看它记住的',
+            icon: Icons.auto_stories_outlined,
+            // The Owner's, not any one Eidolon's: one Realm per person, and
+            // every Eidolon reads and writes it through an audience. This row
+            // used to say 它的记忆 and describe whichever one answered.
+            label: '你的记忆',
+            // Reachable, not "running". Whether a memory can be opened is
+            // about this Host's memory service; the old label read
+            // 「有没有默认伙伴」 and printed 运行中, which was a guess about a
+            // different thing entirely.
+            // Three different reasons a person cannot read this, and they
+            // lead to different places: this Host cannot do memory at all,
+            // this read did not come back, or it did and you can open it.
+            statusLabel: switch ((memoryHold, home)) {
+              (final hold?, _) when hold.isNotEmpty => '暂不可用',
+              (_, final answer?) when answer.memoryUnread => '读不到',
+              _ => '可查看',
+            },
+            // Not the realm identifier. That line was the only thing this
+            // row ever said, and it named a thing an Owner cannot open,
+            // search or act on — an identifier standing in for the fact
+            // that there is nothing here to show yet.
+            // What it actually holds when the Host could say, and an honest
+            // placeholder when it could not: a memory nothing has been
+            // written into yet is a real and ordinary state.
+            detail: memorySummaryLine(
+              home,
+              failed: controller.homeError != null,
             ),
-            _WorkspaceResourceStatus(
-              key: const Key('memory-library-row'),
-              onOpen: onOpenMemoryLibrary,
-              hold: memoryHold,
-              openKey: const Key('open-memory-library'),
-              openTooltip: '看它记住的',
-              icon: Icons.auto_stories_outlined,
-              // The Owner's, not any one Eidolon's: one Realm per person, and
-              // every Eidolon reads and writes it through an audience. This row
-              // used to say 它的记忆 and describe whichever one answered.
-              label: '你的记忆',
-              // Reachable, not "running". Whether a memory can be opened is
-              // about this Host's memory service; the old label read
-              // 「有没有默认伙伴」 and printed 运行中, which was a guess about a
-              // different thing entirely.
-              // Three different reasons a person cannot read this, and they
-              // lead to different places: this Host cannot do memory at all,
-              // this read did not come back, or it did and you can open it.
-              statusLabel: switch ((memoryHold, home)) {
-                (final hold?, _) when hold.isNotEmpty => '暂不可用',
-                (_, final answer?) when answer.memoryUnread => '读不到',
-                _ => '可查看',
-              },
-              // Not the realm identifier. That line was the only thing this
-              // row ever said, and it named a thing an Owner cannot open,
-              // search or act on — an identifier standing in for the fact
-              // that there is nothing here to show yet.
-              // What it actually holds when the Host could say, and an honest
-              // placeholder when it could not: a memory nothing has been
-              // written into yet is a real and ordinary state.
-              detail: memorySummaryLine(
-                home,
-                failed: controller.homeError != null,
+          ),
+          if (controller.homeError case final error?) ...[
+            const SizedBox(height: Neon.s3),
+            Container(
+              padding: const EdgeInsets.all(Neon.s3),
+              decoration: BoxDecoration(
+                color: Neon.warn.withValues(alpha: .08),
+                borderRadius: BorderRadius.circular(Neon.radiusS),
+                border: Border.all(color: Neon.warn.withValues(alpha: .24)),
               ),
+              child: Row(children: [
+                const Icon(Icons.error_outline_rounded,
+                    size: 17, color: Neon.warn),
+                const SizedBox(width: Neon.s2 + 2),
+                Expanded(
+                    child: Text(error,
+                        key: const Key('home-error'),
+                        style: const TextStyle(
+                            fontSize: 13, height: 1.5, color: Neon.ink))),
+              ]),
             ),
-            if (controller.homeError case final error?) ...[
-              const SizedBox(height: 12),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.tertiaryContainer,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Text(error, key: const Key('home-error')),
-                ),
-              ),
-              const SizedBox(height: 4),
-              TextButton.icon(
+            const SizedBox(height: Neon.s1),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
                 key: const Key('retry-home'),
                 onPressed: controller.workspaceBusy
                     ? null
@@ -1294,9 +1371,14 @@ class _WorkspaceCard extends StatelessWidget {
                 icon: const Icon(Icons.refresh),
                 label: const Text('重新读取概览'),
               ),
-            ],
-            const SizedBox(height: 20),
-            TextButton.icon(
+            ),
+          ],
+          const SizedBox(height: Neon.s4),
+          const Divider(height: 1),
+          const SizedBox(height: Neon.s2),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
               key: const Key('refresh-host-product-state'),
               onPressed: controller.connecting || controller.workspaceBusy
                   ? null
@@ -1304,8 +1386,8 @@ class _WorkspaceCard extends StatelessWidget {
               icon: const Icon(Icons.refresh),
               label: const Text('刷新概览'),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1325,53 +1407,61 @@ class _DevicesSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final count = controller.devices?.devices.length;
-    return Card(
+    final failed = controller.devicesError != null;
+    return NeonPanel(
       key: const Key('mounted-devices-card'),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.devices_other_outlined),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '设备',
-                    style: Theme.of(context).textTheme.titleLarge,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SectionHeading(
+            eyebrow: 'Inventory',
+            title: '设备',
+            icon: Icons.devices_other_outlined,
+            color: Neon.purple,
+            trailing: count == null
+                ? null
+                : Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Neon.purple.withValues(alpha: .12),
+                      borderRadius: BorderRadius.circular(99),
+                      border:
+                          Border.all(color: Neon.purple.withValues(alpha: .3)),
+                    ),
+                    child: Text('$count',
+                        style: Neon.mono(
+                            size: 13,
+                            color: Neon.purple,
+                            weight: FontWeight.w700)),
                   ),
-                ),
-                if (count != null) Chip(label: Text('$count')),
-              ],
+          ),
+          const SizedBox(height: Neon.s4),
+          Text(
+            controller.devicesError ??
+                (count == 0 ? '还没有由主机确认接入的设备。' : '查看主机已确认挂载的设备和 Companion 关联。'),
+            style: TextStyle(
+                fontSize: 14,
+                height: 1.6,
+                color: failed ? Neon.bad : Neon.inkDim),
+          ),
+          const SizedBox(height: Neon.s5),
+          FilledButton.icon(
+            key: const Key('open-mounted-devices'),
+            onPressed: onOpen,
+            icon: const Icon(Icons.arrow_forward),
+            label: const Text('打开设备管理'),
+          ),
+          if (onOpenControllers != null) ...[
+            const SizedBox(height: Neon.s3),
+            OutlinedButton.icon(
+              key: const Key('open-managed-controllers'),
+              onPressed: onOpenControllers,
+              icon: const Icon(Icons.phonelink_lock_outlined),
+              label: const Text('管理手机'),
             ),
-            const SizedBox(height: 8),
-            Text(
-              controller.devicesError ??
-                  (count == 0
-                      ? '还没有由主机确认接入的设备。'
-                      : '查看主机已确认挂载的设备和 Companion 关联。'),
-              style: controller.devicesError == null
-                  ? null
-                  : TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-            const SizedBox(height: 14),
-            FilledButton.tonalIcon(
-              key: const Key('open-mounted-devices'),
-              onPressed: onOpen,
-              icon: const Icon(Icons.arrow_forward),
-              label: const Text('打开设备管理'),
-            ),
-            const SizedBox(height: 10),
-            if (onOpenControllers != null)
-              OutlinedButton.icon(
-                key: const Key('open-managed-controllers'),
-                onPressed: onOpenControllers,
-                icon: const Icon(Icons.phonelink_lock_outlined),
-                label: const Text('管理手机'),
-              ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -1416,40 +1506,62 @@ class _WorkspaceResourceStatus extends StatelessWidget {
   final String? hold;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(
-          children: [
-            Icon(icon, size: 20),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label),
-                  Text(detail, style: Theme.of(context).textTheme.bodySmall),
+  Widget build(BuildContext context) {
+    final tone = statusLabel.contains('读不到') || statusLabel.contains('暂不可用')
+        ? NeonTone.warn
+        : NeonTone.ok;
+    final reason = hold;
+    final row = Padding(
+      padding:
+          const EdgeInsets.symmetric(horizontal: Neon.s2, vertical: Neon.s3),
+      child: Row(
+        children: [
+          GlyphBadge(icon, size: 36, color: Neon.cyan),
+          const SizedBox(width: Neon.s3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                        color: Neon.ink)),
+                const SizedBox(height: 3),
+                Text(detail,
+                    style: const TextStyle(
+                        fontSize: 12.5, height: 1.45, color: Neon.inkFaint)),
+                if (reason != null && reason.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(reason,
+                      style: const TextStyle(
+                          fontSize: 12, height: 1.45, color: Neon.warn)),
                 ],
-              ),
+              ],
             ),
-            if (hold != null)
-              Chip(label: Text(hold!))
-            else if (onOpen != null)
-              IconButton(
-                key: openKey,
-                onPressed: onOpen,
-                tooltip: openTooltip,
-                icon: const Icon(Icons.chevron_right),
-              ),
-            Icon(
-              Icons.check_circle_outline,
-              size: 18,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(width: 4),
-            Text(statusLabel),
+          ),
+          const SizedBox(width: Neon.s2),
+          StatusPill(statusLabel, tone: tone),
+          if (reason == null && onOpen != null) ...[
+            const SizedBox(width: Neon.s1),
+            const Icon(Icons.chevron_right_rounded,
+                size: 20, color: Neon.inkFaint),
           ],
-        ),
-      );
+        ],
+      ),
+    );
+    if (reason != null || onOpen == null) return row;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(Neon.radiusM),
+      child: InkWell(
+        key: openKey,
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(Neon.radiusM),
+        child: Tooltip(message: openTooltip ?? '', child: row),
+      ),
+    );
+  }
 }
 
 /// The edit page plus the request state it cannot own.
