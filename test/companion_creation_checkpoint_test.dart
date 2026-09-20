@@ -126,6 +126,8 @@ void main() {
     expect(find.text('继续确认创建'), findsOneWidget);
     await tester.tap(find.byKey(const Key('roster-add')));
     await tester.pumpAndSettle();
+    expect(find.text('确认伙伴创建'), findsOneWidget);
+    expect(find.text('自定义伙伴'), findsNothing);
     expect(find.text('重试创建'), findsOneWidget);
     await tester.tap(find.byKey(const Key('authoring-create')));
     await tester.pumpAndSettle();

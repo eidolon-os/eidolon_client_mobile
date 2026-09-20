@@ -53,12 +53,14 @@ class CompanionAuthoringPage extends StatefulWidget {
   final PersonaAuthoring template;
   final List<PersonaPreset> presets;
   final CompanionCreationDrafts? drafts;
+
   /// The fourth argument is the preset this came from, when it came from one
   /// and nobody touched it. Only this screen can say: it holds the draft and
   /// saw whether anything was edited. A record of where the Eidolon began —
   /// nothing reads it back, and nothing about it follows the preset afterwards.
-  final Future<void> Function(String, PersonaAuthoring?,
-      ConversationPreferences?, PersonaPreset?) onCreate;
+  final Future<void> Function(
+          String, PersonaAuthoring?, ConversationPreferences?, PersonaPreset?)
+      onCreate;
   final PreviewPersona? preview;
   final bool busy;
   final bool locked;
@@ -76,6 +78,7 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
   bool get _custom => _drafts.selectedId == null;
   bool get _disabled => widget.busy || widget.locked;
   bool get _valid => _draft.name.text.trim().isNotEmpty;
+
   /// The preset this is still exactly, or null the moment it stops being one.
   ///
   /// Editing the authoring makes it the person's own, and saying otherwise
@@ -127,11 +130,13 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
         child: Scaffold(
             key: const Key('companion-authoring-page'),
             appBar: AppBar(
-                title: Text(_review
-                    ? '确认你的伙伴'
-                    : _editing
-                        ? (_custom ? '自定义伙伴' : '调整伙伴')
-                        : '认识一个新伙伴'),
+                title: Text(widget.locked
+                    ? '确认伙伴创建'
+                    : _review
+                        ? '确认你的伙伴'
+                        : _editing
+                            ? (_custom ? '自定义伙伴' : '调整伙伴')
+                            : '认识一个新伙伴'),
                 leading: inner
                     ? IconButton(
                         onPressed: widget.busy ? null : _back,
