@@ -2,6 +2,7 @@ import 'package:eidolon_client_mobile/src/features/device_management/mounted_dev
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_devices_page.dart';
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:flutter/material.dart';
+import 'package:eidolon_client_mobile/src/management/management_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// A mounted device answers as somebody, or as nobody. Until this screen could
@@ -16,7 +17,8 @@ MountedDevice _device({
 }) =>
     MountedDevice.fromView(
       DeviceView.fromJson({
-        'device_id': 'device-instance-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+        'device_id':
+            'device-instance-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
         'label': 'box3-device-manifest',
         'kind': 'box3-device-manifest',
         'state': state,
@@ -67,7 +69,6 @@ CompanionRosterView _roster() => CompanionRosterView.fromJson({
       'next_cursor': null,
     });
 
-
 /// Reach a control that is below the fold.
 ///
 /// This page is a list and its buttons are at the bottom of it, which is where
@@ -93,6 +94,148 @@ Future<void> _tapWhereverItIs(WidgetTester tester, Key key) async {
 }
 
 void main() {
+  test('device choices include the last page without duplicate IDs', () async {
+    final row = _roster().companions.first;
+    final calls = <String?>[];
+    final result = await loadDeviceCompanionChoices(({String? cursor}) async {
+      calls.add(cursor);
+      return cursor == null
+          ? CompanionRosterView(companions: [row], nextCursor: 'page2')
+          : CompanionRosterView(companions: [
+              row,
+              CompanionSummaryView.fromJson(
+                  {...row.toJson(), 'companion_id': 'last-page-companion'})
+            ]);
+    });
+    expect(calls, [null, 'page2']);
+    expect(result.companions.map((row) => row.companionId),
+        ['c_01', 'last-page-companion']);
+    expect(result.nextCursor, isNull);
+  });
+
+  test('looping cursors refuse rather than silently truncate the chooser',
+      () async {
+    await expectLater(
+        loadDeviceCompanionChoices(({String? cursor}) async =>
+            CompanionRosterView(
+                companions: _roster().companions, nextCursor: 'same')),
+        throwsStateError);
+  });
+
+  Future<void> openCreation(WidgetTester tester,
+      {required Future<CreatedCompanion?> Function() create,
+      required List<Map<String, Object?>> calls}) async {
+    await tester.pumpWidget(MaterialApp(
+        home: MountedDeviceDetailPage(
+      device: _device(companionId: 'old-companion', revision: 9),
+      onRemove: (_, __) async => throw StateError('not this test'),
+      loadCompanions: () async => _roster(),
+      onCreateCompanion: create,
+      onBindCompanion: (
+          {required deviceId,
+          required requestId,
+          required companionId,
+          required expectedRevision}) async {
+        calls.add({
+          'device': deviceId,
+          'companion': companionId,
+          'revision': expectedRevision
+        });
+      },
+    )));
+    await _tapWhereverItIs(tester, const Key('bind-device-companion'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('device-create-companion')));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+      'device creation returns to an explicit confirmation with the new ID',
+      (tester) async {
+    final calls = <Map<String, Object?>>[];
+    await openCreation(tester,
+        calls: calls,
+        create: () async => const CreatedCompanion(
+            companionId: 'created-id',
+            displayName: '小忆',
+            created: true,
+            memoryReady: true));
+    expect(calls, isEmpty);
+    expect(find.textContaining('小忆'), findsWidgets);
+    expect(find.byKey(const Key('confirm-device-companion')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('confirm-device-companion')));
+    await tester.pumpAndSettle();
+    expect(calls.single['companion'], 'created-id');
+    expect(calls.single['revision'], 9);
+  });
+
+  testWidgets(
+      'cancelling binding keeps the created companion and old device binding',
+      (tester) async {
+    final calls = <Map<String, Object?>>[];
+    await openCreation(tester,
+        calls: calls,
+        create: () async => const CreatedCompanion(
+            companionId: 'created-id',
+            displayName: '新伙伴',
+            created: true,
+            memoryReady: true));
+    await tester.tap(find.text('暂不更换'));
+    await tester.pumpAndSettle();
+    expect(calls, isEmpty);
+    expect(find.text('新伙伴 已创建。设备尚未更换应答伙伴。'), findsOneWidget);
+    expect(find.text('小忆'), findsOneWidget);
+  });
+
+  testWidgets('leaving creation sends no binding and shows no confirmation',
+      (tester) async {
+    final calls = <Map<String, Object?>>[];
+    await openCreation(tester, calls: calls, create: () async => null);
+    expect(calls, isEmpty);
+    expect(find.byKey(const Key('confirm-device-companion')), findsNothing);
+    expect(find.text('小忆'), findsOneWidget);
+  });
+
+  testWidgets('creation failure leaves the original device binding untouched',
+      (tester) async {
+    final calls = <Map<String, Object?>>[];
+    await openCreation(tester,
+        calls: calls, create: () async => throw StateError('offline'));
+    expect(calls, isEmpty);
+    expect(find.byKey(const Key('confirm-device-companion')), findsNothing);
+    expect(find.text('小忆'), findsOneWidget);
+    expect(find.textContaining('关联没有完成'), findsOneWidget);
+  });
+
+  testWidgets('same-name choices show distinct codes, also on confirmation',
+      (tester) async {
+    final first = _roster().companions.first.toJson();
+    final peers = ['prefix-a-123456', 'prefix-b-123456']
+        .map((id) => CompanionSummaryView.fromJson(
+            {...first, 'companion_id': id, 'display_name': '同名'}))
+        .toList();
+    await tester.pumpWidget(MaterialApp(
+        home: MountedDeviceDetailPage(
+      device: _device(),
+      onRemove: (_, __) async => throw StateError('unused'),
+      loadCompanions: () async => CompanionRosterView(companions: peers),
+      onBindCompanion: (
+          {required deviceId,
+          required requestId,
+          required companionId,
+          required expectedRevision}) async {},
+    )));
+    await _tapWhereverItIs(tester, const Key('bind-device-companion'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('同名编号 a-123456'), findsOneWidget);
+    expect(find.textContaining('同名编号 b-123456'), findsOneWidget);
+    expect(find.byKey(const Key('device-create-companion')), findsNothing);
+    await tester.tap(find.byKey(const Key('companion-choice-prefix-b-123456')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('同名编号 b-123456'), findsOneWidget);
+    expect(find.textContaining('同名编号 a-123456'), findsNothing);
+  });
+
   testWidgets('binding names the Companion, the device and the revision',
       (tester) async {
     final calls = <Map<String, Object?>>[];
@@ -133,6 +276,8 @@ void main() {
 
     await tester.tap(find.byKey(const Key('companion-choice-c_01')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirm-device-companion')));
+    await tester.pumpAndSettle();
 
     expect(calls, hasLength(1));
     expect(calls.single['companion'], 'c_01');
@@ -168,6 +313,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('companion-choice-none')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirm-device-companion')));
+    await tester.pumpAndSettle();
 
     expect(calls, [null]);
   });
@@ -194,6 +341,8 @@ void main() {
     await _tapWhereverItIs(tester, const Key('bind-device-companion'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('companion-choice-c_01')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirm-device-companion')));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('关联没有完成'), findsOneWidget);
@@ -286,7 +435,8 @@ void main() {
           },
           'default_companion_id': 'c_01',
           'capabilities': {'body.assign': assign, 'device.manage': true},
-          'unavailable': assign ? <String, String>{} : {'body.assign': 'not_built'},
+          'unavailable':
+              assign ? <String, String>{} : {'body.assign': 'not_built'},
           'limits': <String, int?>{},
         });
 

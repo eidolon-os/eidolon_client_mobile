@@ -1,9 +1,7 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
-import 'companion_authoring_page.dart';
+import 'companion_creation_flow.dart';
 import 'companion_creation_checkpoint.dart';
 import 'persona_preview_panel.dart';
 import 'companion_roster_page.dart';
@@ -110,26 +108,22 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
   String? _refusal;
   String? _notice;
 
-  /// Held across retries, exactly like the device-removal request id: the whole
-  /// point of the operation id is that a second attempt is the *same* attempt.
-  /// Cleared only once the Host has answered for it, one way or the other.
-  CompanionCreationSubmission? _pendingSubmission;
-  CompanionCreationDrafts? _drafts;
-  PersonaPresetCatalog? _catalog;
-  PersonaAuthoring? _template;
+  late final _creation = CompanionCreationFlow(
+    loadTemplate: () => widget.loadPersonaTemplate!(),
+    loadPresets: widget.loadPersonaPresets,
+    create: (id, name, persona, preferences, source) =>
+        widget.createCompanion!(id, name, persona, preferences, source),
+    checkpoints: widget.creationCheckpoints,
+    preview: widget.preview,
+    newOperationId: widget.newOperationId,
+  );
   bool _preparing = false;
-  final _retiredDrafts = <CompanionCreationDrafts>[];
 
   @override
   void dispose() {
-    _drafts?.dispose();
-    for (final drafts in _retiredDrafts) {
-      drafts.dispose();
-    }
+    _creation.dispose();
     super.dispose();
   }
-
-  final Random _random = Random.secure();
 
   @override
   void initState() {
@@ -152,16 +146,16 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
       final page = await widget.load(cursor: cursor);
       CompanionCreationSubmission? recovered;
       String? recoveryError;
-      if (cursor == null && _pendingSubmission == null) {
+      if (cursor == null && _creation.pending == null) {
         try {
-          recovered = await widget.creationCheckpoints?.load();
+          recovered = await _creation.recover();
         } catch (_) {
           recoveryError = '手机暂时读不到创建进度。伙伴列表仍可查看，重试读取前不会发送新的创建请求。';
         }
       }
       if (!mounted) return;
       setState(() {
-        _pendingSubmission ??= recovered;
+        _creation.pending ??= recovered;
         if (recovered != null) {
           _notice = '${recovered.name} 的上次创建尚未确认，请继续确认同一次创建。';
         }
@@ -265,84 +259,20 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
       _refusal = null;
       _notice = null;
     });
+    CreatedCompanion? result;
     try {
-      _pendingSubmission ??= await widget.creationCheckpoints?.load();
-      if (_drafts == null && _pendingSubmission != null) {
-        // A submitted snapshot must survive catalogue retirement or outage.
-        final saved = _pendingSubmission!;
-        _template = saved.persona ?? const PersonaAuthoring();
-        _catalog = const PersonaPresetCatalog(presets: []);
-        _drafts = CompanionCreationDrafts(_template!, const []);
-        _drafts!.custom.name.text = saved.name;
-        _drafts!.custom.preferences =
-            saved.preferences ?? const ConversationPreferences();
-      }
-      if (_drafts == null) {
-        _catalog = widget.loadPersonaPresets == null
-            ? const PersonaPresetCatalog(presets: [])
-            : await widget.loadPersonaPresets!();
-        _template = await loadTemplate();
-        if (!mounted) return;
-        _drafts = CompanionCreationDrafts(_template!, _catalog!.presets);
-      }
+      result = await _creation.open(context);
     } catch (_) {
       if (mounted) {
-        setState(() {
-          _preparing = false;
-          _refusal = widget.creationCheckpoints == null
-              ? '伙伴模板暂时没能加载，请重试新建伙伴。'
-              : '创建进度或伙伴设定暂时读不到。请重试；为避免重复创建，暂未发送新请求。';
-        });
+        setState(() => _refusal = '创建进度或伙伴设定暂时读不到。请重试；为避免重复创建，暂未发送新请求。');
       }
       return;
+    } finally {
+      if (mounted) setState(() => _preparing = false);
     }
     if (!mounted) return;
-    setState(() => _preparing = false);
-    final created =
-        await Navigator.of(context).push<CreatedCompanion>(MaterialPageRoute(
-      builder: (_) => _AuthoringRoute(
-        template: _template!,
-        catalog: _catalog!,
-        drafts: _drafts!,
-        preview: widget.preview,
-        uncertain: () => _pendingSubmission?.uncertain == true,
-        create: (name, persona, preferences, sourcePreset) async {
-          _pendingSubmission ??= CompanionCreationSubmission(
-              _newOperationId(), name, persona, preferences, sourcePreset);
-          final submission = _pendingSubmission!;
-          final wasUncertain = submission.uncertain;
-          try {
-            // Durable before dispatch, including the "saved but never sent" case.
-            await widget.creationCheckpoints?.save(submission);
-            final answer = await create(
-                submission.operationId,
-                submission.name,
-                submission.persona,
-                submission.preferences,
-                submission.sourcePreset);
-            await widget.creationCheckpoints?.clear(submission.operationId);
-            _pendingSubmission = null;
-            return answer;
-          } catch (error) {
-            // Only a first-attempt validation refusal proves no creation took
-            // place. Auth failures/conflicts after a lost reply do not erase
-            // the original operation, even when the later response is 4xx.
-            submission.uncertain = true;
-            if (!wasUncertain &&
-                error is ManagementRequestException &&
-                (error.statusCode == 400 || error.statusCode == 422)) {
-              await widget.creationCheckpoints?.clear(submission.operationId);
-              _pendingSubmission = null;
-            }
-            rethrow;
-          }
-        },
-      ),
-    ));
-    if (!mounted) return;
+    final created = result;
     if (created != null) {
-      _retiredDrafts.add(_drafts!);
-      _drafts = null;
       setState(() => _notice = created.memoryReady
           ? '${created.displayName} 已经在这台主机上了'
           : '${created.displayName} 已经建好，记忆还在启动');
@@ -381,20 +311,6 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
     if (next == 'device') await widget.connectDevice!(created);
   }
 
-  String _newOperationId() {
-    if (widget.newOperationId != null) return widget.newOperationId!();
-    // A version-4 UUID, because the Host's operation id is one. Built from
-    // Random.secure like every other identifier this app mints.
-    final bytes = List<int>.generate(16, (_) => _random.nextInt(256));
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    String hex(int start, int end) => bytes
-        .sublist(start, end)
-        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
-        .join();
-    return '${hex(0, 4)}-${hex(4, 6)}-${hex(6, 8)}-${hex(8, 10)}-${hex(10, 16)}';
-  }
-
   @override
   Widget build(BuildContext context) {
     final roster = _roster;
@@ -415,7 +331,7 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
             busyCompanionId: _changing,
             refusal: _refusal,
             notice: _notice,
-            resumingCreation: _pendingSubmission != null,
+            resumingCreation: _creation.pending != null,
             onAdd: _preparing ||
                     widget.createCompanion == null ||
                     _context == null ||
@@ -449,86 +365,4 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
       ),
     );
   }
-}
-
-/// The authoring page plus the one piece of state it cannot own: whether the ask
-/// is in flight, and what the Host said if it refused.
-///
-/// Separate from the page so the page stays a form — it renders what it is given
-/// and hands back what was typed. Keeping the request here also means the
-/// refusal is shown *on* the form, next to the words that caused it, instead of
-/// behind a pop back to the list.
-/// Why the creation did not happen, in words the person can act on.
-///
-/// Written here rather than borrowed from the composition root: that folder
-/// composes this surface, so depending on it would invert the direction that
-/// keeps this layer generated from the contract — and the boundary test says
-/// so. The Host's own sentence is the fallback, not the first choice, because
-/// it is written for an operator reading a log.
-String _creationRefusal(Object error) {
-  if (error is! ManagementRequestException) {
-    return '创建未完成：当前网络到不了这台主机。';
-  }
-  if (error.statusCode == 400 || error.statusCode == 422) {
-    return '创建未完成：${error.reason ?? '这台主机不接受这份设定'}';
-  }
-  if (error.statusCode == 409) {
-    return '创建未完成：${error.reason ?? '这台主机上已经有同名的伙伴'}';
-  }
-  return '创建未完成：${error.reason ?? '这台主机没有完成这次创建'}';
-}
-
-class _AuthoringRoute extends StatefulWidget {
-  const _AuthoringRoute(
-      {required this.template,
-      required this.catalog,
-      required this.drafts,
-      required this.create,
-      required this.uncertain,
-      this.preview});
-  final PersonaAuthoring template;
-  final PersonaPresetCatalog catalog;
-  final CompanionCreationDrafts drafts;
-  final PreviewPersona? preview;
-  final bool Function() uncertain;
-  final Future<CreatedCompanion> Function(
-          String, PersonaAuthoring?, ConversationPreferences?, PersonaPreset?)
-      create;
-  @override
-  State<_AuthoringRoute> createState() => _AuthoringRouteState();
-}
-
-class _AuthoringRouteState extends State<_AuthoringRoute> {
-  bool _busy = false;
-  String? _refusal;
-  @override
-  Widget build(BuildContext context) => CompanionAuthoringPage(
-        template: widget.template,
-        presets: widget.catalog.presets,
-        drafts: widget.drafts,
-        preview: widget.preview,
-        busy: _busy,
-        locked: widget.uncertain(),
-        refusal: _refusal,
-        onCreate: (name, persona, preferences, sourcePreset) async {
-          if (_busy) return;
-          setState(() {
-            _busy = true;
-            _refusal = null;
-          });
-          try {
-            final created =
-                await widget.create(name, persona, preferences, sourcePreset);
-            if (context.mounted) Navigator.of(context).pop(created);
-          } catch (error) {
-            if (!mounted) return;
-            setState(() {
-              _busy = false;
-              _refusal = widget.uncertain()
-                  ? '还没能确认创建结果。草稿已保留，请重试确认这次创建。'
-                  : _creationRefusal(error);
-            });
-          }
-        },
-      );
 }

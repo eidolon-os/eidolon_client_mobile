@@ -747,6 +747,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             controller: _controller,
             deviceProvisioning: widget.deviceProvisioning,
             companionName: companionName,
+            creationPreferences: widget.creationPreferences,
           ),
         ),
       );
