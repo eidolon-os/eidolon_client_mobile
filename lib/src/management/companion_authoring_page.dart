@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../generated/management_v1.dart';
 import 'conversation_preferences_form.dart';
+import 'companion_preset_portrait.dart';
 import 'persona_form.dart';
 import 'persona_preview_panel.dart';
 
@@ -234,8 +235,12 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
                   child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Row(children: [
-                        CircleAvatar(
-                            child: Text(p.defaultName.characters.first)),
+                        CompanionPresetPortrait(
+                            presetId: p.presetId,
+                            name: p.defaultName,
+                            size: MediaQuery.sizeOf(context).width < 420
+                                ? 64
+                                : 88),
                         const SizedBox(width: 16),
                         Expanded(
                             child: Column(
@@ -288,6 +293,25 @@ class _CompanionAuthoringPageState extends State<CompanionAuthoringPage> {
           key: Key(_review ? 'authoring-review' : 'authoring-edit'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (widget.presets
+                    .where((p) => p.presetId == _drafts.selectedId)
+                    .firstOrNull
+                case final preset?) ...[
+              Row(children: [
+                CompanionPresetPortrait(
+                    presetId: preset.presetId, name: preset.defaultName),
+                const SizedBox(width: 16),
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Text(preset.title, style: theme.textTheme.titleMedium),
+                      const SizedBox(height: 6),
+                      const Text('从这个角色开始，慢慢变成合拍的伙伴。'),
+                    ])),
+              ]),
+              const SizedBox(height: 20),
+            ],
             TextField(
                 key: const Key('authoring-name'),
                 controller: _draft.name,

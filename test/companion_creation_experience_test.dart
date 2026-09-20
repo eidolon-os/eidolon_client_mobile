@@ -29,6 +29,38 @@ const presets = [
 ];
 
 void main() {
+  testWidgets('illustrated selection stays usable on a narrow enlarged screen',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final illustrated = PersonaPreset(
+        presetId: 'water',
+        defaultName: '澄澄',
+        title: '水 · 温柔倾听',
+        description: '不急着给答案，愿意听你把话慢慢说完。',
+        examples: ['今天撑了不少吧。先歇一会儿。'],
+        persona: const PersonaAuthoring(characterPortrait: '温柔倾听'),
+        preferences: const ConversationPreferences());
+    await tester.pumpWidget(MaterialApp(
+        builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: const TextScaler.linear(1.4)),
+            child: child!),
+        home: CompanionAuthoringPage(
+            template: const PersonaAuthoring(),
+            presets: [illustrated],
+            onCreate: (_, __, ___, ____) async {})));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.byKey(const Key('authoring-customize')));
+    await tester.tap(find.byKey(const Key('authoring-customize')));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('authoring-name')), findsOneWidget);
+  });
+
   testWidgets('creation can continue to devices without a phone conversation',
       (tester) async {
     CreatedCompanion? connecting;
