@@ -16,6 +16,8 @@ import '../../management/companion_creation_checkpoint.dart';
 import '../../platform/app_preferences.dart';
 import '../host_setup/host_product_controller.dart';
 import 'mounted_device_models.dart';
+import 'device_companion_setup.dart';
+import '../../management/companion_portrait.dart';
 
 /// Whether to draw the control that points a device at an Eidolon.
 ///
@@ -41,6 +43,7 @@ class MountedDevicesPage extends StatefulWidget {
     this.deviceProvisioning,
     this.checkpoints,
     this.companionName,
+    this.companionId,
     this.creationPreferences,
   });
 
@@ -54,6 +57,7 @@ class MountedDevicesPage extends StatefulWidget {
 
   /// Guidance only: choosing a device never silently changes its binding.
   final String? companionName;
+  final String? companionId;
 
   @override
   State<MountedDevicesPage> createState() => _MountedDevicesPageState();
@@ -62,8 +66,39 @@ class MountedDevicesPage extends StatefulWidget {
 class _MountedDevicesPageState extends State<MountedDevicesPage> {
   CompanionCreationFlow? _creation;
   String? _creationOwnerId;
+  CompanionSetupIntent? _handoff;
+  String? _handoffError;
+  DeviceCompanionSetupStore? get _selectionStore {
+    final owner = widget.controller.workspace?.owner;
+    if (owner == null) return null;
+    return DeviceCompanionSetupStore(
+        hostId: widget.controller.host.hostId,
+        controllerId: widget.controller.host.controllerId,
+        ownerId: owner.ownerId,
+        preferences: widget.creationPreferences);
+  }
 
-  Future<CreatedCompanion?> _createCompanion() async {
+  Future<void> _loadHandoff() async {
+    try {
+      final store = _selectionStore;
+      var saved = await store?.load();
+      if (widget.companionId != null && saved == null) {
+        saved = CompanionSetupIntent(
+            step: CompanionSetupStep.confirmBinding,
+            requestId: 'select-${widget.companionId}',
+            expectedRevision: 0,
+            companionId: widget.companionId,
+            companionName: widget.companionName ?? '伙伴');
+        await store?.save(saved);
+      }
+      if (mounted) setState(() => _handoff = saved);
+    } catch (error) {
+      if (mounted) setState(() => _handoffError = '$error');
+    }
+  }
+
+  Future<CreatedCompanion?> _createCompanion(
+      DeviceCompanionSetupStore? progress) async {
     final controller = widget.controller;
     final capabilities = await controller.managementContext();
     if (!hostCan(capabilities, 'companion.create')) {
@@ -77,41 +112,79 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
       _creation = null;
       _creationOwnerId = owner.ownerId;
     }
+    final checkpoints = CompanionCreationCheckpointStore(
+        hostId: controller.host.hostId,
+        controllerId: controller.host.controllerId,
+        ownerId: owner.ownerId,
+        preferences: widget.creationPreferences);
+    final previous = await progress?.load();
+    final operation = previous?.creationOperationId;
+    Future<void> received(CreatedCompanion created) async {
+      final pending = await progress?.load();
+      if (pending != null) {
+        await progress!.save(pending.at(CompanionSetupStep.confirmBinding,
+            companionId: created.companionId,
+            companionName: created.displayName));
+        final id = pending.creationOperationId;
+        if (id != null) await checkpoints.acknowledge(id);
+      }
+    }
+
+    if (operation != null) {
+      final receipt = await checkpoints.result(operation);
+      if (receipt != null) {
+        await received(receipt);
+        return receipt;
+      }
+      final pending = await checkpoints.load();
+      if (pending?.operationId != operation) {
+        throw StateError('原创建请求已不在待确认列表，请保留当前设置后从已有伙伴中选择。');
+      }
+    }
     _creation ??= CompanionCreationFlow(
-      loadTemplate: controller.personaAuthoringTemplate,
-      loadPresets: controller.personaPresets,
-      preview: controller.previewPersona,
-      checkpoints: CompanionCreationCheckpointStore(
-          hostId: controller.host.hostId,
-          controllerId: controller.host.controllerId,
-          ownerId: owner.ownerId,
-          preferences: widget.creationPreferences),
-      create: (id, name, persona, preferences, source) =>
-          controller.createCompanion(
-              operationId: id,
-              displayName: name,
-              persona: persona,
-              preferences: preferences,
-              sourcePreset: source),
-    );
+        loadTemplate: controller.personaAuthoringTemplate,
+        loadPresets: controller.personaPresets,
+        preview: controller.previewPersona,
+        checkpoints: checkpoints,
+        create: (id, name, persona, preferences, source) =>
+            controller.createCompanion(
+                operationId: id,
+                displayName: name,
+                persona: persona,
+                preferences: preferences,
+                sourcePreset: source));
     if (!mounted) return null;
-    return _creation!.open(context);
+    return _creation!.open(context, onCreated: received,
+        onSubmitting: (id) async {
+      final pending = await progress?.load();
+      if (pending != null) {
+        await checkpoints.watch(id);
+        await progress!.save(
+            pending.at(CompanionSetupStep.creating, creationOperationId: id));
+      }
+    });
   }
 
   Future<CompanionRosterView> _allCompanions() =>
       loadDeviceCompanionChoices(widget.controller.roster);
 
-  Future<CreatedCompanion?> Function()? get _createForDevice =>
-      widget.controller.managementCapabilities != null &&
-              hostCan(
-                  widget.controller.managementCapabilities!, 'companion.create')
-          ? _createCompanion
-          : null;
+  DeviceCompanionSetupStore? _progressFor(MountedDevice device) {
+    final controller = widget.controller;
+    final ownerId = controller.workspace?.owner?.ownerId;
+    if (ownerId == null) return null;
+    return DeviceCompanionSetupStore(
+        hostId: controller.host.hostId,
+        controllerId: controller.host.controllerId,
+        ownerId: ownerId,
+        deviceId: device.deviceId,
+        preferences: widget.creationPreferences);
+  }
 
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_refresh);
+    _loadHandoff();
   }
 
   @override
@@ -170,6 +243,30 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
 
   Future<void> _openDevice(MountedDevice device) async {
     final controller = widget.controller;
+    final progress = _progressFor(device);
+    final handoff = _handoff;
+    if (handoff != null && progress != null) {
+      try {
+        final existing = await progress.load();
+        if (existing != null && existing.requestId != handoff.requestId) {
+          throw StateError('这台设备有未完成的配置，请先结束选设备，再打开设备继续原配置。');
+        }
+        if (existing == null) {
+          await progress.save(CompanionSetupIntent(
+              step: CompanionSetupStep.confirmBinding,
+              requestId: handoff.requestId,
+              expectedRevision: device.revision,
+              companionId: handoff.companionId,
+              companionName: handoff.companionName));
+        }
+        await _selectionStore?.clear(handoff.requestId);
+        if (mounted) setState(() => _handoff = null);
+      } catch (error) {
+        if (mounted) setState(() => _handoffError = '$error');
+        return;
+      }
+    }
+    if (!mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => MountedDeviceDetailPage(
@@ -177,7 +274,24 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
           onRemove: (deviceId, requestId) =>
               controller.removeDevice(deviceId: deviceId, requestId: requestId),
           loadCompanions: _allCompanions,
-          onCreateCompanion: _createForDevice,
+          progress: progress,
+          loadFace: controller.companionFacePicture,
+          reload: () async {
+            await controller.refreshDevices();
+            if (controller.devicesError != null) {
+              throw StateError(controller.devicesError!);
+            }
+            final latest = controller.devices?.devices
+                .where((d) => d.deviceId == device.deviceId)
+                .firstOrNull;
+            if (latest == null) throw StateError('这台设备已不在主机上。');
+            return latest;
+          },
+          onCreateCompanion: controller.managementCapabilities != null &&
+                  hostCan(
+                      controller.managementCapabilities!, 'companion.create')
+              ? () => _createCompanion(progress)
+              : null,
           onBindCompanion:
               _hostOffersAssignment ? controller.setDeviceCompanion : null,
           onSetOutputs: controller.setDeviceOutputs,
@@ -213,7 +327,25 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          if (widget.companionName case final name?)
+          if (_handoffError != null) Text(_handoffError!),
+          if (_handoff != null)
+            Card(
+                child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                              '为 ${_handoff!.companionName} 选择一台桌面设备。选好后还会确认关联，已有设置不会立即改变。'),
+                          TextButton(
+                              onPressed: () async {
+                                await _selectionStore
+                                    ?.clear(_handoff!.requestId);
+                                if (mounted) setState(() => _handoff = null);
+                              },
+                              child: const Text('稍后再连接')),
+                        ]))),
+          if ((_handoff == null ? widget.companionName : null) case final name?)
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(18),
@@ -251,27 +383,7 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
             const SizedBox(height: 16),
             ...inventory.devices.map(
               (device) => _MountedDeviceCard(
-                device: device,
-                onRemove: (deviceId, requestId) => controller.removeDevice(
-                  deviceId: deviceId,
-                  requestId: requestId,
-                ),
-                loadCompanions: _allCompanions,
-                onCreateCompanion: _createForDevice,
-                // Its own capability, read separately from taking a device off
-                // the Host: a Host could reasonably offer one and not the
-                // other. Null means the control is not drawn at all rather
-                // than drawn greyed, which is this app's rule for a thing the
-                // Host is not offering.
-                //
-                // Not read yet counts as no objection: making every control
-                // vanish for the moment between connecting and reading
-                // /context would look like a Host with nothing on it.
-                onBindCompanion: _hostOffersAssignment
-                    ? controller.setDeviceCompanion
-                    : null,
-                onSetOutputs: controller.setDeviceOutputs,
-              ),
+                  device: device, onOpen: () => _openDevice(device)),
             ),
           ],
           const SizedBox(height: 24),
@@ -334,33 +446,9 @@ class _InventoryMeaningCard extends StatelessWidget {
 }
 
 class _MountedDeviceCard extends StatelessWidget {
-  const _MountedDeviceCard({
-    required this.device,
-    required this.onRemove,
-    this.loadCompanions,
-    this.onCreateCompanion,
-    this.onBindCompanion,
-    this.onSetOutputs,
-  });
-
+  const _MountedDeviceCard({required this.device, required this.onOpen});
   final MountedDevice device;
-  final Future<DeviceRemovalProgress> Function(
-    String deviceId,
-    String requestId,
-  ) onRemove;
-  final Future<CompanionRosterView> Function()? loadCompanions;
-  final Future<CreatedCompanion?> Function()? onCreateCompanion;
-  final Future<void> Function({
-    required String deviceId,
-    required String requestId,
-    required String? companionId,
-    required int expectedRevision,
-  })? onBindCompanion;
-  final Future<void> Function({
-    required String deviceId,
-    required OutputSelection allowed,
-    required int expectedRevision,
-  })? onSetOutputs;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -397,18 +485,7 @@ class _MountedDeviceCard extends StatelessWidget {
         // record, and nobody reading this list is asking about a mount record.
         subtitle: Text(device.detail),
         trailing: Chip(label: Text(label)),
-        onTap: () => Navigator.of(context).push<void>(
-          MaterialPageRoute(
-            builder: (_) => MountedDeviceDetailPage(
-              device: device,
-              onRemove: onRemove,
-              loadCompanions: loadCompanions,
-              onCreateCompanion: onCreateCompanion,
-              onBindCompanion: onBindCompanion,
-              onSetOutputs: onSetOutputs,
-            ),
-          ),
-        ),
+        onTap: onOpen,
       ),
     );
   }
@@ -423,9 +500,15 @@ class MountedDeviceDetailPage extends StatefulWidget {
     this.onCreateCompanion,
     this.onBindCompanion,
     this.onSetOutputs,
+    this.progress,
+    this.loadFace,
+    this.reload,
   });
 
   final MountedDevice device;
+  final DeviceCompanionSetupStore? progress;
+  final CompanionFaceLoader? loadFace;
+  final Future<MountedDevice> Function()? reload;
   final Future<DeviceRemovalProgress> Function(
     String deviceId,
     String requestId,
@@ -460,6 +543,102 @@ class MountedDeviceDetailPage extends StatefulWidget {
 }
 
 class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
+  late MountedDevice _device;
+  CompanionSetupIntent? _pending;
+  bool _recovering = true;
+  @override
+  void initState() {
+    super.initState();
+    _device = widget.device;
+    _readProgress();
+  }
+
+  @override
+  void didUpdateWidget(MountedDeviceDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.device != widget.device) _device = widget.device;
+  }
+
+  String _setupError(Object error) {
+    if (error is CompanionSetupException) return error.message;
+    if (error is ManagementRequestException) {
+      return refusalText(error, subject: '设备配置');
+    }
+    return '配置尚未完成。请检查与主机的连接后继续；本次选择和已创建的伙伴会保留。';
+  }
+
+  Future<void> _readProgress() async {
+    try {
+      final pending = await widget.progress?.load();
+      if (mounted) setState(() => _pending = pending);
+    } catch (error) {
+      if (mounted) setState(() => _notice = '$error');
+    } finally {
+      if (mounted) setState(() => _recovering = false);
+    }
+  }
+
+  Future<void> _saveProgress(CompanionSetupIntent intent) async {
+    await widget.progress?.save(intent);
+    if (mounted) setState(() => _pending = intent);
+  }
+
+  Future<void> _clearProgress() async {
+    final intent = _pending;
+    if (intent != null) await widget.progress?.clear(intent.requestId);
+    if (mounted) setState(() => _pending = null);
+  }
+
+  DeviceCompanionSetup? get _setup =>
+      widget.progress == null || widget.reload == null
+          ? null
+          : DeviceCompanionSetup(
+              store: widget.progress!,
+              loadDevice: widget.reload!,
+              bind: (intent) => widget.onBindCompanion!(
+                  deviceId: _device.deviceId,
+                  requestId: intent.requestId,
+                  companionId: intent.companionId,
+                  expectedRevision: intent.expectedRevision),
+              setOutputs: (allowed, revision) => widget.onSetOutputs!(
+                  deviceId: _device.deviceId,
+                  allowed: allowed,
+                  expectedRevision: revision));
+
+  Future<void> _resumeSetup() async {
+    if (_binding || _removing || _recovering) return;
+    final intent = _pending;
+    if (intent == null) return;
+    if (intent.step == CompanionSetupStep.outputs ||
+        intent.step == CompanionSetupStep.savingOutputs) {
+      await _decideOutputs();
+    } else {
+      await _bindCompanion(resume: true);
+    }
+  }
+
+  Future<void> _stopSetup() async {
+    if (_binding || _removing) return;
+    setState(() => _binding = true);
+    try {
+      // Read before abandoning uncertain progress; never claim that cancelling
+      // local continuation undoes a decision already accepted by the Host.
+      final latest = await widget.reload?.call();
+      if (latest != null && mounted) setState(() => _device = latest);
+      await _clearProgress();
+      if (mounted) {
+        setState(() {
+          _notice = '已保留主机当前设置。你可以重新选择；已创建的伙伴也会保留。';
+          _creationNotice = true;
+        });
+      }
+    } catch (error) {
+      if (mounted) setState(() => _notice = _setupError(error));
+    } finally {
+      if (mounted) setState(() => _binding = false);
+    }
+  }
+
   final Random _random = Random.secure();
   bool _removing = false;
   bool _binding = false;
@@ -479,75 +658,112 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
   bool _creationNotice = false;
   String? _removalRequestId;
 
-  Future<void> _bindCompanion() async {
+  Future<void> _bindCompanion({bool resume = false}) async {
     final bind = widget.onBindCompanion;
     final load = widget.loadCompanions;
-    if (bind == null || load == null || _binding || _removing) return;
+    if (bind == null || load == null || _binding || _removing || _recovering) {
+      return;
+    }
+    if (!resume && _pending != null) {
+      await _resumeSetup();
+      return;
+    }
     setState(() {
       _binding = true;
       _notice = null;
       _creationNotice = false;
     });
-    String? createdName;
     try {
-      final roster = await load();
-      if (!mounted) return;
-      var chosen = await showModalBottomSheet<_CompanionChoice>(
-        context: context,
-        builder: (sheetContext) => _CompanionPicker(
-          roster: roster,
-          attachedCompanionId: widget.device.attachedCompanionId,
-          canCreate: widget.onCreateCompanion != null,
-        ),
-      );
-      if (chosen == null || !mounted) return;
-      if (chosen.createNew) {
-        final created = await widget.onCreateCompanion!();
+      var intent = resume ? _pending : null;
+      if (intent == null) {
+        final roster = await load();
+        if (!mounted) return;
+        final chosen = await showModalBottomSheet<_CompanionChoice>(
+            context: context,
+            builder: (_) => _CompanionPicker(
+                loadFace: widget.loadFace,
+                roster: roster,
+                attachedCompanionId: _device.attachedCompanionId,
+                canCreate: widget.onCreateCompanion != null));
+        if (chosen == null || !mounted) return;
+        intent = CompanionSetupIntent(
+            step: chosen.createNew
+                ? CompanionSetupStep.creating
+                : CompanionSetupStep.confirmBinding,
+            requestId: _requestId('device-companion'),
+            expectedRevision: _device.revision,
+            companionId: chosen.companionId,
+            companionName: chosen.name,
+            description: chosen.description);
+        await _saveProgress(intent);
+      }
+      if (intent.step == CompanionSetupStep.creating) {
+        final create = widget.onCreateCompanion;
+        if (create == null) throw StateError('这台主机暂不允许创建伙伴。');
+        final created = await create();
         if (created == null || !mounted) return;
-        createdName = created.displayName;
-        chosen =
-            _CompanionChoice(created.companionId, name: created.displayName);
+        intent = (await widget.progress?.load() ?? intent).at(
+            CompanionSetupStep.confirmBinding,
+            companionId: created.companionId,
+            companionName: created.displayName);
+        await _saveProgress(intent);
+        if (!mounted) return;
         setState(() {
           _notice = '${created.displayName} 已创建。设备尚未更换应答伙伴。';
           _creationNotice = true;
         });
       }
-      final selection = chosen;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title:
-              Text(selection.companionId == null ? '让设备暂时不回应？' : '确认由这位伙伴回应？'),
-          content: Text(selection.companionId == null
-              ? '解除「${widget.device.label}」的伙伴关联。伙伴和记忆会保留。'
-              : '让「${selection.name}」通过「${widget.device.label}」回应。'
-                  '${selection.description.isEmpty ? "" : "\n${selection.description}"}'
-                  '\n确认后才会更换这台设备的应答伙伴。'),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('暂不更换')),
-            FilledButton(
-                key: const Key('confirm-device-companion'),
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('确认')),
-          ],
-        ),
-      );
-      if (confirmed != true || !mounted) return;
-      await bind(
-        deviceId: widget.device.deviceId,
-        requestId: _requestId('device-companion'),
-        companionId: selection.companionId,
-        expectedRevision: widget.device.revision,
-      );
-      if (mounted) Navigator.of(context).pop();
+      if (intent.step == CompanionSetupStep.confirmBinding) {
+        if (!mounted) return;
+        final selection = intent;
+        final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+                    title: Text(selection.companionId == null
+                        ? '让设备暂时不回应？'
+                        : '确认由这位伙伴回应？'),
+                    content: Text(selection.companionId == null
+                        ? '解除「${_device.label}」的伙伴关联。伙伴和记忆会保留。'
+                        : '让「${selection.companionName}」通过「${_device.label}」回应。'
+                            '${selection.description.isEmpty ? "" : "\n${selection.description}"}\n确认后才会更换这台设备的应答伙伴。'),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(dialogContext, false),
+                          child: const Text('暂不更换')),
+                      FilledButton(
+                          key: const Key('confirm-device-companion'),
+                          onPressed: () => Navigator.pop(dialogContext, true),
+                          child: const Text('确认'))
+                    ]));
+        if (confirmed != true || !mounted) {
+          await _clearProgress();
+          return;
+        }
+        intent = intent.at(CompanionSetupStep.binding);
+        await _saveProgress(intent);
+      }
+      final setup = _setup;
+      if (setup == null) {
+        await bind(
+            deviceId: _device.deviceId,
+            requestId: intent.requestId,
+            companionId: intent.companionId,
+            expectedRevision: intent.expectedRevision);
+        await _clearProgress();
+      } else {
+        final latest = await setup.finishBinding(intent);
+        if (!mounted) return;
+        setState(() => _device = latest);
+        await _readProgress();
+      }
+      if (mounted && _pending == null) {
+        Navigator.of(context).pop();
+      }
     } catch (error) {
       if (mounted) {
         setState(() {
           _creationNotice = false;
-          _notice =
-              '${createdName == null ? "" : "$createdName 已创建并保留。"}关联没有完成：$error';
+          _notice = _setupError(error);
         });
       }
     } finally {
@@ -557,35 +773,64 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
 
   Future<void> _decideOutputs() async {
     final decide = widget.onSetOutputs;
-    if (decide == null || _binding || _removing) return;
-    final device = widget.device;
-    final chosen = await showModalBottomSheet<OutputSelection>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => _OutputsPicker(outputs: device.outputs),
-    );
-    if (chosen == null || !mounted) return;
+    if (decide == null || _binding || _removing || _recovering) return;
+    if (_pending != null &&
+        _pending!.step != CompanionSetupStep.outputs &&
+        _pending!.step != CompanionSetupStep.savingOutputs) {
+      await _resumeSetup();
+      return;
+    }
     setState(() {
       _binding = true;
       _notice = null;
       _creationNotice = false;
     });
     try {
-      await decide(
-        deviceId: device.deviceId,
-        allowed: chosen,
-        expectedRevision: device.outputs.revision,
-      );
+      var intent = _pending;
+      if (intent?.step != CompanionSetupStep.savingOutputs) {
+        final latest = await widget.reload?.call();
+        if (!mounted) return;
+        if (latest != null) setState(() => _device = latest);
+        if (intent != null &&
+            _device.attachedCompanionId != intent.companionId) {
+          throw StateError('应答伙伴已改变，请核对主机设置后重新选择表达方式。');
+        }
+        final chosen = await showModalBottomSheet<OutputSelection>(
+            context: context,
+            isScrollControlled: true,
+            builder: (_) => _OutputsPicker(outputs: _device.outputs));
+        if (chosen == null || !mounted) return;
+        intent = (intent ??
+                CompanionSetupIntent(
+                    step: CompanionSetupStep.outputs,
+                    requestId: _requestId('device-outputs'),
+                    expectedRevision: _device.revision,
+                    companionId: _device.attachedCompanionId))
+            .at(CompanionSetupStep.savingOutputs,
+                allowed: chosen, outputRevision: _device.outputs.revision);
+        await _saveProgress(intent);
+      }
+      final setup = _setup;
+      if (setup == null) {
+        await decide(
+            deviceId: _device.deviceId,
+            allowed: intent!.allowed!,
+            expectedRevision: intent.outputRevision!);
+        await _clearProgress();
+      } else {
+        await setup.finishOutputs(intent!);
+        await _readProgress();
+      }
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
-      if (mounted) setState(() => _notice = '没有保存成功：$error');
+      if (mounted) setState(() => _notice = _setupError(error));
     } finally {
       if (mounted) setState(() => _binding = false);
     }
   }
 
   Future<void> _confirmRemoval() async {
-    final device = widget.device;
+    final device = _device;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -797,7 +1042,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    final device = widget.device;
+    final device = _device;
     final stateLabel = switch (device.state) {
       MountedDeviceState.ready => '已接入',
       MountedDeviceState.awaitingCompanion => '没有谁应答',
@@ -813,6 +1058,35 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          if (_pending != null)
+            Card(
+                child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(switch (_pending!.step) {
+                            CompanionSetupStep.creating => '伙伴创建还未确认',
+                            CompanionSetupStep.confirmBinding =>
+                              '伙伴已选好，等待你确认设备关联',
+                            CompanionSetupStep.binding => '正在确认设备关联结果',
+                            CompanionSetupStep.outputs => '伙伴已关联，还需要选择表达方式',
+                            CompanionSetupStep.savingOutputs => '正在确认表达设置结果',
+                          }),
+                          const SizedBox(height: 8),
+                          Wrap(spacing: 8, children: [
+                            FilledButton(
+                                key: const Key('resume-companion-setup'),
+                                onPressed:
+                                    _binding || _removing ? null : _resumeSetup,
+                                child: const Text('继续配置')),
+                            TextButton(
+                                onPressed:
+                                    _binding || _removing ? null : _stopSetup,
+                                child: const Text('保留当前设置，结束配置')),
+                          ])
+                        ]))),
+
           if (lead != null) ...[lead, const SizedBox(height: 16)],
           Text('设备身份', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
@@ -1046,11 +1320,13 @@ class _CompanionPicker extends StatelessWidget {
     required this.roster,
     required this.attachedCompanionId,
     this.canCreate = false,
+    this.loadFace,
   });
 
   final CompanionRosterView roster;
   final String? attachedCompanionId;
   final bool canCreate;
+  final CompanionFaceLoader? loadFace;
 
   @override
   Widget build(BuildContext context) {
@@ -1083,6 +1359,11 @@ class _CompanionPicker extends StatelessWidget {
           ...active.map(
             (companion) => ListTile(
               key: Key('companion-choice-${companion.companionId}'),
+              leading: CompanionPortrait(
+                  companionId: companion.companionId,
+                  name: _companionName(companion),
+                  artworkId: companion.artworkId,
+                  loadFace: loadFace),
               title: Text(
                 _companionName(companion),
               ),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../management/companion_portrait.dart';
 import '../../models/conversation_mode.dart';
 import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
@@ -183,9 +184,11 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                             key: ValueKey('choose-${c.companionId}'),
                             contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
-                            leading: CircleAvatar(
-                                child: Text(
-                                    _initial(c.displayName ?? c.companionId))),
+                            leading: CompanionPortrait(
+                                companionId: c.companionId,
+                                name: c.displayName ?? '',
+                                artworkId: c.artworkId,
+                                loadFace: flow.management.loadFace),
                             title: Text(c.displayName ?? c.companionId),
                             subtitle: flow.client.canLeave
                                 ? const Text('结束当前对话并更换')
@@ -483,15 +486,9 @@ class _ProductConversationPageState extends State<ProductConversationPage>
             height: size,
             decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: const RadialGradient(colors: [
-                  Color(0xff51476d),
-                  Color(0xff252337),
-                  Color(0xff12131d)
-                ]),
-                border: Border.all(
-                    color: f.client.canLeave
-                        ? const Color(0xff8ee4cf)
-                        : Colors.white12),
+                gradient: const RadialGradient(
+                    colors: [Color(0xff51476d), Color(0xff252337), Color(0xff12131d)]),
+                border: Border.all(color: f.client.canLeave ? const Color(0xff8ee4cf) : Colors.white12),
                 boxShadow: [
                   BoxShadow(
                       color: const Color(0xff8675df).withValues(alpha: .10),
@@ -501,11 +498,20 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                 child: track != null
                     ? VideoTrackRenderer(track)
                     : Center(
-                        child: Text(f.selectedCompanionId == null ? '✦' : _initial(f.companionName),
-                            style: TextStyle(
-                                fontSize: size * .3,
-                                fontWeight: FontWeight.w300,
-                                color: const Color(0xffe5dfff)))))));
+                        child: f.selectedCompanionId == null
+                            ? Text('✦',
+                                style: TextStyle(
+                                    fontSize: size * .3,
+                                    color: const Color(0xffe5dfff)))
+                            : CompanionPortrait(
+                                companionId: f.selectedCompanionId!,
+                                name: f.companionName,
+                                artworkId: f.companions
+                                    .where((c) => c.companionId == f.selectedCompanionId)
+                                    .firstOrNull
+                                    ?.artworkId,
+                                loadFace: f.management.loadFace,
+                                size: size)))));
   }
 
   Widget _partner(ConversationFlow f) => Center(
@@ -734,6 +740,4 @@ class _ProductConversationPageState extends State<ProductConversationPage>
           color: error ? const Color(0xff38232c) : const Color(0xff202331),
           borderRadius: BorderRadius.circular(14)),
       child: Text(text, style: const TextStyle(height: 1.5, fontSize: 13)));
-
-  static String _initial(String name) => name.characters.firstOrNull ?? '✦';
 }

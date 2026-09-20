@@ -394,9 +394,9 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               onOpenMemory: () => _openCompanionMemory(current),
               onOpenTasks: () => _openTasks(current),
               onOpenConversations: () => _openConversations(current),
-              face: _controller.companionFace,
+              face: _controller.faceFor(current.companionId),
               onChangeFace: () => _changeCompanionFace(current),
-              onClearFace: _controller.companionFace == null
+              onClearFace: _controller.faceFor(current.companionId) == null
                   ? null
                   : () => _clearCompanionFace(current),
             );
@@ -463,6 +463,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   Future<void> _openRoster() => Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => CompanionRosterScreen(
+            loadFace: _controller.companionFacePicture,
             creationCheckpoints: CompanionCreationCheckpointStore(
               hostId: _controller.host.hostId,
               controllerId: _controller.host.controllerId,
@@ -490,8 +491,9 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
             ),
             loadPersonaTemplate: _controller.personaAuthoringTemplate,
             loadPersonaPresets: _controller.personaPresets,
-            connectDevice: (created) =>
-                _openDevices(companionName: created.displayName),
+            connectDevice: (created) => _openDevices(
+                companionName: created.displayName,
+                companionId: created.companionId),
             startConversation: widget.conversationBuilder == null
                 ? null
                 : (created) =>
@@ -740,13 +742,14 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         ),
       );
 
-  Future<void> _openDevices({String? companionName}) =>
+  Future<void> _openDevices({String? companionName, String? companionId}) =>
       Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => MountedDevicesPage(
             controller: _controller,
             deviceProvisioning: widget.deviceProvisioning,
             companionName: companionName,
+            companionId: companionId,
             creationPreferences: widget.creationPreferences,
           ),
         ),

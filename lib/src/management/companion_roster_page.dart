@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'companion_portrait.dart';
 
 import '../generated/management_v1.dart';
 import '../models/when.dart';
@@ -25,6 +26,7 @@ class CompanionRosterPage extends StatelessWidget {
     super.key,
     required this.roster,
     this.onOpen,
+    this.loadFace,
     this.onLoadMore,
     this.onMakeDefault,
     this.busyCompanionId,
@@ -35,6 +37,7 @@ class CompanionRosterPage extends StatelessWidget {
   });
 
   final CompanionRosterView roster;
+  final CompanionFaceLoader? loadFace;
   final bool resumingCreation;
 
   /// Opening one is a later slice; null while nothing is behind the tap.
@@ -136,6 +139,7 @@ class CompanionRosterPage extends StatelessWidget {
               final companion = rows[index];
               return _RosterRow(
                 companion: companion,
+                loadFace: loadFace,
                 isDefault: companion.companionId == roster.defaultCompanionId,
                 onOpen: onOpen,
                 onMakeDefault: onMakeDefault,
@@ -234,6 +238,7 @@ class _RosterSummary extends StatelessWidget {
 class _RosterRow extends StatelessWidget {
   const _RosterRow({
     required this.companion,
+    this.loadFace,
     required this.isDefault,
     required this.onOpen,
     required this.onMakeDefault,
@@ -242,6 +247,7 @@ class _RosterRow extends StatelessWidget {
   });
 
   final CompanionSummaryView companion;
+  final CompanionFaceLoader? loadFace;
   final bool isDefault;
   final void Function(CompanionSummaryView companion)? onOpen;
   final void Function(CompanionSummaryView companion)? onMakeDefault;
@@ -267,7 +273,11 @@ class _RosterRow extends StatelessWidget {
       child: ListTile(
         key: Key('roster-row-${companion.companionId}'),
         contentPadding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
-        leading: const CircleAvatar(child: Icon(Icons.face_retouching_natural)),
+        leading: CompanionPortrait(
+            companionId: companion.companionId,
+            name: name,
+            artworkId: companion.artworkId,
+            loadFace: loadFace),
         title: Text(name, overflow: TextOverflow.ellipsis),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 6),

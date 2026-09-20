@@ -58,9 +58,11 @@ class HostCompanion {
     required this.lifecycleState,
     required this.revision,
     required this.lastSpokenAt,
+    this.artworkId,
   });
 
   factory HostCompanion.fromView(CompanionSummaryView view) => HostCompanion(
+        artworkId: view.artworkId,
         companionId: view.companionId,
         displayName: view.displayName ?? '',
         kind: view.kind,
@@ -69,6 +71,7 @@ class HostCompanion {
         lastSpokenAt: parseInstant(view.lastActiveAt),
       );
 
+  final String? artworkId;
   final String companionId;
   final String displayName;
   final String kind;

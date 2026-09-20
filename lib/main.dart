@@ -96,6 +96,7 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
                     return controller.fetchDeviceOnboardingTarget();
                   },
                   management: ConversationManagement(
+                      loadFace: controller.companionFacePicture,
                       controllerId: controller.host.controllerId,
                       admission: HostControllerDeviceAdmission(controller,
                           prepare: prepareManagement),

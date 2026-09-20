@@ -575,6 +575,7 @@ class CompanionRosterView {
 
 class CompanionSummaryView {
   const CompanionSummaryView({
+    this.artworkId,
     required this.companionId,
     required this.createdAt,
     this.displayName,
@@ -586,6 +587,8 @@ class CompanionSummaryView {
     required this.revision,
     required this.updatedAt,
   });
+
+  final String? artworkId;
 
   final String companionId;
 
@@ -609,6 +612,7 @@ class CompanionSummaryView {
 
   factory CompanionSummaryView.fromJson(Map<String, dynamic> value) {
     return CompanionSummaryView(
+      artworkId: value['artwork_id'] as String?,
       companionId: value['companion_id'] as String,
       createdAt: value['created_at'] as String,
       displayName: value['display_name'] as String?,
@@ -624,6 +628,7 @@ class CompanionSummaryView {
 
   Map<String, dynamic> toJson() {
     return {
+      if (artworkId != null) 'artwork_id': artworkId,
       'companion_id': companionId,
       'created_at': createdAt,
       if (displayName != null) 'display_name': displayName,

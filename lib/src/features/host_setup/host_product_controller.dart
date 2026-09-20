@@ -518,46 +518,34 @@ class HostProductController extends ChangeNotifier {
   /// screen that re-read a photograph on every rebuild would spend a
   /// megabyte to show what it already had. It is re-read when the Host says
   /// the face changed — which is what the hash beside it is for.
-  Uint8List? get companionFace => _face?.bytes;
-  CompanionFacePicture? _face;
+  final Map<String, CompanionFacePicture> _faces = {};
+  final Map<String, int> _faceReads = {};
+  Uint8List? faceFor(String companionId) => _faces[companionId]?.bytes;
 
-  /// Read the face, sending back the one already held.
-  ///
-  /// The Host answers "still that one" without spending a photograph on it, so
-  /// this is cheap enough to call whenever the screen opens — which is the
-  /// point: a picture that is only fetched once goes stale the first time the
-  /// person changes it somewhere else.
   Future<void> loadCompanionFace({required String companionId}) async {
-    final picture = await _companionRepository.face(
-      companionId: companionId,
-      held: _face,
-    );
-    if (_disposed) return;
-    _face = picture;
-    _notify();
+    await companionFacePicture(companionId: companionId);
+    if (!_disposed) _notify();
   }
 
-  Future<void> setCompanionFace({
-    required String companionId,
-    required Uint8List face,
-  }) async {
+  Future<void> setCompanionFace(
+      {required String companionId, required Uint8List face}) async {
+    _faceReads[companionId] = (_faceReads[companionId] ?? 0) + 1;
     final state = await _companionRepository.setFace(
-      companionId: companionId,
-      face: face,
-    );
+        companionId: companionId, face: face);
     if (_disposed) return;
-    // Shown from what was sent, and only because the Host accepted it and said
-    // so with the same hash.
-    _face = state.hasFace
+    _faceReads[companionId] = (_faceReads[companionId] ?? 0) + 1;
+    _faces[companionId] = state.hasFace
         ? CompanionFacePicture(bytes: face, sha256: state.sha256)
         : const CompanionFacePicture.none();
     _notify();
   }
 
   Future<void> clearCompanionFace({required String companionId}) async {
+    _faceReads[companionId] = (_faceReads[companionId] ?? 0) + 1;
     await _companionRepository.clearFace(companionId: companionId);
     if (_disposed) return;
-    _face = const CompanionFacePicture.none();
+    _faceReads[companionId] = (_faceReads[companionId] ?? 0) + 1;
+    _faces[companionId] = const CompanionFacePicture.none();
     _notify();
   }
 
@@ -682,13 +670,19 @@ class HostProductController extends ChangeNotifier {
 
   /// What one of this Owner's Eidolons looks like.
   ///
-  /// Not the cached face above: that one belongs to the Companion this Host
-  /// runs by default, and holding a second Eidolon's picture in the same field
-  /// would make the connection page show whichever was opened last.
+  /// Cached by identity; a delayed read of one companion cannot repaint another.
   Future<CompanionFacePicture> companionFacePicture({
     required String companionId,
-  }) =>
-      _companionRepository.face(companionId: companionId);
+  }) async {
+    final generation = (_faceReads[companionId] ?? 0) + 1;
+    _faceReads[companionId] = generation;
+    final picture = await _companionRepository.face(
+        companionId: companionId, held: _faces[companionId]);
+    if (!_disposed && _faceReads[companionId] == generation) {
+      _faces[companionId] = picture;
+    }
+    return _faces[companionId] ?? picture;
+  }
 
   /// Call one of them something else, and answer with what the Host accepted.
   Future<String> renameOneCompanion({

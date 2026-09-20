@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
 import 'companion_creation_flow.dart';
+import 'companion_portrait.dart';
 import 'companion_creation_checkpoint.dart';
 import 'persona_preview_panel.dart';
 import 'companion_roster_page.dart';
@@ -26,6 +27,7 @@ class CompanionRosterScreen extends StatefulWidget {
     super.key,
     required this.load,
     this.openCompanion,
+    this.loadFace,
     this.loadContext,
     this.setDefaultCompanion,
     this.createCompanion,
@@ -40,6 +42,7 @@ class CompanionRosterScreen extends StatefulWidget {
 
   /// Asks the Host for one page. Given a cursor when asking for a later one.
   final Future<CompanionRosterView> Function({String? cursor}) load;
+  final CompanionFaceLoader? loadFace;
 
   /// Reads one Eidolon. Null leaves the rows unopenable rather than opening
   /// something that cannot load.
@@ -318,6 +321,7 @@ class _CompanionRosterScreenState extends State<CompanionRosterScreen> {
       return Stack(
         children: [
           CompanionRosterPage(
+            loadFace: widget.loadFace,
             roster: roster,
             onOpen: widget.openCompanion == null ? null : _openCompanion,
             onLoadMore: roster.nextCursor == null

@@ -204,7 +204,7 @@ void main() {
     expect(calls, isEmpty);
     expect(find.byKey(const Key('confirm-device-companion')), findsNothing);
     expect(find.text('小忆'), findsOneWidget);
-    expect(find.textContaining('关联没有完成'), findsOneWidget);
+    expect(find.textContaining('配置尚未完成'), findsOneWidget);
   });
 
   testWidgets('same-name choices show distinct codes, also on confirmation',
@@ -332,7 +332,7 @@ void main() {
             required String? companionId,
             required int expectedRevision,
           }) async {
-            throw const LocalApiRefusal('主机不接受这台设备当前的状态。');
+            throw const ManagementRequestException('refused', statusCode: 422, refusal: Refusal(kind: 'invalid', reason: '主机不接受这台设备当前的状态。'));
           },
         ),
       ),
@@ -345,8 +345,7 @@ void main() {
     await tester.tap(find.byKey(const Key('confirm-device-companion')));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('关联没有完成'), findsOneWidget);
-    expect(find.textContaining('主机不接受'), findsOneWidget);
+    expect(find.text('主机没有接受这次请求'), findsOneWidget);
   });
 
   testWidgets('a Host with no usable Eidolon says so', (tester) async {
@@ -444,11 +443,4 @@ void main() {
     expect(hostOffersBodyAssignment(context(assign: true)), isTrue);
     expect(hostOffersBodyAssignment(context(assign: false)), isFalse);
   });
-}
-
-class LocalApiRefusal implements Exception {
-  const LocalApiRefusal(this.message);
-  final String message;
-  @override
-  String toString() => message;
 }

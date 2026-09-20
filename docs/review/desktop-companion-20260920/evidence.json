@@ -1,0 +1,48 @@
+{
+  "release_id": "pi5-companion-desktop-20260920c",
+  "status": "activated",
+  "data_commit": "b06023d",
+  "admin_commit": "209da61",
+  "agent_commit": "b07aa5a82268ed2015cbd4849408099df4796784",
+  "migration": "0002_companion_artwork",
+  "migration_backup": "/var/lib/eidolon/deployments/companion-artwork-20260920-before.sqlite3",
+  "apk_sha256": "527a4595ecfad61ef95defbeb89abd840e524eb1bebfb833e3c34d55438c51fd",
+  "activate": {
+    "error": null,
+    "status": "activated",
+    "transaction_id": "c654c82bc55d4d16a7743adb9a22a8a4"
+  },
+  "doctor": {
+    "status": "healthy"
+  },
+  "app_ready": {
+    "checks": {
+      "backend_healthy": true,
+      "bootstrap_control_socket": true,
+      "bootstrap_preflight": true,
+      "channel_worker_dispatch_identity": true,
+      "channel_worker_healthy": true,
+      "channel_worker_livekit_link": true,
+      "claim_window_honored": true,
+      "device_removal_available": true,
+      "foundation_services": true,
+      "host_identity_material": true,
+      "host_setup_completable": true,
+      "hub_admits_devices": true,
+      "hub_descriptor_published": true,
+      "hub_lan_reachable": true,
+      "hub_mdns_service": true,
+      "hub_settings_bound": true,
+      "hub_tls_identity": true,
+      "lan_address_observed": true,
+      "lan_name_resolves": true,
+      "livekit_client_origin": true,
+      "livekit_lan_reachable": true,
+      "livekit_network_current": true,
+      "local_api_mdns_service": true,
+      "local_api_reachable": true,
+      "local_api_targets_hub": true
+    },
+    "status": "app_ready"
+  }
+}

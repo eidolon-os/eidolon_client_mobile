@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../management/companion_portrait.dart';
 
 import 'package:flutter/foundation.dart';
 
@@ -21,11 +22,13 @@ import 'conversation_provisioner.dart';
 class ConversationManagement {
   const ConversationManagement(
       {required this.controllerId,
+      this.loadFace,
       required this.admission,
       required this.roster,
       required this.device,
       required this.assign});
   final String controllerId;
+  final CompanionFaceLoader? loadFace;
   final DeviceAdmissionPort admission;
   final Future<CompanionRosterView> Function({String? cursor}) roster;
   final Future<MountedDevice?> Function(String deviceId) device;

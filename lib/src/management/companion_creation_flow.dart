@@ -46,7 +46,14 @@ class CompanionCreationFlow {
     return saved;
   }
 
-  Future<CreatedCompanion?> open(BuildContext context) async {
+  Future<void> Function(CreatedCompanion)? _onCreated;
+  Future<void> Function(String)? _onSubmitting;
+
+  Future<CreatedCompanion?> open(BuildContext context,
+      {Future<void> Function(CreatedCompanion)? onCreated,
+      Future<void> Function(String)? onSubmitting}) async {
+    _onSubmitting = onSubmitting;
+    _onCreated = onCreated;
     await recover();
     if (_disposed || !context.mounted) return null;
     if (_drafts == null && pending != null) {
@@ -90,8 +97,11 @@ class CompanionCreationFlow {
     final wasUncertain = submission.uncertain;
     try {
       await checkpoints?.save(submission);
+      await _onSubmitting?.call(submission.operationId);
       final answer = await create(submission.operationId, submission.name,
           submission.persona, submission.preferences, submission.sourcePreset);
+      await checkpoints?.complete(submission.operationId, answer);
+      await _onCreated?.call(answer);
       await checkpoints?.clear(submission.operationId);
       pending = null;
       return answer;

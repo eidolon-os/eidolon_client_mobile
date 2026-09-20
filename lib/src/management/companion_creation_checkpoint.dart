@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../generated/management_v1.dart';
+import 'management_client.dart' show CreatedCompanion;
 import '../platform/app_preferences.dart';
 
 /// A submitted request, not a live reference to a form or the current catalogue.
@@ -106,6 +107,47 @@ class CompanionCreationCheckpointStore {
 
   final AppPreferences _preferences;
   final String _key;
+
+  // A device can await this creation while the user resumes it from the roster.
+  // Retain a receipt only for explicitly watched operations, until that device acknowledges it.
+  String _receiptKey(String operationId) =>
+      '$_key.result.${base64Url.encode(utf8.encode(operationId))}';
+  Future<void> watch(String operationId) =>
+      PreferenceWrites.run(_preferences, _key, () async {
+        final key = _receiptKey(operationId);
+        if (await _preferences.readString(key) == null) {
+          await _preferences.writeString(key, '{}');
+        }
+      });
+  Future<void> complete(String operationId, CreatedCompanion result) =>
+      PreferenceWrites.run(_preferences, _key, () async {
+        final key = _receiptKey(operationId);
+        final watched = await _preferences.readString(key);
+        if (watched == null || watched.isEmpty) return;
+        await _preferences.writeString(
+            key,
+            jsonEncode({
+              'companion_id': result.companionId,
+              'display_name': result.displayName,
+              'created': result.created,
+              'memory_ready': result.memoryReady
+            }));
+      });
+  Future<CreatedCompanion?> result(String operationId) async {
+    final raw = await _preferences.readString(_receiptKey(operationId));
+    if (raw == null || raw.isEmpty || raw == '{}') return null;
+    final j = jsonDecode(raw) as Map<String, dynamic>;
+    return CreatedCompanion(
+        companionId: j['companion_id'] as String,
+        displayName: j['display_name'] as String,
+        created: j['created'] as bool,
+        memoryReady: j['memory_ready'] as bool);
+  }
+
+  Future<void> acknowledge(String operationId) => PreferenceWrites.run(
+      _preferences,
+      _key,
+      () => _preferences.writeString(_receiptKey(operationId), ''));
 
   Future<CompanionCreationSubmission?> load() async {
     final raw = await _preferences.readString(_key);

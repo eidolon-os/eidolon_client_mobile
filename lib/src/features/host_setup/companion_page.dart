@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import '../../management/companion_portrait.dart';
 
 import '../../generated/management_v1.dart';
 import '../../management/management_client.dart';
@@ -123,9 +124,8 @@ class CompanionPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = companion.displayName.isNotEmpty
-        ? companion.displayName
-        : '这个 Eidolon';
+    final name =
+        companion.displayName.isNotEmpty ? companion.displayName : '这个 Eidolon';
     final bound = _itsDevices;
     return Scaffold(
       key: const Key('companion-page'),
@@ -140,14 +140,13 @@ class CompanionPage extends StatelessWidget {
                 padding: const EdgeInsets.all(20),
                 child: Row(
                   children: [
-                    CircleAvatar(
-                      key: const Key('companion-face'),
-                      radius: 26,
-                      foregroundImage: face == null ? null : MemoryImage(face!),
-                      child: face == null
-                          ? const Icon(Icons.face_retouching_natural)
-                          : null,
-                    ),
+                    CompanionPortrait(
+                        key: const Key('companion-face'),
+                        companionId: companion.companionId,
+                        name: name,
+                        artworkId: companion.artworkId,
+                        face: face,
+                        size: 72),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
