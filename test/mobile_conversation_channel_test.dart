@@ -390,10 +390,10 @@ void main() {
   /// dropped what it held) would keep being addressed with a ref no Claim
   /// carries.
   group('the ref that comes back is pinned', () {
-    /// What the Authority holds: the same device, two generations on.
+    /// Claim generation and trust epoch may advance within this Authority.
+    /// Another Owner generation requires reconciling the trusted directory.
     final held = <String, Object?>{
       ...claimedDeviceRef,
-      'owner_domain_generation': 2,
       'claim_generation': 3,
       'trust_epoch': 2,
     };
@@ -433,6 +433,17 @@ void main() {
       // And the answer was still an answer: the recovery is that this phone
       // talks *and* stops being behind.
       expect(config.status, HubConfigStatus.active);
+    });
+
+    test('a configuration cannot silently replace the trusted Owner generation', () async {
+      final claims = InMemoryMobileBodyClaimStore(claim());
+      final before = (await claims.load())!.toJson();
+      final config = await provision(claims: claims, deviceControl: answering({
+        ...held, 'owner_domain_generation': 9,
+      }));
+      expect(config.channelRefusal, ChannelRefusal.invalidResponse);
+      expect(config.session.usable, false);
+      expect((await claims.load())!.toJson(), before);
     });
 
     test('the next ask is addressed to it', () async {

@@ -1,0 +1,268 @@
+{
+  "authority": [
+    {
+      "singleton_id": 1,
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "state_id": "authority-state_LJxSTZE2bamD2OGWCj-2BazBbosGT_AE"
+    }
+  ],
+  "claims": [
+    {
+      "device_instance_id": "device-instance-a1d19dcbd4e39898d3f8ed07e622e0861c36ebfab3e0a9f01a5371b64053627f",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "revoked"
+    },
+    {
+      "device_instance_id": "device-instance-cf52e5fa20dd71cdc510ad870c0013b769be757a568887f0afe257db1313ff08",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "revoked"
+    },
+    {
+      "device_instance_id": "device-instance-2a9c8e32887a94b58d851fd80f0b8d41424b911e85f13be7be17f988c9628ac0",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "revoked"
+    },
+    {
+      "device_instance_id": "device-instance-06480c8b03673db5b63f7a37d6c31258f93c131b87f5618c464fb953e3cff9b9",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "revoked"
+    },
+    {
+      "device_instance_id": "device-instance-191468d44fe1c4604dc51b20c6e92b9219b6fcb0222a7aa78474c23254e006c5",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "revoked"
+    },
+    {
+      "device_instance_id": "device-instance-130bc19d283055990eb2d3c84638afdb5b1e9d0ab0717fffa3e4992a12aeabd6",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "revoked"
+    },
+    {
+      "device_instance_id": "device-instance-584788522a0e36f799ad0da52e78c2696c60e59252855514c2603dac19307414",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "revoked"
+    },
+    {
+      "device_instance_id": "device-instance-e7e8b4a09bb75f55cd61c874b7a9fdf8b71ce30f8abe062e7f66c812a39a5ed9",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "active"
+    },
+    {
+      "device_instance_id": "device-instance-0a077354bfffda11d13fa50730868d2609b26f376b6531cc4d26f43af814172f",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "active"
+    }
+  ],
+  "proposals": [
+    {
+      "enrollment_id": "enrollment_WyxgIUnBKL3MsnV9XXr_I5Hm",
+      "device_instance_id": "device-instance-a1d19dcbd4e39898d3f8ed07e622e0861c36ebfab3e0a9f01a5371b64053627f",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-08-27 05:24:06.664333"
+    },
+    {
+      "enrollment_id": "enrollment_X_v75dkFcnJSTUlxJjGb4ajn",
+      "device_instance_id": "device-instance-cf52e5fa20dd71cdc510ad870c0013b769be757a568887f0afe257db1313ff08",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-08-31 13:30:16.995590"
+    },
+    {
+      "enrollment_id": "enrollment_L9K1W6HWsd0kQccv96JBMfP9",
+      "device_instance_id": "device-instance-2a9c8e32887a94b58d851fd80f0b8d41424b911e85f13be7be17f988c9628ac0",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-09-02 03:11:12.638869"
+    },
+    {
+      "enrollment_id": "enrollment_k71zkuMaHoUqBV80CFX9maA9",
+      "device_instance_id": "device-instance-6d68a9f0ae3c4eb6415d8aeb82f6eaed9e4141cde50918f91c068ff4d5ae7d69",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "expired",
+      "created_at": "2026-09-02 03:31:23.491601"
+    },
+    {
+      "enrollment_id": "enrollment_u9CR0F9MpAkan20qMWe-Q_ho",
+      "device_instance_id": "device-instance-59578543e1a99418ba4f5261f9079c9e82dc4d3dcc5b9ada473669436983be9b",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "expired",
+      "created_at": "2026-09-02 03:35:36.620137"
+    },
+    {
+      "enrollment_id": "enrollment_oyt7OJDfvxDnmaFp1gQrnusB",
+      "device_instance_id": "device-instance-7693fec32434ee1bde08c9950d58168cfb6753062038e9899be34a54b68a362b",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "rejected",
+      "created_at": "2026-09-02 06:21:37.152024"
+    },
+    {
+      "enrollment_id": "enrollment_ZWwq3nIkguObTXYw2vsWEsm7",
+      "device_instance_id": "device-instance-7693fec32434ee1bde08c9950d58168cfb6753062038e9899be34a54b68a362b",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "expired",
+      "created_at": "2026-09-02 06:22:17.609904"
+    },
+    {
+      "enrollment_id": "enrollment_aQaNVlXfYo0E7diAiho2wRXB",
+      "device_instance_id": "device-instance-7693fec32434ee1bde08c9950d58168cfb6753062038e9899be34a54b68a362b",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "expired",
+      "created_at": "2026-09-02 06:32:05.777903"
+    },
+    {
+      "enrollment_id": "enrollment_6unchDLm7T8Ms9LnmSCjW1is",
+      "device_instance_id": "device-instance-df2cbc50c43e346cf2521722c03ba33ea7cebfb18db6491794b837ee651c169d",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "expired",
+      "created_at": "2026-09-02 06:32:49.124107"
+    },
+    {
+      "enrollment_id": "enrollment_p1fUx9ZUCyATzXpwm96QVsCn",
+      "device_instance_id": "device-instance-06480c8b03673db5b63f7a37d6c31258f93c131b87f5618c464fb953e3cff9b9",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-09-02 08:35:06.856580"
+    },
+    {
+      "enrollment_id": "enrollment_TKeZ3ZKlfEmynqA1_loCLeCr",
+      "device_instance_id": "device-instance-191468d44fe1c4604dc51b20c6e92b9219b6fcb0222a7aa78474c23254e006c5",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-09-02 13:56:47.264744"
+    },
+    {
+      "enrollment_id": "enrollment_o4P6W7qsNH0FJx1DsYjYBDUM",
+      "device_instance_id": "device-instance-130bc19d283055990eb2d3c84638afdb5b1e9d0ab0717fffa3e4992a12aeabd6",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-09-02 16:43:16.256020"
+    },
+    {
+      "enrollment_id": "enrollment_0HXIGaFAV3mWz8TVPtHjkL5g",
+      "device_instance_id": "device-instance-584788522a0e36f799ad0da52e78c2696c60e59252855514c2603dac19307414",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-09-18 09:04:56.964288"
+    },
+    {
+      "enrollment_id": "enrollment_X0UWXOfUoTPWGkCb0G9fdc9G",
+      "device_instance_id": "device-instance-e7e8b4a09bb75f55cd61c874b7a9fdf8b71ce30f8abe062e7f66c812a39a5ed9",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-09-18 16:27:45.989623"
+    },
+    {
+      "enrollment_id": "enrollment_sUOgFOBxabG8Ow_Lr6wubqJp",
+      "device_instance_id": "device-instance-0a077354bfffda11d13fa50730868d2609b26f376b6531cc4d26f43af814172f",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-09-20 02:42:40.285778"
+    }
+  ],
+  "directory": [
+    {
+      "device_id": "device-instance-a1d19dcbd4e39898d3f8ed07e622e0861c36ebfab3e0a9f01a5371b64053627f",
+      "display_name": "esp-box-3",
+      "output_policy_json": null,
+      "aggregate_revision": 2,
+      "lifecycle_state": "revoked"
+    },
+    {
+      "device_id": "device-instance-cf52e5fa20dd71cdc510ad870c0013b769be757a568887f0afe257db1313ff08",
+      "display_name": "korvo-1",
+      "output_policy_json": null,
+      "aggregate_revision": 2,
+      "lifecycle_state": "revoked"
+    },
+    {
+      "device_id": "device-instance-2a9c8e32887a94b58d851fd80f0b8d41424b911e85f13be7be17f988c9628ac0",
+      "display_name": "esp-box-3",
+      "output_policy_json": null,
+      "aggregate_revision": 2,
+      "lifecycle_state": "revoked"
+    },
+    {
+      "device_id": "device-instance-06480c8b03673db5b63f7a37d6c31258f93c131b87f5618c464fb953e3cff9b9",
+      "display_name": "esp-box-3",
+      "output_policy_json": null,
+      "aggregate_revision": 2,
+      "lifecycle_state": "revoked"
+    },
+    {
+      "device_id": "device-instance-191468d44fe1c4604dc51b20c6e92b9219b6fcb0222a7aa78474c23254e006c5",
+      "display_name": "esp-box-3",
+      "output_policy_json": null,
+      "aggregate_revision": 2,
+      "lifecycle_state": "revoked"
+    },
+    {
+      "device_id": "device-instance-130bc19d283055990eb2d3c84638afdb5b1e9d0ab0717fffa3e4992a12aeabd6",
+      "display_name": "esp-box-3",
+      "output_policy_json": null,
+      "aggregate_revision": 2,
+      "lifecycle_state": "revoked"
+    },
+    {
+      "device_id": "device-instance-584788522a0e36f799ad0da52e78c2696c60e59252855514c2603dac19307414",
+      "display_name": "esp-box-3",
+      "output_policy_json": "{\"schema_version\":1,\"revision\":1,\"allowed\":{\"speech\":true,\"dialogue_text\":false,\"expression\":true,\"audio_cue\":false,\"motion\":false}}",
+      "aggregate_revision": 3,
+      "lifecycle_state": "revoked"
+    },
+    {
+      "device_id": "device-instance-e7e8b4a09bb75f55cd61c874b7a9fdf8b71ce30f8abe062e7f66c812a39a5ed9",
+      "display_name": "esp-box-3",
+      "output_policy_json": "{\"schema_version\":1,\"revision\":7,\"allowed\":{\"speech\":true,\"dialogue_text\":false,\"expression\":true,\"audio_cue\":true,\"motion\":false}}",
+      "aggregate_revision": 10,
+      "lifecycle_state": "approved"
+    },
+    {
+      "device_id": "device-instance-0a077354bfffda11d13fa50730868d2609b26f376b6531cc4d26f43af814172f",
+      "display_name": "m5stack-stackchan",
+      "output_policy_json": "{\"schema_version\":1,\"revision\":2,\"allowed\":{\"speech\":true,\"dialogue_text\":true,\"expression\":true,\"audio_cue\":true,\"motion\":false}}",
+      "aggregate_revision": 3,
+      "lifecycle_state": "approved"
+    }
+  ],
+  "release": {
+    "id": "pi5-companion-desktop-20260920c",
+    "revisions": {
+      "eidolon_kernel": "c8a2e7270c7c70375d65017cd0ae76530a15599c",
+      "eidolon_data": "b06023d376edbd4209dc1cd4b513ea3357c4ad35",
+      "eidolon_hub": "87d16a5d149779ecca8291e283354107b004c922",
+      "eidolon_admin": "209da617f7d31d522489f05d1b6054446bf9f782",
+      "eidolon_agent": "b07aa5a82268ed2015cbd4849408099df4796784",
+      "eidolon_channel": "1c43d73720b2b7a38f4fa2e62e35193c9b6abc06",
+      "eidolon_memory": "5333cb0a3f6c2653bfb6f9de4cb25b59f163a667"
+    }
+  }
+}

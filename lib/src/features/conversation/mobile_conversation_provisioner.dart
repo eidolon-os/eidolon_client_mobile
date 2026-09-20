@@ -197,7 +197,13 @@ final class MobileConversationProvisioner
     final enrollmentId = _currentEnrollmentId?.call();
     // A claimed device asks Device Control directly. Controller availability
     // and the Owner's historical approval queue are not device authorization.
-    if (held != null && enrollmentId == null) {
+    // A directory realignment changes which Authority is trusted, not where a
+    // historical Claim exists. Keep the checkpoint, but reconcile admission at
+    // the selected generation before offering either recovery or enrollment.
+    final sameAuthority = held == null ||
+        held.deviceRef['owner_domain_generation'] ==
+            target.ownerDomainDescriptor.ownerDomainGeneration;
+    if (held != null && sameAuthority && enrollmentId == null) {
       return _configuration(target, identity, null, mode: mode);
     }
     EnrollmentRecoveryProjectionV1? found;
@@ -231,7 +237,16 @@ final class MobileConversationProvisioner
         // No proposal exists, so there is nothing to name — and naming an
         // empty one would let a screen offer to withdraw it.
         null,
-        MobileBodyStanding.notEnrolled,
+        sameAuthority
+            ? MobileBodyStanding.notEnrolled
+            : MobileBodyStanding.registrationRequired,
+        diagnostic: sameAuthority
+            ? ''
+            : 'Saved Owner generation '
+                '${held.deviceRef['owner_domain_generation']}; '
+                'selected Authority generation '
+                '${target.ownerDomainDescriptor.ownerDomainGeneration}; '
+                'no matching recoverable enrollment for $deviceInstanceId',
       );
     }
     final enrollment = _enrollmentRef(found);
@@ -320,7 +335,9 @@ final class MobileConversationProvisioner
     // Scoped to this key: a record left by a previous installation names a
     // device this phone can no longer sign for.
     final claim = await store.loadFor(identity.operationalPublicKey);
-    if (claim == null) {
+    if (claim == null ||
+        claim.deviceRef['owner_domain_generation'] !=
+            target.ownerDomainDescriptor.ownerDomainGeneration) {
       return _empty(HubConfigStatus.waitingBinding, identity.fingerprint,
           enrollment, MobileBodyStanding.claimActiveWithoutChannel,
           refusal: ChannelRefusal.localClaimMissing);
@@ -334,6 +351,7 @@ final class MobileConversationProvisioner
         operationalPublicKey: identity.operationalPublicKey,
         sign: _platform.signDeviceCanonicalDocument,
       );
+      _validateAuthority(configuration, target);
       if (mode != null && configuration.claimStands) {
         final accepted = configuration.manifest;
         if (accepted == null) {
@@ -354,6 +372,7 @@ final class MobileConversationProvisioner
               deviceRef: configuration.deviceRef,
               operationalPublicKey: identity.operationalPublicKey,
               sign: _platform.signDeviceCanonicalDocument);
+          _validateAuthority(configuration, target);
           if (configuration.manifest?.digest != desired['digest'] ||
               configuration.manifest?.revision != desired['revision']) {
             throw const FormatException('设备声明在准备期间发生变化，请重试');
@@ -449,6 +468,18 @@ final class MobileConversationProvisioner
       deviceFingerprint: identity.fingerprint,
       bodyEnrollment: enrollment,
     );
+  }
+
+  static void _validateAuthority(
+      DeviceConfiguration configuration, DeviceOnboardingTarget target) {
+    if (configuration.deviceRef['owner_domain_generation'] !=
+        target.ownerDomainDescriptor.ownerDomainGeneration) {
+      throw const DeviceControlRefusal(
+          detail: 'Configuration differs from the trusted Owner generation',
+          status: 200,
+          retryable: false,
+          invalidResponse: true);
+    }
   }
 
   /// The proposal's id, revision and expiry, read out of the projection.

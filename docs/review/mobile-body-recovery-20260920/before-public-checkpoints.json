@@ -1,0 +1,67 @@
+{
+  "eidolon.mobile-body-claim.v1.owner-f774cf8e1b667eb0ca7b": {
+    "device_ref": {
+      "device_instance_id": "device-instance-08b2358fd82bf6c46c182251d5bfb3ab7aea4384e06ca24858921453cfdf268d",
+      "owner_domain_id": "owner-f774cf8e1b667eb0ca7b",
+      "owner_domain_generation": 3,
+      "claim_generation": 1,
+      "trust_epoch": 1
+    },
+    "grant_id": "grant_j2YpeyC277fPqN9TDLUTCxkM",
+    "owner_domain_id": "owner-f774cf8e1b667eb0ca7b",
+    "device_instance_id": "device-instance-08b2358fd82bf6c46c182251d5bfb3ab7aea4384e06ca24858921453cfdf268d",
+    "acknowledged_at": "2026-09-08T14:07:59.566036Z",
+    "enrollment_id": "enrollment_4hevsE_Eiheyc3Y94YhEHAMC",
+    "ack_pending": false
+  },
+  "eidolon.mobile-body-claim.v1.owner-b0a862b0aab941d64554": {
+    "device_ref": {
+      "claim_generation": 1,
+      "device_instance_id": "device-instance-cbaca296ba9f3016de9a5957731288b1272b691d3108091ec3c4e8106f8beec0",
+      "owner_domain_generation": 9,
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "trust_epoch": 1
+    },
+    "grant_id": "grant_NNtwMifemnGLbj7tCeSs4056",
+    "owner_domain_id": "owner-b0a862b0aab941d64554",
+    "device_instance_id": "device-instance-cbaca296ba9f3016de9a5957731288b1272b691d3108091ec3c4e8106f8beec0",
+    "acknowledged_at": "2026-09-10T05:31:49.030684Z",
+    "enrollment_id": "enrollment_6ilETSGQdZSFDTXLCXSL4pUb",
+    "ack_pending": false
+  },
+  "eidolon.owner-domain-directories.v1": {
+    "contract_version": "1",
+    "owners": {
+      "owner-0342958c2e259f177f43": {
+        "owner_domain_generation": 1,
+        "directory_revision": 1,
+        "fingerprint": "sha256:127baa58c71d9cdd7ee0c136ac1dbe768957aad9e8ea07408777e12eb27ea098"
+      },
+      "owner-f774cf8e1b667eb0ca7b": {
+        "owner_domain_generation": 3,
+        "directory_revision": 1,
+        "fingerprint": "sha256:b9be448369d0dc89c5a1ea9f28a75e3e95b4560500274ed497c1cfd54ccc2602"
+      },
+      "owner-b0a862b0aab941d64554": {
+        "owner_domain_generation": 8,
+        "directory_revision": 1,
+        "fingerprint": "sha256:148103ca8552fa5295d37e952df27639bcde60516da3626df01265bd51f36649"
+      }
+    }
+  },
+  "eidolon.mobile-body-claim.v1.owner-0342958c2e259f177f43": {
+    "device_ref": {
+      "claim_generation": 1,
+      "device_instance_id": "device-instance-c56a833e11d8804e74cb299efaeea210543c2ba561467e81d0a7173418b38f4c",
+      "owner_domain_generation": 1,
+      "owner_domain_id": "owner-0342958c2e259f177f43",
+      "trust_epoch": 1
+    },
+    "grant_id": "grant_DHotpNeySfdjpfoNghXkNC0H",
+    "owner_domain_id": "owner-0342958c2e259f177f43",
+    "device_instance_id": "device-instance-c56a833e11d8804e74cb299efaeea210543c2ba561467e81d0a7173418b38f4c",
+    "acknowledged_at": "2026-09-09T16:44:12.291965Z",
+    "enrollment_id": "enrollment_FJS6DpYFWkgZyepvD0mYBwYp",
+    "ack_pending": false
+  }
+}

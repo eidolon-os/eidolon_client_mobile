@@ -1,0 +1,404 @@
+{
+  "authority": [
+    {
+      "singleton_id": 1,
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "state_id": "authority-state_LJxSTZE2bamD2OGWCj-2BazBbosGT_AE"
+    }
+  ],
+  "claims": [
+    {
+      "device_instance_id": "device-instance-a1d19dcbd4e39898d3f8ed07e622e0861c36ebfab3e0a9f01a5371b64053627f",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "revoked"
+    },
+    {
+      "device_instance_id": "device-instance-cf52e5fa20dd71cdc510ad870c0013b769be757a568887f0afe257db1313ff08",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "revoked"
+    },
+    {
+      "device_instance_id": "device-instance-2a9c8e32887a94b58d851fd80f0b8d41424b911e85f13be7be17f988c9628ac0",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "revoked"
+    },
+    {
+      "device_instance_id": "device-instance-06480c8b03673db5b63f7a37d6c31258f93c131b87f5618c464fb953e3cff9b9",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "revoked"
+    },
+    {
+      "device_instance_id": "device-instance-191468d44fe1c4604dc51b20c6e92b9219b6fcb0222a7aa78474c23254e006c5",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "revoked"
+    },
+    {
+      "device_instance_id": "device-instance-130bc19d283055990eb2d3c84638afdb5b1e9d0ab0717fffa3e4992a12aeabd6",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "revoked"
+    },
+    {
+      "device_instance_id": "device-instance-584788522a0e36f799ad0da52e78c2696c60e59252855514c2603dac19307414",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "revoked"
+    },
+    {
+      "device_instance_id": "device-instance-e7e8b4a09bb75f55cd61c874b7a9fdf8b71ce30f8abe062e7f66c812a39a5ed9",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "active"
+    },
+    {
+      "device_instance_id": "device-instance-0a077354bfffda11d13fa50730868d2609b26f376b6531cc4d26f43af814172f",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "active"
+    },
+    {
+      "device_instance_id": "device-instance-cbaca296ba9f3016de9a5957731288b1272b691d3108091ec3c4e8106f8beec0",
+      "owner_domain_id": "owner-b0a862b0aab941d64554",
+      "owner_domain_generation": 8,
+      "claim_generation": 1,
+      "trust_epoch": 1,
+      "state": "active"
+    }
+  ],
+  "proposals": [
+    {
+      "enrollment_id": "enrollment_WyxgIUnBKL3MsnV9XXr_I5Hm",
+      "device_instance_id": "device-instance-a1d19dcbd4e39898d3f8ed07e622e0861c36ebfab3e0a9f01a5371b64053627f",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-08-27 05:24:06.664333"
+    },
+    {
+      "enrollment_id": "enrollment_X_v75dkFcnJSTUlxJjGb4ajn",
+      "device_instance_id": "device-instance-cf52e5fa20dd71cdc510ad870c0013b769be757a568887f0afe257db1313ff08",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-08-31 13:30:16.995590"
+    },
+    {
+      "enrollment_id": "enrollment_L9K1W6HWsd0kQccv96JBMfP9",
+      "device_instance_id": "device-instance-2a9c8e32887a94b58d851fd80f0b8d41424b911e85f13be7be17f988c9628ac0",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-09-02 03:11:12.638869"
+    },
+    {
+      "enrollment_id": "enrollment_k71zkuMaHoUqBV80CFX9maA9",
+      "device_instance_id": "device-instance-6d68a9f0ae3c4eb6415d8aeb82f6eaed9e4141cde50918f91c068ff4d5ae7d69",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "expired",
+      "created_at": "2026-09-02 03:31:23.491601"
+    },
+    {
+      "enrollment_id": "enrollment_u9CR0F9MpAkan20qMWe-Q_ho",
+      "device_instance_id": "device-instance-59578543e1a99418ba4f5261f9079c9e82dc4d3dcc5b9ada473669436983be9b",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "expired",
+      "created_at": "2026-09-02 03:35:36.620137"
+    },
+    {
+      "enrollment_id": "enrollment_oyt7OJDfvxDnmaFp1gQrnusB",
+      "device_instance_id": "device-instance-7693fec32434ee1bde08c9950d58168cfb6753062038e9899be34a54b68a362b",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "rejected",
+      "created_at": "2026-09-02 06:21:37.152024"
+    },
+    {
+      "enrollment_id": "enrollment_ZWwq3nIkguObTXYw2vsWEsm7",
+      "device_instance_id": "device-instance-7693fec32434ee1bde08c9950d58168cfb6753062038e9899be34a54b68a362b",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "expired",
+      "created_at": "2026-09-02 06:22:17.609904"
+    },
+    {
+      "enrollment_id": "enrollment_aQaNVlXfYo0E7diAiho2wRXB",
+      "device_instance_id": "device-instance-7693fec32434ee1bde08c9950d58168cfb6753062038e9899be34a54b68a362b",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "expired",
+      "created_at": "2026-09-02 06:32:05.777903"
+    },
+    {
+      "enrollment_id": "enrollment_6unchDLm7T8Ms9LnmSCjW1is",
+      "device_instance_id": "device-instance-df2cbc50c43e346cf2521722c03ba33ea7cebfb18db6491794b837ee651c169d",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "expired",
+      "created_at": "2026-09-02 06:32:49.124107"
+    },
+    {
+      "enrollment_id": "enrollment_p1fUx9ZUCyATzXpwm96QVsCn",
+      "device_instance_id": "device-instance-06480c8b03673db5b63f7a37d6c31258f93c131b87f5618c464fb953e3cff9b9",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-09-02 08:35:06.856580"
+    },
+    {
+      "enrollment_id": "enrollment_TKeZ3ZKlfEmynqA1_loCLeCr",
+      "device_instance_id": "device-instance-191468d44fe1c4604dc51b20c6e92b9219b6fcb0222a7aa78474c23254e006c5",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-09-02 13:56:47.264744"
+    },
+    {
+      "enrollment_id": "enrollment_o4P6W7qsNH0FJx1DsYjYBDUM",
+      "device_instance_id": "device-instance-130bc19d283055990eb2d3c84638afdb5b1e9d0ab0717fffa3e4992a12aeabd6",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-09-02 16:43:16.256020"
+    },
+    {
+      "enrollment_id": "enrollment_0HXIGaFAV3mWz8TVPtHjkL5g",
+      "device_instance_id": "device-instance-584788522a0e36f799ad0da52e78c2696c60e59252855514c2603dac19307414",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-09-18 09:04:56.964288"
+    },
+    {
+      "enrollment_id": "enrollment_X0UWXOfUoTPWGkCb0G9fdc9G",
+      "device_instance_id": "device-instance-e7e8b4a09bb75f55cd61c874b7a9fdf8b71ce30f8abe062e7f66c812a39a5ed9",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-09-18 16:27:45.989623"
+    },
+    {
+      "enrollment_id": "enrollment_sUOgFOBxabG8Ow_Lr6wubqJp",
+      "device_instance_id": "device-instance-0a077354bfffda11d13fa50730868d2609b26f376b6531cc4d26f43af814172f",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-09-20 02:42:40.285778"
+    },
+    {
+      "enrollment_id": "enrollment_nISHXc4lPMogc2A1BVyAY6e1",
+      "device_instance_id": "device-instance-cbaca296ba9f3016de9a5957731288b1272b691d3108091ec3c4e8106f8beec0",
+      "requested_owner_domain_id": "owner-b0a862b0aab941d64554",
+      "state": "grant_acknowledged",
+      "created_at": "2026-09-20 11:04:22.688526"
+    }
+  ],
+  "directory": [
+    {
+      "device_id": "device-instance-a1d19dcbd4e39898d3f8ed07e622e0861c36ebfab3e0a9f01a5371b64053627f",
+      "display_name": "esp-box-3",
+      "output_policy_json": null,
+      "aggregate_revision": 2,
+      "lifecycle_state": "revoked"
+    },
+    {
+      "device_id": "device-instance-cf52e5fa20dd71cdc510ad870c0013b769be757a568887f0afe257db1313ff08",
+      "display_name": "korvo-1",
+      "output_policy_json": null,
+      "aggregate_revision": 2,
+      "lifecycle_state": "revoked"
+    },
+    {
+      "device_id": "device-instance-2a9c8e32887a94b58d851fd80f0b8d41424b911e85f13be7be17f988c9628ac0",
+      "display_name": "esp-box-3",
+      "output_policy_json": null,
+      "aggregate_revision": 2,
+      "lifecycle_state": "revoked"
+    },
+    {
+      "device_id": "device-instance-06480c8b03673db5b63f7a37d6c31258f93c131b87f5618c464fb953e3cff9b9",
+      "display_name": "esp-box-3",
+      "output_policy_json": null,
+      "aggregate_revision": 2,
+      "lifecycle_state": "revoked"
+    },
+    {
+      "device_id": "device-instance-191468d44fe1c4604dc51b20c6e92b9219b6fcb0222a7aa78474c23254e006c5",
+      "display_name": "esp-box-3",
+      "output_policy_json": null,
+      "aggregate_revision": 2,
+      "lifecycle_state": "revoked"
+    },
+    {
+      "device_id": "device-instance-130bc19d283055990eb2d3c84638afdb5b1e9d0ab0717fffa3e4992a12aeabd6",
+      "display_name": "esp-box-3",
+      "output_policy_json": null,
+      "aggregate_revision": 2,
+      "lifecycle_state": "revoked"
+    },
+    {
+      "device_id": "device-instance-584788522a0e36f799ad0da52e78c2696c60e59252855514c2603dac19307414",
+      "display_name": "esp-box-3",
+      "output_policy_json": "{\"schema_version\":1,\"revision\":1,\"allowed\":{\"speech\":true,\"dialogue_text\":false,\"expression\":true,\"audio_cue\":false,\"motion\":false}}",
+      "aggregate_revision": 3,
+      "lifecycle_state": "revoked"
+    },
+    {
+      "device_id": "device-instance-e7e8b4a09bb75f55cd61c874b7a9fdf8b71ce30f8abe062e7f66c812a39a5ed9",
+      "display_name": "esp-box-3",
+      "output_policy_json": "{\"schema_version\":1,\"revision\":7,\"allowed\":{\"speech\":true,\"dialogue_text\":false,\"expression\":true,\"audio_cue\":true,\"motion\":false}}",
+      "aggregate_revision": 10,
+      "lifecycle_state": "approved"
+    },
+    {
+      "device_id": "device-instance-0a077354bfffda11d13fa50730868d2609b26f376b6531cc4d26f43af814172f",
+      "display_name": "m5stack-stackchan",
+      "output_policy_json": "{\"schema_version\":1,\"revision\":2,\"allowed\":{\"speech\":true,\"dialogue_text\":true,\"expression\":true,\"audio_cue\":true,\"motion\":false}}",
+      "aggregate_revision": 3,
+      "lifecycle_state": "approved"
+    },
+    {
+      "device_id": "device-instance-cbaca296ba9f3016de9a5957731288b1272b691d3108091ec3c4e8106f8beec0",
+      "display_name": "Eidolon Mobile",
+      "output_policy_json": null,
+      "aggregate_revision": 2,
+      "lifecycle_state": "approved"
+    }
+  ],
+  "acks": [
+    {
+      "grant_id": "grant_m_3BCjEyYzoEHcQEJSG4ihYJ",
+      "enrollment_id": "enrollment_WyxgIUnBKL3MsnV9XXr_I5Hm",
+      "device_ref_json": "{\"claim_generation\": 1, \"device_instance_id\": \"device-instance-a1d19dcbd4e39898d3f8ed07e622e0861c36ebfab3e0a9f01a5371b64053627f\", \"owner_domain_generation\": 8, \"owner_domain_id\": \"owner-b0a862b0aab941d64554\", \"trust_epoch\": 1}",
+      "acknowledged_at": "2026-08-27 05:33:13.225451"
+    },
+    {
+      "grant_id": "grant_yLfK5DI4DkHUhErg4C7XH8aV",
+      "enrollment_id": "enrollment_X_v75dkFcnJSTUlxJjGb4ajn",
+      "device_ref_json": "{\"claim_generation\": 1, \"device_instance_id\": \"device-instance-cf52e5fa20dd71cdc510ad870c0013b769be757a568887f0afe257db1313ff08\", \"owner_domain_generation\": 8, \"owner_domain_id\": \"owner-b0a862b0aab941d64554\", \"trust_epoch\": 1}",
+      "acknowledged_at": "2026-08-31 13:30:23.585333"
+    },
+    {
+      "grant_id": "grant_fw7vB_qAjK3bpn8Y3cambBxE",
+      "enrollment_id": "enrollment_L9K1W6HWsd0kQccv96JBMfP9",
+      "device_ref_json": "{\"claim_generation\": 1, \"device_instance_id\": \"device-instance-2a9c8e32887a94b58d851fd80f0b8d41424b911e85f13be7be17f988c9628ac0\", \"owner_domain_generation\": 8, \"owner_domain_id\": \"owner-b0a862b0aab941d64554\", \"trust_epoch\": 1}",
+      "acknowledged_at": "2026-09-02 03:11:20.983024"
+    },
+    {
+      "grant_id": "grant_uhUN12pKnQDoWrI5t4wlogx_",
+      "enrollment_id": "enrollment_p1fUx9ZUCyATzXpwm96QVsCn",
+      "device_ref_json": "{\"claim_generation\": 1, \"device_instance_id\": \"device-instance-06480c8b03673db5b63f7a37d6c31258f93c131b87f5618c464fb953e3cff9b9\", \"owner_domain_generation\": 8, \"owner_domain_id\": \"owner-b0a862b0aab941d64554\", \"trust_epoch\": 1}",
+      "acknowledged_at": "2026-09-02 08:35:15.351463"
+    },
+    {
+      "grant_id": "grant_1xzz0Vh71GKgZRlHdfkxxc2s",
+      "enrollment_id": "enrollment_TKeZ3ZKlfEmynqA1_loCLeCr",
+      "device_ref_json": "{\"claim_generation\": 1, \"device_instance_id\": \"device-instance-191468d44fe1c4604dc51b20c6e92b9219b6fcb0222a7aa78474c23254e006c5\", \"owner_domain_generation\": 8, \"owner_domain_id\": \"owner-b0a862b0aab941d64554\", \"trust_epoch\": 1}",
+      "acknowledged_at": "2026-09-02 13:56:55.913501"
+    },
+    {
+      "grant_id": "grant_HKVVdSUTvKmxnona2c84ec0Q",
+      "enrollment_id": "enrollment_o4P6W7qsNH0FJx1DsYjYBDUM",
+      "device_ref_json": "{\"claim_generation\": 1, \"device_instance_id\": \"device-instance-130bc19d283055990eb2d3c84638afdb5b1e9d0ab0717fffa3e4992a12aeabd6\", \"owner_domain_generation\": 8, \"owner_domain_id\": \"owner-b0a862b0aab941d64554\", \"trust_epoch\": 1}",
+      "acknowledged_at": "2026-09-02 16:43:24.703837"
+    },
+    {
+      "grant_id": "grant_8PGsgJsvxeBJ1i2qix6OEcAq",
+      "enrollment_id": "enrollment_0HXIGaFAV3mWz8TVPtHjkL5g",
+      "device_ref_json": "{\"claim_generation\": 1, \"device_instance_id\": \"device-instance-584788522a0e36f799ad0da52e78c2696c60e59252855514c2603dac19307414\", \"owner_domain_generation\": 8, \"owner_domain_id\": \"owner-b0a862b0aab941d64554\", \"trust_epoch\": 1}",
+      "acknowledged_at": "2026-09-18 09:05:05.597944"
+    },
+    {
+      "grant_id": "grant_kEfXuVIbBsIFDj4lt3bqfdAd",
+      "enrollment_id": "enrollment_X0UWXOfUoTPWGkCb0G9fdc9G",
+      "device_ref_json": "{\"claim_generation\": 1, \"device_instance_id\": \"device-instance-e7e8b4a09bb75f55cd61c874b7a9fdf8b71ce30f8abe062e7f66c812a39a5ed9\", \"owner_domain_generation\": 8, \"owner_domain_id\": \"owner-b0a862b0aab941d64554\", \"trust_epoch\": 1}",
+      "acknowledged_at": "2026-09-18 16:27:54.641674"
+    },
+    {
+      "grant_id": "grant_U56jFKFNPuy_aEnrxY7mNaP2",
+      "enrollment_id": "enrollment_sUOgFOBxabG8Ow_Lr6wubqJp",
+      "device_ref_json": "{\"claim_generation\": 1, \"device_instance_id\": \"device-instance-0a077354bfffda11d13fa50730868d2609b26f376b6531cc4d26f43af814172f\", \"owner_domain_generation\": 8, \"owner_domain_id\": \"owner-b0a862b0aab941d64554\", \"trust_epoch\": 1}",
+      "acknowledged_at": "2026-09-20 02:42:49.181319"
+    },
+    {
+      "grant_id": "grant_cRLwcL6LrNtUaruD7mE5hEal",
+      "enrollment_id": "enrollment_nISHXc4lPMogc2A1BVyAY6e1",
+      "device_ref_json": "{\"claim_generation\": 1, \"device_instance_id\": \"device-instance-cbaca296ba9f3016de9a5957731288b1272b691d3108091ec3c4e8106f8beec0\", \"owner_domain_generation\": 8, \"owner_domain_id\": \"owner-b0a862b0aab941d64554\", \"trust_epoch\": 1}",
+      "acknowledged_at": "2026-09-20 11:05:52.000208"
+    }
+  ],
+  "assignments": [
+    {
+      "device_id": "device-instance-a1d19dcbd4e39898d3f8ed07e622e0861c36ebfab3e0a9f01a5371b64053627f",
+      "companion_id": "cp_f943c3836421412388772fd5ac44cbdf",
+      "revision": 1
+    },
+    {
+      "device_id": "device-instance-cf52e5fa20dd71cdc510ad870c0013b769be757a568887f0afe257db1313ff08",
+      "companion_id": "c_683f963f54885e86892416894c9d92d1",
+      "revision": 1
+    },
+    {
+      "device_id": "device-instance-130bc19d283055990eb2d3c84638afdb5b1e9d0ab0717fffa3e4992a12aeabd6",
+      "companion_id": "c_683f963f54885e86892416894c9d92d1",
+      "revision": 1
+    },
+    {
+      "device_id": "device-instance-584788522a0e36f799ad0da52e78c2696c60e59252855514c2603dac19307414",
+      "companion_id": "cp_a723362066e34ab8af2d3a0b229532f1",
+      "revision": 1
+    },
+    {
+      "device_id": "device-instance-e7e8b4a09bb75f55cd61c874b7a9fdf8b71ce30f8abe062e7f66c812a39a5ed9",
+      "companion_id": "cp_a723362066e34ab8af2d3a0b229532f1",
+      "revision": 5
+    },
+    {
+      "device_id": "device-instance-0a077354bfffda11d13fa50730868d2609b26f376b6531cc4d26f43af814172f",
+      "companion_id": "c_683f963f54885e86892416894c9d92d1",
+      "revision": 1
+    },
+    {
+      "device_id": "device-instance-cbaca296ba9f3016de9a5957731288b1272b691d3108091ec3c4e8106f8beec0",
+      "companion_id": "cp_8a23731c9e0f409795f3800fc93f8aec",
+      "revision": 1
+    }
+  ],
+  "companion_count": 7,
+  "owner_columns": [
+    "owner_id",
+    "display_name",
+    "kind",
+    "status",
+    "default_companion_id",
+    "revision",
+    "profile_json",
+    "settings_json",
+    "created_at",
+    "updated_at"
+  ],
+  "admission_http_evidence": [
+    "Sep 20 18:36:39 eidolon-pi5 uvicorn[149409]: Configuration pull refused, and no retry ends it: no Claim stands at this device identity within the Owner Domain named — either Admission records none for this device, or the Claim it records belongs to another Owner Domain. Who can: the device, by enrolling here and presenting the DeviceRef this Host grants it, if this Host is the one that should hold its Claim; nobody here, if the DeviceRef names another Owner Domain — read admission_claims_v1 for this device to tell which. device=device-instance-cbaca296ba9f3016de9a5957731288b1272b691d3108091ec3c4e8106f8beec0 owner-domain=owner-b0a862b0aab941d64554 generation=9/1/1 code=STALE_GENERATION",
+    "Sep 20 18:46:16 eidolon-pi5 uvicorn[149409]: INFO:     127.0.0.1:53358 - \"GET /api/admission/v1/enrollments?states=pending_review%2Capproved_awaiting_handoff%2Cgrant_delivered%2Cgrant_acknowledged&limit=50 HTTP/1.1\" 200 OK",
+    "Sep 20 18:46:23 eidolon-pi5 uvicorn[149409]: Configuration pull refused, and no retry ends it: no Claim stands at this device identity within the Owner Domain named — either Admission records none for this device, or the Claim it records belongs to another Owner Domain. Who can: the device, by enrolling here and presenting the DeviceRef this Host grants it, if this Host is the one that should hold its Claim; nobody here, if the DeviceRef names another Owner Domain — read admission_claims_v1 for this device to tell which. device=device-instance-cbaca296ba9f3016de9a5957731288b1272b691d3108091ec3c4e8106f8beec0 owner-domain=owner-b0a862b0aab941d64554 generation=9/1/1 code=STALE_GENERATION",
+    "Sep 20 18:46:33 eidolon-pi5 uvicorn[149409]: INFO:     127.0.0.1:54428 - \"GET /api/admission/v1/enrollments?states=pending_review%2Capproved_awaiting_handoff%2Cgrant_delivered%2Cgrant_acknowledged&limit=50 HTTP/1.1\" 200 OK",
+    "Sep 20 18:46:40 eidolon-pi5 uvicorn[149409]: Configuration pull refused, and no retry ends it: no Claim stands at this device identity within the Owner Domain named — either Admission records none for this device, or the Claim it records belongs to another Owner Domain. Who can: the device, by enrolling here and presenting the DeviceRef this Host grants it, if this Host is the one that should hold its Claim; nobody here, if the DeviceRef names another Owner Domain — read admission_claims_v1 for this device to tell which. device=device-instance-cbaca296ba9f3016de9a5957731288b1272b691d3108091ec3c4e8106f8beec0 owner-domain=owner-b0a862b0aab941d64554 generation=9/1/1 code=STALE_GENERATION",
+    "Sep 20 18:46:48 eidolon-pi5 uvicorn[149409]: INFO:     127.0.0.1:55158 - \"GET /api/admission/v1/enrollments?states=pending_review%2Capproved_awaiting_handoff%2Cgrant_delivered%2Cgrant_acknowledged&limit=50 HTTP/1.1\" 200 OK",
+    "Sep 20 18:56:11 eidolon-pi5 uvicorn[149409]: INFO:     127.0.0.1:39172 - \"GET /api/admission/v1/enrollments?states=pending_review%2Capproved_awaiting_handoff%2Cgrant_delivered%2Cgrant_acknowledged&limit=50 HTTP/1.1\" 200 OK",
+    "Sep 20 19:03:52 eidolon-pi5 uvicorn[149409]: INFO:     127.0.0.1:58336 - \"GET /api/admission/v1/enrollments?states=pending_review%2Capproved_awaiting_handoff%2Cgrant_delivered%2Cgrant_acknowledged&limit=50 HTTP/1.1\" 200 OK",
+    "Sep 20 19:04:22 eidolon-pi5 uvicorn[149409]: INFO:     127.0.0.1:39166 - \"POST /api/admission/v1/enrollments HTTP/1.1\" 201 Created",
+    "Sep 20 19:05:51 eidolon-pi5 uvicorn[149409]: INFO:     127.0.0.1:46736 - \"POST /api/admission/v1/enrollments/enrollment_nISHXc4lPMogc2A1BVyAY6e1/decisions HTTP/1.1\" 200 OK",
+    "Sep 20 19:05:51 eidolon-pi5 uvicorn[149409]: INFO:     127.0.0.1:46738 - \"POST /api/admission/v1/enrollments/enrollment_nISHXc4lPMogc2A1BVyAY6e1/claim-grants%3Acollect HTTP/1.1\" 200 OK",
+    "Sep 20 19:05:52 eidolon-pi5 uvicorn[149409]: INFO:     127.0.0.1:46742 - \"POST /api/admission/v1/enrollments/enrollment_nISHXc4lPMogc2A1BVyAY6e1/claim-grants/grant_cRLwcL6LrNtUaruD7mE5hEal%3Aack HTTP/1.1\" 200 OK"
+  ]
+}

@@ -124,6 +124,17 @@ class _RecoveryProvisioner extends _Provisioner
   }
 }
 
+class _RegistrationRequiredProvisioner extends _Provisioner {
+  @override
+  Future<HubConfig> provision(
+          {String sessionIntent = '', ConversationMode? mode}) async =>
+      const HubConfig(
+          status: HubConfigStatus.unregistered,
+          session: RoomConfig(serverUrl: '', token: '', identity: '', roomName: ''),
+          deviceFingerprint: phoneFingerprint,
+          bodyStanding: MobileBodyStanding.registrationRequired);
+}
+
 class _Harness {
   ConversationProvisioner? provisioner;
   final events = <String>[];
@@ -232,6 +243,24 @@ void main() {
       await icons.load();
     }
   });
+  testWidgets('historical authority checkpoint offers current admission, never recovery or automatic writes',
+      (tester) async {
+    final h = _Harness()..provisioner = _RegistrationRequiredProvisioner();
+    await tester.pumpWidget(MaterialApp(
+        home: ProductConversationPage(
+            hostName: '工作室', createFlow: () async => h.flow)));
+    await tester.pumpAndSettle();
+    expect(find.text('在当前主机登记本机'), findsOneWidget);
+    expect(find.text('恢复已有登记'), findsNothing);
+    expect(find.textContaining('原记录已保留'), findsOneWidget);
+    expect(h.flow.client.canJoin, false);
+    expect(h.requests, isEmpty);
+    expect(h.events, isEmpty);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
   testWidgets(
       'Owner conflict offers explicit recovery, cancel is inert and failure remains actionable',
       (tester) async {

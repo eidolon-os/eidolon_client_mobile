@@ -25,6 +25,10 @@ enum MobileBodyStanding {
   /// No Enrollment for this phone exists. Nothing is in progress.
   notEnrolled,
 
+  /// A saved Claim names another generation of this Owner. The currently
+  /// trusted Authority has no recoverable enrollment for this operational key.
+  registrationRequired,
+
   /// Proposed, waiting on a Decision — which this phone can give itself.
   pendingReview,
 
@@ -61,7 +65,7 @@ enum MobileBodyStanding {
         grantDelivered ||
         claimActiveWithoutChannel =>
           true,
-        notEnrolled || claimRevoked || admissionEnded => false,
+        notEnrolled || registrationRequired || claimRevoked || admissionEnded => false,
       };
 
   /// Whether the Owner holding this phone can approve it from here.
@@ -81,7 +85,7 @@ enum MobileBodyStanding {
   /// holds a Claim, and what it lacks is a Channel, which is the Host's to
   /// give. Offering enrollment there would be a button that undoes something.
   bool get canProposeItself => switch (this) {
-        notEnrolled || claimRevoked || admissionEnded => true,
+        notEnrolled || registrationRequired || claimRevoked || admissionEnded => true,
         pendingReview ||
         approvedAwaitingHandoff ||
         grantDelivered ||
@@ -191,6 +195,12 @@ MobileBodySentence mobileBodySentence(
         headline: '将本机接入对话',
         detail: '先登记这台虚拟设备，再由你明确确认接入。完成后即可选择伙伴开始对话。$fingerprintClause',
         connectionLabel: '未登记',
+      ),
+    MobileBodyStanding.registrationRequired => MobileBodySentence(
+        headline: '需要在当前主机登记本机',
+        detail: '本机保存的登记属于此 Owner 的另一份授权状态，当前主机没有可恢复的登记。'
+            '原记录已保留；可以使用本机现有身份提出登记，再由你确认接入。$fingerprintClause',
+        connectionLabel: '待登记',
       ),
     MobileBodyStanding.pendingReview => MobileBodySentence(
         headline: '等你批准这台手机',

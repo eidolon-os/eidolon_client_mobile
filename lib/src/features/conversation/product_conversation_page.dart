@@ -8,6 +8,7 @@ import '../device_setup/mobile_body_enrollment_session.dart';
 import 'channel_refusal.dart';
 import 'conversation_flow.dart';
 import 'conversation_standing.dart';
+import 'mobile_body_standing.dart';
 
 class ProductConversationPage extends StatefulWidget {
   const ProductConversationPage(
@@ -687,7 +688,12 @@ class _ProductConversationPageState extends State<ProductConversationPage>
           Icons.graphic_eq_rounded);
     }
     if (c.enrollmentAct == MobileBodyEnrollmentAct.propose) {
-      return button('登记本机', f.propose, Icons.add_link_rounded);
+      return button(
+          c.config?.bodyStanding == MobileBodyStanding.registrationRequired
+              ? '在当前主机登记本机'
+              : '登记本机',
+          f.propose,
+          Icons.add_link_rounded);
     }
     if (c.enrollmentAct == MobileBodyEnrollmentAct.approve) {
       return button(

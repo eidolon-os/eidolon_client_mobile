@@ -1,0 +1,21 @@
+{
+  "existing_host_rows_unchanged": {
+    "authority": true,
+    "claims": true,
+    "proposals": true,
+    "directory": true
+  },
+  "same_device_identity": true,
+  "other_owners_and_accepted_directory_unchanged": true,
+  "default_companion": {
+    "id": "cp_ba8862d5c2d74a77b05f85494b64d433",
+    "name": "Sanjiu"
+  },
+  "companion_count": 7,
+  "tests": {
+    "passed": 1126,
+    "skipped": 8,
+    "analyze": "no issues"
+  },
+  "apk_sha256": "823884e688cfe5d85c705193ee649152eabf8a3e7e0ca00d6f020bf833c5a8ee"
+}

@@ -5,6 +5,8 @@ import 'package:eidolon_client_mobile/src/features/conversation/conversation_flo
 import 'package:eidolon_client_mobile/src/features/conversation/device_control_client.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/device_owner_directory.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/mobile_conversation_provisioner.dart';
+import 'package:eidolon_client_mobile/src/features/conversation/mobile_body_standing.dart';
+import 'package:eidolon_client_mobile/src/features/device_setup/mobile_body_enrollment_session.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/mobile_device_runtime.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/mobile_device_contexts.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_ports.dart';
@@ -23,10 +25,12 @@ import 'support/phone_identity_fixtures.dart';
 class _Admission implements DeviceAdmissionPort {
   List<EnrollmentRecoveryProjectionV1> records = [];
   int reads = 0;
+  bool unavailable = false;
   @override
   Future<EnrollmentProposalPageV1> listRecovery(
       {AdmissionListCursorV1? after}) async {
     reads++;
+    if (unavailable) throw StateError('Authority unavailable');
     return EnrollmentProposalPageV1.fromJson({
       ...canonicalContractValue('DF-PH2B0-PROPOSAL-PAGE-VALID'),
       'owner_domain_id': ownerDomainIdFixture,
@@ -124,6 +128,76 @@ void main() {
     expect(requests, isEmpty);
     expect(admission.reads, 0);
     expect((await store.load())!.toJson(), before);
+  });
+
+  test('realigned directory with no enrollment offers explicit admission using the same identity',
+      () async {
+    admission.records.clear();
+    final before = (await store.load())!.toJson();
+    // Reopening/retrying must reach the same conclusion without deleting the
+    // old Claim, signing a stale ref, issuing a voucher or approving anything.
+    for (var i = 0; i < 2; i++) {
+      final config = await provisioner.provision();
+      expect(config.bodyStanding, MobileBodyStanding.registrationRequired);
+      expect(config.session.usable, false);
+      expect(config.bodyStanding!.advances, false);
+      expect(config.diagnostic, contains('Saved Owner generation 3'));
+      final session = MobileBodyEnrollmentSession(
+          loadTarget: () async => deviceOnboardingTargetFixture(),
+          buildAdmission: (_) => throw StateError('must not create admission'));
+      expect(await session.actFor(config.bodyStanding!),
+          MobileBodyEnrollmentAct.propose);
+    }
+    expect(admission.reads, 2);
+    expect(requests, isEmpty);
+    expect((await store.load())!.toJson(), before);
+  });
+
+  test('an existing current-authority Claim offers recovery instead of new admission',
+      () async {
+    final before = (await store.load())!.toJson();
+    final config = await provisioner.provision();
+    expect(config.channelRefusal, ChannelRefusal.localClaimMissing);
+    expect(config.bodyStanding!.canProposeItself, false);
+    expect(requests, isEmpty);
+    expect((await store.load())!.toJson(), before);
+    await provisioner.recoverClaim();
+    expect(requests.single['device_ref']['owner_domain_generation'], 1);
+    expect((await store.load())!.deviceRef['owner_domain_generation'], 1);
+  });
+
+  test('unavailable authority cannot turn a historical Claim into permission to enroll',
+      () async {
+    admission.unavailable = true;
+    final before = (await store.load())!.toJson();
+    await expectLater(provisioner.provision(), throwsStateError);
+    expect(requests, isEmpty);
+    expect((await store.load())!.toJson(), before);
+  });
+
+  test('pending ACK from another authority is preserved and never replayed here',
+      () async {
+    await store.save(oldClaim(ackPending: true));
+    final before = (await store.load())!.toJson();
+    final session = MobileBodyEnrollmentSession(
+        claims: store,
+        platform: FakePhonePlatform(),
+        loadTarget: () async => deviceOnboardingTargetFixture(),
+        buildAdmission: (_) => throw StateError('must not contact authority'));
+    await expectLater(session.resumeAcknowledgement(),
+        throwsA(isA<MobileBodyEnrollmentUnavailable>()));
+    expect((await store.load())!.toJson(), before);
+  });
+
+  test('current pending proposal takes priority over a historical local Claim',
+      () async {
+    admission.records = [canonicalProjection(
+        state: 'pending_review', ownerDomainId: ownerDomainIdFixture,
+        deviceId: phoneDeviceInstanceId)];
+    final config = await provisioner.provision();
+    expect(config.bodyStanding, MobileBodyStanding.pendingReview);
+    expect(requests, isEmpty);
+    expect((await store.load())!.deviceRef['owner_domain_generation'], 3);
   });
 
   test(

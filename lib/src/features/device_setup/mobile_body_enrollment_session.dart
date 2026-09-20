@@ -150,6 +150,11 @@ class MobileBodyEnrollmentSession {
     if (record.ownerDomainId != target.ownerDomainId) {
       throw const MobileBodyEnrollmentUnavailable('本机凭证属于另一个 Owner。');
     }
+    if (record.deviceRef['owner_domain_generation'] !=
+        target.ownerDomainDescriptor.ownerDomainGeneration) {
+      throw const MobileBodyEnrollmentUnavailable(
+          '待确认的登记属于另一份主机授权状态。请连接原主机完成确认；原记录已保留。');
+    }
     await (await _client()).resumeAcknowledgement(
         correlationId: record.ackCommandId ?? _newCommandId());
     _clearOperation();
@@ -209,6 +214,7 @@ class MobileBodyEnrollmentSession {
             : MobileBodyEnrollmentAct.waitForExpiry;
       case MobileBodyStanding.claimActiveWithoutChannel:
       case MobileBodyStanding.notEnrolled:
+      case MobileBodyStanding.registrationRequired:
       case MobileBodyStanding.claimRevoked:
       case MobileBodyStanding.admissionEnded:
         return MobileBodyEnrollmentAct.none;
