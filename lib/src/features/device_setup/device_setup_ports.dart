@@ -47,6 +47,9 @@ abstract interface class DeviceAdmissionPort {
     required String operationalSpkiSha256,
   });
 
+  /// Current authorization records. Enrollment history is not authorization.
+  Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after});
+
   Future<EnrollmentProposalPageV1> listRecovery({
     AdmissionListCursorV1? after,
   });

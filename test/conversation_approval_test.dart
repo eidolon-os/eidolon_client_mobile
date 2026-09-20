@@ -36,6 +36,10 @@ class _Platform extends FakePhonePlatform {
 }
 
 class _Admission implements DeviceAdmissionPort {
+  @override
+  Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async =>
+      throw StateError('Unexpected current Claim query');
+
   late MobileBodyEnrollmentSession enrollment;
   int decisions = 0;
   bool wrongDevice = false;

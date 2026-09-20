@@ -154,6 +154,10 @@ EnrollmentRecoveryProjectionV1 _projection({
 
 class _Admission implements DeviceAdmissionPort {
   @override
+  Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async =>
+      throw StateError('Unexpected current Claim query');
+
+  @override
   Future<CommissioningVoucher> issueCommissioningVoucher({
     required String operationalSpkiSha256,
   }) async {

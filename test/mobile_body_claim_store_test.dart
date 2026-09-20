@@ -16,17 +16,50 @@ import 'support/phone_identity_fixtures.dart';
 /// that no longer exists.
 void main() {
   Map<String, Object?> grantRef() => Map<String, Object?>.from(
-        canonicalContractValue('DF-ADMISSION-CLAIM-GRANT-VALID')['device_ref']!
-            as Map,
+        {
+          ...canonicalContractValue(
+              'DF-ADMISSION-CLAIM-GRANT-VALID')['device_ref']! as Map,
+          'device_instance_id': phoneDeviceInstanceId
+        },
       );
 
   MobileBodyClaimRecord record({String? instanceId}) => MobileBodyClaimRecord(
-        deviceRef: grantRef(),
+        deviceRef: {
+          ...grantRef(),
+          'device_instance_id': instanceId ?? phoneDeviceInstanceId
+        },
         grantId: 'grant_01',
         ownerDomainId: grantRef()['owner_domain_id']! as String,
         deviceInstanceId: instanceId ?? phoneDeviceInstanceId,
         acknowledgedAt: DateTime.utc(2026, 9, 6, 12),
       );
+
+  test('current reference survives without inventing enrollment receipts',
+      () async {
+    final store =
+        PlatformMobileBodyClaimStore(preferences: InMemoryAppPreferences());
+    await store.save(MobileBodyClaimRecord(
+        deviceRef: grantRef(),
+        ownerDomainId: grantRef()['owner_domain_id']! as String,
+        deviceInstanceId: phoneDeviceInstanceId));
+    final restored = (await store.loadFor(phoneOperationalPublicKey))!;
+    expect(restored.deviceRef, grantRef());
+    expect(restored.grantId, isNull);
+    expect(restored.acknowledgedAt, isNull);
+    expect(restored.ackPending, false);
+  });
+
+  test(
+      'incomplete legacy pending ACK retains identity and never becomes completed',
+      () {
+    final loaded = MobileBodyClaimRecord.fromJson({
+      ...record().toJson(),
+      'ack_pending': true,
+    });
+    expect(loaded.ackPending, true);
+    expect(loaded.deviceInstanceId, phoneDeviceInstanceId);
+    expect(loaded.ackProof, isNull);
+  });
 
   test('a saved Claim survives a round trip whole', () async {
     final preferences = InMemoryAppPreferences();

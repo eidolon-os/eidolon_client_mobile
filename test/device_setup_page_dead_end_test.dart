@@ -263,6 +263,10 @@ EnrollmentRecoveryProjectionV1 _projection(
 
 class _Admission implements DeviceAdmissionPort {
   @override
+  Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async =>
+      throw StateError('Unexpected current Claim query');
+
+  @override
   Future<CommissioningVoucher> issueCommissioningVoucher({
     required String operationalSpkiSha256,
   }) async {
@@ -324,6 +328,10 @@ class _Transport implements DeviceProvisioningTransport {
 
 /// A Host that answers 404 for this Enrollment, as one does after a reinstall.
 class _GoneAdmission implements DeviceAdmissionPort {
+  @override
+  Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async =>
+      throw StateError('Unexpected current Claim query');
+
   @override
   Future<CommissioningVoucher> issueCommissioningVoucher({
     required String operationalSpkiSha256,

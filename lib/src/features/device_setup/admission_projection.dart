@@ -167,6 +167,12 @@ extension EnrollmentProposalPageAccess on EnrollmentProposalPageV1 {
 }
 
 extension ClaimPageAccess on ClaimPageV1 {
+  AdmissionListCursorV1? get nextCursor {
+    final value = json['next_cursor'];
+    return value == null ? null : AdmissionListCursorV1.fromJson(
+        Map<String, dynamic>.from(value as Map));
+  }
+
   List<ClaimRecordV1> get claims {
     final values = json['items'];
     if (values is! List || values.length > 50) {

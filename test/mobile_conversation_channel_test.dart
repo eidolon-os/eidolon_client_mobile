@@ -41,6 +41,15 @@ final Map<String, Object?> claimedDeviceRef = <String, Object?>{
 };
 
 class _ClaimedAdmission implements DeviceAdmissionPort {
+  @override
+  Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async {
+    if (forbidReads) throw StateError('Device must not query Controller');
+    return currentClaimPage([{
+      ...canonicalContractValue('DF-ADMISSION-CLAIM-RECORD-VALID'),
+      'device_ref': claimedDeviceRef, 'state': 'active',
+    }], ownerDomainId: ownerDomainIdFixture);
+  }
+
   _ClaimedAdmission({this.forbidReads = false});
   final bool forbidReads;
   @override
@@ -334,7 +343,7 @@ void main() {
       final config =
           await provision(deviceControl: refusing('STALE_GENERATION'));
 
-      expect(config.channelRefusal, ChannelRefusal.deviceFactsStale);
+      expect(config.channelRefusal, ChannelRefusal.localClaimMissing);
       expect(config.channelRefusal!.advances, isFalse);
     });
 

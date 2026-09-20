@@ -838,6 +838,12 @@ class HostProductController extends ChangeNotifier {
     );
   }
 
+  Future<ClaimPageV1> listDeviceClaims({AdmissionListCursorV1? after}) async {
+    final target = await fetchDeviceOnboardingTarget();
+    return _deviceAdmissionRepository.listClaims(
+        ownerDomainId: target.ownerDomainId, after: after);
+  }
+
   Future<EnrollmentProposalPageV1> listEnrollmentRecovery({
     AdmissionListCursorV1? after,
   }) async {

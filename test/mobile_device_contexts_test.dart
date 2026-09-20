@@ -61,18 +61,18 @@ void main() {
     final platform = FakePhonePlatform();
     final contexts =
         MobileDeviceContexts(preferences: prefs, platform: platform);
-    final a = await contexts.open('a');
-    final b = await contexts.open('b');
-    await Future.wait([a.claims.save(record('a')), b.claims.save(record('b'))]);
+    final a = await contexts.open('owner-a');
+    final b = await contexts.open('owner-b');
+    await Future.wait([a.claims.save(record('owner-a')), b.claims.save(record('owner-b'))]);
     final restarted =
         MobileDeviceContexts(preferences: prefs, platform: platform);
-    final a2 = await restarted.open('a');
-    final b2 = await restarted.open('b');
+    final a2 = await restarted.open('owner-a');
+    final b2 = await restarted.open('owner-b');
     expect(a2.platform, same(platform));
     expect(b2.platform.deviceScope, b.platform.deviceScope);
-    expect((await a2.claims.load())!.ownerDomainId, 'a');
-    expect((await b2.claims.load())!.ownerDomainId, 'b');
-    expect(() => b.claims.save(record('a')), throwsFormatException);
+    expect((await a2.claims.load())!.ownerDomainId, 'owner-a');
+    expect((await b2.claims.load())!.ownerDomainId, 'owner-b');
+    expect(() => b.claims.save(record('owner-a')), throwsFormatException);
   });
 
   test(

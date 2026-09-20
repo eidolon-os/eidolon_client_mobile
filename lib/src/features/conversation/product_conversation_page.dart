@@ -719,8 +719,7 @@ class _ProductConversationPageState extends State<ProductConversationPage>
     }
     final refusal = c.config?.channelRefusal;
     if (refusal == ChannelRefusal.localClaimMissing ||
-        refusal == ChannelRefusal.deviceFactsStale ||
-        refusal == ChannelRefusal.ownerMismatch) {
+        refusal == ChannelRefusal.deviceFactsStale) {
       return button('恢复已有登记', _recoverRegistration, Icons.link_rounded);
     }
     if (busy) {

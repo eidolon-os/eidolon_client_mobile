@@ -87,6 +87,10 @@ class _FakePlatform extends FakePhonePlatform {
 }
 
 class _FakeController implements DeviceAdmissionPort {
+  @override
+  Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async =>
+      throw StateError('Unexpected current Claim query');
+
   _FakeController({this.refuse = false});
 
   final bool refuse;
@@ -534,6 +538,19 @@ void main() {
     expect(sent[0], sent[1]);
     expect(platform.issued, 1);
     expect(platform.discarded, 0);
+  });
+
+  test('incomplete legacy pending ACK is preserved but cannot be replayed', () async {
+    final claims = InMemoryMobileBodyClaimStore(MobileBodyClaimRecord(
+        deviceRef: Map<String, Object?>.from(grantExample()['device_ref'] as Map),
+        ownerDomainId: grantExample()['device_ref']['owner_domain_id'] as String,
+        deviceInstanceId: phoneDeviceInstanceId, ackPending: true));
+    final before = (await claims.load())!.toJson();
+    final flow = admission(platform: _FakePlatform(),
+        controller: _FakeController(refuse: true), claims: claims,
+        transport: MockClient((_) async => throw StateError('must not send ACK')));
+    await expectLater(flow.resumeAcknowledgement(correlationId: 'resume'), throwsFormatException);
+    expect((await claims.load())!.toJson(), before);
   });
 
   test('abandoning a proposal cancels it and forgets the key', () async {

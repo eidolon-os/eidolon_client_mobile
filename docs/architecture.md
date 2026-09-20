@@ -63,13 +63,15 @@ Conversation 功能存在，不参与默认启动，也不在 Host Control 阶�
    在补偿裁决 W1 明确拒绝补偿的那个弱化。`hub_client.dart` 里那条旧的签名注册路径
    （`X-Device-ID` 等头）在 Hub 上已无对端（命中数 0），产品配置下不再被调用。
    设计依据见 `docs/设备与Body/纯软件Body准入身份裁决.md`。
-3. 读 Admission 的 recovery 投影，把这台手机的处境报成 `MobileBodyStanding` 的七段之一
-   （`mobile_body_standing.dart`），每段说清发生了什么、缺什么、谁能动。不能自行前进的几段
-   停止轮询，并指名缺口而不是给一个「再试一次」。
-4. Active 之后是**一条**长期持有的 LiveKit 通道，客户端在其上声明要不要说话；不再是
-   control room + voice room 两个房间（`eidolon_session.dart` 的首段注释记着为什么）。
-   **ClaimActive 到通道之间这条边在移动端还没有实现**（`configuration:pull` 无 Dart 客户端），
-   所以 `HubConfigStatus.active` 在移动端产品路径上目前不可达。
+3. 当前设备授权以 Hub 的 Claim 为准。已有本地引用时直接用 operational key
+   调用 Device Control `configuration:pull`，正常连接不依赖 Controller 或审批历史。
+   引用缺失或陈旧时，通过已有 Local API `device-claims` 定位当前公开引用；显式恢复
+   仍须通过 Device Control 私钥证明。Enrollment recovery 只用于未完成的登记事务。
+   本地记录是可丢失的提示，Grant/ACK receipt 是可选历史；只有待 ACK 重放需要完整证据。
+4. Active 之后是一条长期持有的 LiveKit 通道，客户端在其上声明要不要说话。
+   Device Control 返回当前 Claim、已接受的 Manifest 和通道配置；普通设备读取可修正
+   陈旧 Claim 引用，写操作仍受完整 DeviceRef 约束。客户端不自动跨 Owner 或跨历史
+   Authority generation 改写授权。详见 [当前授权收敛决策](review/current-claim-authority-refactor-2026-09-20.md)。
 5. 发布麦克风音轨时明确启用 WebRTC AEC、NS、AGC，支持全双工对话。
 6. 接收 LiveKit data topics（UI state、session control、control command），并为控制命令返回 ack/result。
 7. 订阅并渲染远端视频轨，给后续数字人留出直接对接点；首版默认仅请求音频会话。

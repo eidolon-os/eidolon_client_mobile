@@ -56,6 +56,10 @@ class _KeyedPlatform extends FakePhonePlatform {
 
 class _StubController implements DeviceAdmissionPort {
   @override
+  Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async =>
+      throw StateError('Unexpected current Claim query');
+
+  @override
   Future<CommissioningVoucher> issueCommissioningVoucher({
     required String operationalSpkiSha256,
   }) async =>
@@ -91,6 +95,7 @@ void main() {
   MobileBodyEnrollmentSession session(
     _KeyedPlatform platform, {
     MockClient? transport,
+    Future<DeviceOnboardingTarget> Function()? loadTarget,
   }) {
     return MobileBodyEnrollmentSession(
       buildAdmission: (target) => MobileBodyAdmission(
@@ -110,10 +115,40 @@ void main() {
         claims: InMemoryMobileBodyClaimStore(),
         platform: platform,
       ),
-      loadTarget: () async => deviceOnboardingTargetFixture(),
+      loadTarget: loadTarget ?? () async => deviceOnboardingTargetFixture(),
       platform: platform,
     );
   }
+
+  test('one proposal uses one target snapshot', () async {
+    var reads = 0;
+    final flow = session(_KeyedPlatform(), loadTarget: () async {
+      reads++;
+      return deviceOnboardingTargetFixture();
+    });
+    await flow.propose(title: 'Mobile');
+    expect(reads, 1);
+  });
+
+  test('in-flight enrollment cannot rebind across authority generations', () async {
+    var target = deviceOnboardingTargetFixture();
+    final flow = session(_KeyedPlatform(), loadTarget: () async => target);
+    await flow.propose(title: 'Mobile');
+    final pending = flow.pending;
+    target = DeviceOnboardingTarget(
+      ownerDomainId: target.ownerDomainId,
+      ownerDomainDescriptor: OwnerDomainDescriptorV1.fromJson({
+        ...target.ownerDomainDescriptor.toJson(), 'owner_domain_generation': 2,
+      }),
+      ownerRootCertificate: target.ownerRootCertificate,
+      authoritySigningCertificate: target.authoritySigningCertificate,
+    );
+    await expectLater(flow.complete(), throwsA(isA<MobileBodyEnrollmentUnavailable>()));
+    expect(flow.pending, same(pending));
+    // Returning to the original authority leaves the original operation intact.
+    target = deviceOnboardingTargetFixture();
+    expect(await flow.canFinish(), true);
+  });
 
   test('with nothing in flight, the act is to propose', () async {
     final flow = session(_KeyedPlatform(holdsKey: false));

@@ -44,7 +44,7 @@ final class MobileConversationProvisioner
   /// The Claim this phone holds, if it has been remembered.
   ///
   /// Normal configuration pulls use the reference saved from the acknowledged
-  /// Grant. Explicit recovery can locate it in an Admission projection, but
+  /// Grant. Explicit recovery can locate it in the current Claim projection, but
   /// must prove the operational key through Device Control before saving it.
   final MobileBodyClaimStore? _claims;
 
@@ -61,7 +61,7 @@ final class MobileConversationProvisioner
 
   DeviceOnboardingTarget? _lastTarget;
 
-  /// Recover only a registration already approved and acknowledged at the
+  /// Recover only an active Claim at the
   /// selected, verified Authority. A management projection locates a public
   /// reference; it cannot authorize a session. Device Control still checks
   /// the operational key and returns the current Claim before we save anything.
@@ -83,26 +83,13 @@ final class MobileConversationProvisioner
     if (held?.ackPending == true || _currentEnrollmentId?.call() != null) {
       throw const ConversationRecoveryUnavailable('请先完成正在进行的设备登记');
     }
-    final matches = await _matchingEnrollments(identity.deviceInstanceId);
-    EnrollmentRecoveryProjectionV1? recovered;
-    for (final candidate in matches) {
-      final stage = candidate.validateForOwner(target.ownerDomainId,
-          ownerDomainGeneration:
-              target.ownerDomainDescriptor.ownerDomainGeneration);
-      if (stage == AdmissionProjectionStage.claimActive &&
-          candidate.proposal.json['state'] == 'grant_acknowledged' &&
-          candidate.grantDelivery?.json['acknowledged_at'] != null &&
-          candidate.approvalDecision != null) {
-        recovered = candidate;
-        break;
-      }
-    }
-    if (recovered == null) {
-      throw const ConversationRecoveryUnavailable('此主机没有可恢复的已完成登记。请返回选择原主机，'
-          '或在设备管理中核对本机归属；原记录已保留。');
+    final recovered = await _currentClaim(target, identity.deviceInstanceId);
+    if (recovered == null || recovered.json['state'] != 'active') {
+      throw const ConversationRecoveryUnavailable(
+          '此主机没有本机的有效授权。请重新检查登记状态；原记录已保留。');
     }
     final reference =
-        Map<String, Object?>.from(recovered.claim!.json['device_ref']! as Map);
+        Map<String, Object?>.from(recovered.json['device_ref']! as Map);
     final control = build(target);
     final DeviceConfiguration configuration;
     try {
@@ -120,22 +107,69 @@ final class MobileConversationProvisioner
         target.ownerDomainDescriptor.ownerDomainGeneration) {
       throw const ConversationRecoveryUnavailable('主机归属代际在核验期间发生变化，请重新检查');
     }
-    // Do not overwrite a concurrent admission/ACK or an identity replacement.
-    final now = await _platform.getDeviceIdentity();
-    final latest = await store.loadFor(now.operationalPublicKey);
-    if (now.deviceInstanceId != identity.deviceInstanceId ||
-        canonicalJsonEncode(latest?.toJson()) !=
-            canonicalJsonEncode(held?.toJson())) {
-      throw const ConversationRecoveryUnavailable('本机登记在核验期间发生变化，请重新检查');
-    }
-    final delivery = recovered.grantDelivery!.json;
+    await _checkUnchanged(target, identity, held, enrollmentId: null);
     await store.save(MobileBodyClaimRecord(
         deviceRef: configuration.deviceRef,
-        grantId: delivery['grant_id']! as String,
         ownerDomainId: target.ownerDomainId,
-        deviceInstanceId: identity.deviceInstanceId,
-        acknowledgedAt: DateTime.parse(delivery['acknowledged_at']! as String),
-        enrollmentId: recovered.proposal.json['enrollment_id']! as String));
+        deviceInstanceId: identity.deviceInstanceId));
+  }
+
+  Future<void> _checkUnchanged(DeviceOnboardingTarget target,
+      DeviceIdentity identity, MobileBodyClaimRecord? held,
+      {required String? enrollmentId}) async {
+    final selected = await _loadTarget();
+    final now = await _platform.getDeviceIdentity();
+    final latest = await _claims?.loadFor(now.operationalPublicKey);
+    if (selected.ownerDomainId != target.ownerDomainId ||
+        selected.ownerDomainDescriptor.ownerDomainGeneration !=
+            target.ownerDomainDescriptor.ownerDomainGeneration ||
+        now.deviceInstanceId != identity.deviceInstanceId ||
+        _currentEnrollmentId?.call() != enrollmentId ||
+        canonicalJsonEncode(latest?.toJson()) !=
+            canonicalJsonEncode(held?.toJson())) {
+      throw const ConversationRecoveryUnavailable('本机登记或所选主机在核验期间发生变化，请重新检查');
+    }
+  }
+
+  /// Only this read locates current authorization when the local hint is absent
+  /// or obsolete. A Controller projection is never sufficient to open a session:
+  /// recovery subsequently proves the device key through Device Control.
+  Future<ClaimRecordV1?> _currentClaim(
+      DeviceOnboardingTarget target, String deviceInstanceId) async {
+    AdmissionListCursorV1? cursor;
+    final visited = <String>{};
+    ClaimRecordV1? result;
+    do {
+      final page = await _admission.listClaims(after: cursor);
+      if (page.json['owner_domain_id'] != target.ownerDomainId) {
+        throw const FormatException('Claim page belongs to another Owner');
+      }
+      for (final claim in page.claims) {
+        final ref = DeviceRefV1.fromJson(
+            Map<String, dynamic>.from(claim.json['device_ref']! as Map));
+        if (ref.deviceInstanceId != deviceInstanceId) continue;
+        if (ref.ownerDomainId.value != target.ownerDomainId ||
+            ref.ownerDomainGeneration !=
+                target.ownerDomainDescriptor.ownerDomainGeneration ||
+            !{'active', 'suspended', 'revoked'}.contains(claim.json['state']) ||
+            result != null) {
+          throw const FormatException('Invalid current device Claim');
+        }
+        result = claim;
+      }
+      cursor = page.nextCursor;
+      if (cursor != null &&
+          !visited.add(canonicalJsonEncode(cursor.toJson()))) {
+        throw const FormatException('Repeated Claim page cursor');
+      }
+    } while (cursor != null);
+    final selected = await _loadTarget();
+    if (selected.ownerDomainId != target.ownerDomainId ||
+        selected.ownerDomainDescriptor.ownerDomainGeneration !=
+            target.ownerDomainDescriptor.ownerDomainGeneration) {
+      throw const ConversationRecoveryUnavailable('所选主机在查询期间发生变化，请重新检查');
+    }
+    return result;
   }
 
   Future<List<EnrollmentRecoveryProjectionV1>> _matchingEnrollments(
@@ -148,8 +182,6 @@ final class MobileConversationProvisioner
           p.proposal.json['device_instance_candidate_id'] == deviceInstanceId));
       cursor = page.nextCursor;
     } while (cursor != null);
-    matches.sort((a, b) => (b.proposal.json['created_at'] as String? ?? '')
-        .compareTo(a.proposal.json['created_at'] as String? ?? ''));
     return matches;
   }
 
@@ -180,7 +212,7 @@ final class MobileConversationProvisioner
     // construction, so this phone could not have recognised its own record
     // even once one existed.
     final deviceInstanceId = identity.deviceInstanceId;
-    final held = await _claims?.loadFor(identity.operationalPublicKey);
+    var held = await _claims?.loadFor(identity.operationalPublicKey);
     if (held != null && held.ownerDomainId != target.ownerDomainId) {
       return _empty(HubConfigStatus.waitingBinding, identity.fingerprint, null,
           MobileBodyStanding.claimActiveWithoutChannel,
@@ -193,6 +225,7 @@ final class MobileConversationProvisioner
             refusal: ChannelRefusal.localClaimMissing);
       }
       await _resumeAcknowledgement();
+      held = await _claims?.loadFor(identity.operationalPublicKey);
     }
     final enrollmentId = _currentEnrollmentId?.call();
     // A claimed device asks Device Control directly. Controller availability
@@ -204,7 +237,31 @@ final class MobileConversationProvisioner
         held.deviceRef['owner_domain_generation'] ==
             target.ownerDomainDescriptor.ownerDomainGeneration;
     if (held != null && sameAuthority && enrollmentId == null) {
-      return _configuration(target, identity, null, mode: mode);
+      final configuration =
+          await _configuration(target, identity, null, mode: mode);
+      if (configuration.channelRefusal != ChannelRefusal.deviceFactsStale) {
+        return configuration;
+      }
+    }
+    if (enrollmentId == null) {
+      final current = await _currentClaim(target, deviceInstanceId);
+      if (current != null) {
+        final state = current.json['state'];
+        return _empty(
+            state == 'revoked'
+                ? HubConfigStatus.revoked
+                : HubConfigStatus.waitingBinding,
+            identity.fingerprint,
+            null,
+            state == 'revoked'
+                ? MobileBodyStanding.claimRevoked
+                : MobileBodyStanding.claimActiveWithoutChannel,
+            refusal: state == 'active'
+                ? ChannelRefusal.localClaimMissing
+                : state == 'suspended'
+                    ? ChannelRefusal.claimNotActive
+                    : null);
+      }
     }
     EnrollmentRecoveryProjectionV1? found;
     if (enrollmentId != null) {
@@ -227,7 +284,10 @@ final class MobileConversationProvisioner
         return (b.proposal.json['created_at'] as String? ?? '')
             .compareTo(a.proposal.json['created_at'] as String? ?? '');
       });
-      found = matches.firstOrNull;
+      found = matches
+          .where((p) => !{'grant_acknowledged', 'claim_revoked'}
+              .contains(p.proposal.json['state']))
+          .firstOrNull;
     }
 
     if (found == null) {
@@ -246,7 +306,7 @@ final class MobileConversationProvisioner
                 '${held.deviceRef['owner_domain_generation']}; '
                 'selected Authority generation '
                 '${target.ownerDomainDescriptor.ownerDomainGeneration}; '
-                'no matching recoverable enrollment for $deviceInstanceId',
+                'no current Claim or unfinished enrollment for $deviceInstanceId',
       );
     }
     final enrollment = _enrollmentRef(found);
@@ -342,6 +402,7 @@ final class MobileConversationProvisioner
           enrollment, MobileBodyStanding.claimActiveWithoutChannel,
           refusal: ChannelRefusal.localClaimMissing);
     }
+    final enrollmentId = _currentEnrollmentId?.call();
     DeviceConfiguration configuration;
     DeviceControlClient? control;
     try {
@@ -412,6 +473,7 @@ final class MobileConversationProvisioner
     } finally {
       control?.close();
     }
+    await _checkUnchanged(target, identity, claim, enrollmentId: enrollmentId);
     // The Authority answered with the ref it holds, which is not necessarily
     // the one this ask carried: it finds the Claim by identity, so a ref that
     // fell behind — the Owner re-added an already-claimed device, and Admission

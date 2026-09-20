@@ -172,3 +172,12 @@ String namedDeviceInstanceId(String label) {
   final digest = sha256.convert(utf8.encode(label));
   return DeviceInstanceIdV1.parse('device-instance-${digest.toString()}').value;
 }
+
+ClaimPageV1 currentClaimPage(Iterable<Map<String, dynamic>> claims,
+    {String ownerDomainId = 'owner-domain_01', AdmissionListCursorV1? next}) =>
+    ClaimPageV1.fromJson({
+      'owner_domain_id': ownerDomainId,
+      'items': claims.toList(),
+      'next_cursor': next?.toJson(),
+      'observed_at': '2026-09-20T00:00:00Z',
+    });

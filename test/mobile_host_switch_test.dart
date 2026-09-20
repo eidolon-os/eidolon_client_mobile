@@ -15,6 +15,10 @@ import 'support/phone_identity_fixtures.dart';
 
 class _Admission implements DeviceAdmissionPort {
   @override
+  Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async =>
+      throw StateError('Unexpected current Claim query');
+
+  @override
   dynamic noSuchMethod(Invocation i) => throw StateError('Not requested');
 }
 

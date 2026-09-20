@@ -1111,8 +1111,7 @@ class ClientController extends ChangeNotifier {
     if (_busy || _disposed) return;
     final refusal = config?.channelRefusal;
     if (refusal != ChannelRefusal.localClaimMissing &&
-        refusal != ChannelRefusal.deviceFactsStale &&
-        refusal != ChannelRefusal.ownerMismatch) {
+        refusal != ChannelRefusal.deviceFactsStale) {
       return;
     }
     _busy = true;

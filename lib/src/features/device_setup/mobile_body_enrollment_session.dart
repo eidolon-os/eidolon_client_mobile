@@ -121,6 +121,7 @@ class MobileBodyEnrollmentSession {
   String? _directoryVersion;
   MobileBodyAdmission? _admission;
   String? _ownerDomainId;
+  int? _ownerDomainGeneration;
   String? _proposeCommand;
   String? _collectCommand;
   String? _ackCommand;
@@ -128,12 +129,19 @@ class MobileBodyEnrollmentSession {
   String? _proposalTitle;
   MobileBodyProposal? _pending;
 
-  Future<MobileBodyAdmission> _client() async {
-    final target = await _loadTarget();
+  Future<MobileBodyAdmission> _client(
+      [DeviceOnboardingTarget? selected]) async {
+    final target = selected ?? await _loadTarget();
     if (_ownerDomainId != null && _ownerDomainId != target.ownerDomainId) {
       throw const MobileBodyEnrollmentUnavailable('不能把进行中的登记转到另一个 Owner。');
     }
+    final generation = target.ownerDomainDescriptor.ownerDomainGeneration;
+    if (_admission != null && _ownerDomainGeneration != generation) {
+      throw const MobileBodyEnrollmentUnavailable(
+          '不能把进行中的登记转到另一份主机授权状态。原登记已保留。');
+    }
     _ownerDomainId = target.ownerDomainId;
+    _ownerDomainGeneration = generation;
     final version = target.ownerDomainDescriptor.toJson().toString();
     if (_admission != null && version != _directoryVersion) {
       _rebindAdmission?.call(_admission!, target);
@@ -155,7 +163,7 @@ class MobileBodyEnrollmentSession {
       throw const MobileBodyEnrollmentUnavailable(
           '待确认的登记属于另一份主机授权状态。请连接原主机完成确认；原记录已保留。');
     }
-    await (await _client()).resumeAcknowledgement(
+    await (await _client(target)).resumeAcknowledgement(
         correlationId: record.ackCommandId ?? _newCommandId());
     _clearOperation();
     return true;
@@ -237,7 +245,7 @@ class MobileBodyEnrollmentSession {
     }
     // An uncertain create retries the retained command and prepared evidence.
     final target = await _loadTarget();
-    final proposal = await (await _client()).propose(
+    final proposal = await (await _client(target)).propose(
       target: target,
       title: _proposalTitle ??= title,
       commandId: _proposeCommand ??= _newCommandId(),

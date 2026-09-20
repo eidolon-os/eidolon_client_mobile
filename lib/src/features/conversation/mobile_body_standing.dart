@@ -242,7 +242,7 @@ MobileBodySentence mobileBodySentence(
           ChannelRefusal.invalidResponse => '配置未通过校验。请检查主机服务版本，具体原因可在诊断中查看。',
           ChannelRefusal.unknownRefusal => '服务已拒绝请求，原因可在诊断中查看。请检查主机服务。',
           ChannelRefusal.localClaimMissing => '可以核验并恢复此主机上已完成的设备登记。',
-          ChannelRefusal.ownerMismatch => '如果本机曾在此主机完成接入，可以恢复已有登记；也可以返回选择原主机。',
+          ChannelRefusal.ownerMismatch => '这份记录属于另一个 Owner。请返回选择原主机；恢复登记不能更换设备归属。',
           null => '暂未取得通道，服务尚未提供原因。稍后仍未就绪时，可以检查主机服务。',
         },
         connectionLabel: refusal == null ? '准备通道' : '需要处理',

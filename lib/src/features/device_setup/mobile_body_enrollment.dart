@@ -300,14 +300,15 @@ class MobileBodyAdmission {
     if (record == null || !record.ackPending) return null;
     final enrollmentId = record.enrollmentId;
     final commandId = record.ackCommandId;
-    if (enrollmentId == null || commandId == null || record.ackProof == null) {
+    if ([enrollmentId, commandId, record.ackProof, record.grantId]
+        .any((value) => value == null || value.isEmpty)) {
       throw const FormatException('Stored grant acknowledgement is incomplete');
     }
     final answer = await _authority.ackClaimGrant(
-      commandId: commandId,
+      commandId: commandId!,
       correlationId: correlationId,
-      enrollmentId: enrollmentId,
-      grantId: record.grantId,
+      enrollmentId: enrollmentId!,
+      grantId: record.grantId!,
       operationalKeyProof: record.ackProof!,
       storedClaimGeneration: record.claimGeneration,
       storedTrustEpoch: record.trustEpoch,

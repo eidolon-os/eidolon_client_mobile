@@ -30,16 +30,18 @@ library;
 import 'dart:convert';
 
 import '../../platform/app_preferences.dart';
+import '../../generated/device_foundation_v1.dart';
 import 'device_instance_identity.dart';
 
-/// The Claim this phone last held, as it was handed over.
+/// A current-reference hint plus an optional historical admission receipt.
+/// Recovery needs only the hint; unfinished ACK replay needs the full receipt.
 class MobileBodyClaimRecord {
   const MobileBodyClaimRecord({
     required this.deviceRef,
-    required this.grantId,
+    this.grantId,
     required this.ownerDomainId,
     required this.deviceInstanceId,
-    required this.acknowledgedAt,
+    this.acknowledgedAt,
     this.enrollmentId,
     this.ackCommandId,
     this.ackProof,
@@ -53,7 +55,8 @@ class MobileBodyClaimRecord {
   /// renamed or dropped a member would be a different document.
   final Map<String, Object?> deviceRef;
 
-  final String grantId;
+  /// Optional historical receipt; only a pending ACK requires it.
+  final String? grantId;
   final String ownerDomainId;
 
   /// Which operational key this Claim belongs to.
@@ -64,7 +67,7 @@ class MobileBodyClaimRecord {
   /// [MobileBodyClaimStore.loadFor].
   final String deviceInstanceId;
 
-  final DateTime acknowledgedAt;
+  final DateTime? acknowledgedAt;
   final String? enrollmentId;
   final String? ackCommandId;
   final String? ackProof;
@@ -89,31 +92,30 @@ class MobileBodyClaimRecord {
       throw const FormatException('Saved Claim has no device ref');
     }
     final ref = Map<String, Object?>.from(deviceRef);
-    // The two members a stored Claim is only useful for. Checked here so a
-    // truncated record is discarded on read rather than throwing later, at a
-    // call site that has no way to explain it.
-    if (ref['claim_generation'] is! int || ref['trust_epoch'] is! int) {
-      throw const FormatException('Saved Claim has no generation');
-    }
+    final parsed = DeviceRefV1.fromJson(Map<String, dynamic>.from(ref));
     final instanceId = value['device_instance_id'];
     final grantId = value['grant_id'];
     final ownerDomainId = value['owner_domain_id'];
     final acknowledgedAt = value['acknowledged_at'];
     if (instanceId is! String ||
-        instanceId.isEmpty ||
-        grantId is! String ||
-        grantId.isEmpty ||
+        instanceId != parsed.deviceInstanceId ||
         ownerDomainId is! String ||
-        ownerDomainId.isEmpty ||
-        acknowledgedAt is! String) {
+        ownerDomainId != parsed.ownerDomainId.value ||
+        (grantId != null && (grantId is! String || grantId.isEmpty)) ||
+        (acknowledgedAt != null && acknowledgedAt is! String)) {
       throw const FormatException('Saved Claim is incomplete');
     }
+    // Preserve even an incomplete legacy pending ACK: dropping it could detach
+    // the operational key from its Owner during migration. The replay boundary
+    // validates all receipt fields and refuses incomplete evidence.
     return MobileBodyClaimRecord(
       deviceRef: ref,
-      grantId: grantId,
+      grantId: grantId as String?,
       ownerDomainId: ownerDomainId,
       deviceInstanceId: instanceId,
-      acknowledgedAt: DateTime.parse(acknowledgedAt).toUtc(),
+      acknowledgedAt: acknowledgedAt == null
+          ? null
+          : DateTime.parse(acknowledgedAt as String).toUtc(),
       enrollmentId: value['enrollment_id'] as String?,
       ackCommandId: value['ack_command_id'] as String?,
       ackProof: value['ack_proof'] as String?,
@@ -123,10 +125,11 @@ class MobileBodyClaimRecord {
 
   Map<String, Object?> toJson() => <String, Object?>{
         'device_ref': deviceRef,
-        'grant_id': grantId,
+        if (grantId != null) 'grant_id': grantId,
         'owner_domain_id': ownerDomainId,
         'device_instance_id': deviceInstanceId,
-        'acknowledged_at': acknowledgedAt.toUtc().toIso8601String(),
+        if (acknowledgedAt != null)
+          'acknowledged_at': acknowledgedAt!.toUtc().toIso8601String(),
         if (enrollmentId != null) 'enrollment_id': enrollmentId,
         if (ackCommandId != null) 'ack_command_id': ackCommandId,
         if (ackProof != null) 'ack_proof': ackProof,

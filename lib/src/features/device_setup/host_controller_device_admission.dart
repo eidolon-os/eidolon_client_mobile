@@ -32,6 +32,12 @@ class HostControllerDeviceAdmission implements DeviceAdmissionPort {
   }
 
   @override
+  Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async {
+    await prepare?.call();
+    return _controller.listDeviceClaims(after: after);
+  }
+
+  @override
   Future<EnrollmentProposalPageV1> listRecovery({
     AdmissionListCursorV1? after,
   }) async {

@@ -1,3 +1,4 @@
+import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:eidolon_client_mobile/src/models/conversation_mode.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -28,6 +29,10 @@ class _Platform extends FakePhonePlatform {
 }
 
 class _NoAdmission implements DeviceAdmissionPort {
+  @override
+  Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async =>
+      throw StateError('Unexpected current Claim query');
+
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw StateError('Device conversation must not call Admission');
@@ -113,7 +118,7 @@ class _RecoveryProvisioner extends _Provisioner
                   serverUrl: '', token: '', identity: '', roomName: ''),
               deviceFingerprint: phoneFingerprint,
               bodyStanding: MobileBodyStanding.claimActiveWithoutChannel,
-              channelRefusal: ChannelRefusal.ownerMismatch);
+              channelRefusal: ChannelRefusal.localClaimMissing);
   @override
   Future<void> recoverClaim() async {
     recoveryCalls++;

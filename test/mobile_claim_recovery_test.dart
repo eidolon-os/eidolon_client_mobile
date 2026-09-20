@@ -1,3 +1,4 @@
+import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
 import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/features/conversation/channel_refusal.dart';
@@ -23,14 +24,35 @@ import 'support/owner_domain_fixtures.dart';
 import 'support/phone_identity_fixtures.dart';
 
 class _Admission implements DeviceAdmissionPort {
+  @override
+  Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async {
+    reads++;
+    if (unavailable) throw StateError('Authority unavailable');
+    if (pages != null) return pages!(after);
+    return currentClaimPage(
+        claims ??
+            records
+                .map((p) => p.json['claim'])
+                .whereType<Map>()
+                .map((c) => Map<String, dynamic>.from(c)),
+        ownerDomainId: ownerDomainIdFixture);
+  }
+
+  List<Map<String, dynamic>>? claims;
+  ClaimPageV1 Function(AdmissionListCursorV1?)? pages;
+  int historyReads = 0;
+  bool historyUnavailable = false;
+
   List<EnrollmentRecoveryProjectionV1> records = [];
   int reads = 0;
   bool unavailable = false;
   @override
   Future<EnrollmentProposalPageV1> listRecovery(
       {AdmissionListCursorV1? after}) async {
-    reads++;
-    if (unavailable) throw StateError('Authority unavailable');
+    historyReads++;
+    if (historyUnavailable || unavailable) {
+      throw StateError('History unavailable');
+    }
     return EnrollmentProposalPageV1.fromJson({
       ...canonicalContractValue('DF-PH2B0-PROPOSAL-PAGE-VALID'),
       'owner_domain_id': ownerDomainIdFixture,
@@ -86,13 +108,18 @@ void main() {
   late List<Map<String, dynamic>> requests;
   late MobileConversationProvisioner provisioner;
   http.Response Function(Map<String, dynamic>)? answer;
+  var target = deviceOnboardingTargetFixture();
+  String? inFlight;
   setUp(() {
     admission = _Admission()..records = [completed()];
     store = InMemoryMobileBodyClaimStore(oldClaim());
     requests = [];
     answer = null;
+    inFlight = null;
+    target = deviceOnboardingTargetFixture();
     provisioner = MobileConversationProvisioner(
-        loadTarget: () async => deviceOnboardingTargetFixture(),
+        loadTarget: () async => target,
+        currentEnrollmentId: () => inFlight,
         admission: admission,
         claims: store,
         platform: FakePhonePlatform(),
@@ -119,6 +146,105 @@ void main() {
             })));
   });
 
+  test('current authorization recovers without any enrollment history',
+      () async {
+    admission.claims = [completed().claim!.json];
+    admission.records.clear();
+    admission.historyUnavailable = true;
+    await provisioner.recoverClaim();
+    expect((await store.load())!.claimGeneration, 4);
+    expect(admission.historyReads, 0);
+    expect((await store.load())!.grantId, isNull);
+  });
+
+  test(
+      'historical active enrollment cannot resurrect absent current authorization',
+      () async {
+    admission.claims = [];
+    final config = await provisioner.provision();
+    expect(config.bodyStanding, MobileBodyStanding.registrationRequired);
+    await expectLater(provisioner.recoverClaim(), throwsA(isA<Exception>()));
+    expect(requests, isEmpty);
+    expect((await store.load())!.deviceRef['owner_domain_generation'], 3);
+  });
+
+  for (final state in ['revoked', 'suspended']) {
+    test('$state current authorization wins over completed admission history',
+        () async {
+      admission.claims = [
+        {...completed().claim!.json, 'state': state}
+      ];
+      final config = await provisioner.provision();
+      expect(config.session.usable, false);
+      if (state == 'revoked') {
+        expect(config.bodyStanding, MobileBodyStanding.claimRevoked);
+      } else {
+        expect(config.channelRefusal, ChannelRefusal.claimNotActive);
+        expect(config.bodyStanding!.canProposeItself, false);
+      }
+      await expectLater(provisioner.recoverClaim(), throwsA(isA<Exception>()));
+      expect(requests, isEmpty);
+      expect(admission.historyReads, 0);
+    });
+  }
+
+  test('current Claim discovery follows every page before deciding absence',
+      () async {
+    final cursor = AdmissionListCursorV1.fromJson({
+      'owner_domain_id': ownerDomainIdFixture,
+      'sort_key': '2026-09-20T00:00:00Z',
+      'resource_id': phoneDeviceInstanceId,
+    });
+    admission.pages = (after) => after == null
+        ? currentClaimPage([],
+            ownerDomainId: ownerDomainIdFixture, next: cursor)
+        : currentClaimPage([completed().claim!.json],
+            ownerDomainId: ownerDomainIdFixture);
+    await provisioner.recoverClaim();
+    expect(admission.reads, 2);
+    expect(admission.historyReads, 0);
+  });
+
+  test('repeated Claim cursor fails closed without an endless recovery loop',
+      () async {
+    final before = (await store.load())!.toJson();
+    admission.pages = (_) => currentClaimPage([],
+        ownerDomainId: ownerDomainIdFixture,
+        next: AdmissionListCursorV1.fromJson({
+          'owner_domain_id': ownerDomainIdFixture,
+          'sort_key': '2026-09-20T00:00:00Z',
+          'resource_id': phoneDeviceInstanceId,
+        }));
+    await expectLater(provisioner.recoverClaim(), throwsFormatException);
+    expect(admission.reads, 2);
+    expect(requests, isEmpty);
+    expect((await store.load())!.toJson(), before);
+  });
+
+  test('duplicate current Claims are rejected rather than selecting one',
+      () async {
+    admission.claims = [completed().claim!.json, completed().claim!.json];
+    await expectLater(provisioner.recoverClaim(), throwsFormatException);
+    expect(requests, isEmpty);
+  });
+
+  test(
+      'stale local ref with unchanged Owner generation and absent Claim can enroll',
+      () async {
+    await store.save(MobileBodyClaimRecord(
+        deviceRef:
+            completed().claim!.json['device_ref']! as Map<String, dynamic>,
+        ownerDomainId: ownerDomainIdFixture,
+        deviceInstanceId: phoneDeviceInstanceId));
+    admission.claims = [];
+    answer = (_) => http.Response('{"detail":"STALE_GENERATION"}', 409);
+    final config = await provisioner.provision();
+    expect(config.bodyStanding, MobileBodyStanding.notEnrolled);
+    expect(config.bodyStanding!.canProposeItself, true);
+    expect(requests.length, 1);
+    expect(await store.load(), isNotNull);
+  });
+
   test('ordinary open preserves foreign reference and never signs for it',
       () async {
     await store.save(oldClaim(owner: 'owner-previous'));
@@ -130,7 +256,8 @@ void main() {
     expect((await store.load())!.toJson(), before);
   });
 
-  test('realigned directory with no enrollment offers explicit admission using the same identity',
+  test(
+      'realigned directory with no enrollment offers explicit admission using the same identity',
       () async {
     admission.records.clear();
     final before = (await store.load())!.toJson();
@@ -153,7 +280,8 @@ void main() {
     expect((await store.load())!.toJson(), before);
   });
 
-  test('an existing current-authority Claim offers recovery instead of new admission',
+  test(
+      'an existing current-authority Claim offers recovery instead of new admission',
       () async {
     final before = (await store.load())!.toJson();
     final config = await provisioner.provision();
@@ -166,7 +294,8 @@ void main() {
     expect((await store.load())!.deviceRef['owner_domain_generation'], 1);
   });
 
-  test('unavailable authority cannot turn a historical Claim into permission to enroll',
+  test(
+      'unavailable authority cannot turn a historical Claim into permission to enroll',
       () async {
     admission.unavailable = true;
     final before = (await store.load())!.toJson();
@@ -175,7 +304,8 @@ void main() {
     expect((await store.load())!.toJson(), before);
   });
 
-  test('pending ACK from another authority is preserved and never replayed here',
+  test(
+      'pending ACK from another authority is preserved and never replayed here',
       () async {
     await store.save(oldClaim(ackPending: true));
     final before = (await store.load())!.toJson();
@@ -191,9 +321,12 @@ void main() {
 
   test('current pending proposal takes priority over a historical local Claim',
       () async {
-    admission.records = [canonicalProjection(
-        state: 'pending_review', ownerDomainId: ownerDomainIdFixture,
-        deviceId: phoneDeviceInstanceId)];
+    admission.records = [
+      canonicalProjection(
+          state: 'pending_review',
+          ownerDomainId: ownerDomainIdFixture,
+          deviceId: phoneDeviceInstanceId)
+    ];
     final config = await provisioner.provision();
     expect(config.bodyStanding, MobileBodyStanding.pendingReview);
     expect(requests, isEmpty);
@@ -212,7 +345,9 @@ void main() {
     expect(recovered.ownerDomainId, ownerDomainIdFixture);
     expect(recovered.deviceInstanceId, phoneDeviceInstanceId);
     expect(recovered.claimGeneration, 4);
-    expect(recovered.grantId, 'grant_01');
+    expect(recovered.grantId, isNull);
+    expect(recovered.acknowledgedAt, isNull);
+    expect(admission.historyReads, 0);
     expect(recovered.ackPending, false);
     // Subsequent normal operation is Device-only again.
     admission.records.clear();
@@ -241,12 +376,13 @@ void main() {
     'absent',
     'foreign-device',
     'wrong-owner',
-    'unacknowledged',
     'pending-ack',
     'proof-rejected',
     'revoked',
     'invalid-nonce',
-    'concurrent-change'
+    'concurrent-change',
+    'concurrent-enrollment',
+    'concurrent-authority'
   ]) {
     test('$failure cannot overwrite the previous reference', () async {
       if (failure == 'absent') admission.records.clear();
@@ -257,9 +393,6 @@ void main() {
       }
       if (failure == 'wrong-owner') {
         admission.records = [completed(owner: 'owner-stranger')];
-      }
-      if (failure == 'unacknowledged') {
-        admission.records = [completed(acknowledged: false)];
       }
       if (failure == 'pending-ack') {
         await store.save(oldClaim(ackPending: true));
@@ -283,6 +416,34 @@ void main() {
       if (failure == 'concurrent-change') {
         answer = (body) {
           store.clear();
+          return http.Response(
+              jsonEncode({
+                'operation': deviceControlConfigurationOperation,
+                'nonce': body['nonce'],
+                'device_ref': body['device_ref'],
+                'lifecycle_state': 'approved',
+                'manifest': null,
+                'channels': [],
+              }),
+              200);
+        };
+      }
+      if (failure == 'concurrent-enrollment' ||
+          failure == 'concurrent-authority') {
+        answer = (body) {
+          if (failure == 'concurrent-enrollment') {
+            inFlight = 'enrollment-new';
+          } else {
+            target = DeviceOnboardingTarget(
+                ownerDomainId: target.ownerDomainId,
+                ownerDomainDescriptor: OwnerDomainDescriptorV1.fromJson({
+                  ...target.ownerDomainDescriptor.toJson(),
+                  'owner_domain_generation': 2,
+                }),
+                ownerRootCertificate: target.ownerRootCertificate,
+                authoritySigningCertificate:
+                    target.authoritySigningCertificate);
+          }
           return http.Response(
               jsonEncode({
                 'operation': deviceControlConfigurationOperation,

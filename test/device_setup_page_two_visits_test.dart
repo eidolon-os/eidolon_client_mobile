@@ -227,6 +227,10 @@ void main() {
 }
 
 class _Admission implements DeviceAdmissionPort {
+  @override
+  Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async =>
+      throw StateError('Unexpected current Claim query');
+
   _Admission(this._transport);
 
   final _Transport _transport;
