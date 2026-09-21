@@ -101,7 +101,7 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
   }
 
   Future<CreatedCompanion?> _createCompanion(
-      DeviceCompanionSetupStore? progress) async {
+      DeviceCompanionSetupStore? progress, CompanionSetupIntent intent) async {
     final controller = widget.controller;
     final capabilities = await controller.managementContext();
     if (!hostCan(capabilities, 'companion.create')) {
@@ -121,6 +121,9 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
         ownerId: owner.ownerId,
         preferences: widget.creationPreferences);
     final previous = await progress?.load();
+    if (previous != null && !previous.isRecoverable) {
+      await progress?.clear(previous.requestId);
+    }
     final operation = previous?.creationOperationId;
     Future<void> received(CreatedCompanion created) async {
       final pending = await progress?.load();
@@ -133,7 +136,7 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
       }
     }
 
-    if (operation != null) {
+    if (operation != null && previous!.isRecoverable) {
       final receipt = await checkpoints.result(operation);
       if (receipt != null) {
         await received(receipt);
@@ -159,12 +162,13 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
     if (!mounted) return null;
     return _creation!.open(context, onCreated: received,
         onSubmitting: (id) async {
-      final pending = await progress?.load();
-      if (pending != null) {
-        await checkpoints.watch(id);
-        await progress!.save(
-            pending.at(CompanionSetupStep.creating, creationOperationId: id));
-      }
+      // The first moment anything about this creation is with the Host, and
+      // so the first moment there is something a later visit could not work
+      // out on its own. Written from the caller's intent rather than from an
+      // earlier entry: until now there was deliberately none.
+      await checkpoints.watch(id);
+      await progress?.save(
+          intent.at(CompanionSetupStep.creating, creationOperationId: id));
     });
   }
 
@@ -293,7 +297,7 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
           onCreateCompanion: controller.managementCapabilities != null &&
                   hostCan(
                       controller.managementCapabilities!, 'companion.create')
-              ? () => _createCompanion(progress)
+              ? (intent) => _createCompanion(progress, intent)
               : null,
           onBindCompanion:
               _hostOffersAssignment ? controller.setDeviceCompanion : null,
@@ -544,7 +548,12 @@ class MountedDeviceDetailPage extends StatefulWidget {
   /// on this screen: which Companions exist is the Host's to say, and it
   /// changes without this device changing.
   final Future<CompanionRosterView> Function()? loadCompanions;
-  final Future<CreatedCompanion?> Function()? onCreateCompanion;
+
+  /// Takes the intent it is submitting under, because the journal entry for a
+  /// creation is written at the moment the request leaves for the Host, and
+  /// only the caller knows which device and revision it is being made for.
+  final Future<CreatedCompanion?> Function(CompanionSetupIntent intent)?
+      onCreateCompanion;
 
   /// Which Companion answers through this device, or none. One call for both,
   /// carrying the mount revision this screen was showing.
@@ -597,7 +606,11 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
 
   Future<void> _readProgress() async {
     try {
-      final pending = await widget.progress?.load();
+      var pending = await widget.progress?.load();
+      if (pending != null && !pending.isRecoverable) {
+        await widget.progress?.clear(pending.requestId);
+        pending = null;
+      }
       if (mounted) setState(() => _pending = pending);
     } catch (error) {
       if (mounted) setState(() => _notice = '$error');
@@ -740,6 +753,9 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
                 attachedCompanionId: _device.attachedCompanionId,
                 canCreate: widget.onCreateCompanion != null));
         if (chosen == null || !mounted) return;
+        // Deliberately not journalled yet. Choosing in the picker commits
+        // nothing to the Host, so there is nothing here a later visit could
+        // not reconstruct by asking the same question again.
         intent = CompanionSetupIntent(
             step: chosen.createNew
                 ? CompanionSetupStep.creating
@@ -749,13 +765,24 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
             companionId: chosen.companionId,
             companionName: chosen.name,
             description: chosen.description);
-        await _saveProgress(intent);
       }
       if (intent.step == CompanionSetupStep.creating) {
         final create = widget.onCreateCompanion;
         if (create == null) throw StateError('这台主机暂不允许创建伙伴。');
-        final created = await create();
-        if (created == null || !mounted) return;
+        final created = await create(intent);
+        if (created == null) {
+          // Backing out of creation and losing the app mid-creation look the
+          // same from here; the journal tells them apart. An entry carrying an
+          // operation id has a request with the Host behind it and must stay,
+          // or the Companion it made is orphaned. Anything else was only a
+          // choice, and must not survive the visit that made it.
+          if (mounted) {
+            await _readProgress();
+            if (_pending?.creationOperationId == null) await _clearProgress();
+          }
+          return;
+        }
+        if (!mounted) return;
         intent = (await widget.progress?.load() ?? intent).at(
             CompanionSetupStep.confirmBinding,
             companionId: created.companionId,

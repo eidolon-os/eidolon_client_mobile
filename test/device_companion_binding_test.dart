@@ -1,8 +1,10 @@
+import 'package:eidolon_client_mobile/src/features/device_management/device_companion_setup.dart';
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_device_models.dart';
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_devices_page.dart';
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:flutter/material.dart';
 import 'package:eidolon_client_mobile/src/management/management_client.dart';
+import 'package:eidolon_client_mobile/src/platform/app_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// A mounted device answers as somebody, or as nobody. Until this screen could
@@ -130,7 +132,7 @@ void main() {
       device: _device(companionId: 'old-companion', revision: 9),
       onRemove: (_, __) async => throw StateError('not this test'),
       loadCompanions: () async => _roster(),
-      onCreateCompanion: create,
+      onCreateCompanion: (_) => create(),
       onBindCompanion: (
           {required deviceId,
           required requestId,
@@ -356,6 +358,112 @@ void main() {
             of: find.byType(SnackBar), matching: find.text('主机没有接受这次请求')),
         findsOneWidget);
     expect(find.byKey(const Key('device-removal-notice')), findsOneWidget);
+  });
+
+  DeviceCompanionSetupStore store() => DeviceCompanionSetupStore(
+      hostId: 'ehost-1',
+      controllerId: 'ectrl-1',
+      ownerId: 'owner-1',
+      deviceId: _device().deviceId,
+      preferences: InMemoryAppPreferences());
+
+  Widget page({
+    DeviceCompanionSetupStore? progress,
+    required Future<CreatedCompanion?> Function(CompanionSetupIntent) create,
+  }) =>
+      MaterialApp(
+          home: MountedDeviceDetailPage(
+        device: _device(companionId: 'old-companion', revision: 9),
+        progress: progress,
+        onRemove: (_, __) async => throw StateError('not this test'),
+        loadCompanions: () async => _roster(),
+        onCreateCompanion: create,
+        onBindCompanion: (
+                {required deviceId,
+                required requestId,
+                required companionId,
+                required expectedRevision}) async =>
+            throw StateError('not this test'),
+      ));
+
+  testWidgets('backing out of creation leaves nothing to resume',
+      (tester) async {
+    // Choosing 新建伙伴 and then leaving commits nothing to the Host. The
+    // choice used to be journalled at the moment it was made, so every later
+    // visit skipped the picker and reopened creation — the person could never
+    // get back to the Eidolon they already had.
+    var creations = 0;
+    await tester.pumpWidget(page(create: (_) async {
+      creations += 1;
+      return null;
+    }));
+    await tester.pumpAndSettle();
+
+    await _tapWhereverItIs(tester, const Key('bind-device-companion'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('device-create-companion')));
+    await tester.pumpAndSettle();
+    expect(creations, 1);
+    expect(find.text('继续配置'), findsNothing);
+
+    await _tapWhereverItIs(tester, const Key('bind-device-companion'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('device-companion-picker')), findsOneWidget);
+    expect(creations, 1);
+  });
+
+  testWidgets('a creation already sent to the Host survives backing out',
+      (tester) async {
+    // The mirror case, and the reason the record cannot simply be dropped
+    // whenever creation returns empty-handed: once the request carries an
+    // operation id, a Companion may exist on the Host, and only this entry
+    // can reclaim it.
+    final journal = store();
+    await tester.pumpWidget(page(
+        progress: journal,
+        create: (intent) async {
+          await journal.save(intent.at(CompanionSetupStep.creating,
+              creationOperationId: 'creation-op-1'));
+          return null;
+        }));
+    await tester.pumpAndSettle();
+
+    await _tapWhereverItIs(tester, const Key('bind-device-companion'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('device-create-companion')));
+    await tester.pumpAndSettle();
+
+    expect((await journal.load())?.creationOperationId, 'creation-op-1');
+    // The entry is live, so the row it belongs to says what it will now do.
+    expect(find.text('继续配置'), findsOneWidget);
+  });
+
+  testWidgets('a stored creation that was never submitted is discarded',
+      (tester) async {
+    // What every phone that already hit this is carrying. It names no
+    // Companion and no operation, so there is nothing behind it to reclaim,
+    // and it must not be allowed to speak for the device.
+    final journal = store();
+    await journal.save(const CompanionSetupIntent(
+        step: CompanionSetupStep.creating,
+        requestId: 'device-companion-abandoned',
+        expectedRevision: 9));
+    var creations = 0;
+    await tester.pumpWidget(page(
+        progress: journal,
+        create: (_) async {
+          creations += 1;
+          return null;
+        }));
+    await tester.pumpAndSettle();
+
+    expect(find.text('继续配置'), findsNothing);
+    expect(await journal.load(), isNull);
+
+    await _tapWhereverItIs(tester, const Key('bind-device-companion'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('device-companion-picker')), findsOneWidget);
+    expect(creations, 0);
   });
 
   testWidgets('a Host with no usable Eidolon says so', (tester) async {

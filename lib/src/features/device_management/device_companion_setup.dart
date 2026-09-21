@@ -40,6 +40,20 @@ class CompanionSetupIntent {
   final String? creationOperationId;
   final OutputSelection? allowed;
   final int? outputRevision;
+
+  /// Whether this record still stands for something the phone cannot work out
+  /// by asking the Host again.
+  ///
+  /// The journal exists for one reason: a request may already be with the Host
+  /// when the app stops, and the answer has to be reclaimed rather than
+  /// guessed. A creation that was never submitted has no such request behind
+  /// it — no Companion exists, nothing waits to be acknowledged, and reopening
+  /// the picker reconstructs the whole of it. A record like that is not
+  /// progress to resume; kept, it outranks the Host's own state and sends
+  /// every later visit straight back into creation.
+  bool get isRecoverable =>
+      step != CompanionSetupStep.creating || creationOperationId != null;
+
   CompanionSetupIntent at(CompanionSetupStep step,
           {String? companionId,
           String? companionName,
