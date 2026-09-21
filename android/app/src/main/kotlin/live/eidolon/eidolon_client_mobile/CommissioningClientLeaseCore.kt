@@ -23,7 +23,9 @@ internal enum class CommissioningClientLeaseEvent {
     ConfigurationApplied,
     StatusApplying,
     StatusCommitted,
+    StatusRolledBack,
     TerminalAckAccepted,
+    TerminalAckUnavailable,
     Failed,
 }
 
@@ -40,6 +42,8 @@ internal enum class CommissioningClientLeaseAction {
 internal class CommissioningClientLeaseCore {
     var state: CommissioningClientLeaseState = CommissioningClientLeaseState.Idle
         private set
+
+    private var committed = false
 
     @Synchronized
     fun handle(event: CommissioningClientLeaseEvent): CommissioningClientLeaseAction {
@@ -79,7 +83,9 @@ internal class CommissioningClientLeaseCore {
                 CommissioningClientLeaseEvent.StatusApplying ->
                     CommissioningClientLeaseAction.ReadTerminalStatus
 
-                CommissioningClientLeaseEvent.StatusCommitted -> {
+                CommissioningClientLeaseEvent.StatusCommitted,
+                CommissioningClientLeaseEvent.StatusRolledBack -> {
+                    committed = event == CommissioningClientLeaseEvent.StatusCommitted
                     state = CommissioningClientLeaseState.AcknowledgingTerminal
                     CommissioningClientLeaseAction.SendTerminalAck
                 }
@@ -88,9 +94,11 @@ internal class CommissioningClientLeaseCore {
             }
 
             CommissioningClientLeaseState.AcknowledgingTerminal ->
-                if (event == CommissioningClientLeaseEvent.TerminalAckAccepted) {
+                if (event == CommissioningClientLeaseEvent.TerminalAckAccepted ||
+                    event == CommissioningClientLeaseEvent.TerminalAckUnavailable) {
                     state = CommissioningClientLeaseState.Closed
-                    CommissioningClientLeaseAction.ReleaseSucceeded
+                    if (committed) CommissioningClientLeaseAction.ReleaseSucceeded
+                    else CommissioningClientLeaseAction.ReleaseFailed
                 } else {
                     CommissioningClientLeaseAction.None
                 }

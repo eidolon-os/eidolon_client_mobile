@@ -180,7 +180,9 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         late final DeviceProvisioningDescriptor descriptor;
         late final List<DeviceWifiNetwork> networks;
         try {
+          if (mounted) setState(() => _progress = '正在确认设备归属');
           descriptor = await session.prepareOwner(target);
+          if (mounted) setState(() => _progress = '正在扫描设备附近的 Wi-Fi');
           networks = await session.scanNetworks();
         } finally {
           await session.close();

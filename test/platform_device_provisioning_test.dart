@@ -69,6 +69,42 @@ void main() {
         clock: () => now,
       );
 
+  test('configuration failures use the same typed error boundary as discovery',
+      () async {
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'openProvisioningSession') return descriptorJson();
+      if (call.method == 'provisioningHandOverTrust') {
+        return jsonEncode({
+          'contract_version': '1',
+          'staged': true,
+          'owner_domain_id': target.ownerDomainId
+        });
+      }
+      if (call.method == 'provisioningConfigureNetwork') {
+        throw PlatformException(
+            code: 'OWNER_ROUTE_UNAVAILABLE',
+            message: '设备未能连接本次选择的主机，本次配置已撤回，原有归属未变。');
+      }
+      return null;
+    });
+    final session = await build().open(const DeviceProvisioningCandidate(
+        transportId: 't',
+        displayName: 'd',
+        transportKind: 'softap',
+        trust: SetupDescriptorTrustV1.developmentTofu));
+    await expectLater(
+        session.configureNetwork(
+            credentials:
+                const DeviceWifiCredentials(ssid: 'home', password: 'secret'),
+            onboardingTarget: target,
+            createCommandId: 'create-01',
+            collectCommandId: 'collect-01',
+            ackCommandId: 'ack-01'),
+        throwsA(isA<DeviceProvisioningTransportException>()
+            .having((e) => e.code, 'code', 'owner_route_unavailable')
+            .having((e) => e.message, 'message', contains('原有归属未变'))));
+  });
+
   test('prepares the selected Owner before obtaining a key-bound voucher',
       () async {
     final digest = 'a' * 64;

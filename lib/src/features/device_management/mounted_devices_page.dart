@@ -568,6 +568,8 @@ class MountedDeviceDetailPage extends StatefulWidget {
       _MountedDeviceDetailPageState();
 }
 
+enum _DeviceDecision { companion, outputs }
+
 class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
   late MountedDevice _device;
   CompanionSetupIntent? _pending;
@@ -659,7 +661,11 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
         });
       }
     } catch (error) {
-      if (mounted) setState(() => _notice = _setupError(error));
+      if (mounted) {
+        setState(() => _notice = _setupError(error));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_notice!)));
+      }
     } finally {
       if (mounted) setState(() => _binding = false);
     }
@@ -668,6 +674,12 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
   final Random _random = Random.secure();
   bool _removing = false;
   bool _binding = false;
+
+  /// Which of the two decisions is waiting on the Host.
+  ///
+  /// Both rows share [_binding], so without this the row nobody touched would
+  /// claim to be contacting the Host as well.
+  _DeviceDecision? _running;
   bool _platformRemoved = false;
 
   /// Whether the device has already lost access, which is a different fact from
@@ -684,6 +696,21 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
   bool _creationNotice = false;
   String? _removalRequestId;
 
+  /// Nothing on this page can act until the saved checkpoint has been read,
+  /// so [_recovering] belongs here too. It used to gate the handlers but not
+  /// the buttons, which left them lit and inert for the length of that read.
+  bool get _busy => _binding || _removing || _recovering || _platformRemoved;
+
+  /// A saved checkpoint sends both rows through [_resumeSetup]. The labels
+  /// have to say so: a row that reads 「更换或解除」 and then silently resumes
+  /// something else is the screen lying about its own control.
+  bool get _resumesCompanion => _pending != null;
+
+  bool get _resumesOutputs =>
+      _pending != null &&
+      _pending!.step != CompanionSetupStep.outputs &&
+      _pending!.step != CompanionSetupStep.savingOutputs;
+
   Future<void> _bindCompanion({bool resume = false}) async {
     final bind = widget.onBindCompanion;
     final load = widget.loadCompanions;
@@ -696,6 +723,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
     }
     setState(() {
       _binding = true;
+      _running = _DeviceDecision.companion;
       _notice = null;
       _creationNotice = false;
     });
@@ -791,6 +819,8 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
           _creationNotice = false;
           _notice = _setupError(error);
         });
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_notice!)));
       }
     } finally {
       if (mounted) setState(() => _binding = false);
@@ -800,14 +830,13 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
   Future<void> _decideOutputs() async {
     final decide = widget.onSetOutputs;
     if (decide == null || _binding || _removing || _recovering) return;
-    if (_pending != null &&
-        _pending!.step != CompanionSetupStep.outputs &&
-        _pending!.step != CompanionSetupStep.savingOutputs) {
+    if (_resumesOutputs) {
       await _resumeSetup();
       return;
     }
     setState(() {
       _binding = true;
+      _running = _DeviceDecision.outputs;
       _notice = null;
       _creationNotice = false;
     });
@@ -849,9 +878,18 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
       }
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
-      if (mounted) setState(() => _notice = _setupError(error));
+      if (mounted) {
+        setState(() => _notice = _setupError(error));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_notice!)));
+      }
     } finally {
-      if (mounted) setState(() => _binding = false);
+      if (mounted) {
+        setState(() {
+          _binding = false;
+          _running = null;
+        });
+      }
     }
   }
 
@@ -1000,12 +1038,14 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
             ? null
             : TextButton(
                 key: const Key('bind-device-companion'),
-                onPressed: _binding || _removing || _platformRemoved
-                    ? null
-                    : _bindCompanion,
-                child: Text(
-                  device.attachedCompanionId == null ? '指定' : '更换或解除',
-                ),
+                onPressed: _busy ? null : _bindCompanion,
+                child: Text(_binding && _running == _DeviceDecision.companion
+                    ? '正在联系主机…'
+                    : _resumesCompanion
+                        ? '继续配置'
+                        : device.attachedCompanionId == null
+                            ? '指定'
+                            : '更换或解除'),
               ),
       );
 
@@ -1017,10 +1057,14 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
             ? null
             : TextButton(
                 key: const Key('decide-device-outputs'),
-                onPressed: _binding || _removing || _platformRemoved
-                    ? null
-                    : _decideOutputs,
-                child: Text(device.outputs.decided ? '更改' : '设置'),
+                onPressed: _busy ? null : _decideOutputs,
+                child: Text(_binding && _running == _DeviceDecision.outputs
+                    ? '正在联系主机…'
+                    : _resumesOutputs
+                        ? '继续配置'
+                        : device.outputs.decided
+                            ? '更改'
+                            : '设置'),
               ),
       );
 
@@ -1057,8 +1101,8 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
             const SizedBox(height: 12),
             FilledButton(
               key: const Key('device-unfinished-action'),
-              onPressed: _binding || _removing || _platformRemoved ? null : act,
-              child: Text(action!),
+              onPressed: _busy ? null : act,
+              child: Text(_binding ? '正在联系主机…' : action!),
             ),
           ],
         ),

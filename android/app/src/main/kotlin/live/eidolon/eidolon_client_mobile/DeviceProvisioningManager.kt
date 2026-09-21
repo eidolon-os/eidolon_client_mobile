@@ -388,6 +388,11 @@ class DeviceProvisioningManager(
         synchronized(lock) { device = espDevice }
         // The phone is already on the device's network and stays there, so this
         // is the variant that authenticates rather than the one that joins.
+        mainHandler.postDelayed({
+            if (!pending.isAnswered) {
+                failConnection(pending, "DESCRIPTOR_TIMEOUT", "读取设备身份超时，请重试。")
+            }
+        }, 30_000L)
         espDevice.connectWiFiDevice()
     }
 
@@ -423,6 +428,7 @@ class DeviceProvisioningManager(
     }
 
     private fun readDescriptor(pending: PendingResult) {
+        Log.i(TAG, "Requesting device descriptor")
         val espDevice = synchronized(lock) {
             if (connectResult !== pending) return
             device
@@ -452,6 +458,7 @@ class DeviceProvisioningManager(
                                 "The device did not say what it is",
                             )
                         } else {
+                            Log.i(TAG, "Device descriptor received")
                             pending.success(descriptor)
                         }
                     }
@@ -482,6 +489,28 @@ class DeviceProvisioningManager(
         )
     }
 
+    // The vendor listener is not a deadline. On expiry, release the route and
+    // invalidate this session before returning control to Dart. Late callbacks
+    // cannot answer the platform call twice or close a subsequent session.
+    private fun boundedRequest(
+        result: MethodChannel.Result,
+        espDevice: ESPDevice,
+        code: String,
+        message: String,
+    ): PendingResult {
+        val pending = PendingResult(result)
+        mainHandler.postDelayed({
+            if (!pending.isAnswered) {
+                Log.w(TAG, code)
+                synchronized(lock) {
+                    if (device === espDevice) releaseDeviceLocked()
+                }
+                pending.error(code, message)
+            }
+        }, 30_000L)
+        return pending
+    }
+
     /** What the device can see from where it stands. */
     fun scanNetworks(result: MethodChannel.Result) {
         val espDevice = synchronized(lock) { device }
@@ -489,7 +518,8 @@ class DeviceProvisioningManager(
             result.error("PROVISIONING_CLOSED", "No setup session is open", null)
             return
         }
-        val pending = PendingResult(result)
+        val pending = boundedRequest(result, espDevice, "DEVICE_SCAN_TIMEOUT", "扫描设备附近的 Wi-Fi 超时，请重试。")
+        Log.i(TAG, "Requesting device Wi-Fi scan")
         espDevice.scanNetworks(object : WiFiScanListener {
             override fun onWifiListReceived(points: ArrayList<WiFiAccessPoint>?) {
                 val networks = (points ?: arrayListOf())
@@ -502,7 +532,10 @@ class DeviceProvisioningManager(
                             "security" to securityLabel(point.security),
                         )
                     }
-                mainHandler.post { pending.success(networks) }
+                mainHandler.post {
+                    Log.i(TAG, "Device Wi-Fi scan completed")
+                    pending.success(networks)
+                }
             }
 
             override fun onWiFiScanFailed(error: Exception?) {
@@ -524,7 +557,8 @@ class DeviceProvisioningManager(
             result.error("PROVISIONING_CLOSED", "No setup session is open", null)
             return
         }
-        val pending = PendingResult(result)
+        val pending = boundedRequest(result, espDevice, "TRUST_TIMEOUT", "确认设备归属超时，请重试。")
+        Log.i(TAG, "Requesting device Owner preparation/trust")
         espDevice.sendDataToCustomEndPoint(
             TRUST_ENDPOINT,
             payloadJson.toByteArray(StandardCharsets.UTF_8),
@@ -538,6 +572,7 @@ class DeviceProvisioningManager(
                                 "The device did not answer whether it accepted the Host",
                             )
                         } else {
+                            Log.i(TAG, "Device Owner preparation/trust response received")
                             pending.success(answer)
                         }
                     }
@@ -568,6 +603,7 @@ class DeviceProvisioningManager(
         val lease = CommissioningClientLeaseCore()
         var terminalDeadlineMillis = SystemClock.elapsedRealtime() + TERMINAL_TIMEOUT_MILLIS
         var committedStatus: JSONObject? = null
+        var terminalFailureCode: String? = null
 
         fun finish(success: Boolean, code: String = "", message: String = "") {
             mainHandler.post {
@@ -616,6 +652,27 @@ class DeviceProvisioningManager(
             }
         }
 
+        fun releaseObservedTerminal(event: CommissioningClientLeaseEvent) {
+            // The ACK controls transport cleanup, never the durable outcome.
+            when (lease.handle(event)) {
+                CommissioningClientLeaseAction.ReleaseSucceeded -> finish(true)
+                CommissioningClientLeaseAction.ReleaseFailed -> finish(false,
+                    terminalFailureCode ?: "COMMISSIONING_ROLLED_BACK",
+                    commissioningFailureMessage(terminalFailureCode))
+                else -> Unit
+            }
+        }
+
+        mainHandler.postDelayed({
+            if (!pending.isAnswered) {
+                if (lease.state == CommissioningClientLeaseState.AcknowledgingTerminal) {
+                    releaseObservedTerminal(CommissioningClientLeaseEvent.TerminalAckUnavailable)
+                } else {
+                    fail("COMMISSIONING_TERMINAL_TIMEOUT", "未能在限定时间内取得设备的配网结果。")
+                }
+            }
+        }, 45_000L)
+
         lateinit var sendNetworkCandidate: () -> Unit
         lateinit var applyNetworkCandidate: () -> Unit
         lateinit var readCommittedTerminal: () -> Unit
@@ -638,37 +695,24 @@ class DeviceProvisioningManager(
                     object : ResponseListener {
                         override fun onSuccess(response: ByteArray?) {
                             val acknowledged = try {
-                                JSONObject(
-                                    response?.toString(StandardCharsets.UTF_8).orEmpty(),
-                                ).optBoolean("acknowledged", false)
-                            } catch (error: Exception) {
-                                fail("TERMINAL_ACK_INVALID", errorText(error))
-                                return
-                            }
-                            if (!acknowledged) {
-                                fail(
-                                    "TERMINAL_ACK_REFUSED",
-                                    "Device refused commissioning terminal ACK",
-                                )
-                                return
-                            }
-                            if (lease.handle(
-                                    CommissioningClientLeaseEvent.TerminalAckAccepted,
-                                ) == CommissioningClientLeaseAction.ReleaseSucceeded
-                            ) {
-                                Log.i(TAG, "Committed terminal ACK accepted; releasing SoftAP")
-                                finish(true)
-                            }
+                                JSONObject(response?.toString(StandardCharsets.UTF_8).orEmpty())
+                                    .optBoolean("acknowledged", false)
+                            } catch (_: Exception) { false }
+                            releaseObservedTerminal(if (acknowledged)
+                                CommissioningClientLeaseEvent.TerminalAckAccepted
+                                else CommissioningClientLeaseEvent.TerminalAckUnavailable)
                         }
 
-                        override fun onFailure(error: Exception?) =
-                            fail("TERMINAL_ACK_FAILED", errorText(error))
+                        override fun onFailure(error: Exception?) {
+                            releaseObservedTerminal(CommissioningClientLeaseEvent.TerminalAckUnavailable)
+                        }
                     },
                 )
             }
         }
 
-        readCommittedTerminal = {
+        readCommittedTerminal = read@ {
+            if (pending.isAnswered) return@read
             espDevice.sendDataToCustomEndPoint(
                 STATUS_ENDPOINT,
                 EMPTY_REQUEST,
@@ -706,6 +750,22 @@ class DeviceProvisioningManager(
                                         TERMINAL_POLL_MILLIS,
                                     )
                                 }
+                                return
+                            }
+                            val rolledBack =
+                                status.optString("contract") == "eidolon.device-foundation.commissioning-status" &&
+                                status.optString("contract_version") == "1.0" &&
+                                status.optString("state") == "rolled-back" &&
+                                !status.isNull("failure_code") &&
+                                !conditions.getBoolean("trust_committed") &&
+                                !conditions.getBoolean("network_committed")
+                            if (rolledBack) {
+                                committedStatus = status
+                                terminalFailureCode = status.getString("failure_code")
+                                Log.w(TAG, "Device rolled back commissioning: $terminalFailureCode")
+                                if (lease.handle(CommissioningClientLeaseEvent.StatusRolledBack) ==
+                                    CommissioningClientLeaseAction.SendTerminalAck
+                                ) sendTerminalAck()
                                 return
                             }
                             if (!committed) {
@@ -864,6 +924,16 @@ class DeviceProvisioningManager(
         }
         device = null
         connectResult = null
+    }
+
+    private fun commissioningFailureMessage(code: String?): String = when (code) {
+        "NETWORK_REJECTED" -> "设备无法连接所选 Wi-Fi，本次配置已撤回。请检查网络和密码。"
+        "OWNER_ROUTE_UNAVAILABLE" -> "设备未能连接本次选择的主机，本次配置已撤回，原有归属未变。"
+        "OWNER_IDENTITY_MISMATCH" -> "设备验证主机身份失败，本次配置已撤回，原有归属未变。"
+        "STORAGE_UNAVAILABLE" -> "设备无法保存配置，本次配置已撤回。"
+        "WINDOW_EXPIRED" -> "设备设置窗口已超时，本次配置已撤回。"
+        "CANCELLED" -> "本次设备配置已取消。"
+        else -> "设备未完成本次配置，已撤回更改。"
     }
 
     private fun errorText(error: Exception?): String =

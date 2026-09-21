@@ -65,11 +65,10 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
       'NETWORK_CANDIDATE_REJECTED' ||
       'NETWORK_APPLY_REJECTED' =>
         '设备没有接受这个网络,请确认 Wi-Fi 名称和密码。',
-      'COMMISSIONING_TERMINAL_TIMEOUT' =>
-        '设备正在连接网络，但没有在限定时间内完成 Owner 验证；旧网络仍应保留。',
+      'COMMISSIONING_TERMINAL_TIMEOUT' => '未能在限定时间内取得配网结果，暂时无法确认是否已提交。',
       'COMMISSIONING_STATUS_UNAVAILABLE' ||
       'TERMINAL_ACK_FAILED' =>
-        '手机与设备的安全设置连接提前中断；不要复位设备，请重试。',
+        '设置连接中断，暂时无法确认配网结果。请查看设备状态。',
       _ => error.message ?? '设置设备时出错了。',
     };
     throw DeviceProvisioningTransportException(
@@ -162,55 +161,63 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
   @override
   Future<DeviceProvisioningDescriptor> prepareOwner(
       DeviceOnboardingTarget target) async {
-    final raw =
-        await _channel.invokeMethod<String>('provisioningHandOverTrust', {
-      'payloadJson': jsonEncode({
-        'contract_version': '1',
-        'prepare_only': true,
-        'owner_domain_id': target.ownerDomainId,
-        'owner_domain_descriptor': target.ownerDomainDescriptor.toJson(),
-        'owner_root_certificate': target.ownerRootCertificate,
-        'authority_signing_certificate': target.authoritySigningCertificate,
-      }),
-    });
-    final value = raw == null ? null : jsonDecode(raw);
-    if (value is! Map<String, dynamic> ||
-        value['contract_version'] != '1' ||
-        value['prepared'] != true ||
-        value['owner_domain_id'] != target.ownerDomainId ||
-        value['identity_fingerprint'] is! String ||
-        !RegExp(r'^sha256:[0-9a-f]{64}$')
-            .hasMatch(value['identity_fingerprint'] as String)) {
-      throw const DeviceProvisioningTransportException(
-          'owner_preparation_failed', '设备尚未完成归属准备，请保持配置连接后重试。');
+    try {
+      final raw =
+          await _channel.invokeMethod<String>('provisioningHandOverTrust', {
+        'payloadJson': jsonEncode({
+          'contract_version': '1',
+          'prepare_only': true,
+          'owner_domain_id': target.ownerDomainId,
+          'owner_domain_descriptor': target.ownerDomainDescriptor.toJson(),
+          'owner_root_certificate': target.ownerRootCertificate,
+          'authority_signing_certificate': target.authoritySigningCertificate,
+        }),
+      });
+      final value = raw == null ? null : jsonDecode(raw);
+      if (value is! Map<String, dynamic> ||
+          value['contract_version'] != '1' ||
+          value['prepared'] != true ||
+          value['owner_domain_id'] != target.ownerDomainId ||
+          value['identity_fingerprint'] is! String ||
+          !RegExp(r'^sha256:[0-9a-f]{64}$')
+              .hasMatch(value['identity_fingerprint'] as String)) {
+        throw const DeviceProvisioningTransportException(
+            'owner_preparation_failed', '设备尚未完成归属准备，请保持配置连接后重试。');
+      }
+      final fingerprint = value['identity_fingerprint'] as String;
+      if (value['device_id'] != 'device-instance-${fingerprint.substring(7)}') {
+        throw const DeviceProvisioningTransportException(
+            'owner_preparation_invalid', '设备返回的身份与配置钥匙不一致。');
+      }
+      descriptor = DeviceProvisioningDescriptor(
+        setup: SetupDescriptorV1.fromJson({
+          ...descriptor.setup.toJson(),
+          'device_id': value['device_id'],
+          'identity_fingerprint': 'p256:${fingerprint.substring(7)}',
+        }),
+        expiresAt: descriptor.expiresAt,
+        requiresVoucher: value['requires_voucher'] != false,
+      );
+      return descriptor;
+    } on PlatformException catch (error) {
+      PlatformDeviceProvisioning._translate(error);
     }
-    final fingerprint = value['identity_fingerprint'] as String;
-    if (value['device_id'] != 'device-instance-${fingerprint.substring(7)}') {
-      throw const DeviceProvisioningTransportException(
-          'owner_preparation_invalid', '设备返回的身份与配置钥匙不一致。');
-    }
-    descriptor = DeviceProvisioningDescriptor(
-      setup: SetupDescriptorV1.fromJson({
-        ...descriptor.setup.toJson(),
-        'device_id': value['device_id'],
-        'identity_fingerprint': 'p256:${fingerprint.substring(7)}',
-      }),
-      expiresAt: descriptor.expiresAt,
-      requiresVoucher: value['requires_voucher'] != false,
-    );
-    return descriptor;
   }
 
   @override
   Future<List<DeviceWifiNetwork>> scanNetworks() async {
-    final raw = await _channel.invokeListMethod<Object?>(
-      'provisioningScanNetworks',
-    );
-    return (raw ?? const <Object?>[])
-        .map((item) => _networkFromPlatform(
-              Map<Object?, Object?>.from(item! as Map),
-            ))
-        .toList(growable: false);
+    try {
+      final raw = await _channel.invokeListMethod<Object?>(
+        'provisioningScanNetworks',
+      );
+      return (raw ?? const <Object?>[])
+          .map((item) => _networkFromPlatform(
+                Map<Object?, Object?>.from(item! as Map),
+              ))
+          .toList(growable: false);
+    } on PlatformException catch (error) {
+      PlatformDeviceProvisioning._translate(error);
+    }
   }
 
   @override
@@ -221,72 +228,76 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
     required String collectCommandId,
     required String ackCommandId,
   }) async {
-    // Trust first, network second. The order is the controller's to enforce
-    // because the controller is the party that knows it — and it matters twice
-    // over: a device that joined a network without knowing its Host has nothing
-    // it can safely talk to there, and the session that carries this handover is
-    // exactly what joining may take down.
-    final handover = await _channel.invokeMethod<String>(
-      'provisioningHandOverTrust',
-      {
-        'payloadJson': jsonEncode({
-          'contract_version': '1',
-          'owner_domain_id': onboardingTarget.ownerDomainId,
-          'owner_domain_descriptor':
-              onboardingTarget.ownerDomainDescriptor.toJson(),
-          'owner_root_certificate': onboardingTarget.ownerRootCertificate,
-          'authority_signing_certificate':
-              onboardingTarget.authoritySigningCertificate,
-          if (onboardingTarget.commissioningVoucher != null)
-            'commissioning_voucher': onboardingTarget.commissioningVoucher,
-          'admission_command_ids': {
-            'create': createCommandId,
-            'collect': collectCommandId,
-            'ack': ackCommandId,
-          },
-        }),
-      },
-    );
-    _requireStagedHandover(
-      handover,
-      expectedOwnerDomainId: onboardingTarget.ownerDomainId,
-    );
-
-    final rawEvidence = await _channel.invokeMapMethod<Object?, Object?>(
-      'provisioningConfigureNetwork',
-      {
-        'ssid': credentials.ssid,
-        'password': credentials.password,
-      },
-    );
-    if (rawEvidence == null) {
-      throw const DeviceProvisioningTransportException(
-        'network_terminal_missing',
-        '设备没有确认已连接到新网络。',
-      );
-    }
-    final CommissioningStatusEvidenceV1 evidence;
     try {
-      evidence = CommissioningStatusEvidenceV1.fromJson(
-        Map<String, dynamic>.from(rawEvidence),
+      // Trust first, network second. The order is the controller's to enforce
+      // because the controller is the party that knows it — and it matters twice
+      // over: a device that joined a network without knowing its Host has nothing
+      // it can safely talk to there, and the session that carries this handover is
+      // exactly what joining may take down.
+      final handover = await _channel.invokeMethod<String>(
+        'provisioningHandOverTrust',
+        {
+          'payloadJson': jsonEncode({
+            'contract_version': '1',
+            'owner_domain_id': onboardingTarget.ownerDomainId,
+            'owner_domain_descriptor':
+                onboardingTarget.ownerDomainDescriptor.toJson(),
+            'owner_root_certificate': onboardingTarget.ownerRootCertificate,
+            'authority_signing_certificate':
+                onboardingTarget.authoritySigningCertificate,
+            if (onboardingTarget.commissioningVoucher != null)
+              'commissioning_voucher': onboardingTarget.commissioningVoucher,
+            'admission_command_ids': {
+              'create': createCommandId,
+              'collect': collectCommandId,
+              'ack': ackCommandId,
+            },
+          }),
+        },
       );
-    } on FormatException {
-      throw const DeviceProvisioningTransportException(
-        'network_terminal_invalid',
-        '设备返回的配网终态证据不符合 v1 契约。',
+      _requireStagedHandover(
+        handover,
+        expectedOwnerDomainId: onboardingTarget.ownerDomainId,
       );
-    }
-    if (!evidence.isCommittedTerminal ||
-        evidence.sessionId != descriptor.sessionId) {
-      throw const DeviceProvisioningTransportException(
-        'network_terminal_invalid',
-        '设备没有确认 Owner 可达且网络与信任已共同提交。',
-      );
-    }
 
-    // The coordinator persists this committed fact before transport cleanup.
-    // A failed close must never turn a successful network write into a retry.
-    return evidence;
+      final rawEvidence = await _channel.invokeMapMethod<Object?, Object?>(
+        'provisioningConfigureNetwork',
+        {
+          'ssid': credentials.ssid,
+          'password': credentials.password,
+        },
+      );
+      if (rawEvidence == null) {
+        throw const DeviceProvisioningTransportException(
+          'network_terminal_missing',
+          '设备没有确认已连接到新网络。',
+        );
+      }
+      final CommissioningStatusEvidenceV1 evidence;
+      try {
+        evidence = CommissioningStatusEvidenceV1.fromJson(
+          Map<String, dynamic>.from(rawEvidence),
+        );
+      } on FormatException {
+        throw const DeviceProvisioningTransportException(
+          'network_terminal_invalid',
+          '设备返回的配网终态证据不符合 v1 契约。',
+        );
+      }
+      if (!evidence.isCommittedTerminal ||
+          evidence.sessionId != descriptor.sessionId) {
+        throw const DeviceProvisioningTransportException(
+          'network_terminal_invalid',
+          '设备没有确认 Owner 可达且网络与信任已共同提交。',
+        );
+      }
+
+      // The coordinator persists this committed fact before transport cleanup.
+      // A failed close must never turn a successful network write into a retry.
+      return evidence;
+    } on PlatformException catch (error) {
+      PlatformDeviceProvisioning._translate(error);
+    }
   }
 
   void _requireStagedHandover(

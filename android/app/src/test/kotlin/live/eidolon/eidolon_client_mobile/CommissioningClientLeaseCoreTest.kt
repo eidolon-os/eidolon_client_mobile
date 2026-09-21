@@ -71,4 +71,37 @@ class CommissioningClientLeaseCoreTest {
             core.handle(CommissioningClientLeaseEvent.StatusCommitted),
         )
     }
+    @Test
+    fun `rollback is acknowledged before releasing route and remains a failure`() {
+        val core = CommissioningClientLeaseCore()
+        core.handle(CommissioningClientLeaseEvent.Start)
+        core.handle(CommissioningClientLeaseEvent.NetworkCandidateAccepted)
+        core.handle(CommissioningClientLeaseEvent.ConfigurationApplied)
+        assertEquals(CommissioningClientLeaseAction.SendTerminalAck,
+            core.handle(CommissioningClientLeaseEvent.StatusRolledBack))
+        assertEquals(CommissioningClientLeaseState.AcknowledgingTerminal, core.state)
+        assertEquals(CommissioningClientLeaseAction.ReleaseFailed,
+            core.handle(CommissioningClientLeaseEvent.TerminalAckAccepted))
+        assertEquals(CommissioningClientLeaseState.Closed, core.state)
+        assertEquals(CommissioningClientLeaseAction.None,
+            core.handle(CommissioningClientLeaseEvent.StatusCommitted))
+    }
+
+    @Test
+    fun `losing the ack response cannot undo known terminal evidence`() {
+        for (terminal in listOf(CommissioningClientLeaseEvent.StatusCommitted,
+                                CommissioningClientLeaseEvent.StatusRolledBack)) {
+            val core = CommissioningClientLeaseCore()
+            core.handle(CommissioningClientLeaseEvent.Start)
+            core.handle(CommissioningClientLeaseEvent.NetworkCandidateAccepted)
+            core.handle(CommissioningClientLeaseEvent.ConfigurationApplied)
+            core.handle(terminal)
+            assertEquals(if (terminal == CommissioningClientLeaseEvent.StatusCommitted)
+                CommissioningClientLeaseAction.ReleaseSucceeded else CommissioningClientLeaseAction.ReleaseFailed,
+                core.handle(CommissioningClientLeaseEvent.TerminalAckUnavailable))
+            assertEquals(CommissioningClientLeaseAction.None,
+                core.handle(CommissioningClientLeaseEvent.TerminalAckAccepted))
+        }
+    }
+
 }
