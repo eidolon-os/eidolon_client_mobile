@@ -20,6 +20,8 @@ MountedDevice _device({
   String state = 'awaiting_outputs',
   Map<String, dynamic>? allowed,
   int revision = 0,
+  bool? microphoneCapability,
+  bool? microphone,
 }) =>
     MountedDevice.fromView(
       DeviceView.fromJson({
@@ -42,6 +44,8 @@ MountedDevice _device({
         'manifest_id': 'esp-box-3',
         'manifest_revision': 1,
         'outputs': {
+          if (microphoneCapability != null) 'input_capabilities': {'microphone': microphoneCapability},
+          if (microphone != null) 'inputs': {'microphone': microphone},
           // What this board declared: it can take audio, show the face and
           // show dialogue text. It never declared a body.
           'capabilities': {
@@ -61,6 +65,7 @@ Future<void> _open(
   Future<void> Function({
     required String deviceId,
     required OutputSelection allowed,
+    InputSelection? inputs,
     required int expectedRevision,
   })? onSetOutputs,
 }) async {
@@ -96,11 +101,44 @@ Future<void> _tapWhereverItIs(WidgetTester tester, Key key) async {
 }
 
 void main() {
+  testWidgets('microphone choice is independent of speech and saved atomically', (tester) async {
+    InputSelection? savedInputs;
+    OutputSelection? savedOutputs;
+    await _open(tester, _device(allowed: {'speech': true}, revision: 4,
+        microphoneCapability: true, microphone: true), onSetOutputs: ({
+      required String deviceId, required OutputSelection allowed,
+      InputSelection? inputs, required int expectedRevision,
+    }) async {
+      expect(expectedRevision, 4);
+      savedInputs = inputs;
+      savedOutputs = allowed;
+    });
+    await _tapWhereverItIs(tester, const Key('decide-device-outputs'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('device-input-microphone')));
+    await tester.ensureVisible(find.byKey(const Key('device-outputs-save')));
+    await tester.tap(find.byKey(const Key('device-outputs-save')));
+    await tester.pumpAndSettle();
+    expect(savedInputs?.microphone, false);
+    expect(savedOutputs?.speech, true);
+  });
+
+  testWidgets('a device without microphone capability has no input switch', (tester) async {
+    await _open(tester, _device(microphoneCapability: false), onSetOutputs: ({
+      required String deviceId, required OutputSelection allowed,
+      InputSelection? inputs, required int expectedRevision,
+    }) async {});
+    await _tapWhereverItIs(tester, const Key('decide-device-outputs'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('device-input-microphone')), findsNothing);
+  });
+
   testWidgets('a decision nobody has made is not shown as an empty one',
       (tester) async {
     await _open(tester, _device(), onSetOutputs: ({
       required String deviceId,
       required OutputSelection allowed,
+    InputSelection? inputs,
       required int expectedRevision,
     }) async {});
 
@@ -121,6 +159,7 @@ void main() {
       onSetOutputs: ({
         required String deviceId,
         required OutputSelection allowed,
+    InputSelection? inputs,
         required int expectedRevision,
       }) async {},
     );
@@ -133,6 +172,7 @@ void main() {
     await _open(tester, _device(), onSetOutputs: ({
       required String deviceId,
       required OutputSelection allowed,
+    InputSelection? inputs,
       required int expectedRevision,
     }) async {});
     await _tapWhereverItIs(tester, const Key('decide-device-outputs'));
@@ -156,6 +196,7 @@ void main() {
       onSetOutputs: ({
         required String deviceId,
         required OutputSelection allowed,
+    InputSelection? inputs,
         required int expectedRevision,
       }) async {
         decisions.add({

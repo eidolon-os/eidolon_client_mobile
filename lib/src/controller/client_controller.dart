@@ -463,9 +463,6 @@ class ClientController extends ChangeNotifier {
     microphoneState = MicrophoneState.requestingPermission;
     _setPhase(ClientPhase.joining);
     try {
-      final allowed = await _platform.requestMicrophonePermission();
-      if (_disposed || epoch != _conversationEpoch) return;
-      if (!allowed) throw StateError('需要麦克风权限才能开始对话');
       microphoneState = MicrophoneState.switching;
       notifyListeners();
       final fresh =
@@ -482,6 +479,11 @@ class ClientController extends ChangeNotifier {
         await _session.disconnect();
         return;
       }
+      if (_session.microphoneAllowed) {
+        final allowed = await _platform.requestMicrophonePermission();
+        if (_disposed || epoch != _conversationEpoch) return;
+        if (!allowed) throw StateError('需要麦克风权限才能听你说话');
+      }
       transcript.clear();
       _inConversation = true;
       conversationStanding = ConversationStanding.asked;
@@ -492,7 +494,7 @@ class ClientController extends ChangeNotifier {
         await _session.disconnect();
         return;
       }
-      await _vad.start();
+      if (_session.microphoneAllowed) await _vad.start();
       if (_disposed || epoch != _conversationEpoch || !_inConversation) {
         await _vad.stop();
         await _session.closeSession();
@@ -611,7 +613,7 @@ class ClientController extends ChangeNotifier {
   Future<void> _applyAudioState() {
     final epoch = _conversationEpoch;
     final held = _pttHeld;
-    final enabled = conversationStanding.answered &&
+    final enabled = _session.microphoneAllowed && conversationStanding.answered &&
         (mode == ConversationMode.ptt
             ? held
             : !_userMuted &&
@@ -669,6 +671,16 @@ class ClientController extends ChangeNotifier {
   }
 
   void _onSessionState(SessionState event) {
+    if (event.state == 'microphone_denied') {
+      _userMuted = true;
+      _pttHeld = false;
+      _session.pttHeld = false;
+      microphoneState = MicrophoneState.muted;
+      unawaited(_vad.stop());
+      unawaited(_applyAudioState());
+      notifyListeners();
+      return;
+    }
     final connection = switch (event.state) {
       'connecting' => ChannelConnectionState.connecting,
       'connected' => ChannelConnectionState.connected,

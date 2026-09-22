@@ -975,6 +975,7 @@ class HostProductController extends ChangeNotifier {
   Future<void> setDeviceOutputs({
     required String deviceId,
     required OutputSelection allowed,
+    InputSelection? inputs,
     required int expectedRevision,
   }) async {
     if (_connection == null) {
@@ -985,6 +986,7 @@ class HostProductController extends ChangeNotifier {
     await _deviceOutputsRepository.set(
       deviceId: deviceId,
       allowed: allowed,
+      inputs: inputs,
       expectedRevision: expectedRevision,
     );
     await refreshDevices();

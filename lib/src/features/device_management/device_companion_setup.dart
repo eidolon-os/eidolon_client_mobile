@@ -30,6 +30,7 @@ class CompanionSetupIntent {
       this.description = '',
       this.creationOperationId,
       this.allowed,
+      this.inputs,
       this.outputRevision});
   final CompanionSetupStep step;
   final String requestId;
@@ -39,6 +40,7 @@ class CompanionSetupIntent {
   final String description;
   final String? creationOperationId;
   final OutputSelection? allowed;
+  final InputSelection? inputs;
   final int? outputRevision;
 
   /// Whether this record still stands for something the phone cannot work out
@@ -59,6 +61,7 @@ class CompanionSetupIntent {
           String? companionName,
           String? creationOperationId,
           OutputSelection? allowed,
+          InputSelection? inputs,
           int? outputRevision}) =>
       CompanionSetupIntent(
           step: step,
@@ -69,6 +72,7 @@ class CompanionSetupIntent {
           description: description,
           creationOperationId: creationOperationId ?? this.creationOperationId,
           allowed: allowed ?? this.allowed,
+          inputs: inputs ?? this.inputs,
           outputRevision: outputRevision ?? this.outputRevision);
   Map<String, dynamic> toJson() => {
         'version': 1,
@@ -80,12 +84,13 @@ class CompanionSetupIntent {
         'description': description,
         'creation_operation_id': creationOperationId,
         'allowed': allowed?.toJson(),
+        if (inputs != null) 'inputs': inputs!.toJson(),
         'output_revision': outputRevision
       };
   factory CompanionSetupIntent.decode(String raw) {
     final j = jsonDecode(raw) as Map<String, dynamic>;
     if (j['version'] != 1 ||
-        j.length != 10 ||
+        (j.length != 10 && !(j.length == 11 && j.containsKey('inputs'))) ||
         j['request_id'] is! String ||
         (j['request_id'] as String).isEmpty ||
         j['expected_revision'] is! int ||
@@ -110,6 +115,7 @@ class CompanionSetupIntent {
         companionName: j['companion_name'] as String,
         description: j['description'] as String,
         allowed: allowed,
+        inputs: j['inputs'] == null ? null : InputSelection.fromJson(j['inputs'] as Map<String, dynamic>),
         outputRevision: outputRevision);
   }
 }
@@ -170,7 +176,7 @@ class DeviceCompanionSetup {
   final DeviceCompanionSetupStore store;
   final Future<MountedDevice> Function() loadDevice;
   final Future<void> Function(CompanionSetupIntent) bind;
-  final Future<void> Function(OutputSelection, int) setOutputs;
+  final Future<void> Function(OutputSelection, InputSelection?, int) setOutputs;
   Future<MountedDevice> finishBinding(CompanionSetupIntent intent) async {
     var device = await loadDevice();
     _active(device);
@@ -198,19 +204,23 @@ class DeviceCompanionSetup {
     if (device.attachedCompanionId != intent.companionId) {
       throw CompanionSetupException('应答伙伴已改变，请核对后重新选择表达方式。');
     }
-    if (!_same(device.outputs.allowed, intent.allowed)) {
+    if (!_matches(device.outputs, intent)) {
       if (device.outputs.revision != intent.outputRevision) {
         throw CompanionSetupException('表达设置已在别处更改，请重新选择，不会覆盖新设置。');
       }
-      await setOutputs(intent.allowed!, intent.outputRevision!);
+      await setOutputs(intent.allowed!, intent.inputs, intent.outputRevision!);
       device = await loadDevice();
-      if (!_same(device.outputs.allowed, intent.allowed)) {
+      if (!_matches(device.outputs, intent)) {
         throw CompanionSetupException('主机尚未确认表达设置，请继续核对。');
       }
     }
     await store.clear(intent.requestId);
     return device;
   }
+
+  static bool _matches(DeviceOutputs outputs, CompanionSetupIntent intent) =>
+      _same(outputs.allowed, intent.allowed) &&
+      (intent.inputs == null || outputs.inputs?.microphone == intent.inputs!.microphone);
 
   static bool _same(OutputSelection? a, OutputSelection? b) =>
       a != null &&

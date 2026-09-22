@@ -11,6 +11,7 @@ MountedDevice device(
         {String? companion = 'old',
         int revision = 1,
         OutputSelection? allowed,
+        InputSelection? inputs,
         int outputRevision = 0,
         String state = 'awaiting_outputs'}) =>
     MountedDevice(
@@ -34,6 +35,7 @@ MountedDevice device(
         outputs: DeviceOutputs(
             capabilities: const OutputSelection(speech: true, expression: true),
             allowed: allowed,
+            inputs: inputs,
             revision: outputRevision));
 DeviceCompanionSetupStore store(AppPreferences prefs,
         {String host = 'h', String owner = 'o', String target = 'device'}) =>
@@ -82,7 +84,7 @@ void main() {
           current = device(companion: 'new', revision: 2);
           throw TimeoutException('lost response');
         },
-        setOutputs: (_, __) async => fail('not yet authorized'));
+        setOutputs: (_, __, ___) async => fail('not yet authorized'));
     await expectLater(
         flow().finishBinding(intent), throwsA(isA<TimeoutException>()));
     await flow().finishBinding((await store(prefs).load())!);
@@ -95,18 +97,20 @@ void main() {
     var current = device(companion: 'new', revision: 2);
     var writes = 0;
     final pending = intent.at(CompanionSetupStep.savingOutputs,
-        allowed: const OutputSelection(speech: true), outputRevision: 0);
+        allowed: const OutputSelection(speech: true), inputs: const InputSelection(microphone: false), outputRevision: 0);
     await store(prefs).save(pending);
     DeviceCompanionSetup flow() => DeviceCompanionSetup(
         store: store(prefs),
         loadDevice: () async => current,
         bind: (_) async => fail('binding must not repeat'),
-        setOutputs: (allowed, revision) async {
+        setOutputs: (allowed, inputs, revision) async {
           writes++;
           expect(revision, 0);
+          expect(inputs?.microphone, false);
           current = device(
               companion: 'new',
               revision: 2,
+              inputs: inputs,
               allowed: const OutputSelection(
                   speech: true,
                   dialogueText: false,
@@ -130,7 +134,7 @@ void main() {
         loadDevice: () async =>
             device(companion: 'other', revision: 8, outputRevision: 7),
         bind: (_) async => fail('would overwrite'),
-        setOutputs: (_, __) async => fail('would overwrite'));
+        setOutputs: (_, __, ___) async => fail('would overwrite'));
     await store(prefs).save(intent);
     await expectLater(
         flow.finishBinding(intent), throwsA(isA<CompanionSetupException>()));

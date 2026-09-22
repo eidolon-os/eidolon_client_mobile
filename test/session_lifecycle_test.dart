@@ -1,6 +1,7 @@
 import 'package:eidolon_client_mobile/src/models/conversation_mode.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'package:eidolon_client_mobile/src/services/vad_processor.dart';
 
 import 'package:eidolon_client_mobile/src/controller/client_controller.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/conversation_provisioner.dart';
@@ -56,6 +57,23 @@ void main() {
         if (conversationId != null) sessionConversationIdField: conversationId,
         if (reason != null) sessionEndReasonField: reason,
       });
+
+  test('listening disabled still starts a conversation without microphone permission or VAD', () async {
+    final session = _LifecycleSession()..allowMicrophone = false;
+    final vad = _NoCaptureVad();
+    final controller = ClientController(platform: _MicrophoneMustNotBeRequested(),
+        session: session, vad: vad, conversationProvisioner: _FakeProvisioner(active()));
+    await controller.start();
+    await controller.join();
+    expect(controller.failure, isNull);
+    expect(controller.conversationStanding, ConversationStanding.asked);
+    session.emit(packet(sessionStartedType, conversationId: session.conversationId));
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.conversationStanding, ConversationStanding.accepted);
+    expect(controller.microphoneEnabled, false);
+    expect(vad.starts, 0);
+    controller.dispose();
+  });
 
   test('a conversation is not confirmed until the far end says so', () async {
     final built = build();
@@ -151,6 +169,9 @@ void main() {
 /// controller does with a packet, and the real class needs a live LiveKit room
 /// to construct anything else.
 class _LifecycleSession extends EidolonSession {
+  bool allowMicrophone = true;
+  @override
+  bool get microphoneAllowed => allowMicrophone;
   final _states = StreamController<SessionState>.broadcast();
   final _data = StreamController<SessionData>.broadcast();
 
@@ -213,4 +234,19 @@ class _FakeProvisioner implements ConversationProvisioner {
 class _MicGrantedPlatform extends FakePhonePlatform {
   @override
   Future<bool> requestMicrophonePermission() async => true;
+}
+
+class _MicrophoneMustNotBeRequested extends FakePhonePlatform {
+  @override
+  Future<bool> requestMicrophonePermission() async => throw StateError('Microphone permission must not be requested');
+}
+
+class _NoCaptureVad implements VadProcessor {
+  int starts = 0;
+  @override
+  Stream<bool> get speechActivity => const Stream<bool>.empty();
+  @override
+  Future<void> start() async { starts++; }
+  @override
+  Future<void> stop() async {}
 }

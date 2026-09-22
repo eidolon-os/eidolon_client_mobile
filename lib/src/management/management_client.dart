@@ -582,6 +582,7 @@ class ManagementClient {
     required String accessToken,
     required String deviceId,
     required OutputSelection allowed,
+    InputSelection? inputs,
     required int expectedRevision,
   }) async {
     final body = await _send(
@@ -591,6 +592,7 @@ class ManagementClient {
       what: '设置这台设备可以做什么',
       body: {
         'allowed': allowed.toJson(),
+        if (inputs != null) 'inputs': inputs.toJson(),
         'expected_revision': expectedRevision,
       },
     );

@@ -638,6 +638,7 @@ class HostDeviceOutputsRepository {
   Future<MountedDevice> set({
     required String deviceId,
     required OutputSelection allowed,
+    InputSelection? inputs,
     required int expectedRevision,
   }) async =>
       MountedDevice.fromView(
@@ -647,6 +648,7 @@ class HostDeviceOutputsRepository {
             accessToken: accessToken,
             deviceId: deviceId,
             allowed: allowed,
+            inputs: inputs,
             expectedRevision: expectedRevision,
           ),
         ),

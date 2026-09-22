@@ -87,6 +87,10 @@ class EidolonSession {
   void _emitPresence() => _presenceController.add(_anyoneAnswering);
 
   bool get isConnected => _room?.connectionState == ConnectionState.connected;
+  bool get microphoneAllowed {
+    final participant = _room?.localParticipant;
+    return participant == null || _mayPublishMicrophone(participant);
+  }
 
   static const _capture = AudioCaptureOptions(
     echoCancellation: true,
@@ -152,29 +156,8 @@ class EidolonSession {
     // firmware's shape (`current_conversation_id_`), because `session_open`
     // and `session_close` are statements about the same conversation and the
     // far end correlates them by this value.
-    // The existing Channel worker is WorkerType.PUBLISHER. It cannot be
-    // assigned to a device with no published track, even after session_open.
-    // Publish a muted track first; no microphone audio is sent while waiting
-    // for confirmation or for a PTT press. Keep the standard publisher flow.
-    final room = _room;
-    final participant = room?.localParticipant;
-    if (room == null || participant == null) {
+    if (_room?.localParticipant == null) {
       throw StateError('Channel is not connected');
-    }
-    if (participant.getTrackPublicationBySource(TrackSource.microphone) ==
-        null) {
-      final track = await LocalAudioTrack.create(_capture);
-      try {
-        await track.start();
-        await track.mute(stopOnMute: false);
-        if (!identical(_room, room)) {
-          throw StateError('Conversation was closed');
-        }
-        await participant.publishAudioTrack(track);
-      } catch (_) {
-        await track.dispose();
-        rethrow;
-      }
     }
     _conversationId ??= _newConversationId();
     await _publishSessionRequest(sessionOpenType);
@@ -231,8 +214,23 @@ class EidolonSession {
     );
   }
 
+  static bool _mayPublishMicrophone(LocalParticipant participant) {
+    final permissions = participant.permissions;
+    return permissions.canPublish && (permissions.canPublishSources.isEmpty ||
+        permissions.canPublishSources.any((source) => source.name == 'MICROPHONE'));
+  }
+
   void _wireRoom(EventsListener<RoomEvent> listener, {required bool Function() isCurrent}) {
     listener
+      ..on<ParticipantPermissionsUpdatedEvent>((event) async {
+        if (!isCurrent()) return;
+        final participant = _room?.localParticipant;
+        if (participant != null && identical(event.participant, participant) &&
+            !_mayPublishMicrophone(participant)) {
+          await participant.setMicrophoneEnabled(false);
+          _stateController.add(const SessionState('microphone_denied'));
+        }
+      })
       ..on<DataReceivedEvent>((event) {
         final topic = event.topic ?? '';
         _dataController.add(
@@ -311,7 +309,12 @@ class EidolonSession {
   }
 
   Future<void> setMicrophoneEnabled(bool enabled) async {
-    await _room?.localParticipant?.setMicrophoneEnabled(enabled);
+    final participant = _room?.localParticipant;
+    if (enabled && participant != null && !_mayPublishMicrophone(participant)) {
+      await participant.setMicrophoneEnabled(false);
+      return;
+    }
+    await participant?.setMicrophoneEnabled(enabled);
   }
 
   Future<void> disconnect() async {

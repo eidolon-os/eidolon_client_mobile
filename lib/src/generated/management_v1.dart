@@ -948,11 +948,14 @@ class DeviceOutputsRequest {
   const DeviceOutputsRequest({
     required this.allowed,
     required this.expectedRevision,
+    this.inputs,
   });
 
   final OutputSelection allowed;
 
   final int expectedRevision;
+
+  final InputSelection? inputs;
 
   factory DeviceOutputsRequest.fromJson(Map<String, dynamic> value) {
     return DeviceOutputsRequest(
@@ -960,11 +963,18 @@ class DeviceOutputsRequest {
         value['allowed'] as Map<String, dynamic>,
       ),
       expectedRevision: value['expected_revision'] as int,
+      inputs: value['inputs'] == null
+          ? null
+          : InputSelection.fromJson(value['inputs'] as Map<String, dynamic>),
     );
   }
 
   Map<String, dynamic> toJson() {
-    return {'allowed': allowed.toJson(), 'expected_revision': expectedRevision};
+    return {
+      'allowed': allowed.toJson(),
+      'expected_revision': expectedRevision,
+      if (inputs != null) 'inputs': inputs?.toJson(),
+    };
   }
 }
 
@@ -972,12 +982,18 @@ class DeviceOutputsView {
   const DeviceOutputsView({
     this.allowed,
     required this.capabilities,
+    this.inputCapabilities,
+    this.inputs,
     required this.revision,
   });
 
   final OutputSelection? allowed;
 
   final OutputSelection capabilities;
+
+  final InputSelection? inputCapabilities;
+
+  final InputSelection? inputs;
 
   final int revision;
 
@@ -989,6 +1005,14 @@ class DeviceOutputsView {
       capabilities: OutputSelection.fromJson(
         value['capabilities'] as Map<String, dynamic>,
       ),
+      inputCapabilities: value['input_capabilities'] == null
+          ? null
+          : InputSelection.fromJson(
+              value['input_capabilities'] as Map<String, dynamic>,
+            ),
+      inputs: value['inputs'] == null
+          ? null
+          : InputSelection.fromJson(value['inputs'] as Map<String, dynamic>),
       revision: value['revision'] as int,
     );
   }
@@ -997,6 +1021,9 @@ class DeviceOutputsView {
     return {
       if (allowed != null) 'allowed': allowed?.toJson(),
       'capabilities': capabilities.toJson(),
+      if (inputCapabilities != null)
+        'input_capabilities': inputCapabilities?.toJson(),
+      if (inputs != null) 'inputs': inputs?.toJson(),
       'revision': revision,
     };
   }
@@ -1876,6 +1903,20 @@ class HostVitalsView {
       if (vitals != null)
         'vitals': vitals?.map((entry) => entry.toJson()).toList(),
     };
+  }
+}
+
+class InputSelection {
+  const InputSelection({this.microphone});
+
+  final bool? microphone;
+
+  factory InputSelection.fromJson(Map<String, dynamic> value) {
+    return InputSelection(microphone: value['microphone'] as bool?);
+  }
+
+  Map<String, dynamic> toJson() {
+    return {if (microphone != null) 'microphone': microphone};
   }
 }
 

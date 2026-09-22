@@ -66,6 +66,7 @@ Future<void> _openDetail(WidgetTester tester, MountedDevice device) async {
         onSetOutputs: ({
           required String deviceId,
           required OutputSelection allowed,
+    InputSelection? inputs,
           required int expectedRevision,
         }) async {},
         onBindCompanion: ({
@@ -175,6 +176,7 @@ void main() {
             onSetOutputs: ({
               required String deviceId,
               required OutputSelection allowed,
+    InputSelection? inputs,
               required int expectedRevision,
             }) async {
               saved = allowed;

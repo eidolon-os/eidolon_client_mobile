@@ -57,17 +57,23 @@ enum MountedDeviceState {
 class DeviceOutputs {
   const DeviceOutputs({
     required this.capabilities,
+    this.inputCapabilities,
+    this.inputs,
     required this.allowed,
     required this.revision,
   });
 
   factory DeviceOutputs.fromView(DeviceOutputsView view) => DeviceOutputs(
         capabilities: view.capabilities,
+        inputCapabilities: view.inputCapabilities,
+        inputs: view.inputs,
         allowed: view.allowed,
         revision: view.revision,
       );
 
   final OutputSelection capabilities;
+  final InputSelection? inputCapabilities;
+  final InputSelection? inputs;
   final OutputSelection? allowed;
 
   /// What the next decision has to carry. Zero before the first one.
