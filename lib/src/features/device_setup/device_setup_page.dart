@@ -27,12 +27,16 @@ class DeviceSetupPage extends StatefulWidget {
     required this.checkpoints,
     required this.loadTarget,
     this.allowDevelopmentTrust = true,
+    this.expectedDeviceId,
+    this.knownDevices = const {},
   });
 
   final DeviceProvisioningTransport transport;
   final DeviceAdmissionPort admission;
   final DeviceSetupCheckpointStore checkpoints;
   final Future<DeviceOnboardingTarget> Function() loadTarget;
+  final String? expectedDeviceId;
+  final Map<String, String> knownDevices;
 
   /// Development boards carry a shared setup secret rather than a per-device
   /// one, and say so in their descriptor. Refusing them outright would make
@@ -52,6 +56,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   final _hiddenSsid = TextEditingController();
   final _random = Random.secure();
 
+  String? _scanWarning;
+  String? _completedDeviceId;
   _Step _step = _Step.introduction;
   List<DeviceProvisioningCandidate> _candidates = const [];
   DeviceProvisioningCandidate? _candidate;
@@ -159,7 +165,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         final found = await widget.transport.discover();
         if (found.isEmpty) {
           throw Exception(
-            '附近没有等待设置的设备。请长按设备按键让它进入设置模式,然后重试。',
+            '附近没有等待设置的设备。请在设备上打开网络设置,然后重试。',
           );
         }
         setState(() {
@@ -170,7 +176,10 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
       });
 
   Future<void> _select(DeviceProvisioningCandidate candidate) => _run(() async {
-        setState(() => _progress = '正在读取设备身份');
+        setState(() {
+          _progress = '正在读取设备身份';
+          _scanWarning = null;
+        });
         final session = await widget.transport.open(candidate);
         final target = _target;
         if (target == null) {
@@ -180,10 +189,42 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         late final DeviceProvisioningDescriptor descriptor;
         late final List<DeviceWifiNetwork> networks;
         try {
+          final originalId = session.descriptor.deviceId;
+          final expected = widget.expectedDeviceId;
+          if (expected != null && originalId != expected) {
+            throw const DeviceProvisioningTransportException(
+              'device_identity_changed',
+              '发现的设备身份与原记录不同。可能选择了另一台设备，也可能设备被重置过。此次未修改网络或添加设备，请返回确认原设备记录。',
+            );
+          }
           if (mounted) setState(() => _progress = '正在确认设备归属');
           descriptor = await session.prepareOwner(target);
+          final preserving = expected ??
+              (widget.knownDevices.containsKey(originalId) ? originalId : null);
+          if (preserving != null && descriptor.deviceId != preserving) {
+            throw const DeviceProvisioningTransportException(
+              'device_identity_replacement_required',
+              '这次操作需要更换设备身份，不能作为普通换网继续。原设备记录已保留，请先处理设备归属或身份恢复。',
+            );
+          }
           if (mounted) setState(() => _progress = '正在扫描设备附近的 Wi-Fi');
-          networks = await session.scanNetworks();
+          try {
+            networks = await session.scanNetworks();
+          } on DeviceProvisioningTransportException catch (error) {
+            if (!{
+              'device_scan_timeout',
+              'device_scan_failed',
+              'device_disconnected',
+              'provisioning_closed'
+            }.contains(error.code)) {
+              rethrow;
+            }
+            networks = const [];
+            if (mounted) {
+              setState(() =>
+                  _scanWarning = '未能读取设备附近的 Wi-Fi。可以手动输入网络名称，提交时会重新连接设备。');
+            }
+          }
         } finally {
           await session.close();
         }
@@ -264,6 +305,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             DeviceWifiCredentials(ssid: ssid, password: _password.text),
         onboardingTarget: target,
         voucher: voucher,
+        expectedDeviceId: _descriptor?.deviceId,
       );
     });
   }
@@ -272,7 +314,11 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     try {
       final pending = await _coordinator.resumableSetups();
       if (mounted && _step == _Step.introduction) {
-        setState(() => _pendingSetups = pending);
+        setState(() => _pendingSetups = pending
+            .where((item) =>
+                widget.expectedDeviceId == null ||
+                item.deviceId == widget.expectedDeviceId)
+            .toList());
       }
     } catch (error) {
       if (mounted && _step == _Step.introduction) {
@@ -316,6 +362,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
                 : '正在等待设备确认 Wi-Fi 和主机连接…';
         _error = checkpoint.failure?.message;
       } else if (checkpoint.isReady) {
+        _completedDeviceId = checkpoint.deviceId;
         _step = _Step.complete;
         _progress = null;
         _error = null;
@@ -428,12 +475,14 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('准备设备', style: Theme.of(context).textTheme.titleLarge),
+          if (widget.expectedDeviceId != null)
+            const Text('为原设备更换 Wi-Fi。请在这台设备上打开网络设置；设备身份和已有绑定将保持不变。'),
           const SizedBox(height: 12),
           const Text('1. 给设备通电。'),
           const SizedBox(height: 4),
-          const Text('2. 按一下设备上的按键,让它进入设置模式。'),
+          const Text('2. 在设备上打开网络设置,进入配网模式。'),
           const SizedBox(height: 4),
-          const Text('3. 设置窗口是有时限的;超时后再按一次即可重新打开。'),
+          const Text('3. 设置模式会持续开启，完成配网后自动关闭。'),
           const SizedBox(height: 20),
           FilledButton.icon(
             key: const Key('discover-devices'),
@@ -489,6 +538,9 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('选择家庭 Wi-Fi', style: Theme.of(context).textTheme.titleLarge),
+          if (widget.knownDevices[_descriptor?.deviceId] case final name?)
+            Text('已识别原设备：$name。此次更新网络，不会重复添加。'),
+          if (_scanWarning != null) Text(_scanWarning!),
           const SizedBox(height: 8),
           if (_descriptor != null)
             Text(
@@ -516,8 +568,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           TextField(
             controller: _hiddenSsid,
             enabled: !_busy && _network == null,
-            decoration: const InputDecoration(
-              labelText: '隐藏网络名称(可选)',
+            decoration: InputDecoration(
+              labelText: _networks.isEmpty ? 'Wi-Fi 名称' : '其他或隐藏网络名称(可选)',
               border: OutlineInputBorder(),
             ),
           ),
@@ -565,7 +617,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           const Text('设备已接入这台主机', textAlign: TextAlign.center),
           const SizedBox(height: 16),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.of(context).pop(_completedDeviceId),
             child: const Text('继续'),
           ),
         ],

@@ -20,12 +20,138 @@ import 'support/admission_fixtures.dart';
 /// then failed. So the session must be closed before the Host is asked, and
 /// re-opened afterwards to hand over what the Host said.
 void main() {
-  testWidgets('Owner preparation refusal remains visible and releases the session',
+  testWidgets(
+      'network maintenance refuses another identity before owner preparation',
       (tester) async {
-    final transport = _Transport()..preparationFailure =
-        const DeviceProvisioningTransportException('owner_preparation_failed',
-            '设备尚未完成归属准备，请保持配置连接后重试。');
-    await tester.pumpWidget(MaterialApp(home: DeviceSetupPage(
+    final transport = _Transport();
+    await tester.pumpWidget(MaterialApp(
+        home: DeviceSetupPage(
+      transport: transport,
+      admission: _Admission(transport),
+      checkpoints: InMemoryDeviceSetupCheckpointStore(),
+      loadTarget: () async => deviceOnboardingTargetFixture(),
+      expectedDeviceId: 'device-instance-${'b' * 64}',
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查找设备'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('发现的设备身份与原记录不同'), findsOneWidget);
+    expect(transport.sessions.single.prepared, isFalse);
+    expect(transport.sessions.single.closed, isTrue);
+    expect(transport.sessions.single.writes, 0);
+  });
+
+  testWidgets(
+      'network maintenance recognizes the original device and reuses standing',
+      (tester) async {
+    final transport = _Transport()..requiresVoucher = false;
+    final id = 'device-instance-${'a' * 64}';
+    await tester.pumpWidget(MaterialApp(
+        home: DeviceSetupPage(
+      transport: transport,
+      admission: _Admission(transport),
+      checkpoints: InMemoryDeviceSetupCheckpointStore(),
+      loadTarget: () async => deviceOnboardingTargetFixture(),
+      expectedDeviceId: id,
+      knownDevices: {id: '书房 BOX-3'},
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查找设备'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('已识别原设备：书房 BOX-3'), findsOneWidget);
+    expect(transport.sessions.single.closed, isTrue);
+    expect(transport.sessions.single.writes, 0);
+  });
+
+  testWidgets(
+      'known device cannot silently rotate identity during network setup',
+      (tester) async {
+    final id = 'device-instance-${'a' * 64}';
+    final transport = _Transport()
+      ..preparedDeviceId = 'device-instance-${'b' * 64}';
+    await tester.pumpWidget(MaterialApp(
+        home: DeviceSetupPage(
+      transport: transport,
+      admission: _Admission(transport),
+      checkpoints: InMemoryDeviceSetupCheckpointStore(),
+      loadTarget: () async => deviceOnboardingTargetFixture(),
+      knownDevices: {id: 'BOX-3'},
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查找设备'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('不能作为普通换网继续'), findsOneWidget);
+    expect(transport.sessions.single.closed, isTrue);
+    expect(transport.sessions.single.writes, 0);
+  });
+
+  testWidgets('cancelling setup returns no completed device', (tester) async {
+    String? completedDeviceId = 'must not survive cancellation';
+    final transport = _Transport();
+    await tester.pumpWidget(MaterialApp(
+        home: Builder(
+      builder: (context) => TextButton(
+          onPressed: () async {
+            completedDeviceId =
+                await Navigator.of(context).push<String>(MaterialPageRoute(
+              builder: (_) => DeviceSetupPage(
+                transport: transport,
+                admission: _Admission(transport),
+                checkpoints: InMemoryDeviceSetupCheckpointStore(),
+                loadTarget: () async => deviceOnboardingTargetFixture(),
+              ),
+            ));
+          },
+          child: const Text('open setup')),
+    )));
+    await tester.tap(find.text('open setup'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(completedDeviceId, isNull);
+    expect(transport.opened, 0);
+  });
+
+  testWidgets(
+      'scan failure releases visit and exposes manual network input without submitting',
+      (tester) async {
+    final transport = _Transport()
+      ..requiresVoucher = false
+      ..scanFailure = const DeviceProvisioningTransportException(
+          'device_scan_failed', 'scan failed');
+    await tester.pumpWidget(MaterialApp(
+        home: DeviceSetupPage(
+      transport: transport,
+      admission: _Admission(transport),
+      checkpoints: InMemoryDeviceSetupCheckpointStore(),
+      loadTarget: () async => deviceOnboardingTargetFixture(),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查找设备'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await tester.pumpAndSettle();
+    expect(find.text('选择家庭 Wi-Fi'), findsOneWidget);
+    expect(find.textContaining('可以手动输入网络名称'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Wi-Fi 名称'), findsOneWidget);
+    expect(transport.sessions.single.closed, isTrue);
+    expect(transport.sessions.single.writes, 0);
+  });
+
+  testWidgets(
+      'Owner preparation refusal remains visible and releases the session',
+      (tester) async {
+    final transport = _Transport()
+      ..preparationFailure = const DeviceProvisioningTransportException(
+          'owner_preparation_failed', '设备尚未完成归属准备，请保持配置连接后重试。');
+    await tester.pumpWidget(MaterialApp(
+        home: DeviceSetupPage(
       transport: transport,
       admission: _Admission(transport),
       checkpoints: InMemoryDeviceSetupCheckpointStore(),
@@ -173,13 +299,24 @@ void main() {
         claimState: 'active',
         claimOwnerDomainGeneration: 1,
       );
+    String? completedDeviceId;
     await tester.pumpWidget(MaterialApp(
-        home: DeviceSetupPage(
-      transport: transport,
-      admission: admission,
-      checkpoints: InMemoryDeviceSetupCheckpointStore(),
-      loadTarget: () async => deviceOnboardingTargetFixture(),
+        home: Builder(
+      builder: (context) => TextButton(
+          onPressed: () async {
+            completedDeviceId =
+                await Navigator.of(context).push<String>(MaterialPageRoute(
+              builder: (_) => DeviceSetupPage(
+                transport: transport,
+                admission: admission,
+                checkpoints: InMemoryDeviceSetupCheckpointStore(),
+                loadTarget: () async => deviceOnboardingTargetFixture(),
+              ),
+            ));
+          },
+          child: const Text('open setup')),
     )));
+    await tester.tap(find.text('open setup'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('查找设备'));
     await tester.pumpAndSettle();
@@ -194,6 +331,9 @@ void main() {
     expect(transport.sessions.last.writes, 1);
     expect(admission.decisions, 0);
     expect(find.text('设备已接入这台主机'), findsOneWidget);
+    await tester.tap(find.text('继续'));
+    await tester.pumpAndSettle();
+    expect(completedDeviceId, 'device-instance-${'a' * 64}');
   });
 
   testWidgets('the Host is asked only while no session is held',
@@ -289,7 +429,9 @@ class _Admission implements DeviceAdmissionPort {
 
 class _Transport implements DeviceProvisioningTransport {
   Object? preparationFailure;
+  Object? scanFailure;
   bool requiresVoucher = true;
+  String? preparedDeviceId;
   final List<_Session> sessions = [];
   int opened = 0;
   Future<void>? configurationGate;
@@ -317,7 +459,9 @@ class _Transport implements DeviceProvisioningTransport {
     final session = _Session()
       ..configurationGate = configurationGate
       ..preparationFailure = preparationFailure
-      ..requiresVoucher = requiresVoucher;
+      ..scanFailure = scanFailure
+      ..requiresVoucher = requiresVoucher
+      ..preparedDeviceId = preparedDeviceId;
     sessions.add(session);
     return session;
   }
@@ -328,7 +472,9 @@ class _Transport implements DeviceProvisioningTransport {
 
 class _Session implements DeviceProvisioningSession {
   Object? preparationFailure;
+  Object? scanFailure;
   bool requiresVoucher = true;
+  String? preparedDeviceId;
   String? sentVoucher;
   Future<void>? configurationGate;
   int writes = 0;
@@ -341,7 +487,7 @@ class _Session implements DeviceProvisioningSession {
     return DeviceProvisioningDescriptor(
       setup: SetupDescriptorV1.fromJson({
         ...descriptor.setup.toJson(),
-        'device_id': 'device-instance-${'a' * 64}',
+        'device_id': preparedDeviceId ?? 'device-instance-${'a' * 64}',
         'identity_fingerprint': 'p256:${'a' * 64}',
       }),
       expiresAt: descriptor.expiresAt,
@@ -367,13 +513,16 @@ class _Session implements DeviceProvisioningSession {
       );
 
   @override
-  Future<List<DeviceWifiNetwork>> scanNetworks() async => const [
-        DeviceWifiNetwork(
-          ssid: 'owner-wifi',
-          signalStrength: -40,
-          security: 'wpa2',
-        ),
-      ];
+  Future<List<DeviceWifiNetwork>> scanNetworks() async {
+    if (scanFailure != null) throw scanFailure!;
+    return const [
+      DeviceWifiNetwork(
+        ssid: 'owner-wifi',
+        signalStrength: -40,
+        security: 'wpa2',
+      ),
+    ];
+  }
 
   @override
   Future<CommissioningStatusEvidenceV1> configureNetwork({

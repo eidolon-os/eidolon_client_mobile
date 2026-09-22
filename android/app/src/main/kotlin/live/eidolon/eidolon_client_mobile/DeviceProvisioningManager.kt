@@ -16,19 +16,13 @@ import android.os.Build
 import android.os.Handler
 import android.os.SystemClock
 import android.util.Log
-import com.espressif.provisioning.DeviceConnectionEvent
 import com.espressif.provisioning.ESPConstants
-import com.espressif.provisioning.ESPDevice
-import com.espressif.provisioning.ESPProvisionManager
 import com.espressif.provisioning.WiFiAccessPoint
 import com.espressif.provisioning.listeners.ResponseListener
 import com.espressif.provisioning.listeners.WiFiScanListener
 import com.espressif.provisioning.utils.MessengeHelper
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
-import org.greenrobot.eventbus.EventBus
-import org.greenrobot.eventbus.Subscribe
-import org.greenrobot.eventbus.ThreadMode
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
 import espressif.Constants
@@ -48,11 +42,10 @@ import espressif.NetworkConfig
  *
  * Two things are worth knowing before reading further.
  *
- * The vendor client binds the process to the device's network while a session
- * is open, because that access point has no route to anything else. Eidolon,
- * rather than the vendor convenience API, owns that route lease: it is released
- * only after committed terminal evidence has been read and acknowledged. The
- * next Host request can therefore never race the final device request.
+ * Each visit owns a local-only Network and an HTTP transport bound to that
+ * network's sockets. No process-wide route or vendor connection event bus is
+ * shared with Host traffic or a later visit. Espressif Session/Security2 still
+ * own the authenticated protocol; this adapter owns cancellation and lifetime.
  *
  * Owner trust is staged before the network candidate. The device keeps the
  * provisioning service alive through validation and atomic commit, then the
@@ -108,15 +101,15 @@ class DeviceProvisioningManager(
         private const val TERMINAL_POLL_MILLIS = 500L
     }
 
-    private val provisioning: ESPProvisionManager =
-        ESPProvisionManager.getInstance(context.applicationContext)
     private val connectivity = context.applicationContext
         .getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private val lock = Any()
-    private var device: ESPDevice? = null
+    private var device: ProvisioningSession? = null
     private var connectResult: PendingResult? = null
-    private var subscribed = false
+    private var activeOperation: PendingResult? = null
+    private var activeFailure: ((String, String) -> Unit)? = null
+    private var sessionId: String? = null
 
     /**
      * One in-flight platform call, answered exactly once.
@@ -294,18 +287,18 @@ class DeviceProvisioningManager(
      * having nothing behind it. The same discipline was already in this app
      * once, in the path this one replaced.
      */
-    fun open(transportId: String, result: MethodChannel.Result) {
+    fun open(transportId: String, id: String, result: MethodChannel.Result) {
         synchronized(lock) {
-            if (connectResult?.isAnswered == false) {
+            if (connectResult?.isAnswered == false || activeOperation?.isAnswered == false) {
                 result.error(
                     "PROVISIONING_BUSY",
-                    "A device setup session is already opening",
+                    "A device setup operation is already in progress",
                     null,
                 )
                 return
             }
             releaseDeviceLocked()
-            subscribeLocked()
+            sessionId = id
             connectResult = PendingResult(result)
         }
         joinDeviceNetwork(transportId)
@@ -329,14 +322,11 @@ class DeviceProvisioningManager(
                     if (connectResult !== pending || networkCallback !== this) return
                     // One network request may report availability more than once.
                     if (device != null || pending.isAnswered) return
-                    connectivity.bindProcessToNetwork(network)
+                    // Only provisioning sockets use this network; Host traffic keeps its route.
                 }
                 Log.i(TAG, "Joined the device's setup network")
-                // Every request this process makes now goes over the device's
-                // network. The commissioning adapter retains this lease through
-                // committed terminal evidence and its ACK, then releases it
-                // before the next Host request.
-                mainHandler.post { startSession(transportId, pending) }
+                // Retain this network only for this visit's provisioning sockets.
+                mainHandler.post { startSession(network, pending) }
             }
 
             override fun onUnavailable() {
@@ -374,47 +364,28 @@ class DeviceProvisioningManager(
         }
     }
 
-    private fun startSession(transportId: String, pending: PendingResult) {
+    private fun startSession(network: Network, pending: PendingResult) {
         synchronized(lock) {
             if (connectResult !== pending || pending.isAnswered || device != null) return
         }
-        val espDevice = provisioning.createESPDevice(
-            ESPConstants.TransportType.TRANSPORT_SOFTAP,
-            ESPConstants.SecurityType.SECURITY_2,
-        )
-        espDevice.userName = SECURITY_USERNAME
-        espDevice.proofOfPossession = SECURITY_PASSPHRASE
-        espDevice.deviceName = transportId
-        synchronized(lock) { device = espDevice }
-        // The phone is already on the device's network and stays there, so this
-        // is the variant that authenticates rather than the one that joins.
-        mainHandler.postDelayed({
-            if (!pending.isAnswered) {
-                failConnection(pending, "DESCRIPTOR_TIMEOUT", "读取设备身份超时，请重试。")
+        val espDevice = ProvisioningSession(network, mainHandler) { error ->
+            mainHandler.post {
+                failConnection(pending, "DEVICE_DISCONNECTED", errorText(error))
             }
-        }, 30_000L)
-        espDevice.connectWiFiDevice()
-    }
-
-    @Subscribe(threadMode = ThreadMode.MAIN)
-    fun onDeviceConnectionEvent(event: DeviceConnectionEvent) {
-        val pending = synchronized(lock) { connectResult } ?: return
-        if (pending.isAnswered) return
-        when (event.eventType) {
-            ESPConstants.EVENT_DEVICE_CONNECTED -> readDescriptor(pending)
-            ESPConstants.EVENT_DEVICE_CONNECTION_FAILED ->
-                failConnection(
-                    pending,
-                    "DEVICE_UNREACHABLE",
-                    "Could not open a setup session with the device",
-                )
-            ESPConstants.EVENT_DEVICE_DISCONNECTED ->
-                failConnection(
-                    pending,
-                    "DEVICE_DISCONNECTED",
-                    "The device closed the setup session",
-                )
         }
+        synchronized(lock) { device = espDevice }
+        mainHandler.postDelayed({
+            if (!pending.isAnswered) failConnection(pending, "DESCRIPTOR_TIMEOUT", "读取设备身份超时，请重试。")
+        }, 30_000L)
+        espDevice.open(SECURITY_USERNAME, SECURITY_PASSPHRASE, object : ResponseListener {
+            override fun onSuccess(response: ByteArray?) {
+                if (device === espDevice && connectResult === pending) readDescriptor(pending)
+            }
+            override fun onFailure(error: Exception?) {
+                Log.w(TAG, "Device session handshake failed", error)
+                failConnection(pending, "DEVICE_SESSION_FAILED", errorText(error))
+            }
+        })
     }
 
     private fun failConnection(pending: PendingResult, code: String, message: String) {
@@ -422,9 +393,15 @@ class DeviceProvisioningManager(
             // A late loss/failure from the first SoftAP visit must not close
             // the connection owned by the second visit.
             if (connectResult !== pending) return
+            // The opening result may already be complete. Fail the operation
+            // currently using this visit, including terminal-evidence handling.
+            activeFailure?.invoke(code, message)
+            // A commit operation's failure handler owns its terminal result.
+            activeOperation = null
+            activeFailure = null
+            pending.error(code, message)
             releaseDeviceLocked()
         }
-        pending.error(code, message)
     }
 
     private fun readDescriptor(pending: PendingResult) {
@@ -494,18 +471,19 @@ class DeviceProvisioningManager(
     // cannot answer the platform call twice or close a subsequent session.
     private fun boundedRequest(
         result: MethodChannel.Result,
-        espDevice: ESPDevice,
+        espDevice: ProvisioningSession,
         code: String,
         message: String,
-    ): PendingResult {
-        val pending = PendingResult(result)
+    ): PendingResult? {
+        val pending = beginOperation(result) ?: return null
         mainHandler.postDelayed({
             if (!pending.isAnswered) {
                 Log.w(TAG, code)
                 synchronized(lock) {
-                    if (device === espDevice) releaseDeviceLocked()
+                    if (device === espDevice) {
+                        connectResult?.let { failConnection(it, code, message) }
+                    }
                 }
-                pending.error(code, message)
             }
         }, 30_000L)
         return pending
@@ -518,7 +496,7 @@ class DeviceProvisioningManager(
             result.error("PROVISIONING_CLOSED", "No setup session is open", null)
             return
         }
-        val pending = boundedRequest(result, espDevice, "DEVICE_SCAN_TIMEOUT", "扫描设备附近的 Wi-Fi 超时，请重试。")
+        val pending = boundedRequest(result, espDevice, "DEVICE_SCAN_TIMEOUT", "扫描设备附近的 Wi-Fi 超时，请重试。") ?: return
         Log.i(TAG, "Requesting device Wi-Fi scan")
         espDevice.scanNetworks(object : WiFiScanListener {
             override fun onWifiListReceived(points: ArrayList<WiFiAccessPoint>?) {
@@ -557,7 +535,7 @@ class DeviceProvisioningManager(
             result.error("PROVISIONING_CLOSED", "No setup session is open", null)
             return
         }
-        val pending = boundedRequest(result, espDevice, "TRUST_TIMEOUT", "确认设备归属超时，请重试。")
+        val pending = boundedRequest(result, espDevice, "TRUST_TIMEOUT", "确认设备归属超时，请重试。") ?: return
         Log.i(TAG, "Requesting device Owner preparation/trust")
         espDevice.sendDataToCustomEndPoint(
             TRUST_ENDPOINT,
@@ -567,10 +545,12 @@ class DeviceProvisioningManager(
                     val answer = response?.toString(StandardCharsets.UTF_8).orEmpty()
                     mainHandler.post {
                         if (answer.isEmpty()) {
-                            pending.error(
-                                "TRUST_UNANSWERED",
-                                "The device did not answer whether it accepted the Host",
-                            )
+                            synchronized(lock) {
+                                if (device === espDevice) connectResult?.let {
+                                    failConnection(it, "TRUST_UNANSWERED",
+                                        "The device did not answer whether it accepted the Host")
+                                }
+                            }
                         } else {
                             Log.i(TAG, "Device Owner preparation/trust response received")
                             pending.success(answer)
@@ -599,7 +579,7 @@ class DeviceProvisioningManager(
             result.error("PROVISIONING_CLOSED", "No setup session is open", null)
             return
         }
-        val pending = PendingResult(result)
+        val pending = beginOperation(result) ?: return
         val lease = CommissioningClientLeaseCore()
         var terminalDeadlineMillis = SystemClock.elapsedRealtime() + TERMINAL_TIMEOUT_MILLIS
         var committedStatus: JSONObject? = null
@@ -610,7 +590,11 @@ class DeviceProvisioningManager(
                 // This is the one route-lease release point. No vendor callback
                 // may unbind SoftAP before the Eidolon core reaches terminal.
                 synchronized(lock) {
-                    if (device === espDevice) releaseDeviceLocked()
+                    if (device === espDevice) {
+                        activeOperation = null
+                        activeFailure = null
+                        releaseDeviceLocked()
+                    }
                 }
                 if (success) {
                     val status = committedStatus
@@ -649,6 +633,17 @@ class DeviceProvisioningManager(
             ) {
                 Log.w(TAG, "Commissioning client lease failed: $code: $message")
                 finish(false, code, message)
+            }
+        }
+
+        activeFailure = { code, message ->
+            if (lease.state == CommissioningClientLeaseState.AcknowledgingTerminal) {
+                // Committed device evidence survives loss of the ACK transport.
+                val action = lease.handle(CommissioningClientLeaseEvent.TerminalAckUnavailable)
+                finish(action == CommissioningClientLeaseAction.ReleaseSucceeded,
+                    terminalFailureCode ?: code, message)
+            } else {
+                fail(code, message)
             }
         }
 
@@ -874,7 +869,11 @@ class DeviceProvisioningManager(
 
     /** Leave the device alone and give the phone its own network back. */
     fun close() {
-        synchronized(lock) { releaseDeviceLocked() }
+        synchronized(lock) {
+            val opening = connectResult
+            if (opening != null) failConnection(opening, "PROVISIONING_CLOSED", "Setup session closed")
+            else releaseDeviceLocked()
+        }
     }
 
     fun destroy() {
@@ -887,22 +886,42 @@ class DeviceProvisioningManager(
                 }
             }
             scanReceiver = null
-            releaseDeviceLocked()
-            if (subscribed) {
-                EventBus.getDefault().unregister(this)
-                subscribed = false
-            }
+            close()
         }
     }
 
-    private fun subscribeLocked() {
-        if (subscribed) return
-        EventBus.getDefault().register(this)
-        subscribed = true
+    fun owns(id: String?): Boolean = id != null && id == sessionId
+
+    private fun beginOperation(result: MethodChannel.Result): PendingResult? {
+        if (activeOperation?.isAnswered == false) {
+            result.error("PROVISIONING_BUSY", "A setup request is already in progress", null)
+            return null
+        }
+        val pending = PendingResult(result)
+        activeOperation = pending
+        activeFailure = { code, message -> pending.error(code, message) }
+        return pending
     }
 
     private fun releaseDeviceLocked() {
+        val opening = connectResult
+        val operation = activeOperation
         connectResult = null
+        activeOperation = null
+        activeFailure = null
+        sessionId = null
+        opening?.error("PROVISIONING_CLOSED", "Setup session closed")
+        operation?.error("PROVISIONING_CLOSED", "Setup session closed")
+        // Cancel sockets before releasing the visit object. No process route was changed.
+        device?.let { espDevice ->
+            try {
+                // Closes this visit's sockets and its authenticated protocol state.
+                espDevice.disconnectDevice()
+            } catch (error: Exception) {
+                Log.w(TAG, "Closing the setup session failed", error)
+            }
+        }
+        device = null
         networkCallback?.let { callback ->
             try {
                 connectivity.unregisterNetworkCallback(callback)
@@ -911,19 +930,6 @@ class DeviceProvisioningManager(
             }
         }
         networkCallback = null
-        // Give the phone its own network back before anything else is asked of
-        // it — the Host is not on the device's access point.
-        connectivity.bindProcessToNetwork(null)
-        device?.let { espDevice ->
-            try {
-                // Also what releases the process from the device's network.
-                espDevice.disconnectDevice()
-            } catch (error: Exception) {
-                Log.w(TAG, "Closing the setup session failed", error)
-            }
-        }
-        device = null
-        connectResult = null
     }
 
     private fun commissioningFailureMessage(code: String?): String = when (code) {

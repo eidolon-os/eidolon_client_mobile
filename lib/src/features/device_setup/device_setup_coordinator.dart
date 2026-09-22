@@ -136,6 +136,7 @@ class DeviceSetupCoordinator {
     /// is ignored: an 8-second timeout at the one moment the device is ready.
     CommissioningVoucher? voucher,
     String? companionId,
+    String? expectedDeviceId,
   }) async {
     return _run(
         setupId,
@@ -147,6 +148,7 @@ class DeviceSetupCoordinator {
               onboardingTarget: onboardingTarget,
               voucher: voucher,
               companionId: companionId,
+              expectedDeviceId: expectedDeviceId,
             ));
   }
 
@@ -158,10 +160,15 @@ class DeviceSetupCoordinator {
     required DeviceOnboardingTarget onboardingTarget,
     CommissioningVoucher? voucher,
     String? companionId,
+    String? expectedDeviceId,
   }) async {
     final saved = await checkpoints.load(setupId);
     if (saved != null) {
-      if (saved.requestId != requestId || !belongsTo(saved, onboardingTarget)) {
+      if (saved.requestId != requestId ||
+          !belongsTo(saved, onboardingTarget) ||
+          (expectedDeviceId != null &&
+              saved.deviceId != null &&
+              saved.deviceId != expectedDeviceId)) {
         throw const DeviceSetupException(
             code: 'setup_identity_mismatch',
             message: 'This setup belongs to a different request or Owner');
@@ -202,6 +209,13 @@ class DeviceSetupCoordinator {
       }
       session = await transport.open(candidate);
       _validateTrust(candidate, session.descriptor);
+      if (expectedDeviceId != null &&
+          session.descriptor.deviceId != expectedDeviceId) {
+        throw const DeviceSetupException(
+          code: 'device_identity_changed',
+          message: '设备身份在两次连接之间发生变化，未提交网络配置。请返回重新确认设备。',
+        );
+      }
       checkpoint = checkpoint.copyWith(
         provisioningState: DeviceProvisioningState.configuringNetwork,
         deviceId: session.descriptor.deviceId,

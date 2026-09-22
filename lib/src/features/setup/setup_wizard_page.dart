@@ -9,6 +9,7 @@ import '../../theme/neon_components.dart';
 import 'package:flutter/services.dart';
 
 import 'commissioning_transport.dart';
+import 'change_network_page.dart';
 import 'controller_key_bridge.dart';
 import 'development_lan_commissioning.dart';
 import 'host_registry.dart';
@@ -734,36 +735,70 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         : ble?.error != null
             ? '重试识别'
             : '添加';
-    final description = item.lan != null ? '主机已联网' : '附近发现';
+    final description = item.lan != null ? '当前局域网已发现' : '蓝牙已发现，尚未确认局域网连接';
     final displayName =
         item.known?.readableName ?? item.lan?.displayName ?? ble!.host.name;
     return Card(
       key: ValueKey(
           'discovered-host-${item.lan?.endpoint.hostId ?? ble!.host.address}'),
-      child: ListTile(
-        leading: const Icon(Icons.memory),
-        title: Text(displayName),
-        subtitle: HostDiscoveryDetails(
-          displayName: displayName,
-          known: item.known,
-          lan: item.lan,
-          nearby: ble?.host,
-          endpoint: item.lan?.endpoint ?? ble?.endpoint,
-          status: identifying
-              ? '正在识别…'
-              : ble?.error ??
-                  '${item.known != null ? '已添加' : '未添加'} · $description',
+      child: Column(children: [
+        ListTile(
+          leading: const Icon(Icons.memory),
+          title: Text(displayName),
+          subtitle: HostDiscoveryDetails(
+            displayName: displayName,
+            known: item.known,
+            lan: item.lan,
+            nearby: ble?.host,
+            endpoint: item.lan?.endpoint ?? ble?.endpoint,
+            status: identifying
+                ? '正在识别…'
+                : ble?.error ??
+                    '${item.known != null ? '已添加' : '未添加'} · $description',
+          ),
+          trailing: identifying
+              ? const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : TextButton(
+                  onPressed: _busy ? null : () => _openDiscoveredHost(item),
+                  child: Text(action),
+                ),
+          onTap: _busy ? null : () => _openDiscoveredHost(item),
         ),
-        trailing: identifying
-            ? const SizedBox.square(
-                dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
-            : TextButton(
-                onPressed: _busy ? null : () => _openDiscoveredHost(item),
-                child: Text(action),
-              ),
-        onTap: _busy ? null : () => _openDiscoveredHost(item),
-      ),
+        if (item.known != null && ble != null && item.lan == null)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('更换路由器或 Wi-Fi 后，可以通过蓝牙为这台主机设置网络，无需重新添加。'),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: ValueKey('restore-host-network-${item.known!.hostId}'),
+                  onPressed: _busy ? null : () => _restoreNetwork(item),
+                  icon: const Icon(Icons.wifi),
+                  label: const Text('为这台主机设置 Wi-Fi'),
+                ),
+              ],
+            ),
+          ),
+      ]),
     );
+  }
+
+  Future<void> _restoreNetwork(_DiscoveredHost item) async {
+    await _transport.close();
+    if (!mounted) return;
+    final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(
+      builder: (_) => ChangeNetworkPage(
+        host: item.known!,
+        nearbyHost: item.ble!.host,
+        transport: _transport,
+        controllerKeys: _controllerKeys,
+      ),
+    ));
+    if (mounted && changed == true) widget.onComplete(item.known!);
   }
 
   void _openDiscoveredHost(_DiscoveredHost item) {

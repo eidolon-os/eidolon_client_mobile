@@ -149,7 +149,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   }
 
   Future<void> _openNetworkChange() async {
-    await Navigator.of(context).push<void>(
+    final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => ChangeNetworkPage(
           host: _controller.host,
@@ -158,7 +158,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         ),
       ),
     );
-    if (mounted) await _controller.connect();
+    if (mounted && changed == true) await _controller.connect(allowBle: false);
   }
 
   Future<void> _openConversation({String? companionId}) async {
@@ -921,13 +921,24 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                 icon: const Icon(Icons.arrow_back),
                 label: Text(widget.onHostSaved != null ? '打开主机设置' : '回到主机管理'),
               ),
-            ] else
+            ] else ...[
               FilledButton.icon(
                 key: const Key('retry-local-connection'),
                 onPressed: _controller.connect,
                 icon: const Icon(Icons.refresh),
                 label: const Text('重新连接'),
               ),
+              const SizedBox(height: 16),
+              const Text('如果只是手机换了网络，请先连接主机所在的网络。'
+                  '如果主机也需要换 Wi-Fi，请靠近主机，通过蓝牙设置；无需删除或重新添加主机。'),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                key: const Key('restore-host-network'),
+                onPressed: _openNetworkChange,
+                icon: const Icon(Icons.wifi),
+                label: const Text('为这台主机设置 Wi-Fi'),
+              ),
+            ],
           ],
         ],
       ),

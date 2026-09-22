@@ -208,10 +208,10 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
   bool get _hostOffersAssignment =>
       hostOffersBodyAssignment(widget.controller.managementCapabilities);
 
-  Future<void> _openProvisioning() async {
+  Future<void> _openProvisioning({MountedDevice? existing}) async {
     final admission = HostControllerDeviceAdmission(widget.controller);
     final transport = widget.deviceProvisioning ?? PlatformDeviceProvisioning();
-    await Navigator.of(context).push<void>(
+    final completedDeviceId = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder: (_) => DeviceSetupPage(
           transport: transport,
@@ -219,10 +219,27 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
           checkpoints:
               widget.checkpoints ?? PersistentDeviceSetupCheckpointStore(),
           loadTarget: widget.controller.deviceOnboardingTarget,
+          expectedDeviceId: existing?.deviceId,
+          knownDevices: {
+            for (final device
+                in widget.controller.devices?.devices ?? <MountedDevice>[])
+              device.deviceId: device.label,
+          },
         ),
       ),
     );
-    if (mounted) await _refreshThenFinish();
+    if (!mounted) return;
+    await widget.controller.refreshDevices();
+    if (!mounted || completedDeviceId == null || existing != null) return;
+    // Only continue the device this flow actually completed. Cancelling must
+    // never select an unrelated device from the inventory.
+    final devices = widget.controller.devices?.devices ?? <MountedDevice>[];
+    for (final device in devices) {
+      if (device.deviceId == completedDeviceId) {
+        await _openDevice(device);
+        break;
+      }
+    }
   }
 
   Future<void> _openAdmission() async {
@@ -278,6 +295,7 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
       MaterialPageRoute(
         builder: (_) => MountedDeviceDetailPage(
           device: device,
+          onChangeNetwork: () => _openProvisioning(existing: device),
           onRemove: (deviceId, requestId) =>
               controller.removeDevice(deviceId: deviceId, requestId: requestId),
           loadCompanions: _allCompanions,
@@ -405,7 +423,7 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
             key: const Key('provision-device-from-product'),
             onPressed: controller.devicesBusy ? null : _openProvisioning,
             icon: const Icon(Icons.add_link),
-            label: const Text('配置新设备网络（开发）'),
+            label: const Text('添加设备或恢复网络'),
           ),
           const SizedBox(height: 8),
           Text(
@@ -461,7 +479,7 @@ class _MountedDeviceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final (label, color) = switch (device.state) {
       MountedDeviceState.ready => (
-          '已接入',
+          '已添加',
           Theme.of(context).colorScheme.primary,
         ),
       MountedDeviceState.awaitingCompanion => (
@@ -502,6 +520,7 @@ class _MountedDeviceCard extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: Neon.ink)),
                 const SizedBox(height: Neon.s1),
+                const Text('连接状态未知', style: TextStyle(color: Neon.inkFaint)),
                 // What kind of thing it is. The revision is a fact about a
                 // mount record, and nobody reading this list is asking about a
                 // mount record. When the Host cannot say, this is a long
@@ -533,9 +552,11 @@ class MountedDeviceDetailPage extends StatefulWidget {
     this.progress,
     this.loadFace,
     this.reload,
+    this.onChangeNetwork,
   });
 
   final MountedDevice device;
+  final Future<void> Function()? onChangeNetwork;
   final DeviceCompanionSetupStore? progress;
   final CompanionFaceLoader? loadFace;
   final Future<MountedDevice> Function()? reload;
@@ -1141,7 +1162,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
   Widget build(BuildContext context) {
     final device = _device;
     final stateLabel = switch (device.state) {
-      MountedDeviceState.ready => '已接入',
+      MountedDeviceState.ready => '已添加',
       MountedDeviceState.awaitingCompanion => '没有谁应答',
       MountedDeviceState.awaitingOutputs => '还没定它怎么表达',
       MountedDeviceState.accessRevoked => '已停用，待移除',
@@ -1155,6 +1176,13 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          if (widget.onChangeNetwork != null)
+            OutlinedButton.icon(
+              key: const Key('change-device-network'),
+              onPressed: _busy ? null : widget.onChangeNetwork,
+              icon: const Icon(Icons.wifi),
+              label: const Text('恢复连接 / 更换 Wi-Fi'),
+            ),
           if (_pending != null)
             Card(
                 child: Padding(
@@ -1281,9 +1309,8 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
           // precondition; it is the thing that creates one.
           Text(
             '移除后这台设备立即失去访问，它的挂载被撤掉，你为它选的 Companion 绑定也随之失效。'
-            '这不是设备重新登记的前提：主机不要求先移除 —— 已归属的设备再登记一次，'
-            '主机会在原记录上更新，不会多出一台设备。'
-            '移除之后它反而回不来了 —— 要重新加入，得有人带着 Controller 再做一次现场确认。',
+            '只更换 Wi-Fi 时，请使用“恢复连接 / 更换 Wi-Fi”，无需先移除。'
+            '保留原身份的设备会继续使用原记录；设备被重置或身份改变后，需要另行恢复或重新认领。',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],

@@ -46,6 +46,25 @@ DeviceProvisioningDescriptor _descriptorExpiringAt(DateTime expiresAt) =>
     DeviceProvisioningDescriptor(setup: _setup, expiresAt: expiresAt);
 
 void main() {
+  test(
+      'second visit refuses a different device before writing network or admitting',
+      () async {
+    final session = _Session(_descriptor);
+    final admission = _Admission(_projection());
+    final result = await _coordinator(
+            session, admission, InMemoryDeviceSetupCheckpointStore())
+        .provisionAndAdmit(
+      setupId: 'wrong-device',
+      requestId: 'intent-wrong-device',
+      candidate: _candidate,
+      credentials: const DeviceWifiCredentials(ssid: 'Home', password: 'pw'),
+      onboardingTarget: deviceOnboardingTargetFixture(),
+      expectedDeviceId: namedDeviceInstanceId('another-device'),
+    );
+    expect(result.failure?.code, 'device_identity_changed');
+    expect(session.configureCalls, 0);
+  });
+
   test('concurrent confirmation and restart never repeat committed networking',
       () async {
     final session = _Session(_descriptor)..failClose = true;

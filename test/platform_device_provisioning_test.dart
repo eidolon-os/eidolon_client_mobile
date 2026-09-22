@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/platform_device_provisioning.dart';
@@ -68,6 +69,134 @@ void main() {
   PlatformDeviceProvisioning build() => PlatformDeviceProvisioning(
         clock: () => now,
       );
+
+  test('cancel during open rejects a late descriptor and closes only that visit', () async {
+    final response = Completer<String>();
+    final entered = Completer<void>();
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      if (call.method == 'openProvisioningSession') {
+        entered.complete();
+        return response.future;
+      }
+      return null;
+    });
+    final transport = build();
+    final opening = transport.open(const DeviceProvisioningCandidate(
+      transportId: 'eidolon-test', displayName: 'test', transportKind: 'softap',
+      trust: SetupDescriptorTrustV1.developmentTofu,
+    ));
+    final rejected = expectLater(opening, throwsA(
+      isA<DeviceProvisioningTransportException>().having((e) => e.code, 'code', 'provisioning_closed')));
+    await entered.future;
+    await transport.close();
+    response.complete(descriptorJson());
+    await rejected;
+    final visit = (calls.first.arguments as Map)['sessionId'];
+    expect(calls.skip(1).every((c) => c.method == 'closeProvisioningSession' &&
+      (c.arguments as Map)['sessionId'] == visit), isTrue);
+  });
+
+  test('native busy refusal retains the preceding visit for close', () async {
+    final calls = <MethodCall>[];
+    var opens = 0;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      if (call.method == 'openProvisioningSession') {
+        if (++opens == 2) throw PlatformException(code: 'PROVISIONING_BUSY');
+        return descriptorJson();
+      }
+      return null;
+    });
+    const candidate = DeviceProvisioningCandidate(
+      transportId: 'eidolon-test', displayName: 'test', transportKind: 'softap',
+      trust: SetupDescriptorTrustV1.developmentTofu,
+    );
+    final transport = build();
+    await transport.open(candidate);
+    final previous = (calls.first.arguments as Map)['sessionId'];
+    await expectLater(transport.open(candidate), throwsA(isA<DeviceProvisioningTransportException>()));
+    await transport.close();
+    expect(calls.last.method, 'closeProvisioningSession');
+    expect((calls.last.arguments as Map)['sessionId'], previous);
+    expect((calls[calls.length - 2].arguments as Map)['sessionId'], isNot(previous));
+  });
+
+  test('invalid descriptor releases the native visit immediately', () async {
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      if (call.method == 'openProvisioningSession') return '{}';
+      return null;
+    });
+    final transport = build();
+    await expectLater(transport.open(const DeviceProvisioningCandidate(
+      transportId: 'eidolon-test', displayName: 'test', transportKind: 'softap',
+      trust: SetupDescriptorTrustV1.developmentTofu,
+    )), throwsA(isA<DeviceProvisioningTransportException>()));
+    expect(calls.map((c) => c.method), ['openProvisioningSession', 'closeProvisioningSession']);
+    expect(calls.first.arguments, containsPair('sessionId', (calls.last.arguments as Map)['sessionId']));
+    await transport.close();
+    expect(calls.length, 2);
+  });
+
+  test('concurrent open cannot replace a pending visit', () async {
+    final response = Completer<String>();
+    final entered = Completer<void>();
+    var opens = 0;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'openProvisioningSession') {
+        opens++;
+        entered.complete();
+        return response.future;
+      }
+      return null;
+    });
+    const candidate = DeviceProvisioningCandidate(
+      transportId: 'eidolon-test', displayName: 'test', transportKind: 'softap',
+      trust: SetupDescriptorTrustV1.developmentTofu,
+    );
+    final transport = build();
+    final first = transport.open(candidate);
+    await entered.future;
+    await expectLater(transport.open(candidate), throwsA(
+      isA<DeviceProvisioningTransportException>().having((e) => e.code, 'code', 'provisioning_busy')));
+    response.complete(descriptorJson());
+    final session = await first;
+    expect(opens, 1);
+    await session.close();
+  });
+
+  test(
+      'old visit close and requests retain their own scope after a new visit opens',
+      () async {
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      if (call.method == 'openProvisioningSession') return descriptorJson();
+      if (call.method == 'provisioningScanNetworks') return <Object>[];
+      return null;
+    });
+    final transport = build();
+    const candidate = DeviceProvisioningCandidate(
+      transportId: 'eidolon-test',
+      displayName: 'test',
+      transportKind: 'softap',
+      trust: SetupDescriptorTrustV1.developmentTofu,
+    );
+    final first = await transport.open(candidate);
+    final second = await transport.open(candidate);
+    final firstId = (calls[0].arguments as Map)['sessionId'];
+    final secondId = (calls[1].arguments as Map)['sessionId'];
+    expect(firstId, isNot(secondId));
+    await first.close();
+    await second.scanNetworks();
+    await transport.close();
+    expect((calls[2].arguments as Map)['sessionId'], firstId);
+    expect((calls[3].arguments as Map)['sessionId'], secondId);
+    expect((calls[4].arguments as Map)['sessionId'], secondId);
+  });
 
   test('configuration failures use the same typed error boundary as discovery',
       () async {

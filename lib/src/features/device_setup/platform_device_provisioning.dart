@@ -52,7 +52,8 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
       'DEVICE_SCAN_STALE' => '手机刚才没能重新扫描一次,所以还不知道附近有什么。稍等几秒再试一次。',
       'DEVICE_SCAN_BUSY' => '正在扫描,请稍候。',
       'WIFI_PERMISSION_DENIED' => '设置设备需要「附近设备」权限。',
-      'DEVICE_UNREACHABLE' => '连不上这台设备。它的设置窗口可能已经超时,按一下它的按键再试。',
+      'DEVICE_UNREACHABLE' => '连不上这台设备。请确认设备仍在网络设置模式，再重新连接。',
+      'DEVICE_SESSION_FAILED' => _withDetail('已连接设备热点，但建立安全会话失败', error),
       'DEVICE_DISCONNECTED' => '设备中断了这次设置。请再试一次。',
       // The detail is kept. This one sentence has stood in front of three
       // unrelated faults so far, none of them the device's silence.
@@ -114,46 +115,86 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
         .toList(growable: false);
   }
 
+  static int _nextVisit = 0;
+  String? _activeVisit;
+  bool _opening = false;
+
   @override
   Future<DeviceProvisioningSession> open(
     DeviceProvisioningCandidate candidate,
   ) async {
     _requireAndroid();
-    final String? raw;
-    try {
-      raw = await _channel.invokeMethod<String>(
-        'openProvisioningSession',
-        {'transportId': candidate.transportId},
-      );
-    } on PlatformException catch (error) {
-      _translate(error);
-    }
-    if (raw == null || raw.isEmpty) {
+    if (_opening) {
       throw const DeviceProvisioningTransportException(
-        'descriptor_missing',
-        '设备没有说明自己是什么,无法继续设置。',
+        'provisioning_busy', '正在连接设备，请稍候。',
       );
     }
-    return _PlatformProvisioningSession(
-      channel: _channel,
-      descriptor: _parseDescriptor(raw, now: _clock()),
-    );
+    final visit = '${DateTime.now().microsecondsSinceEpoch}-${++_nextVisit}';
+    final previousVisit = _activeVisit;
+    _opening = true;
+    _activeVisit = visit;
+    try {
+      final raw = await _channel.invokeMethod<String>(
+        'openProvisioningSession',
+        {'transportId': candidate.transportId, 'sessionId': visit},
+      );
+      if (_activeVisit != visit) {
+        throw const DeviceProvisioningTransportException(
+          'provisioning_closed', '这次设备连接已取消。',
+        );
+      }
+      if (raw == null || raw.isEmpty) {
+        throw const DeviceProvisioningTransportException(
+          'descriptor_missing', '设备没有说明自己是什么,无法继续设置。',
+        );
+      }
+      return _PlatformProvisioningSession(
+        channel: _channel,
+        sessionId: visit,
+        descriptor: _parseDescriptor(raw, now: _clock()),
+      );
+    } catch (error) {
+      if (_activeVisit == visit) {
+        // A native busy refusal never replaced the preceding visit.
+        _activeVisit = error is PlatformException && error.code == 'PROVISIONING_BUSY'
+            ? previousVisit : null;
+      }
+      try {
+        await _channel.invokeMethod<void>(
+          'closeProvisioningSession', {'sessionId': visit},
+        );
+      } catch (_) {
+        // Preserve the original open/descriptor error. Native failures own
+        // cleanup too; this scoped close cannot invalidate a different visit.
+      }
+      if (error is PlatformException) _translate(error);
+      rethrow;
+    } finally {
+      _opening = false;
+    }
   }
 
   @override
   Future<void> close() async {
     if (defaultTargetPlatform != TargetPlatform.android) return;
-    await _channel.invokeMethod<void>('closeProvisioningSession');
+    final visit = _activeVisit;
+    _activeVisit = null;
+    if (visit != null) {
+      await _channel
+          .invokeMethod<void>('closeProvisioningSession', {'sessionId': visit});
+    }
   }
 }
 
 class _PlatformProvisioningSession implements DeviceProvisioningSession {
   _PlatformProvisioningSession({
     required MethodChannel channel,
+    required this.sessionId,
     required this.descriptor,
   }) : _channel = channel;
 
   final MethodChannel _channel;
+  final String sessionId;
 
   @override
   DeviceProvisioningDescriptor descriptor;
@@ -164,6 +205,7 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
     try {
       final raw =
           await _channel.invokeMethod<String>('provisioningHandOverTrust', {
+        'sessionId': sessionId,
         'payloadJson': jsonEncode({
           'contract_version': '1',
           'prepare_only': true,
@@ -209,6 +251,7 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
     try {
       final raw = await _channel.invokeListMethod<Object?>(
         'provisioningScanNetworks',
+        {'sessionId': sessionId},
       );
       return (raw ?? const <Object?>[])
           .map((item) => _networkFromPlatform(
@@ -237,6 +280,7 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
       final handover = await _channel.invokeMethod<String>(
         'provisioningHandOverTrust',
         {
+          'sessionId': sessionId,
           'payloadJson': jsonEncode({
             'contract_version': '1',
             'owner_domain_id': onboardingTarget.ownerDomainId,
@@ -263,6 +307,7 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
       final rawEvidence = await _channel.invokeMapMethod<Object?, Object?>(
         'provisioningConfigureNetwork',
         {
+          'sessionId': sessionId,
           'ssid': credentials.ssid,
           'password': credentials.password,
         },
@@ -345,7 +390,8 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
 
   @override
   Future<void> close() async {
-    await _channel.invokeMethod<void>('closeProvisioningSession');
+    await _channel.invokeMethod<void>(
+        'closeProvisioningSession', {'sessionId': sessionId});
   }
 }
 

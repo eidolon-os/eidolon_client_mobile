@@ -114,6 +114,8 @@ class _FakeCommissioningTransport implements CommissioningTransport {
 }
 
 class _FakeChangeNetworkTransport implements CommissioningTransport {
+  _FakeChangeNetworkTransport({this.confirmState = 'succeeded'});
+  final String confirmState;
   final operations = <String>[];
 
   @override
@@ -169,7 +171,10 @@ class _FakeChangeNetworkTransport implements CommissioningTransport {
           'operation': {'state': 'waiting_confirmation'},
         },
       'wifi.confirm' => {
-          'operation': {'state': 'succeeded'},
+          'operation': {'state': confirmState},
+        },
+      'wifi.rollback' => {
+          'operation': {'state': 'rolled_back'}
         },
       _ => throw StateError('Unexpected operation $operation'),
     };
@@ -210,6 +215,64 @@ void main() {
     expect(identical(selected, saved), isTrue);
     expect((await registry.load()).single.displayName, '书房 Mac');
     expect((await registry.load()).single.claimedAt, saved.claimedAt);
+  });
+
+  testWidgets(
+      'saved BLE Host opens authenticated Wi-Fi recovery without reclaiming',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final saved = hostFixture(lastKnownBaseUrl: 'https://192.168.100.19:9002');
+    final registry = InMemoryHostRegistry([saved]);
+    final transport = _FakeChangeNetworkTransport();
+    ManagedHost? selected;
+    await tester.pumpWidget(MaterialApp(
+        home: SetupWizardPage(
+      registry: registry,
+      transport: transport,
+      controllerKeys: _FakeControllerKeyBridge(),
+      developmentLanCommissioning: emptyLanCommissioning(),
+      onComplete: (host) => selected = host,
+    )));
+    await tester.tap(find.byKey(const Key('scan-nearby-hosts')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('尚未确认局域网连接'), findsOneWidget);
+    await tester
+        .tap(find.byKey(ValueKey('restore-host-network-${saved.hostId}')));
+    await tester.pumpAndSettle();
+    expect(find.text('New Home'), findsOneWidget);
+    expect(transport.operations,
+        ['controller.challenge', 'controller.authenticate', 'wifi.scan']);
+    expect(selected, isNull);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(selected, isNull);
+    expect((await registry.load()).single.lastKnownBaseUrl,
+        saved.lastKnownBaseUrl);
+  });
+
+  testWidgets(
+      'unconfirmed Wi-Fi change rolls back instead of reporting success',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final transport =
+        _FakeChangeNetworkTransport(confirmState: 'waiting_confirmation');
+    await tester.pumpWidget(MaterialApp(
+        home: ChangeNetworkPage(
+      host: hostFixture(),
+      transport: transport,
+      controllerKeys: _FakeControllerKeyBridge(),
+      nearbyHost: const NearbyEidolonHost(
+          address: 'AA:BB', name: 'Eidolon', hostMarker: '4c0285', rssi: -41),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('New Home'));
+    await tester.enterText(find.byType(TextField).last, 'new-network-secret');
+    await tester.tap(find.byKey(const Key('confirm-network-change')));
+    await tester.pumpAndSettle();
+    expect(find.text('Wi-Fi 已更换'), findsNothing);
+    expect(transport.operations.last, 'wifi.rollback');
   });
 
   test('verifies the signed dynamic TLS endpoint against the Host credential',

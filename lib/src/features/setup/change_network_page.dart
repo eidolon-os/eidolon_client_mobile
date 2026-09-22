@@ -19,11 +19,13 @@ class ChangeNetworkPage extends StatefulWidget {
     required this.host,
     this.transport,
     this.controllerKeys,
+    this.nearbyHost,
   });
 
   final ManagedHost host;
   final CommissioningTransport? transport;
   final ControllerKeyBridge? controllerKeys;
+  final NearbyEidolonHost? nearbyHost;
 
   @override
   State<ChangeNetworkPage> createState() => _ChangeNetworkPageState();
@@ -43,6 +45,7 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
   bool _busy = false;
   bool _connected = false;
   bool _complete = false;
+  String? _networkStatus;
   late String _operationId = _uuidV4();
 
   @override
@@ -50,6 +53,11 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
     super.initState();
     _transport = widget.transport ?? PlatformBleCommissioningTransport();
     _controllerKeys = widget.controllerKeys ?? PlatformControllerKeyBridge();
+    if (widget.nearbyHost case final nearby?) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_connect(nearby));
+      });
+    }
   }
 
   @override
@@ -78,6 +86,7 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
           .toList();
       if (nearby.isEmpty) nearby = discovered.toList();
       nearby.sort((a, b) => b.rssi.compareTo(a.rssi));
+      if (!mounted) return;
       if (nearby.isEmpty) {
         throw const CommissioningRequestException(
           'host_not_found',
@@ -133,7 +142,14 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
           '主机没有返回 Wi-Fi 列表',
         );
       }
+      if (!mounted) return;
+      final current = response['current_network'];
       setState(() {
+        _networkStatus = current is Map
+            ? current['state'] == 'connected'
+                ? '主机当前 Wi-Fi：${current['ssid'] ?? '已连接'}。请选择希望主机使用的网络。'
+                : '主机当前未连接 Wi-Fi。请选择手机所在的网络。'
+            : '请选择手机所在的 Wi-Fi；蓝牙连接不代表手机能通过局域网访问主机。';
         _networks = rawNetworks
             .whereType<Map<String, dynamic>>()
             .map(WifiNetwork.fromJson)
@@ -174,11 +190,17 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
       }
       if (operation['state'] == 'waiting_confirmation') {
         staged = true;
-        await _transport
+        final confirmed = await _transport
             .request('wifi.confirm', {'operation_id': _operationId});
+        if (confirmed['operation'] is! Map ||
+            (confirmed['operation'] as Map)['state'] != 'succeeded') {
+          throw const CommissioningRequestException(
+              'network_confirm_failed', '主机没有确认新 Wi-Fi 已保存');
+        }
         staged = false;
       }
       await _transport.close();
+      if (!mounted) return;
       setState(() {
         _complete = true;
         _progress = null;
@@ -209,6 +231,8 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
       if (mounted) setState(() => _error = _friendlyError(error));
     } on PlatformException catch (error) {
       if (mounted) setState(() => _error = error.message ?? '手机无法完成蓝牙操作');
+    } on Object {
+      if (mounted) setState(() => _error = '连接中断，请靠近主机后重试。');
     } finally {
       if (mounted) {
         setState(() {
@@ -240,15 +264,14 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
             Text(widget.host.readableName,
                 style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 8),
-            const Text(
-                '此操作只修改 NetworkManager 的 Wi-Fi profile，不会重新认领、切换 Owner 或清除数据。'),
+            const Text('通过蓝牙为已添加的主机设置 Wi-Fi。主机无需先联网，原有管理权限和数据会保留。'),
             const SizedBox(height: 20),
             if (!_connected && !_complete) ...[
               for (final host in _nearby)
                 Card(
                   child: ListTile(
                     title: Text(host.name),
-                    subtitle: Text('${host.rssi} dBm · 与 Host 身份匹配'),
+                    subtitle: Text('${host.rssi} dBm · 连接后验证主机身份'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: _busy ? null : () => _connect(host),
                   ),
@@ -261,6 +284,7 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
               ),
             ],
             if (_connected && !_complete) ...[
+              if (_networkStatus != null) Text(_networkStatus!),
               for (final network in _networks)
                 ListTile(
                   selected: _selected == network,
@@ -311,10 +335,13 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
               const Icon(Icons.check_circle, size: 64, color: Neon.ok),
               const SizedBox(height: 12),
               const Text('Wi-Fi 已更换', textAlign: TextAlign.center),
+              const SizedBox(height: 8),
+              const Text('请让手机连接同一网络。返回后会重新查找主机并验证连接。',
+                  textAlign: TextAlign.center),
               const SizedBox(height: 16),
               FilledButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('完成'),
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('返回并连接主机'),
               ),
             ],
             if (_progress != null) ...[

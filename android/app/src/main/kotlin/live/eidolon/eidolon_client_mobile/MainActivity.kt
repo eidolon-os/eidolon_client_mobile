@@ -131,21 +131,23 @@ class MainActivity : FlutterActivity() {
                 }
                 "openProvisioningSession" -> deviceProvisioning.open(
                     call.argument<String>("transportId") ?: error("transportId is required"),
+                    call.argument<String>("sessionId") ?: error("sessionId is required"),
                     result,
                 )
-                "provisioningScanNetworks" -> deviceProvisioning.scanNetworks(result)
-                "provisioningHandOverTrust" -> deviceProvisioning.handOverTrust(
-                    call.argument<String>("payloadJson") ?: error("payloadJson is required"),
-                    result,
-                )
-                "provisioningConfigureNetwork" -> deviceProvisioning.configureNetwork(
-                    call.argument<String>("ssid") ?: error("ssid is required"),
-                    call.argument<String>("password") ?: error("password is required"),
-                    result,
-                )
-                "closeProvisioningSession" -> {
-                    deviceProvisioning.close()
-                    result.success(null)
+                "provisioningScanNetworks", "provisioningHandOverTrust",
+                "provisioningConfigureNetwork", "closeProvisioningSession" -> {
+                    if (!deviceProvisioning.owns(call.argument<String>("sessionId"))) {
+                        if (call.method == "closeProvisioningSession") result.success(null)
+                        else result.error("PROVISIONING_CLOSED", "This setup visit has ended", null)
+                    } else when (call.method) {
+                        "provisioningScanNetworks" -> deviceProvisioning.scanNetworks(result)
+                        "provisioningHandOverTrust" -> deviceProvisioning.handOverTrust(
+                            call.argument<String>("payloadJson") ?: error("payloadJson is required"), result)
+                        "provisioningConfigureNetwork" -> deviceProvisioning.configureNetwork(
+                            call.argument<String>("ssid") ?: error("ssid is required"),
+                            call.argument<String>("password") ?: error("password is required"), result)
+                        "closeProvisioningSession" -> { deviceProvisioning.close(); result.success(null) }
+                    }
                 }
                 "scanSetupHosts" -> scanSetupHosts(
                     call.argument<String>("serviceUuid") ?: error("serviceUuid is required"),
