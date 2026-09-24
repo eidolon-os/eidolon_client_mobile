@@ -449,7 +449,7 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                 title: const Text('一起聊'),
                 subtitle: Text(flow.client.canLeave
                     ? '结束当前对话后，可准备多人搭配'
-                    : '预览伙伴与设备搭配 · 暂未开放启动'),
+                    : '选择参与设备 · 暂未开放启动'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 enabled:
                     !flow.client.canLeave && !flow.busy && !flow.client.isBusy,
@@ -458,11 +458,8 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                     loadFace: flow.management.loadFace,
                     load: () async {
                       final inventory = await widget.loadGroupDevices!();
-                      final companions =
-                          await flow.management.loadActiveCompanions();
                       return (
                         devices: inventory.devices,
-                        companions: companions,
                         localDeviceId: flow.client.identity?.deviceInstanceId,
                         coverage: inventory.coverage,
                       );

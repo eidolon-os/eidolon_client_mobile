@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../generated/management_v1.dart';
 import '../../management/companion_portrait.dart';
 import '../../theme/eidolon_theme.dart';
 import '../../theme/neon_components.dart';
@@ -9,7 +8,6 @@ import '../device_management/mounted_device_models.dart';
 /// A read-only Controller projection, not a room admission or online status.
 typedef SharedConversationSnapshot = ({
   List<MountedDevice> devices,
-  List<CompanionSummaryView> companions,
   String? localDeviceId,
   String coverage,
 });
@@ -33,7 +31,7 @@ class SharedConversationPreparationPage extends StatefulWidget {
 class _SharedConversationPreparationPageState
     extends State<SharedConversationPreparationPage> {
   SharedConversationSnapshot? _snapshot;
-  final _selected = <String, String?>{};
+  final _selected = <String>{};
   String? _inputDeviceId;
   bool _loading = false;
   bool _failed = false;
@@ -54,18 +52,13 @@ class _SharedConversationPreparationPageState
       final snapshot = await widget.load();
       if (!mounted) return;
       final available = snapshot.devices
-          .where((d) => d.state != MountedDeviceState.accessRevoked)
+          .where(_canParticipate)
           .map((d) => d.deviceId)
-          .toSet();
-      final companions = snapshot.companions
-          .where((c) => c.lifecycleState == 'active')
-          .map((c) => c.companionId)
           .toSet();
       setState(() {
         _snapshot = snapshot;
-        _selected.removeWhere((id, _) => !available.contains(id));
-        if (!_selected.containsKey(_inputDeviceId)) _inputDeviceId = null;
-        _selected.updateAll((_, id) => companions.contains(id) ? id : null);
+        _selected.removeWhere((id) => !available.contains(id));
+        if (!_selected.contains(_inputDeviceId)) _inputDeviceId = null;
       });
     } catch (_) {
       if (mounted) setState(() => _failed = true);
@@ -74,60 +67,17 @@ class _SharedConversationPreparationPageState
     }
   }
 
-  List<CompanionSummaryView> get _companions => _snapshot!.companions
-      .where((c) => c.lifecycleState == 'active')
-      .toList(growable: false);
-
-  Future<void> _choosePartner(MountedDevice device) async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(context).height * .75),
-          child: ListView(shrinkWrap: true, children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-              child: Text('谁通过 ${device.label} 回应',
-                  style: Theme.of(context).textTheme.titleLarge),
-            ),
-            for (final companion in _companions)
-              ListTile(
-                leading: CompanionPortrait(
-                  companionId: companion.companionId,
-                  name: companion.displayName ?? companion.companionId,
-                  artworkId: companion.artworkId,
-                  loadFace: widget.loadFace,
-                  size: 40,
-                ),
-                title: Text(companion.displayName ?? companion.companionId),
-                trailing: _selected[device.deviceId] == companion.companionId
-                    ? const Icon(Icons.check_rounded, color: Neon.cyan)
-                    : null,
-                onTap: () => Navigator.pop(context, companion.companionId),
-              ),
-            if (_companions.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('还没有可参与的伙伴。请先在主机中创建伙伴。'),
-              ),
-          ]),
-        ),
-      ),
-    );
-    if (mounted && choice != null && _selected.containsKey(device.deviceId)) {
-      setState(() => _selected[device.deviceId] = choice);
-    }
-  }
+  bool _canParticipate(MountedDevice device) =>
+      device.state != MountedDeviceState.accessRevoked &&
+      device.attachedCompanionId?.isNotEmpty == true;
 
   Widget _device(MountedDevice device) {
-    final selected = _selected.containsKey(device.deviceId);
-    final selectable = device.state != MountedDeviceState.accessRevoked;
-    final companion = _companions
-        .where((c) => c.companionId == _selected[device.deviceId])
-        .firstOrNull;
+    final selected = _selected.contains(device.deviceId);
+    final selectable = _canParticipate(device);
+    final companionId = device.attachedCompanionId;
+    final companionName = device.attachedCompanionName.isNotEmpty
+        ? device.attachedCompanionName
+        : companionId ?? '尚未绑定伙伴';
     final isLocal = device.deviceId == _snapshot!.localDeviceId;
     final isInput = device.deviceId == _inputDeviceId;
     return Padding(
@@ -146,14 +96,18 @@ class _SharedConversationPreparationPageState
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             value: selected,
+            secondary: companionId == null
+                ? null
+                : CompanionPortrait(
+                    companionId: companionId,
+                    name: companionName,
+                    loadFace: widget.loadFace,
+                    size: 40),
             onChanged: !selectable
                 ? null
                 : (value) => setState(() {
                       if (value == true) {
-                        _selected[device.deviceId] = _companions.any((c) =>
-                                c.companionId == device.attachedCompanionId)
-                            ? device.attachedCompanionId
-                            : null;
+                        _selected.add(device.deviceId);
                       } else {
                         _selected.remove(device.deviceId);
                         if (isInput) _inputDeviceId = null;
@@ -164,35 +118,18 @@ class _SharedConversationPreparationPageState
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(
-                  !selectable
+                  device.state == MountedDeviceState.accessRevoked
                       ? '已解除授权，不能邀请'
-                      : isLocal
-                          ? '本机 · 入房能力待检查'
-                          : '已登记 · 入房能力待检查',
+                      : !selectable
+                          ? '尚未绑定伙伴，请到设备详情设置'
+                          : isLocal
+                              ? '绑定伙伴：$companionName\n本机 · 入房能力待检查'
+                              : '绑定伙伴：$companionName\n入房能力待检查',
                   style: const TextStyle(color: Neon.inkDim, height: 1.5)),
             ),
           ),
           if (selected) ...[
             const Divider(height: 1, color: Neon.hair),
-            ListTile(
-              key: Key('partner-${device.deviceId}'),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-              leading: companion == null
-                  ? const Icon(Icons.person_add_alt_1_rounded,
-                      color: Neon.inkDim)
-                  : CompanionPortrait(
-                      companionId: companion.companionId,
-                      name: companion.displayName ?? companion.companionId,
-                      artworkId: companion.artworkId,
-                      loadFace: widget.loadFace,
-                      size: 40),
-              title: Text(
-                  companion?.displayName ?? companion?.companionId ?? '选择伙伴'),
-              subtitle: const Text('本次回应伙伴'),
-              trailing: const Icon(Icons.expand_more_rounded),
-              onTap: () => _choosePartner(device),
-            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: Align(
@@ -248,10 +185,10 @@ class _SharedConversationPreparationPageState
                           alignment: Alignment.centerLeft,
                           child: StatusPill('搭配预览', tone: NeonTone.idle)),
                       const SizedBox(height: 20),
-                      Text('先安排伙伴与设备',
+                      Text('选择参与的设备',
                           style: Theme.of(context).textTheme.headlineSmall),
                       const SizedBox(height: 12),
-                      const Text('共享对话尚未开放，当前仅可预览搭配。选择参与的设备、回应的伙伴，以及本次从哪里发起对话。',
+                      const Text('共享对话尚未开放。选择参与的设备及本次输入入口，伙伴沿用设备详情中的现有绑定。',
                           style: TextStyle(color: Neon.inkDim, height: 1.65)),
                       const SizedBox(height: 24),
                       Text('已选 ${_selected.length} 台设备',
@@ -283,7 +220,7 @@ class _SharedConversationPreparationPageState
                       const Text('本次搭配',
                           style: TextStyle(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 8),
-                      const Text('当前可预览搭配，暂不能邀请设备。选择仅保留在此页，返回后丢弃；不会改变设备原有的伙伴。',
+                      const Text('当前暂不能邀请设备。选择仅保留在此页，返回后丢弃。更换伙伴请到原有设备详情设置。',
                           style: TextStyle(color: Neon.inkDim, height: 1.65)),
                       const SizedBox(height: 24),
                     ]),

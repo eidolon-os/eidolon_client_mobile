@@ -266,10 +266,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(Key('select-$phoneDeviceInstanceId')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(Key('partner-$phoneDeviceInstanceId')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Aria').last);
-    await tester.pumpAndSettle();
+    expect(find.byKey(Key('partner-$phoneDeviceInstanceId')), findsNothing);
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(h.flow.selectedCompanionId, selection);
