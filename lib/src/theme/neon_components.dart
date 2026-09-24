@@ -57,7 +57,8 @@ class StatusPill extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 7),
-          Text(
+          Flexible(
+              child: Text(
             label,
             style: TextStyle(
               fontSize: 11.5,
@@ -66,7 +67,7 @@ class StatusPill extends StatelessWidget {
               letterSpacing: .2,
               height: 1.2,
             ),
-          ),
+          )),
         ],
       ),
     );

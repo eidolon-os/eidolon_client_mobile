@@ -12,16 +12,20 @@ import 'channel_refusal.dart';
 import 'conversation_flow.dart';
 import 'conversation_standing.dart';
 import 'mobile_body_standing.dart';
+import 'shared_conversation_preparation_page.dart';
+import '../device_management/mounted_device_models.dart';
 
 class ProductConversationPage extends StatefulWidget {
   const ProductConversationPage(
       {super.key,
       required this.createFlow,
       required this.hostName,
+      this.loadGroupDevices,
       this.openDevices,
       this.openHostStatus});
   final Future<ConversationFlow> Function() createFlow;
   final String hostName;
+  final Future<MountedDeviceInventory> Function()? loadGroupDevices;
   final Future<void> Function(BuildContext)? openDevices;
   final Future<void> Function(BuildContext)? openHostStatus;
   @override
@@ -431,6 +435,44 @@ class _ProductConversationPageState extends State<ProductConversationPage>
             !flow.client.canLeave &&
             error == flow.client.uiState.supportingText;
         final content = <Widget>[
+          if (widget.loadGroupDevices != null) ...[
+            Material(
+              color: Neon.surfaceHigh,
+              clipBehavior: Clip.antiAlias,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(Neon.radiusM),
+                side: const BorderSide(color: Neon.hair),
+              ),
+              child: ListTile(
+                key: const Key('prepare-shared-conversation'),
+                leading: const Icon(Icons.groups_2_outlined, color: Neon.cyan),
+                title: const Text('一起聊'),
+                subtitle: Text(flow.client.canLeave
+                    ? '结束当前对话后，可准备多人搭配'
+                    : '预览伙伴与设备搭配 · 暂未开放启动'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                enabled:
+                    !flow.client.canLeave && !flow.busy && !flow.client.isBusy,
+                onTap: () => Navigator.of(context).push<void>(MaterialPageRoute(
+                  builder: (_) => SharedConversationPreparationPage(
+                    loadFace: flow.management.loadFace,
+                    load: () async {
+                      final inventory = await widget.loadGroupDevices!();
+                      final companions =
+                          await flow.management.loadActiveCompanions();
+                      return (
+                        devices: inventory.devices,
+                        companions: companions,
+                        localDeviceId: flow.client.identity?.deviceInstanceId,
+                        coverage: inventory.coverage,
+                      );
+                    },
+                  ),
+                )),
+              ),
+            ),
+            const SizedBox(height: 18),
+          ],
           _partner(flow),
           const SizedBox(height: 18),
           _modes(flow),

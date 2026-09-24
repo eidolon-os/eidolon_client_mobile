@@ -82,6 +82,15 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
 
           return ProductConversationPage(
             hostName: controller.host.readableName,
+            loadGroupDevices: () async {
+              await prepareManagement();
+              await controller.refreshDevices();
+              final inventory = controller.devices;
+              if (controller.devicesError != null || inventory == null) {
+                throw StateError('Device inventory unavailable');
+              }
+              return inventory;
+            },
             createFlow: () async {
               final target = controller.conversationTargetCompanionId;
               final flow = await _deviceRuntime.open(

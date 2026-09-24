@@ -248,6 +248,41 @@ void main() {
       await icons.load();
     }
   });
+  testWidgets('group preparation leaves single conversation selection and bindings unchanged',
+      (tester) async {
+    final h = _Harness();
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData.dark(useMaterial3: true),
+      home: ProductConversationPage(
+        hostName: '工作室', createFlow: () async => h.flow,
+        loadGroupDevices: () async => MountedDeviceInventory(
+          devices: [await h.flow.management.device(phoneDeviceInstanceId) ??
+              (throw StateError('Missing test device'))]),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final selection = h.flow.selectedCompanionId;
+    await tester.tap(find.byKey(const Key('prepare-shared-conversation')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(Key('select-$phoneDeviceInstanceId')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(Key('partner-$phoneDeviceInstanceId')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Aria').last);
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(h.flow.selectedCompanionId, selection);
+    expect(h.requests, isEmpty);
+    expect(h.events, isEmpty);
+    await tester.tap(find.byKey(const Key('prepare-shared-conversation')));
+    await tester.pumpAndSettle();
+    expect(find.text('已选 0 台设备'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('historical authority checkpoint offers current admission, never recovery or automatic writes',
       (tester) async {
     final h = _Harness()..provisioner = _RegistrationRequiredProvisioner();

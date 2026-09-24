@@ -37,6 +37,17 @@ class ConversationManagement {
       required String requestId,
       required String? companionId,
       required int expectedRevision}) assign;
+
+  Future<List<CompanionSummaryView>> loadActiveCompanions() async {
+    final loaded = <CompanionSummaryView>[];
+    String? cursor;
+    do {
+      final page = await roster(cursor: cursor);
+      loaded.addAll(page.companions.where((c) => c.lifecycleState == 'active'));
+      cursor = page.nextCursor;
+    } while (cursor != null);
+    return loaded;
+  }
 }
 
 /// Per-page user intent. Enrollment itself outlives this object in the App's
@@ -140,14 +151,7 @@ class ConversationFlow extends ChangeNotifier {
 
   Future<void> refreshManagement() async {
     try {
-      final loaded = <CompanionSummaryView>[];
-      String? cursor;
-      do {
-        final page = await management.roster(cursor: cursor);
-        loaded
-            .addAll(page.companions.where((c) => c.lifecycleState == 'active'));
-        cursor = page.nextCursor;
-      } while (cursor != null);
+      final loaded = await management.loadActiveCompanions();
       if (_disposed) return;
       companions = loaded;
       final identity = client.identity;
