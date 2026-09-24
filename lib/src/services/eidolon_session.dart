@@ -107,13 +107,15 @@ class EidolonSession {
   Future<void> connect(RoomConfig config) async {
     final generation = ++_connectGeneration;
     await _releaseRoom();
-    if (generation != _connectGeneration)
+    if (generation != _connectGeneration) {
       throw StateError('Connection cancelled');
+    }
     if (!config.usable) throw StateError('Channel config is incomplete');
     _stateController.add(const SessionState('connecting'));
     for (final url in config.connectionUrls) {
-      if (generation != _connectGeneration)
+      if (generation != _connectGeneration) {
         throw StateError('Connection cancelled');
+      }
       final room = _roomFactory();
       _room = room;
       var accepted = false;
@@ -124,11 +126,13 @@ class EidolonSession {
         // The SDK owns bounded signalling/ICE timeouts. A failed candidate's
         // Room is destroyed before trying the next; late work cannot win.
         await room.connect(url, config.token);
-        if (generation != _connectGeneration)
+        if (generation != _connectGeneration) {
           throw StateError('Connection cancelled');
+        }
         await room.setSpeakerOn(true);
-        if (generation != _connectGeneration)
+        if (generation != _connectGeneration) {
           throw StateError('Connection cancelled');
+        }
         accepted = true;
         room.registerTextStreamHandler(transcriptionTopic,
             (reader, identity) async {
@@ -153,7 +157,9 @@ class EidolonSession {
           }
         }
         if (generation != _connectGeneration ||
-            url == config.connectionUrls.last) rethrow;
+            url == config.connectionUrls.last) {
+          rethrow;
+        }
       }
     }
   }

@@ -901,7 +901,9 @@ class ClientController extends ChangeNotifier {
           if (!fromProvider ||
               root['schema_v'] != sessionControlSchemaVersion ||
               root['reason'] != sessionRejectionConflict ||
-              conversationStanding != ConversationStanding.asked) return;
+              conversationStanding != ConversationStanding.asked) {
+            return;
+          }
           failure = const ClientFailure(
               kind: ClientErrorKind.liveKit,
               title: '设备暂时无法开始新对话',
