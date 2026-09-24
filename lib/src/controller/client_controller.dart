@@ -555,7 +555,7 @@ class ClientController extends ChangeNotifier {
     }
   }
 
-  Future<void> leave() async {
+  Future<void> leave({bool notifyRemote = true}) async {
     if (_leaving) return;
     _leaving = true;
     final wasBusy = _busy;
@@ -571,7 +571,7 @@ class ClientController extends ChangeNotifier {
     try {
       await _audioUpdate;
       await _vad.stop();
-      if (wasActive) await _session.closeSession();
+      if (wasActive && notifyRemote) await _session.closeSession();
     } catch (error) {
       failure = _classifyFailure(error, liveKitContext: true);
       // The finally block disconnects even if session_close failed.
@@ -613,7 +613,8 @@ class ClientController extends ChangeNotifier {
   Future<void> _applyAudioState() {
     final epoch = _conversationEpoch;
     final held = _pttHeld;
-    final enabled = _session.microphoneAllowed && conversationStanding.answered &&
+    final enabled = _session.microphoneAllowed &&
+        conversationStanding.answered &&
         (mode == ConversationMode.ptt
             ? held
             : !_userMuted &&
@@ -721,7 +722,8 @@ class ClientController extends ChangeNotifier {
       case controlTopic:
         await _handleControlCommand(event.payload);
       case sessionControlTopic:
-        await _handleSessionControl(event.payload);
+        await _handleSessionControl(event.payload,
+            fromProvider: event.fromProvider);
       case uiStateTopic:
         _handleUiState(event.payload);
       case transcriptionTopic:
@@ -879,7 +881,8 @@ class ClientController extends ChangeNotifier {
   /// `session_end` carries why. Ending on it is what this already did; the
   /// reason was thrown away, so a service failure and a finished conversation
   /// left the same way and said the same nothing.
-  Future<void> _handleSessionControl(String payload) async {
+  Future<void> _handleSessionControl(String payload,
+      {bool fromProvider = false}) async {
     try {
       final root = jsonDecode(payload) as Map<String, dynamic>;
       // A packet about a different conversation is not about this one. The
@@ -891,7 +894,20 @@ class ClientController extends ChangeNotifier {
       if (!_inConversation || mine == null) return;
       if (about != mine) return;
 
+      if (fromProvider && root['type'] != sessionRejectedType) return;
+
       switch (root['type']) {
+        case sessionRejectedType:
+          if (!fromProvider ||
+              root['schema_v'] != sessionControlSchemaVersion ||
+              root['reason'] != sessionRejectionConflict ||
+              conversationStanding != ConversationStanding.asked) return;
+          failure = const ClientFailure(
+              kind: ClientErrorKind.liveKit,
+              title: '设备暂时无法开始新对话',
+              message: '设备上已有会话或会话状态冲突，请先结束原会话后再试。',
+              technicalDetails: 'session_rejected reason=conflict');
+          await leave(notifyRemote: false);
         case sessionStartedType:
           // Serving, which is all this says. Whether it can hear is a separate
           // fact with separate evidence — `_warmup_stages` does not abort on a

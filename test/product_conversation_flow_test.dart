@@ -1,3 +1,4 @@
+import 'package:eidolon_client_mobile/src/features/conversation/conversation_standing.dart';
 import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:eidolon_client_mobile/src/models/conversation_mode.dart';
 import 'dart:async';
@@ -135,7 +136,8 @@ class _RegistrationRequiredProvisioner extends _Provisioner {
           {String sessionIntent = '', ConversationMode? mode}) async =>
       const HubConfig(
           status: HubConfigStatus.unregistered,
-          session: RoomConfig(serverUrl: '', token: '', identity: '', roomName: ''),
+          session:
+              RoomConfig(serverUrl: '', token: '', identity: '', roomName: ''),
           deviceFingerprint: phoneFingerprint,
           bodyStanding: MobileBodyStanding.registrationRequired);
 }
@@ -248,16 +250,19 @@ void main() {
       await icons.load();
     }
   });
-  testWidgets('group preparation leaves single conversation selection and bindings unchanged',
+  testWidgets(
+      'group preparation leaves single conversation selection and bindings unchanged',
       (tester) async {
     final h = _Harness();
     await tester.pumpWidget(MaterialApp(
       theme: ThemeData.dark(useMaterial3: true),
       home: ProductConversationPage(
-        hostName: '工作室', createFlow: () async => h.flow,
-        loadGroupDevices: () async => MountedDeviceInventory(
-          devices: [await h.flow.management.device(phoneDeviceInstanceId) ??
-              (throw StateError('Missing test device'))]),
+        hostName: '工作室',
+        createFlow: () async => h.flow,
+        loadGroupDevices: () async => MountedDeviceInventory(devices: [
+          await h.flow.management.device(phoneDeviceInstanceId) ??
+              (throw StateError('Missing test device'))
+        ]),
       ),
     ));
     await tester.pumpAndSettle();
@@ -280,7 +285,8 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('historical authority checkpoint offers current admission, never recovery or automatic writes',
+  testWidgets(
+      'historical authority checkpoint offers current admission, never recovery or automatic writes',
       (tester) async {
     final h = _Harness()..provisioner = _RegistrationRequiredProvisioner();
     await tester.pumpWidget(MaterialApp(
@@ -438,6 +444,89 @@ void main() {
     await h.flow.close();
     h.flow.dispose();
   });
+  test(
+      'provider refusal ends only the pending attempt without closing remote work',
+      () async {
+    final h = _Harness();
+    await h.flow.initialize();
+    await h.flow.chooseMode(ConversationMode.fullDuplex);
+    await h.flow.startConversation();
+    await settle();
+    final packet = jsonEncode({
+      'schema_v': 1,
+      'type': 'session_rejected',
+      'conversation_id': 'conversation-1',
+      'reason': 'conflict'
+    });
+    h.session.data.add(SessionData('eidolon.session_control', packet));
+    await settle();
+    expect(h.flow.client.canLeave, true);
+    h.session.data.add(
+        SessionData('eidolon.session_control', packet, fromProvider: true));
+    await settle();
+    expect(h.flow.client.canLeave, false);
+    expect(h.flow.client.failure?.message, contains('会话状态冲突'));
+    expect(h.events.where((event) => event.startsWith('close-')), isEmpty);
+    h.flow.dispose();
+  });
+
+  test('invalid or stale provider packets cannot change a pending attempt',
+      () async {
+    final h = _Harness();
+    await h.flow.initialize();
+    await h.flow.chooseMode(ConversationMode.fullDuplex);
+    await h.flow.startConversation();
+    await settle();
+    for (final override in [
+      {'conversation_id': 'previous'},
+      {'schema_v': 2},
+      {'reason': 'unknown'},
+      {'type': 'session_started'},
+      {'type': 'session_end'},
+    ]) {
+      h.session.data.add(SessionData(
+          'eidolon.session_control',
+          jsonEncode({
+            'schema_v': 1,
+            'type': 'session_rejected',
+            'conversation_id': 'conversation-1',
+            'reason': 'conflict',
+            ...override,
+          }),
+          fromProvider: true));
+      await settle();
+      expect(h.flow.client.conversationStanding, ConversationStanding.asked);
+      expect(h.flow.client.canLeave, true);
+      expect(h.flow.client.failure, isNull);
+    }
+    await h.flow.close();
+    h.flow.dispose();
+  });
+
+  test('provider refusal cannot end an accepted conversation', () async {
+    final h = _Harness();
+    await h.flow.initialize();
+    await h.flow.chooseMode(ConversationMode.fullDuplex);
+    await h.flow.startConversation();
+    await settle();
+    for (final type in ['session_started', 'session_rejected']) {
+      h.session.data.add(SessionData(
+          'eidolon.session_control',
+          jsonEncode({
+            'schema_v': 1,
+            'type': type,
+            'conversation_id': 'conversation-1',
+            'reason': 'conflict'
+          }),
+          fromProvider: type == 'session_rejected'));
+      await settle();
+    }
+    expect(h.flow.client.canLeave, true);
+    expect(h.events.where((event) => event.startsWith('close-')), isEmpty);
+    await h.flow.close();
+    h.flow.dispose();
+  });
+
   test('late session confirmation after leaving does not resurrect a session',
       () async {
     final h = _Harness();

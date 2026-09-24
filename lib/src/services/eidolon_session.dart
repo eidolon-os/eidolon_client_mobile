@@ -20,11 +20,12 @@ class EidolonSession {
   int _connectGeneration = 0;
 
   static Room _newRoom() => Room(
-    roomOptions: const RoomOptions(
-      adaptiveStream: true, dynacast: true,
-      defaultAudioCaptureOptions: _capture,
-    ),
-  );
+        roomOptions: const RoomOptions(
+          adaptiveStream: true,
+          dynacast: true,
+          defaultAudioCaptureOptions: _capture,
+        ),
+      );
   Room? _room;
   ConversationMode mode = ConversationMode.fullDuplex;
   bool pttHeld = false;
@@ -72,8 +73,10 @@ class EidolonSession {
   /// publisher lingering after the agent died must not make an empty room look
   /// attended. The prefix is this app's existing one, not a new rule.
   bool get _anyoneAnswering =>
-      (_room?.remoteParticipants.values ?? const <RemoteParticipant>[])
-          .any((participant) => !isAvatarIdentity(participant.identity));
+      (_room?.remoteParticipants.values ?? const <RemoteParticipant>[]).any(
+          (participant) =>
+              participant.kind == ParticipantKind.AGENT &&
+              !isAvatarIdentity(participant.identity));
 
   /// Reports the room's occupancy as it is, with no judgement about whether
   /// the report is actionable.
@@ -104,11 +107,13 @@ class EidolonSession {
   Future<void> connect(RoomConfig config) async {
     final generation = ++_connectGeneration;
     await _releaseRoom();
-    if (generation != _connectGeneration) throw StateError('Connection cancelled');
+    if (generation != _connectGeneration)
+      throw StateError('Connection cancelled');
     if (!config.usable) throw StateError('Channel config is incomplete');
     _stateController.add(const SessionState('connecting'));
     for (final url in config.connectionUrls) {
-      if (generation != _connectGeneration) throw StateError('Connection cancelled');
+      if (generation != _connectGeneration)
+        throw StateError('Connection cancelled');
       final room = _roomFactory();
       _room = room;
       var accepted = false;
@@ -119,15 +124,19 @@ class EidolonSession {
         // The SDK owns bounded signalling/ICE timeouts. A failed candidate's
         // Room is destroyed before trying the next; late work cannot win.
         await room.connect(url, config.token);
-        if (generation != _connectGeneration) throw StateError('Connection cancelled');
+        if (generation != _connectGeneration)
+          throw StateError('Connection cancelled');
         await room.setSpeakerOn(true);
-        if (generation != _connectGeneration) throw StateError('Connection cancelled');
+        if (generation != _connectGeneration)
+          throw StateError('Connection cancelled');
         accepted = true;
-        room.registerTextStreamHandler(transcriptionTopic, (reader, identity) async {
+        room.registerTextStreamHandler(transcriptionTopic,
+            (reader, identity) async {
           final payload = await reader.readAll();
           _dataController.add(SessionData(transcriptionTopic, payload));
         });
-        room.registerTextStreamHandler(agentSessionTopic, (reader, identity) async {
+        room.registerTextStreamHandler(agentSessionTopic,
+            (reader, identity) async {
           await reader.readAll();
         });
         _stateController.add(const SessionState('connected'));
@@ -143,7 +152,8 @@ class EidolonSession {
             await room.dispose();
           }
         }
-        if (generation != _connectGeneration || url == config.connectionUrls.last) rethrow;
+        if (generation != _connectGeneration ||
+            url == config.connectionUrls.last) rethrow;
       }
     }
   }
@@ -216,25 +226,33 @@ class EidolonSession {
 
   static bool _mayPublishMicrophone(LocalParticipant participant) {
     final permissions = participant.permissions;
-    return permissions.canPublish && (permissions.canPublishSources.isEmpty ||
-        permissions.canPublishSources.any((source) => source.name == 'MICROPHONE'));
+    return permissions.canPublish &&
+        (permissions.canPublishSources.isEmpty ||
+            permissions.canPublishSources
+                .any((source) => source.name == 'MICROPHONE'));
   }
 
-  void _wireRoom(EventsListener<RoomEvent> listener, {required bool Function() isCurrent}) {
+  void _wireRoom(EventsListener<RoomEvent> listener,
+      {required bool Function() isCurrent}) {
     listener
       ..on<ParticipantPermissionsUpdatedEvent>((event) async {
         if (!isCurrent()) return;
         final participant = _room?.localParticipant;
-        if (participant != null && identical(event.participant, participant) &&
+        if (participant != null &&
+            identical(event.participant, participant) &&
             !_mayPublishMicrophone(participant)) {
           await participant.setMicrophoneEnabled(false);
           _stateController.add(const SessionState('microphone_denied'));
         }
       })
       ..on<DataReceivedEvent>((event) {
+        if (!isCurrent()) return;
         final topic = event.topic ?? '';
         _dataController.add(
-          SessionData(topic, utf8.decode(event.data, allowMalformed: true)),
+          SessionData(topic, utf8.decode(event.data, allowMalformed: true),
+              fromProvider: _room?.name != null &&
+                  event.participant?.identity ==
+                      'channel-provider-${_room!.name}'),
         );
       })
       ..on<TrackSubscribedEvent>((event) {
@@ -350,7 +368,9 @@ class EidolonSession {
 }
 
 class SessionData {
-  const SessionData(this.topic, this.payload);
+  const SessionData(this.topic, this.payload, {this.fromProvider = false});
+
+  final bool fromProvider;
 
   final String topic;
   final String payload;
