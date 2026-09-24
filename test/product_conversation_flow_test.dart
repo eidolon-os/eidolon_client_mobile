@@ -62,6 +62,40 @@ class _Session extends EidolonSession {
   final List<String> events;
   final data = StreamController<SessionData>.broadcast();
   int sequence = 0;
+  final acknowledgements = <Map<String, dynamic>>[];
+  Completer<void>? acceptanceGate;
+  bool failTerminalAck = false;
+  @override
+  Future<void> publishControl(String payload) async {
+    final ack = jsonDecode(payload) as Map<String, dynamic>;
+    acknowledgements.add(ack);
+    if (ack['status'] == 'accepted') await acceptanceGate?.future;
+    if (failTerminalAck && ack['status'] != 'accepted') {
+      throw StateError('transport lost');
+    }
+  }
+
+  void roomJoin(String id, {String intent = 'user_initiated'}) {
+    data.add(SessionData(
+        'eidolon.control',
+        jsonEncode({
+          'v': 1,
+          'kind': 'cmd',
+          'id': id,
+          'op': 'room.join',
+          'payload': {'session_intent': intent},
+        })));
+  }
+
+  void confirm({String? conversation}) {
+    data.add(SessionData(
+        'eidolon.session_control',
+        jsonEncode({
+          'type': 'session_started',
+          'conversation_id': conversation ?? conversationId,
+        })));
+  }
+
   @override
   Stream<SessionData> get dataEvents => data.stream;
   bool connected = false;
@@ -235,6 +269,146 @@ Future<void> settle() async {
 }
 
 void main() {
+  test('local start cannot steal a room join awaiting its acceptance ACK',
+      () async {
+    final h = _Harness();
+    await h.flow.initialize();
+    h.session.acceptanceGate = Completer<void>();
+    h.session.roomJoin('pending');
+    await settle();
+    await h.flow.client.join();
+    expect(h.session.sequence, 0);
+    h.session.acceptanceGate!.complete();
+    await settle();
+    expect(h.session.sequence, 1);
+    h.session.confirm();
+    await settle();
+    expect(h.session.acknowledgements.last['ref'], 'pending');
+    expect(h.session.acknowledgements.last['status'], 'completed');
+    await h.flow.close();
+    h.flow.dispose();
+  });
+
+  test(
+      'lost terminal ACK does not block cancellation or retain room join ownership',
+      () async {
+    final h = _Harness();
+    await h.flow.initialize();
+    h.session.roomJoin('first');
+    await settle();
+    h.session.failTerminalAck = true;
+    await h.flow.client.leave();
+    expect(h.flow.client.canJoin, true);
+    h.session.failTerminalAck = false;
+    h.session.roomJoin('next');
+    await settle();
+    expect(h.session.sequence, 2);
+    h.session.confirm();
+    await settle();
+    expect(h.session.acknowledgements.last['ref'], 'next');
+    expect(h.session.acknowledgements.last['status'], 'completed');
+    await h.flow.close();
+    h.flow.dispose();
+  });
+
+  test(
+      'room join completes only on matching confirmation and preserves pending owner',
+      () async {
+    final h = _Harness();
+    await h.flow.initialize();
+    h.session.roomJoin('first');
+    await settle();
+    expect(h.session.acknowledgements.map((a) => a['status']), ['accepted']);
+    h.session.roomJoin('first');
+    h.session.roomJoin('other');
+    h.session.roomJoin('first', intent: 'proactive_initiated');
+    await settle();
+    expect(h.session.sequence, 1);
+    expect(h.session.acknowledgements.map((a) => a['code']),
+        ['OK', 'OK', 'ROOM_JOIN_BUSY', 'ROOM_JOIN_CONFLICT']);
+    h.session.confirm(conversation: 'stale');
+    await settle();
+    expect(h.session.acknowledgements.where((a) => a['status'] == 'completed'),
+        isEmpty);
+    h.session.confirm();
+    h.session.confirm();
+    await settle();
+    final completed = h.session.acknowledgements
+        .where((a) => a['status'] == 'completed')
+        .toList();
+    expect(completed, hasLength(1));
+    expect(completed.single['ref'], 'first');
+    h.session.roomJoin('active');
+    await settle();
+    expect(h.session.acknowledgements.last['code'], 'ROOM_JOIN_BUSY');
+    await h.flow.close();
+    h.flow.dispose();
+  });
+
+  test(
+      'cancelled room join releases ownership and late confirmation cannot complete next attempt',
+      () async {
+    final h = _Harness();
+    await h.flow.initialize();
+    h.session.roomJoin('first');
+    await settle();
+    await h.flow.client.leave();
+    expect(h.session.acknowledgements.last['code'], 'ROOM_JOIN_CANCELLED');
+    h.session.roomJoin('next');
+    await settle();
+    h.session.confirm(conversation: 'conversation-1');
+    await settle();
+    expect(h.session.acknowledgements.where((a) => a['status'] == 'completed'),
+        isEmpty);
+    h.session.confirm();
+    await settle();
+    expect(h.session.acknowledgements.last['ref'], 'next');
+    expect(h.session.acknowledgements.last['status'], 'completed');
+    await h.flow.close();
+    h.flow.dispose();
+  });
+
+  testWidgets('room join timeout reports failure instead of completion',
+      (tester) async {
+    final session = _Session([]);
+    final c = ClientController(
+        platform: _Platform(),
+        session: session,
+        conversationProvisioner: _Provisioner(),
+        conversationConfirmationTimeout: const Duration(seconds: 2));
+    await c.start();
+    session.roomJoin('timeout');
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+    expect(session.acknowledgements.map((a) => a['status']),
+        ['accepted', 'failed']);
+    expect(session.acknowledgements.last['code'], 'ROOM_JOIN_TIMEOUT');
+    expect(c.canJoin, true);
+    c.dispose();
+  });
+
+  test('provider refusal fails the original room join without remote close',
+      () async {
+    final h = _Harness();
+    await h.flow.initialize();
+    h.session.roomJoin('rejected');
+    await settle();
+    h.session.data.add(SessionData(
+        'eidolon.session_control',
+        jsonEncode({
+          'schema_v': 1,
+          'type': 'session_rejected',
+          'conversation_id': h.session.conversationId,
+          'reason': 'conflict',
+        }),
+        fromProvider: true));
+    await settle();
+    expect(h.session.acknowledgements.last['code'], 'ROOM_JOIN_CONFLICT');
+    expect(h.session.acknowledgements.last['ref'], 'rejected');
+    expect(h.events.where((e) => e.startsWith('close-')), isEmpty);
+    h.flow.dispose();
+  });
+
   const captures = String.fromEnvironment('CONVERSATION_CAPTURE');
   setUpAll(() async {
     if (captures.isNotEmpty) {

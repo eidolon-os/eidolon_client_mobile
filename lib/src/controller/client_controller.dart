@@ -83,6 +83,7 @@ class ClientController extends ChangeNotifier {
   bool activationExhausted = false;
   bool _disposed = false;
   int _conversationEpoch = 0;
+  ControlCommand? _pendingRoomJoin;
 
   @override
   void notifyListeners() {
@@ -449,6 +450,14 @@ class ClientController extends ChangeNotifier {
     ConversationMode mode = ConversationMode.fullDuplex,
     String sessionIntent = sessionIntentUserInitiated,
   }) async {
+    if (_pendingRoomJoin != null) return;
+    await _join(mode: mode, sessionIntent: sessionIntent);
+  }
+
+  Future<void> _join({
+    required ConversationMode mode,
+    required String sessionIntent,
+  }) async {
     if (_busy || _disposed || phase != ClientPhase.ready) {
       return;
     }
@@ -511,6 +520,7 @@ class ClientController extends ChangeNotifier {
               conversationStanding != ConversationStanding.asked) {
             return;
           }
+          await _finishRoomJoin('failed', 'ROOM_JOIN_TIMEOUT');
           await leave();
           failure = const ClientFailure(
               kind: ClientErrorKind.liveKit,
@@ -536,6 +546,9 @@ class ClientController extends ChangeNotifier {
         );
       });
     } catch (exception) {
+      if (epoch == _conversationEpoch) {
+        await _finishRoomJoin('failed', 'ROOM_JOIN_FAILED');
+      }
       _confirmationTimer?.cancel();
       _audioStateTimer?.cancel();
       await _vad.stop();
@@ -560,6 +573,7 @@ class ClientController extends ChangeNotifier {
     _leaving = true;
     final wasBusy = _busy;
     _busy = true;
+    await _finishRoomJoin('failed', 'ROOM_JOIN_CANCELLED');
     notifyListeners();
     ++_conversationEpoch;
     _confirmationTimer?.cancel();
@@ -661,6 +675,7 @@ class ClientController extends ChangeNotifier {
   /// What is closed is the microphone: it is metered, and it was open for
   /// nobody. The exit the screen already has stays the way out.
   Future<void> _onFarEndGone() async {
+    await _finishRoomJoin('failed', 'ROOM_JOIN_ENDED');
     _confirmationTimer?.cancel();
     conversationStanding = ConversationStanding.farEndGone;
     agentTurn = AgentTurnState.idle;
@@ -694,6 +709,7 @@ class ClientController extends ChangeNotifier {
     // conversation that ends normally does so via session_end or leave(),
     // both of which close RTC while preserving the logical Channel binding.
     if (event.state == 'disconnected') {
+      unawaited(_finishRoomJoin('failed', 'ROOM_JOIN_DISCONNECTED'));
       if (_inConversation) {
         ++_conversationEpoch;
         _confirmationTimer?.cancel();
@@ -741,14 +757,7 @@ class ClientController extends ChangeNotifier {
     }
     switch (command.op) {
       case controlOpRoomJoin:
-        await _ack(command, 'accepted', 'OK');
-        await join(
-          mode: mode,
-          sessionIntent: roomJoinSessionIntent(command.payload),
-        );
-        if (phase == ClientPhase.conversation) {
-          await _ack(command, 'completed', 'OK', result: {'joined': true});
-        }
+        await _handleRoomJoin(command);
       case controlOpConfigRefresh:
         try {
           final applied = await _registerAndApply(showRegistering: false);
@@ -779,6 +788,55 @@ class ClientController extends ChangeNotifier {
         await _handleBodyPresence(command);
       default:
         await _ack(command, 'error', 'UNSUPPORTED_OPERATION');
+    }
+  }
+
+  Future<void> _handleRoomJoin(ControlCommand command) async {
+    final pending = _pendingRoomJoin;
+    if (pending != null) {
+      final sameId = command.id.isNotEmpty && command.id == pending.id;
+      final sameIntent = roomJoinSessionIntent(command.payload) ==
+          roomJoinSessionIntent(pending.payload);
+      if (sameId && sameIntent) {
+        await _ack(command, 'accepted', 'OK');
+      } else {
+        await _ack(command, 'failed',
+            sameId ? 'ROOM_JOIN_CONFLICT' : 'ROOM_JOIN_BUSY');
+      }
+      return;
+    }
+    if (_busy || _disposed || phase != ClientPhase.ready) {
+      await _ack(command, 'failed', 'ROOM_JOIN_BUSY');
+      return;
+    }
+    _pendingRoomJoin = command;
+    try {
+      await _ack(command, 'accepted', 'OK');
+    } catch (_) {
+      if (identical(_pendingRoomJoin, command)) _pendingRoomJoin = null;
+      return;
+    }
+    // Cancellation or another operation may have happened while sending ACK.
+    if (!identical(_pendingRoomJoin, command)) return;
+    if (_busy || _disposed || phase != ClientPhase.ready) {
+      await _finishRoomJoin('failed', 'ROOM_JOIN_BUSY');
+      return;
+    }
+    await _join(
+        mode: mode, sessionIntent: roomJoinSessionIntent(command.payload));
+    // Completion belongs to the matching session_started event, not the page.
+  }
+
+  Future<void> _finishRoomJoin(String status, String code) async {
+    final command = _pendingRoomJoin;
+    _pendingRoomJoin = null;
+    if (command == null) return;
+    try {
+      await _ack(command, status, code,
+          result: status == 'completed' ? {'joined': true} : null);
+    } catch (_) {
+      // A lost transport must not retain ownership or prevent local cleanup.
+      // This in-flight slot is not a durable ACK delivery queue.
     }
   }
 
@@ -909,6 +967,7 @@ class ClientController extends ChangeNotifier {
               title: '设备暂时无法开始新对话',
               message: '设备上已有会话或会话状态冲突，请先结束原会话后再试。',
               technicalDetails: 'session_rejected reason=conflict');
+          await _finishRoomJoin('failed', 'ROOM_JOIN_CONFLICT');
           await leave(notifyRemote: false);
         case sessionStartedType:
           // Serving, which is all this says. Whether it can hear is a separate
@@ -917,9 +976,11 @@ class ClientController extends ChangeNotifier {
           if (conversationStanding == ConversationStanding.farEndGone) return;
           _confirmationTimer?.cancel();
           conversationStanding = ConversationStanding.accepted;
+          await _finishRoomJoin('completed', 'OK');
           await _applyAudioState();
           notifyListeners();
         case sessionEndType:
+          await _finishRoomJoin('failed', 'ROOM_JOIN_ENDED');
           final reason = root[sessionEndReasonField];
           if (reason == sessionEndError) {
             // The one end a person has to be told about: the service stopped
@@ -1339,6 +1400,7 @@ class ClientController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _pendingRoomJoin = null;
     ++_conversationEpoch;
     _confirmationTimer?.cancel();
     _expiryTimer?.cancel();
