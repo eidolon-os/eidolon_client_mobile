@@ -44,6 +44,7 @@ final sessionConversationIdPattern = RegExp(r'^[A-Za-z0-9\-_.:]{1,64}$');
 /// shows a conversation as live from the moment it *asks* for one, and the
 /// firmware distinguishes those two states (`conversation_confirmed_`).
 const sessionStartedType = 'session_started';
+const channelProviderIdentityPrefix = 'channel-provider-';
 const sessionRejectedType = 'session_rejected';
 const sessionRejectionConflict = 'conflict';
 

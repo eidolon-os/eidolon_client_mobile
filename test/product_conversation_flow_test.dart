@@ -626,12 +626,10 @@ void main() {
     await h.flow.chooseMode(ConversationMode.fullDuplex);
     await h.flow.startConversation();
     await settle();
-    final packet = jsonEncode({
-      'schema_v': 1,
-      'type': 'session_rejected',
-      'conversation_id': 'conversation-1',
-      'reason': 'conflict'
-    });
+    final golden = jsonDecode(File(
+      '../eidolon_sdk/contracts/control/v1/golden/session-rejected.json',
+    ).readAsStringSync()) as Map<String, dynamic>;
+    final packet = jsonEncode(golden['payload']);
     h.session.data.add(SessionData('eidolon.session_control', packet));
     await settle();
     expect(h.flow.client.canLeave, true);

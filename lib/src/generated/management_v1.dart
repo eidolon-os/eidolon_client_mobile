@@ -101,6 +101,10 @@ class ManagementV1 {
   static const String sessionTracesPath = '/api/management/v1/session-traces';
   static String sessionTracesBySessionIdPath(String sessionId) =>
       '/api/management/v1/session-traces/${Uri.encodeComponent(sessionId)}';
+  static const String sharedSessionsClosePath =
+      '/api/management/v1/shared-sessions/close';
+  static const String sharedSessionsOpenPath =
+      '/api/management/v1/shared-sessions/open';
 }
 
 class ActivityMomentView {
@@ -1426,6 +1430,32 @@ class ForgetTargetRequest {
 
   Map<String, dynamic> toJson() {
     return {if (action != null) 'action': action, 'target': target};
+  }
+}
+
+class HTTPValidationError {
+  const HTTPValidationError({this.detail});
+
+  final List<ValidationError>? detail;
+
+  factory HTTPValidationError.fromJson(Map<String, dynamic> value) {
+    return HTTPValidationError(
+      detail: value['detail'] == null
+          ? null
+          : ((value['detail'] as List<dynamic>)
+                .map(
+                  (entry) =>
+                      ValidationError.fromJson(entry as Map<String, dynamic>),
+                )
+                .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (detail != null)
+        'detail': detail?.map((entry) => entry.toJson()).toList(),
+    };
   }
 }
 
@@ -3554,6 +3584,52 @@ class RevokedSessionsView {
   }
 }
 
+class SharedClose {
+  const SharedClose({required this.sessionId});
+
+  final String sessionId;
+
+  factory SharedClose.fromJson(Map<String, dynamic> value) {
+    return SharedClose(sessionId: value['session_id'] as String);
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'session_id': sessionId};
+  }
+}
+
+class SharedStart {
+  const SharedStart({
+    required this.deviceIds,
+    required this.inputDeviceId,
+    required this.sessionId,
+  });
+
+  final List<String> deviceIds;
+
+  final String inputDeviceId;
+
+  final String sessionId;
+
+  factory SharedStart.fromJson(Map<String, dynamic> value) {
+    return SharedStart(
+      deviceIds: ((value['device_ids'] as List<dynamic>)
+          .map((entry) => entry as String)
+          .toList()),
+      inputDeviceId: value['input_device_id'] as String,
+      sessionId: value['session_id'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'device_ids': deviceIds,
+      'input_device_id': inputDeviceId,
+      'session_id': sessionId,
+    };
+  }
+}
+
 class SpokenMessageView {
   const SpokenMessageView({required this.role, this.text});
 
@@ -3771,6 +3847,52 @@ class TranscriptView {
       'conversation_id': conversationId,
       if (nextCursor != null) 'next_cursor': nextCursor,
       'turns': turns.map((entry) => entry.toJson()).toList(),
+    };
+  }
+}
+
+class ValidationError {
+  const ValidationError({
+    this.ctx,
+    this.input,
+    required this.loc,
+    required this.msg,
+    required this.type,
+  });
+
+  final Map<String, Object?>? ctx;
+
+  final Object? input;
+
+  final List<Object> loc;
+
+  final String msg;
+
+  final String type;
+
+  factory ValidationError.fromJson(Map<String, dynamic> value) {
+    return ValidationError(
+      ctx: value['ctx'] == null
+          ? null
+          : ((value['ctx'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as Object?),
+            )),
+      input: value['input'],
+      loc: ((value['loc'] as List<dynamic>)
+          .map((entry) => entry as Object)
+          .toList()),
+      msg: value['msg'] as String,
+      type: value['type'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (ctx != null) 'ctx': ctx,
+      if (input != null) 'input': input,
+      'loc': loc,
+      'msg': msg,
+      'type': type,
     };
   }
 }

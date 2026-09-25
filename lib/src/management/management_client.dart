@@ -527,11 +527,6 @@ class ManagementClient {
     return HomeView.fromJson(body);
   }
 
-  /// Every device that is mine.
-  ///
-  /// Composed and phrased by the Host — it is the side that can see both the
-  /// Claim and the mount — so this app switches on a state rather than deriving
-  /// one from two authorities it would have to reason about together.
   Future<void> changeSharedSession(Uri baseUri, {
     required String accessToken,
     required String sessionId,
@@ -540,18 +535,26 @@ class ManagementClient {
   }) async {
     final opening = deviceIds != null;
     final result = await _send('POST',
-      baseUri.resolve('/api/management/v1/shared-sessions/${opening ? 'open' : 'close'}'),
+      baseUri.resolve(opening
+          ? ManagementV1.sharedSessionsOpenPath
+          : ManagementV1.sharedSessionsClosePath),
       accessToken: accessToken, what: opening ? '邀请设备' : '结束共享连接',
       requestTimeout: const Duration(seconds: 45),
-      body: {'session_id': sessionId, if (opening) ...{
-        'device_ids': deviceIds, 'input_device_id': inputDeviceId,
-      }});
+      body: opening
+          ? SharedStart(deviceIds: deviceIds,
+              inputDeviceId: inputDeviceId!, sessionId: sessionId).toJson()
+          : SharedClose(sessionId: sessionId).toJson());
     if (result['session_id'] != sessionId ||
         result['state'] != (opening ? 'transport_ready' : 'closed')) {
       throw ManagementRequestException('共享连接返回了不匹配的结果');
     }
   }
 
+  /// Every device that is mine.
+  ///
+  /// Composed and phrased by the Host — it is the side that can see both the
+  /// Claim and the mount — so this app switches on a state rather than deriving
+  /// one from two authorities it would have to reason about together.
   Future<DevicesView> fetchDevices(
     Uri baseUri, {
     required String accessToken,

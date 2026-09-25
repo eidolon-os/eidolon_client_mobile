@@ -258,7 +258,7 @@ class EidolonSession {
           SessionData(topic, utf8.decode(event.data, allowMalformed: true),
               fromProvider: _room?.name != null &&
                   event.participant?.identity ==
-                      'channel-provider-${_room!.name}'),
+                      '$channelProviderIdentityPrefix${_room!.name}'),
         );
       })
       ..on<TrackSubscribedEvent>((event) {

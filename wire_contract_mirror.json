@@ -159,6 +159,15 @@
     },
     "VALID_SESSION_REQUEST_TYPES": {
       "not_mirrored": "a computed set over sessionOpenType and sessionCloseType, both mirrored; sessionRequestPayload refuses anything else by naming the two rather than by carrying the set"
+    },
+    "CHANNEL_PROVIDER_IDENTITY_PREFIX": {
+      "dart": "channelProviderIdentityPrefix"
+    },
+    "SESSION_REJECTED_TYPE": {
+      "dart": "sessionRejectedType"
+    },
+    "SESSION_REJECTION_CONFLICT": {
+      "dart": "sessionRejectionConflict"
     }
   }
 }
