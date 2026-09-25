@@ -25,6 +25,18 @@ class PinnedHttpsAddressTest {
     }
 
     @Test
+    fun `request budget applies to native read and total call while default remains bounded`() {
+        val normal = buildPinnedHttpsClient(trustManager())
+        val admission = buildPinnedHttpsClient(trustManager(), timeoutMillis = 45000)
+        assertEquals(8000, normal.readTimeoutMillis)
+        assertEquals(8000, normal.callTimeoutMillis)
+        assertEquals(45000, admission.readTimeoutMillis)
+        assertEquals(45000, admission.callTimeoutMillis)
+        assertEquals(8000, admission.connectTimeoutMillis)
+        assertFailsWith<IllegalArgumentException> { buildPinnedHttpsClient(trustManager(), timeoutMillis = 0) }
+    }
+
+    @Test
     fun `routed HTTPS authenticates the original hostname and refuses wrong name or root`() {
         // Generated solely for this loopback test; contains no deployment key.
         val keys = KeyStore.getInstance("PKCS12")

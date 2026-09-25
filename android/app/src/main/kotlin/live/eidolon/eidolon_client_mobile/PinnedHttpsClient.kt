@@ -68,6 +68,7 @@ internal class PinnedHttpsClient(private val mainHandler: Handler) {
                 trustManager,
                 if (address == null) emptyMap() else mapOf(url.host to address),
                 hostSpkiPinned = expected != null,
+                timeoutMillis = call.argument<Number>("timeoutMillis")?.toLong() ?: 8000,
             ).newBuilder().dispatcher(calls.dispatcher)
                 .eventListener(object : EventListener() {
                     override fun dnsStart(call: Call, domainName: String) { stage = "dns" }

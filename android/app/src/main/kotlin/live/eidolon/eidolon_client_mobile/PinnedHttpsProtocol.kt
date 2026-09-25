@@ -25,7 +25,9 @@ internal fun buildPinnedHttpsClient(
     addressHints: Map<String, String> = emptyMap(),
     hostSpkiPinned: Boolean = false,
     resolver: Dns = Dns.SYSTEM,
+    timeoutMillis: Long = 8000,
 ): OkHttpClient {
+    require(timeoutMillis > 0) { "Request timeout must be positive" }
     val context = SSLContext.getInstance("TLS")
     context.init(null, arrayOf(trustManager), SecureRandom())
     val builder = OkHttpClient.Builder()
@@ -39,7 +41,8 @@ internal fun buildPinnedHttpsClient(
           }
         })
         .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
+        .callTimeout(timeoutMillis, TimeUnit.MILLISECONDS)
         .followRedirects(false)
         .followSslRedirects(false)
         .retryOnConnectionFailure(false)

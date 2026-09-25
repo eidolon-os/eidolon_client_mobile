@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import '../generated/management_v1.dart';
+import '../services/bounded_http_request.dart';
 
 String _iso8601WithOffset(DateTime value) {
   if (value.isUtc) return value.toIso8601String();
@@ -1414,15 +1415,16 @@ class ManagementClient {
   }) async {
     final http.Response response;
     try {
-      final request = http.Request(method, endpoint)
+      final request = BoundedHttpRequest(method, endpoint,
+        timeout: requestTimeout ?? timeout)
         ..headers['Authorization'] = 'Bearer $accessToken';
       if (body != null) {
         request.headers['Content-Type'] = 'application/json; charset=utf-8';
         request.body = jsonEncode(body);
       }
-      response = await http.Response.fromStream(
-        await _httpClient.send(request),
-      ).timeout(requestTimeout ?? timeout);
+      response = await _httpClient.send(request)
+          .then(http.Response.fromStream)
+          .timeout(request.timeout);
     } on TimeoutException {
       throw ManagementRequestException('$what超时');
     } catch (error) {

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import '../../services/bounded_http_request.dart';
 
 enum PinnedHttpFailureKind {
   cancelled,
@@ -146,6 +147,7 @@ class PlatformPinnedHttpClient extends http.BaseClient {
         uri: request.url,
       );
     }
+    final budget = request is BoundedHttpRequest ? request.timeout : requestTimeout;
     final bodyBytes = await request.finalize().toBytes();
     if (bodyBytes.length > _maxBodyBytes) {
       throw PinnedHttpException(
@@ -164,6 +166,7 @@ class PlatformPinnedHttpClient extends http.BaseClient {
         'pinnedHttpsRequest',
         {
           'protocolVersion': _protocolVersion,
+          'timeoutMillis': budget.inMilliseconds,
           'requestId': requestId,
           'url': request.url.toString(),
           'method': request.method,
@@ -176,7 +179,7 @@ class PlatformPinnedHttpClient extends http.BaseClient {
           if (ownerRootCertificate != null)
             'ownerRootCertificate': ownerRootCertificate,
         },
-      ).timeout(requestTimeout, onTimeout: () {
+      ).timeout(budget, onTimeout: () {
         unawaited(_cancel(requestId));
         throw PinnedHttpException(
             kind: PinnedHttpFailureKind.timeout,

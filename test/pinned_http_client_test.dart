@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:eidolon_client_mobile/src/management/management_client.dart';
 
 import 'package:eidolon_client_mobile/src/features/host_setup/pinned_http_client.dart';
 import 'package:flutter/foundation.dart';
@@ -20,6 +21,26 @@ void main() {
   tearDown(() {
     debugDefaultTargetPlatformOverride = null;
     messenger.setMockMethodCallHandler(channel, null);
+  });
+
+  test('shared admission budget reaches native transport without changing defaults', () async {
+    final budgets = <Object?>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'cancelPinnedHttpsRequest') return null;
+      budgets.add((call.arguments as Map)['timeoutMillis']);
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      return {'protocolVersion': 1, 'statusCode': 200,
+        'bodyBase64': base64Encode(utf8.encode('{"session_id":"visit","state":"transport_ready"}'))};
+    });
+    final transport = PlatformPinnedHttpClient(tlsSpkiFingerprint: 'pin',
+      channel: channel, requestTimeout: const Duration(milliseconds: 10));
+    final management = ManagementClient(httpClient: transport);
+    await management.changeSharedSession(Uri.parse('https://host/'),
+      accessToken: 'test', sessionId: 'visit', deviceIds: ['box', 'stack'], inputDeviceId: 'stack');
+    expect(budgets, [45000]);
+    await expectLater(transport.get(Uri.parse('https://host/ordinary')),
+      throwsA(isA<PinnedHttpException>().having((e) => e.kind, 'kind', PinnedHttpFailureKind.timeout)));
+    transport.close();
   });
 
   test('deadline cancels the native request and does not block a second client',
