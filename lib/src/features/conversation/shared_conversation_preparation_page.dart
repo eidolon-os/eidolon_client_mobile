@@ -57,7 +57,7 @@ class _SharedConversationPreparationPageState
       if (!mounted) return;
       setState(() {
         _notice =
-            opening ? '共享连接已建立。此轮仅检查入房与恢复，麦克风和扬声器保持关闭。' : '共享连接已结束，设备恢复原连接。';
+            opening ? '共享连接已建立。此轮仅检查入房与恢复，麦克风和扬声器保持关闭。' : '共享连接已结束，设备正在恢复原连接。';
         if (!opening) _sessionId = null;
       });
     } catch (_) {
