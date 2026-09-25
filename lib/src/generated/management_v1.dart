@@ -57,6 +57,12 @@ class ManagementV1 {
       '/api/management/v1/controllers/invitations';
   static String controllersByControllerIdPath(String controllerId) =>
       '/api/management/v1/controllers/${Uri.encodeComponent(controllerId)}';
+  static const String deviceConversationsClosePath =
+      '/api/management/v1/device-conversations/close';
+  static const String deviceConversationsOpenPath =
+      '/api/management/v1/device-conversations/open';
+  static const String deviceConversationsStatusPath =
+      '/api/management/v1/device-conversations/status';
   static const String devicesPath = '/api/management/v1/devices';
   static String devicesByDeviceIdCompanionPath(String deviceId) =>
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/companion';
@@ -838,6 +844,41 @@ class ConversationPreferences {
   }
 }
 
+class ConversationStart {
+  const ConversationStart({
+    required this.inputDeviceId,
+    required this.outputDeviceId,
+    required this.sessionId,
+    required this.targetCompanionId,
+  });
+
+  final String inputDeviceId;
+
+  final String outputDeviceId;
+
+  final String sessionId;
+
+  final String targetCompanionId;
+
+  factory ConversationStart.fromJson(Map<String, dynamic> value) {
+    return ConversationStart(
+      inputDeviceId: value['input_device_id'] as String,
+      outputDeviceId: value['output_device_id'] as String,
+      sessionId: value['session_id'] as String,
+      targetCompanionId: value['target_companion_id'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'input_device_id': inputDeviceId,
+      'output_device_id': outputDeviceId,
+      'session_id': sessionId,
+      'target_companion_id': targetCompanionId,
+    };
+  }
+}
+
 class ConversationView {
   const ConversationView({
     required this.conversationId,
@@ -944,6 +985,36 @@ class DeviceCompanionRequest {
       if (companionId != null) 'companion_id': companionId,
       'expected_revision': expectedRevision,
       'request_id': requestId,
+    };
+  }
+}
+
+class DeviceConversationStatus {
+  const DeviceConversationStatus({
+    this.error,
+    required this.sessionId,
+    required this.state,
+  });
+
+  final String? error;
+
+  final String sessionId;
+
+  final String state;
+
+  factory DeviceConversationStatus.fromJson(Map<String, dynamic> value) {
+    return DeviceConversationStatus(
+      error: value['error'] as String?,
+      sessionId: value['session_id'] as String,
+      state: value['state'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (error != null) 'error': error,
+      'session_id': sessionId,
+      'state': state,
     };
   }
 }

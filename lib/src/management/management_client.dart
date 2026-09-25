@@ -527,6 +527,27 @@ class ManagementClient {
     return HomeView.fromJson(body);
   }
 
+  Future<DeviceConversationStatus> deviceConversation(Uri baseUri, {
+    required String accessToken, required String action, required String sessionId,
+    ConversationStart? selection,
+  }) async {
+    final path = switch (action) {
+      'open' => ManagementV1.deviceConversationsOpenPath,
+      'status' => ManagementV1.deviceConversationsStatusPath,
+      'close' => ManagementV1.deviceConversationsClosePath,
+      _ => throw ArgumentError.value(action),
+    };
+    final body = await _send('POST', baseUri.resolve(path), accessToken: accessToken,
+      what: '更新跨设备对话', body: action == 'open' ? selection!.toJson()
+        : SharedClose(sessionId: sessionId).toJson());
+    final result = DeviceConversationStatus.fromJson(body);
+    if (result.sessionId != sessionId ||
+        !{'preparing', 'ready', 'closing', 'closed', 'failed'}.contains(result.state)) {
+      throw ManagementRequestException('跨设备对话返回了不匹配的结果');
+    }
+    return result;
+  }
+
   Future<void> changeSharedSession(Uri baseUri, {
     required String accessToken,
     required String sessionId,

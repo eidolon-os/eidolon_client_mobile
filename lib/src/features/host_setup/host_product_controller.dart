@@ -171,6 +171,11 @@ class HostProductController extends ChangeNotifier {
   bool get powerOffBusy => _powerOffBusy;
   String? get powerOffOutcome => _powerOffOutcome;
 
+  Future<DeviceConversationStatus> deviceConversation(String action, String sessionId,
+      ConversationStart? selection) => _session.executeManagement((client, uri, token) =>
+        client.deviceConversation(uri, accessToken: token, action: action,
+          sessionId: sessionId, selection: selection));
+
   Future<void> changeSharedSession(String sessionId,
       List<String>? deviceIds, String? inputDeviceId) =>
       _session.executeManagement((client, uri, token) =>

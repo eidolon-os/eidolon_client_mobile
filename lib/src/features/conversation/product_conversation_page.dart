@@ -13,6 +13,7 @@ import 'conversation_flow.dart';
 import 'conversation_standing.dart';
 import 'mobile_body_standing.dart';
 import 'shared_conversation_preparation_page.dart';
+import 'device_conversation_page.dart';
 import '../device_management/mounted_device_models.dart';
 
 class ProductConversationPage extends StatefulWidget {
@@ -22,10 +23,12 @@ class ProductConversationPage extends StatefulWidget {
       required this.hostName,
       this.loadGroupDevices,
       this.changeSharedSession,
+      this.deviceConversation,
       this.openDevices,
       this.openHostStatus});
   final Future<ConversationFlow> Function() createFlow;
   final String hostName;
+  final DeviceConversationCommand? deviceConversation;
   final Future<void> Function(String, List<String>?, String?)?
       changeSharedSession;
   final Future<MountedDeviceInventory> Function()? loadGroupDevices;
@@ -449,15 +452,21 @@ class _ProductConversationPageState extends State<ProductConversationPage>
               child: ListTile(
                 key: const Key('prepare-shared-conversation'),
                 leading: const Icon(Icons.groups_2_outlined, color: Neon.cyan),
-                title: const Text('一起聊'),
+                title: Text(widget.deviceConversation == null ? '一起聊' : '跨设备对话'),
                 subtitle: Text(flow.client.canLeave
                     ? '结束当前对话后，可准备多人搭配'
-                    : '选择参与设备 · 检查共享连接'),
+                    : widget.deviceConversation == null ? '选择参与设备 · 检查共享连接' : '选择输入、播放设备和回答的伙伴'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 enabled:
                     !flow.client.canLeave && !flow.busy && !flow.client.isBusy,
                 onTap: () => Navigator.of(context).push<void>(MaterialPageRoute(
-                  builder: (_) => SharedConversationPreparationPage(
+                  builder: (_) => widget.deviceConversation != null
+                    ? DeviceConversationPage(command: widget.deviceConversation!, load: () async {
+                        final inventory = await widget.loadGroupDevices!();
+                        return (devices: inventory.devices,
+                          localDeviceId: flow.client.identity?.deviceInstanceId,
+                          coverage: inventory.coverage);
+                      }) : SharedConversationPreparationPage(
                     loadFace: flow.management.loadFace,
                     changeSession: widget.changeSharedSession,
                     load: () async {

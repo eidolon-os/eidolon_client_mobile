@@ -168,6 +168,9 @@
     },
     "SESSION_REJECTION_CONFLICT": {
       "dart": "sessionRejectionConflict"
+    },
+    "SESSION_CONTROL_REQUEST_ID_FIELD": {
+      "not_mirrored": "Only prepared device room.join emits this correlation field; this client does not implement prepared device admission."
     }
   }
 }
