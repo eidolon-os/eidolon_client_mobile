@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../../management/companion_portrait.dart';
@@ -12,16 +13,18 @@ typedef SharedConversationSnapshot = ({
   String coverage,
 });
 
-/// Page-local preparation only. No binding, microphone or Provider capability
-/// is passed here. A future start action must use trusted session admission.
+/// Selection and explicit visit controls. The Host owns admission; this page
+/// neither changes Companion bindings nor receives Provider credentials.
 class SharedConversationPreparationPage extends StatefulWidget {
   const SharedConversationPreparationPage({
     super.key,
     required this.load,
     this.loadFace,
+    this.changeSession,
   });
   final Future<SharedConversationSnapshot> Function() load;
   final CompanionFaceLoader? loadFace;
+  final Future<void> Function(String, List<String>?, String?)? changeSession;
 
   @override
   State<SharedConversationPreparationPage> createState() =>
@@ -35,6 +38,34 @@ class _SharedConversationPreparationPageState
   String? _inputDeviceId;
   bool _loading = false;
   bool _failed = false;
+  bool _busy = false;
+  String? _sessionId;
+  String? _notice;
+
+  Future<void> _change(bool opening) async {
+    if (_busy) return;
+    // Retain the ID on uncertain results: closing must target the same visit.
+    _sessionId ??=
+        'mobile-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 30)}';
+    setState(() {
+      _busy = true;
+      _notice = null;
+    });
+    try {
+      await widget.changeSession!(_sessionId!,
+          opening ? _selected.toList() : null, opening ? _inputDeviceId : null);
+      if (!mounted) return;
+      setState(() {
+        _notice =
+            opening ? '共享连接已建立。此轮仅检查入房与恢复，麦克风和扬声器保持关闭。' : '共享连接已结束，设备恢复原连接。';
+        if (!opening) _sessionId = null;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _notice = '未能确认结果，请结束共享连接后重试。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   void initState() {
@@ -103,7 +134,7 @@ class _SharedConversationPreparationPageState
                     name: companionName,
                     loadFace: widget.loadFace,
                     size: 40),
-            onChanged: !selectable
+            onChanged: !selectable || _sessionId != null
                 ? null
                 : (value) => setState(() {
                       if (value == true) {
@@ -136,8 +167,9 @@ class _SharedConversationPreparationPageState
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
                   key: Key('input-${device.deviceId}'),
-                  onPressed: () =>
-                      setState(() => _inputDeviceId = device.deviceId),
+                  onPressed: _sessionId != null
+                      ? null
+                      : () => setState(() => _inputDeviceId = device.deviceId),
                   icon: Icon(isInput
                       ? Icons.check_circle_outline_rounded
                       : Icons.mic_none_rounded),
@@ -152,11 +184,13 @@ class _SharedConversationPreparationPageState
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => PopScope(
+      canPop: _sessionId == null,
+      child: Scaffold(
         appBar: AppBar(title: const Text('一起聊'), actions: [
           IconButton(
               tooltip: '刷新设备与伙伴',
-              onPressed: _loading ? null : _refresh,
+              onPressed: _loading || _sessionId != null ? null : _refresh,
               icon: const Icon(Icons.refresh_rounded)),
         ]),
         body: SafeArea(
@@ -188,7 +222,10 @@ class _SharedConversationPreparationPageState
                       Text('选择参与的设备',
                           style: Theme.of(context).textTheme.headlineSmall),
                       const SizedBox(height: 12),
-                      const Text('共享对话尚未开放。选择参与的设备及本次输入入口，伙伴沿用设备详情中的现有绑定。',
+                      Text(
+                          widget.changeSession == null
+                              ? '共享对话尚未开放。选择参与的设备及本次输入入口，伙伴沿用设备详情中的现有绑定。'
+                              : '选择至少两台设备及本次输入入口。伙伴沿用现有绑定；当前先检查共享连接，暂不开放语音。',
                           style: TextStyle(color: Neon.inkDim, height: 1.65)),
                       const SizedBox(height: 24),
                       Text('已选 ${_selected.length} 台设备',
@@ -217,13 +254,37 @@ class _SharedConversationPreparationPageState
                             child: Text('还没有可列出的设备，请先在主机中登记设备。')),
                       for (final device in _snapshot!.devices) _device(device),
                       const SizedBox(height: 12),
+                      if (_notice != null) ...[
+                        Text(_notice!, key: const Key('shared-session-notice')),
+                        const SizedBox(height: 16),
+                      ],
+                      if (widget.changeSession != null)
+                        FilledButton(
+                          key: const Key('shared-session-action'),
+                          onPressed: _busy
+                              ? null
+                              : _sessionId != null
+                                  ? () => _change(false)
+                                  : _selected.length >= 2 &&
+                                          _inputDeviceId != null
+                                      ? () => _change(true)
+                                      : null,
+                          child: Text(_busy
+                              ? '正在处理…'
+                              : _sessionId != null
+                                  ? '结束共享连接'
+                                  : '检查共享连接'),
+                        ),
                       const Text('本次搭配',
                           style: TextStyle(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 8),
-                      const Text('当前暂不能邀请设备。选择仅保留在此页，返回后丢弃。更换伙伴请到原有设备详情设置。',
+                      Text(
+                          widget.changeSession == null
+                              ? '当前暂不能邀请设备。选择仅保留在此页，返回后丢弃。更换伙伴请到原有设备详情设置。'
+                              : '共享连接最多保留两分钟。结束后恢复原连接，更换伙伴请到设备详情设置。',
                           style: TextStyle(color: Neon.inkDim, height: 1.65)),
                       const SizedBox(height: 24),
                     ]),
         ))),
-      );
+      ));
 }

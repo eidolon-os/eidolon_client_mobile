@@ -51,6 +51,41 @@ Widget app(Future<SharedConversationSnapshot> Function() load,
         home: SharedConversationPreparationPage(load: load));
 
 void main() {
+  testWidgets('uncertain invitation retains visit identity for explicit cleanup', (tester) async {
+    final calls = <(String, List<String>?, String?)>[];
+    await tester.pumpWidget(MaterialApp(theme: EidolonTheme.dark(),
+      home: SharedConversationPreparationPage(load: () async => scene(),
+        changeSession: (id, devices, input) async {
+          calls.add((id, devices, input));
+          if (devices != null) throw TimeoutException('lost response');
+        })));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('select-BOX-3')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('select-StackChan')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('select-StackChan')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('input-BOX-3')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('input-BOX-3')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('shared-session-action')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('shared-session-action')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('未能确认结果'), findsOneWidget);
+    expect(calls.single.$2, ['BOX-3', 'StackChan']);
+    expect(calls.single.$3, 'BOX-3');
+    await tester.ensureVisible(find.byKey(const Key('shared-session-action')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('shared-session-action')));
+    await tester.pumpAndSettle();
+    expect(calls.last.$1, calls.first.$1);
+    expect(calls.last.$2, isNull);
+    expect(find.textContaining('共享连接已结束'), findsOneWidget);
+  });
+
   testWidgets('preparation is explicit and never claims devices have joined',
       (tester) async {
     await tester.pumpWidget(app(() async => scene()));

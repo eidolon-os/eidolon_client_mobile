@@ -531,6 +531,26 @@ class ManagementClient {
   /// Composed and phrased by the Host — it is the side that can see both the
   /// Claim and the mount — so this app switches on a state rather than deriving
   /// one from two authorities it would have to reason about together.
+  Future<void> changeSharedSession(Uri baseUri, {
+    required String accessToken,
+    required String sessionId,
+    List<String>? deviceIds,
+    String? inputDeviceId,
+  }) async {
+    final opening = deviceIds != null;
+    final result = await _send('POST',
+      baseUri.resolve('/api/management/v1/shared-sessions/${opening ? 'open' : 'close'}'),
+      accessToken: accessToken, what: opening ? '邀请设备' : '结束共享连接',
+      requestTimeout: const Duration(seconds: 45),
+      body: {'session_id': sessionId, if (opening) ...{
+        'device_ids': deviceIds, 'input_device_id': inputDeviceId,
+      }});
+    if (result['session_id'] != sessionId ||
+        result['state'] != (opening ? 'transport_ready' : 'closed')) {
+      throw ManagementRequestException('共享连接返回了不匹配的结果');
+    }
+  }
+
   Future<DevicesView> fetchDevices(
     Uri baseUri, {
     required String accessToken,

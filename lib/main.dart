@@ -82,6 +82,7 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
 
           return ProductConversationPage(
             hostName: controller.host.readableName,
+            changeSharedSession: controller.changeSharedSession,
             loadGroupDevices: () async {
               await prepareManagement();
               await controller.refreshDevices();

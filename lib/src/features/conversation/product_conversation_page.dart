@@ -21,10 +21,13 @@ class ProductConversationPage extends StatefulWidget {
       required this.createFlow,
       required this.hostName,
       this.loadGroupDevices,
+      this.changeSharedSession,
       this.openDevices,
       this.openHostStatus});
   final Future<ConversationFlow> Function() createFlow;
   final String hostName;
+  final Future<void> Function(String, List<String>?, String?)?
+      changeSharedSession;
   final Future<MountedDeviceInventory> Function()? loadGroupDevices;
   final Future<void> Function(BuildContext)? openDevices;
   final Future<void> Function(BuildContext)? openHostStatus;
@@ -449,13 +452,14 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                 title: const Text('一起聊'),
                 subtitle: Text(flow.client.canLeave
                     ? '结束当前对话后，可准备多人搭配'
-                    : '选择参与设备 · 暂未开放启动'),
+                    : '选择参与设备 · 检查共享连接'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 enabled:
                     !flow.client.canLeave && !flow.busy && !flow.client.isBusy,
                 onTap: () => Navigator.of(context).push<void>(MaterialPageRoute(
                   builder: (_) => SharedConversationPreparationPage(
                     loadFace: flow.management.loadFace,
+                    changeSession: widget.changeSharedSession,
                     load: () async {
                       final inventory = await widget.loadGroupDevices!();
                       return (
