@@ -3661,12 +3661,32 @@ class RevokedSessionsView {
   }
 }
 
+class RoleGroupAssignment {
+  const RoleGroupAssignment({required this.outputDeviceId, required this.role});
+
+  final String outputDeviceId;
+
+  final SceneRole role;
+
+  factory RoleGroupAssignment.fromJson(Map<String, dynamic> value) {
+    return RoleGroupAssignment(
+      outputDeviceId: value['output_device_id'] as String,
+      role: SceneRole.fromJson(value['role'] as Map<String, dynamic>),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'output_device_id': outputDeviceId, 'role': role.toJson()};
+  }
+}
+
 class RoleGroupStart {
   const RoleGroupStart({
     this.discussion,
     required this.inputDeviceId,
     required this.outputDeviceIds,
     this.replyBudget,
+    this.roles,
     required this.sessionId,
   });
 
@@ -3678,6 +3698,8 @@ class RoleGroupStart {
 
   final int? replyBudget;
 
+  final List<RoleGroupAssignment>? roles;
+
   final String sessionId;
 
   factory RoleGroupStart.fromJson(Map<String, dynamic> value) {
@@ -3688,6 +3710,15 @@ class RoleGroupStart {
           .map((entry) => entry as String)
           .toList()),
       replyBudget: value['reply_budget'] as int?,
+      roles: value['roles'] == null
+          ? null
+          : ((value['roles'] as List<dynamic>)
+                .map(
+                  (entry) => RoleGroupAssignment.fromJson(
+                    entry as Map<String, dynamic>,
+                  ),
+                )
+                .toList()),
       sessionId: value['session_id'] as String,
     );
   }
@@ -3698,6 +3729,8 @@ class RoleGroupStart {
       'input_device_id': inputDeviceId,
       'output_device_ids': outputDeviceIds,
       if (replyBudget != null) 'reply_budget': replyBudget,
+      if (roles != null)
+        'roles': roles?.map((entry) => entry.toJson()).toList(),
       'session_id': sessionId,
     };
   }
@@ -3740,6 +3773,25 @@ class RoleGroupStatus {
       'session_id': sessionId,
       'state': state,
     };
+  }
+}
+
+class SceneRole {
+  const SceneRole({this.description, required this.name});
+
+  final String? description;
+
+  final String name;
+
+  factory SceneRole.fromJson(Map<String, dynamic> value) {
+    return SceneRole(
+      description: value['description'] as String?,
+      name: value['name'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {if (description != null) 'description': description, 'name': name};
   }
 }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../generated/management_v1.dart' show RoleGroupAssignment;
 import '../device_management/mounted_device_models.dart';
 import 'shared_conversation_preparation_page.dart';
 import 'role_group_controller.dart';
@@ -16,6 +17,7 @@ class _RoleGroupPageState extends State<RoleGroupPage> {
   List<MountedDevice> _devices = [];
   String? _input, _error;
   final _outputs = <String>[];
+  final _roles = <String, String>{};
   bool _loading = true, _discussion = false;
   @override
   void initState() {
@@ -25,6 +27,9 @@ class _RoleGroupPageState extends State<RoleGroupPage> {
       _input = selected.inputDeviceId;
       _outputs.addAll(selected.outputDeviceIds);
       _discussion = selected.discussion ?? false;
+      for (final assignment in selected.roles ?? <RoleGroupAssignment>[]) {
+        _roles[assignment.outputDeviceId] = assignment.role.name;
+      }
     }
     _load();
   }
@@ -57,6 +62,7 @@ class _RoleGroupPageState extends State<RoleGroupPage> {
       listenable: widget.controller,
       builder: (context, _) {
         final team = widget.controller;
+        final labels = {for (final d in _devices) d.deviceId: d.label};
         final locked = team.sessionId != null || team.busy;
         final editable = !locked && !_loading && _error == null;
         final companionIds = _devices
@@ -118,6 +124,19 @@ class _RoleGroupPageState extends State<RoleGroupPage> {
                             })
                         : null),
               if (!distinct) const Text('每位伙伴只能选择一个回应设备。'),
+              for (final id in _outputs)
+                TextFormField(
+                  key: ValueKey('team-role-$id'),
+                  initialValue: _roles[id] ?? '',
+                  enabled: editable,
+                  maxLength: 80,
+                  decoration: InputDecoration(
+                    labelText: '${labels[id] ?? id} · 本场角色',
+                    hintText: '留空使用原伙伴身份',
+                  ),
+                  onChanged: (value) => _roles[id] = value,
+                ),
+              const Text('每位只说自己的这一轮。角色在本场固定，修改请结束后重新开始。'),
               SwitchListTile(
                   title: const Text('成员接续互聊（最多 4 次回复）'),
                   value: _discussion,
@@ -133,7 +152,8 @@ class _RoleGroupPageState extends State<RoleGroupPage> {
                           _input != null &&
                           _outputs.isNotEmpty &&
                           distinct
-                      ? () => team.start(_input!, _outputs, _discussion)
+                      ? () => team.start(_input!, _outputs, _discussion,
+                          roles: _roles)
                       : null,
                   child: const Text('开始团队')),
               OutlinedButton(

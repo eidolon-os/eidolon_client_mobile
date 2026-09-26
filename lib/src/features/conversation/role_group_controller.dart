@@ -20,8 +20,8 @@ class RoleGroupController extends ChangeNotifier {
   Timer? _poll;
   bool _disposed = false;
 
-  Future<void> start(
-      String input, List<String> outputs, bool discussion) async {
+  Future<void> start(String input, List<String> outputs, bool discussion,
+      {Map<String, String> roles = const {}}) async {
     if (sessionId != null || busy) return;
     sessionId =
         'team-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 30)}';
@@ -29,6 +29,13 @@ class RoleGroupController extends ChangeNotifier {
         sessionId: sessionId!,
         inputDeviceId: input,
         outputDeviceIds: List.unmodifiable(outputs),
+        roles: [
+          for (final output in outputs)
+            if ((roles[output] ?? '').trim().isNotEmpty)
+              RoleGroupAssignment(
+                  outputDeviceId: output,
+                  role: SceneRole(name: roles[output]!.trim()))
+        ],
         discussion: discussion,
         replyBudget: discussion ? 4 : outputs.length);
     await _invoke('open');
