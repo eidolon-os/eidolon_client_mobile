@@ -140,7 +140,7 @@ class _RoleGroupPageState extends State<RoleGroupPage> {
                   key: const Key('close-role-group'),
                   onPressed:
                       team.sessionId != null && !team.busy ? team.close : null,
-                  child: const Text('结束团队')),
+                  child: Text(team.closeUnconfirmed ? '重试结束' : '结束团队')),
             ]));
       });
 }

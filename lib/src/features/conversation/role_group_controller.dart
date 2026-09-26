@@ -14,6 +14,8 @@ class RoleGroupController extends ChangeNotifier {
   String state = 'closed';
   String? notice;
   bool busy = false;
+  bool closeRequested = false;
+  bool closeUnconfirmed = false;
   RoleGroupStart? selection;
   Timer? _poll;
   bool _disposed = false;
@@ -40,6 +42,11 @@ class RoleGroupController extends ChangeNotifier {
     if (id == null || busy || _disposed) return;
     _poll?.cancel();
     busy = true;
+    if (action == 'close') {
+      closeRequested = true;
+      closeUnconfirmed = false;
+      notice = '正在停止播放并结束团队…';
+    }
     notifyListeners();
     try {
       final result =
@@ -49,20 +56,32 @@ class RoleGroupController extends ChangeNotifier {
         throw StateError('Unexpected team response');
       }
       state = result.state;
-      notice = switch (state) {
-        'preparing' => '正在让所选设备进入团队…',
-        'ready' => '团队已就绪。按住 PTT 说话，松开后依次回复。',
-        'closing' => '正在停止播放并结束团队…',
-        'closed' => '团队已结束，可使用原来的单聊。',
-        'failed' => '团队未能继续，请结束团队后重试。',
-        _ => '正在确认团队状态…',
-      };
+      if (closeRequested && state == 'failed') closeUnconfirmed = true;
+      notice = closeRequested && closeUnconfirmed && state != 'closed'
+          ? '结束尚未确认，请重试结束；确认前不能开始新团队。'
+          : switch (state) {
+              'preparing' => '正在让所选设备进入团队…',
+              'ready' => '团队已就绪。按住 PTT 说话，松开后依次回复。',
+              'closing' => '正在停止播放并结束团队…',
+              'closed' => '团队已结束，可使用原来的单聊。',
+              'failed' => '团队未能继续，请结束团队后重试。',
+              _ => '正在确认团队状态…',
+            };
       if (state == 'closed') {
         sessionId = null;
         selection = null;
+        closeRequested = false;
+        closeUnconfirmed = false;
       }
     } catch (_) {
-      if (!_disposed) notice = '无法确认团队状态，请刷新或结束团队；不会自动重新启动。';
+      if (!_disposed) {
+        if (closeRequested) {
+          closeUnconfirmed = true;
+          notice = '结束尚未确认，请重试结束；确认前不能开始新团队。';
+        } else {
+          notice = '无法确认团队状态，请刷新或结束团队；不会自动重新启动。';
+        }
+      }
     } finally {
       busy = false;
       if (!_disposed) {
