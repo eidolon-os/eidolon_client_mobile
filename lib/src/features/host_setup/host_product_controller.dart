@@ -1,3 +1,4 @@
+import '../conversation/role_group_controller.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -170,6 +171,10 @@ class HostProductController extends ChangeNotifier {
   String? _powerOffOutcome;
   bool get powerOffBusy => _powerOffBusy;
   String? get powerOffOutcome => _powerOffOutcome;
+
+  late final RoleGroupController roleGroup = RoleGroupController(
+    (action, id, selection) => _session.executeManagement((client, uri, token) =>
+      client.roleGroup(uri, accessToken: token, action: action, sessionId: id, selection: selection)));
 
   Future<DeviceConversationStatus> deviceConversation(String action, String sessionId,
       ConversationStart? selection) => _session.executeManagement((client, uri, token) =>
@@ -1346,6 +1351,7 @@ class HostProductController extends ChangeNotifier {
 
   @override
   void dispose() {
+    roleGroup.dispose();
     _disposed = true;
     unawaited(_networkSubscription?.cancel());
     unawaited(_networkChanges.close());

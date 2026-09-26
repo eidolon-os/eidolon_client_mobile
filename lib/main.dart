@@ -84,6 +84,7 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
             hostName: controller.host.readableName,
             changeSharedSession: controller.changeSharedSession,
             deviceConversation: controller.deviceConversation,
+            roleGroup: controller.roleGroup,
             loadGroupDevices: () async {
               await prepareManagement();
               await controller.refreshDevices();

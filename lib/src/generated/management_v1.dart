@@ -104,6 +104,12 @@ class ManagementV1 {
       '/api/management/v1/persona-authoring-template';
   static const String personaPresetsPath = '/api/management/v1/persona-presets';
   static const String personaPreviewPath = '/api/management/v1/persona-preview';
+  static const String roleGroupsClosePath =
+      '/api/management/v1/role-groups/close';
+  static const String roleGroupsOpenPath =
+      '/api/management/v1/role-groups/open';
+  static const String roleGroupsStatusPath =
+      '/api/management/v1/role-groups/status';
   static const String sessionTracesPath = '/api/management/v1/session-traces';
   static String sessionTracesBySessionIdPath(String sessionId) =>
       '/api/management/v1/session-traces/${Uri.encodeComponent(sessionId)}';
@@ -3651,6 +3657,88 @@ class RevokedSessionsView {
     return {
       if (contractVersion != null) 'contract_version': contractVersion,
       'revoked_at': revokedAt,
+    };
+  }
+}
+
+class RoleGroupStart {
+  const RoleGroupStart({
+    this.discussion,
+    required this.inputDeviceId,
+    required this.outputDeviceIds,
+    this.replyBudget,
+    required this.sessionId,
+  });
+
+  final bool? discussion;
+
+  final String inputDeviceId;
+
+  final List<String> outputDeviceIds;
+
+  final int? replyBudget;
+
+  final String sessionId;
+
+  factory RoleGroupStart.fromJson(Map<String, dynamic> value) {
+    return RoleGroupStart(
+      discussion: value['discussion'] as bool?,
+      inputDeviceId: value['input_device_id'] as String,
+      outputDeviceIds: ((value['output_device_ids'] as List<dynamic>)
+          .map((entry) => entry as String)
+          .toList()),
+      replyBudget: value['reply_budget'] as int?,
+      sessionId: value['session_id'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (discussion != null) 'discussion': discussion,
+      'input_device_id': inputDeviceId,
+      'output_device_ids': outputDeviceIds,
+      if (replyBudget != null) 'reply_budget': replyBudget,
+      'session_id': sessionId,
+    };
+  }
+}
+
+class RoleGroupStatus {
+  const RoleGroupStatus({
+    required this.completionBasis,
+    this.error,
+    required this.scenario,
+    required this.sessionId,
+    required this.state,
+  });
+
+  final String completionBasis;
+
+  final String? error;
+
+  final String scenario;
+
+  final String sessionId;
+
+  final String state;
+
+  factory RoleGroupStatus.fromJson(Map<String, dynamic> value) {
+    return RoleGroupStatus(
+      completionBasis: value['completion_basis'] as String,
+      error: value['error'] as String?,
+      scenario: value['scenario'] as String,
+      sessionId: value['session_id'] as String,
+      state: value['state'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'completion_basis': completionBasis,
+      if (error != null) 'error': error,
+      'scenario': scenario,
+      'session_id': sessionId,
+      'state': state,
     };
   }
 }

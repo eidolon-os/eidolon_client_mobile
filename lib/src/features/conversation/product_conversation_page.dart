@@ -1,3 +1,5 @@
+import 'role_group_controller.dart';
+import 'role_group_page.dart';
 import 'dart:async';
 import '../../management/companion_portrait.dart';
 import '../../models/conversation_mode.dart';
@@ -24,11 +26,13 @@ class ProductConversationPage extends StatefulWidget {
       this.loadGroupDevices,
       this.changeSharedSession,
       this.deviceConversation,
+      this.roleGroup,
       this.openDevices,
       this.openHostStatus});
   final Future<ConversationFlow> Function() createFlow;
   final String hostName;
   final DeviceConversationCommand? deviceConversation;
+  final RoleGroupController? roleGroup;
   final Future<void> Function(String, List<String>?, String?)?
       changeSharedSession;
   final Future<MountedDeviceInventory> Function()? loadGroupDevices;
@@ -481,6 +485,16 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                 )),
               ),
             ),
+            if (widget.roleGroup != null) ListTile(
+              key: const Key('open-role-group'), leading: const Icon(Icons.groups),
+              title: const Text('IP 角色团队'), subtitle: const Text('一个 PTT 输入 · 多位伙伴依次回复'),
+              enabled: !flow.client.canLeave && !flow.busy && !flow.client.isBusy,
+              onTap: () => Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
+                RoleGroupPage(controller: widget.roleGroup!, load: () async {
+                  final inventory = await widget.loadGroupDevices!();
+                  return (devices: inventory.devices, localDeviceId: flow.client.identity?.deviceInstanceId,
+                    coverage: inventory.coverage);
+                })))),
             const SizedBox(height: 18),
           ],
           _partner(flow),

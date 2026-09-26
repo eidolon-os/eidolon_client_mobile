@@ -527,6 +527,27 @@ class ManagementClient {
     return HomeView.fromJson(body);
   }
 
+  Future<RoleGroupStatus> roleGroup(Uri baseUri, {
+    required String accessToken, required String action, required String sessionId,
+    RoleGroupStart? selection,
+  }) async {
+    final path = switch (action) {
+      'open' => ManagementV1.roleGroupsOpenPath,
+      'status' => ManagementV1.roleGroupsStatusPath,
+      'close' => ManagementV1.roleGroupsClosePath,
+      _ => throw ArgumentError.value(action),
+    };
+    final body = await _send('POST', baseUri.resolve(path), accessToken: accessToken,
+      what: '更新 IP 角色团队', body: action == 'open' ? selection!.toJson()
+        : SharedClose(sessionId: sessionId).toJson());
+    final result = RoleGroupStatus.fromJson(body);
+    if (result.sessionId != sessionId || result.scenario != 'ip_role_group' ||
+        !{'preparing', 'ready', 'closing', 'closed', 'failed'}.contains(result.state)) {
+      throw ManagementRequestException('团队返回了不匹配的结果');
+    }
+    return result;
+  }
+
   Future<DeviceConversationStatus> deviceConversation(Uri baseUri, {
     required String accessToken, required String action, required String sessionId,
     ConversationStart? selection,
