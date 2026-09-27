@@ -87,4 +87,25 @@ void main() {
     expect(controller.state, 'closed');
     controller.dispose();
   });
+  testWidgets('accepted close waits for host completion without losing scene', (tester) async {
+    var remoteState = 'ready';
+    final controller = RoleGroupController((action, id, selection) async {
+      if (action == 'close') remoteState = 'closing';
+      return RoleGroupStatus(sessionId: id, state: remoteState,
+          scenario: 'ip_role_group', completionBasis: 'native_playout');
+    });
+    await controller.start('ptt', ['a', 'b'], false);
+    final id = controller.sessionId;
+    await controller.close();
+    expect(controller.sessionId, id);
+    expect(controller.notice, contains('正在停止'));
+    expect(controller.closeUnconfirmed, isFalse);
+    await tester.pump(const Duration(seconds: 2));
+    expect(controller.sessionId, id);
+    remoteState = 'closed';
+    await tester.pump(const Duration(seconds: 2));
+    expect(controller.sessionId, isNull);
+    controller.dispose();
+  });
+
 }
