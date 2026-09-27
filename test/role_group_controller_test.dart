@@ -142,4 +142,28 @@ void main() {
     expect(controller.sessionId, isNull);
     controller.dispose();
   });
+  test('automatic confirmed closure preserves cause and permits a new team', () async {
+    var remoteState = 'ready';
+    final calls = <String>[];
+    final controller = RoleGroupController((action, id, selection) async {
+      calls.add(action);
+      return RoleGroupStatus(sessionId: id, state: remoteState,
+          error: remoteState == 'closed' ? 'TEAM_DEVICE_DISCONNECTED' : '',
+          scenario: 'ip_role_group', completionBasis: 'native_playout');
+    });
+    await controller.start('ptt', ['a']);
+    final previous = controller.sessionId;
+    remoteState = 'closed';
+    await controller.refresh();
+    expect(controller.sessionId, isNull);
+    expect(controller.notice, contains('TEAM_DEVICE_DISCONNECTED'));
+    expect(controller.notice, contains('可重新开始'));
+    expect(calls, isNot(contains('close')));
+    remoteState = 'ready';
+    await controller.start('ptt', ['a']);
+    expect(controller.sessionId, isNot(previous));
+    expect(controller.state, 'ready');
+    controller.dispose();
+  });
+
 }

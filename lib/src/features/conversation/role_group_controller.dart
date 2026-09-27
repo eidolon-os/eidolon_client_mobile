@@ -6,7 +6,7 @@ import '../../generated/management_v1.dart';
 typedef RoleGroupCommand = Future<RoleGroupStatus> Function(
     String action, String sessionId, RoleGroupStart? selection);
 
-/// Host-owned state survives navigation; only explicit close ends the team.
+/// Host-owned state survives navigation; only confirmed closure releases it.
 class RoleGroupController extends ChangeNotifier {
   RoleGroupController(this.command);
   final RoleGroupCommand command;
@@ -93,7 +93,9 @@ class RoleGroupController extends ChangeNotifier {
                   'preparing' => '正在让所选设备进入团队…',
                   'ready' => '团队已就绪。按住 PTT 说话，可点名、追问或让成员讨论；再次按下即可打断。',
                   'closing' => '正在停止播放并结束团队…',
-                  'closed' => '团队已结束，可使用原来的单聊。',
+                  'closed' => (result.error ?? '').trim().isEmpty
+                      ? '团队已结束，可使用原来的单聊。'
+                      : '团队因故结束：${result.error}。设备已退出，可重新开始。',
                   'failed' => (result.error ?? '').trim().isEmpty
                       ? '团队未能继续，请结束团队后重试。'
                       : '团队未能继续：${result.error}。请结束团队后重试。',
