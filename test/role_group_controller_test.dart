@@ -1,8 +1,39 @@
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/role_group_controller.dart';
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 
 void main() {
+  for (final delayedAction in ['open', 'status']) {
+    test('close is queued after in-flight $delayedAction, never dropped',
+        () async {
+      final gate = Completer<void>();
+      final calls = <String>[];
+      final controller = RoleGroupController((action, id, selection) async {
+        calls.add(action);
+        if (action == delayedAction) await gate.future;
+        return RoleGroupStatus(
+            sessionId: id,
+            state: action == 'close' ? 'closed' : 'ready',
+            scenario: 'ip_role_group',
+            completionBasis: 'native_playout');
+      });
+      final opening = controller.start('ptt', ['a']);
+      if (delayedAction == 'status') await opening;
+      final querying =
+          delayedAction == 'status' ? controller.refresh() : opening;
+      final closing = controller.close();
+      final repeatedClose = controller.close();
+      expect(calls, isNot(contains('close')));
+      expect(controller.notice, contains('正在停止'));
+      gate.complete();
+      await Future.wait([querying, closing, repeatedClose]);
+      expect(calls.where((action) => action == 'close'), hasLength(1));
+      expect(controller.state, 'closed');
+      expect(controller.sessionId, isNull);
+      controller.dispose();
+    });
+  }
   testWidgets('team survives silence and only explicit close ends it',
       (tester) async {
     final calls = <String>[];

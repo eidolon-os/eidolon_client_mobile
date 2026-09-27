@@ -19,6 +19,7 @@ class RoleGroupController extends ChangeNotifier {
   RoleGroupStart? selection;
   Timer? _poll;
   bool _disposed = false;
+  Completer<void>? _pendingClose;
 
   Future<void> start(String input, List<String> outputs,
       {Map<String, String> roles = const {},
@@ -46,7 +47,18 @@ class RoleGroupController extends ChangeNotifier {
     await _invoke('open');
   }
 
-  Future<void> close() => _invoke('close');
+  Future<void> close() {
+    if (_disposed || sessionId == null) return Future.value();
+    if (!busy) return _invoke('close');
+    // Serialize a user's close intent after the in-flight request. Polling must
+    // never consume an explicit command, nor race its response with a close.
+    final pending = _pendingClose ??= Completer<void>();
+    closeRequested = true;
+    notice = '正在停止播放并结束团队…';
+    notifyListeners();
+    return pending.future;
+  }
+
   Future<void> refresh() => _invoke('status');
 
   Future<void> _invoke(String action) async {
@@ -69,16 +81,18 @@ class RoleGroupController extends ChangeNotifier {
       }
       state = result.state;
       if (closeRequested && state == 'failed') closeUnconfirmed = true;
-      notice = closeRequested && closeUnconfirmed && state != 'closed'
-          ? '结束尚未确认，请重试结束；确认前不能开始新团队。'
-          : switch (state) {
-              'preparing' => '正在让所选设备进入团队…',
-              'ready' => '团队已就绪。按住 PTT 说话，可点名、追问或让成员讨论；再次按下即可打断。',
-              'closing' => '正在停止播放并结束团队…',
-              'closed' => '团队已结束，可使用原来的单聊。',
-              'failed' => '团队未能继续，请结束团队后重试。',
-              _ => '正在确认团队状态…',
-            };
+      notice = _pendingClose != null && state != 'closed'
+          ? '正在停止播放并结束团队…'
+          : closeRequested && closeUnconfirmed && state != 'closed'
+              ? '结束尚未确认，请重试结束；确认前不能开始新团队。'
+              : switch (state) {
+                  'preparing' => '正在让所选设备进入团队…',
+                  'ready' => '团队已就绪。按住 PTT 说话，可点名、追问或让成员讨论；再次按下即可打断。',
+                  'closing' => '正在停止播放并结束团队…',
+                  'closed' => '团队已结束，可使用原来的单聊。',
+                  'failed' => '团队未能继续，请结束团队后重试。',
+                  _ => '正在确认团队状态…',
+                };
       if (state == 'closed') {
         sessionId = null;
         selection = null;
@@ -96,11 +110,21 @@ class RoleGroupController extends ChangeNotifier {
       }
     } finally {
       busy = false;
+      final pendingClose = _pendingClose;
+      _pendingClose = null;
       if (!_disposed) {
         notifyListeners();
-        if (sessionId != null) {
+        if (pendingClose != null) {
+          try {
+            await _invoke('close');
+          } finally {
+            pendingClose.complete();
+          }
+        } else if (sessionId != null) {
           _poll = Timer(const Duration(seconds: 2), refresh);
         }
+      } else {
+        pendingClose?.complete();
       }
     }
   }
