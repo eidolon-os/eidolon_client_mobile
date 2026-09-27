@@ -18,7 +18,10 @@ class _RoleGroupPageState extends State<RoleGroupPage> {
   String? _input, _error;
   final _outputs = <String>[];
   final _roles = <String, String>{};
-  bool _loading = true, _discussion = false;
+  bool _loading = true;
+  String _goal = '';
+  int _replyBudget = 8;
+  final _descriptions = <String, String>{};
   @override
   void initState() {
     super.initState();
@@ -26,9 +29,12 @@ class _RoleGroupPageState extends State<RoleGroupPage> {
     if (selected != null) {
       _input = selected.inputDeviceId;
       _outputs.addAll(selected.outputDeviceIds);
-      _discussion = selected.discussion ?? false;
+      _goal = selected.goal ?? '';
+      _replyBudget = selected.replyBudget ?? 8;
       for (final assignment in selected.roles ?? <RoleGroupAssignment>[]) {
         _roles[assignment.outputDeviceId] = assignment.role.name;
+        _descriptions[assignment.outputDeviceId] =
+            assignment.role.description ?? '';
       }
     }
     _load();
@@ -103,14 +109,14 @@ class _RoleGroupPageState extends State<RoleGroupPage> {
                       : null),
               const Text('请选择按住说话的设备；启动时主机会校验 PTT 能力。'),
               const SizedBox(height: 16),
-              const Text('回应成员（按勾选顺序模拟裁决）'),
+              const Text('参与成员（由对话内容决定谁回应）'),
               for (final d in _devices.where((d) => d.deviceId != _input))
                 CheckboxListTile(
                     key: ValueKey('team-output-${d.deviceId}'),
                     title: Text(d.label),
                     subtitle: Text(d.attachedCompanionId == null
                         ? '尚未绑定伙伴'
-                        : '${d.attachedCompanionName.isEmpty ? d.attachedCompanionId : d.attachedCompanionName}${_outputs.contains(d.deviceId) ? ' · 第 ${_outputs.indexOf(d.deviceId) + 1} 位' : ''}'),
+                        : '${d.attachedCompanionName.isEmpty ? d.attachedCompanionId : d.attachedCompanionName}'),
                     value: _outputs.contains(d.deviceId),
                     onChanged: editable &&
                             d.state == MountedDeviceState.ready &&
@@ -134,16 +140,39 @@ class _RoleGroupPageState extends State<RoleGroupPage> {
                     labelText: '${labels[id] ?? id} · 本场角色',
                     hintText: '留空使用原伙伴身份',
                   ),
-                  onChanged: (value) => _roles[id] = value,
+                  onChanged: (value) => setState(() => _roles[id] = value),
                 ),
+              for (final id in _outputs
+                  .where((id) => (_roles[id] ?? '').trim().isNotEmpty))
+                TextFormField(
+                    key: ValueKey('team-role-description-$id'),
+                    initialValue: _descriptions[id] ?? '',
+                    enabled: editable,
+                    maxLength: 1000,
+                    decoration: InputDecoration(
+                        labelText: '${labels[id] ?? id} · 角色说明（可选）'),
+                    onChanged: (value) => _descriptions[id] = value),
               const Text('每位只说自己的这一轮。角色在本场固定，修改请结束后重新开始。'),
-              SwitchListTile(
-                  title: const Text('成员接续互聊（最多 4 次回复）'),
-                  value: _discussion,
+              TextFormField(
+                  key: const Key('team-goal'),
+                  initialValue: _goal,
+                  enabled: editable,
+                  maxLength: 2000,
+                  decoration: const InputDecoration(
+                      labelText: '交流目标（可选）', hintText: '例如：讨论周末出游，比较不同建议'),
+                  onChanged: (value) => _goal = value),
+              DropdownButtonFormField<int>(
+                  key: ValueKey('team-budget-$_replyBudget'),
+                  initialValue: _replyBudget,
+                  decoration: const InputDecoration(labelText: '每次提问后的连续回复上限'),
+                  items: [
+                    for (var i = 1; i <= 32; i++)
+                      DropdownMenuItem(value: i, child: Text('$i 次'))
+                  ],
                   onChanged: editable
-                      ? (value) => setState(() => _discussion = value)
+                      ? (value) => setState(() => _replyBudget = value!)
                       : null),
-              const Text('当前为模拟裁决：固定选择顺序，不会理解点名或“停止说话”等语义。PTT 按下仍会打断当前输出。'),
+              const Text('成员可接续、提问或等待。达到上限后等你继续，不会为了凑次数继续说。'),
               const SizedBox(height: 16),
               if (team.notice != null) Text(team.notice!),
               FilledButton(
@@ -152,8 +181,11 @@ class _RoleGroupPageState extends State<RoleGroupPage> {
                           _input != null &&
                           _outputs.isNotEmpty &&
                           distinct
-                      ? () => team.start(_input!, _outputs, _discussion,
-                          roles: _roles)
+                      ? () => team.start(_input!, _outputs,
+                          roles: _roles,
+                          descriptions: _descriptions,
+                          goal: _goal,
+                          replyBudget: _replyBudget)
                       : null,
                   child: const Text('开始团队')),
               OutlinedButton(

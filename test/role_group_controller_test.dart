@@ -15,7 +15,7 @@ void main() {
           scenario: 'ip_role_group',
           completionBasis: 'native_playout');
     });
-    await controller.start('ptt', ['a', 'b'], false);
+    await controller.start('ptt', ['a', 'b']);
     final id = controller.sessionId;
     await tester.pump(const Duration(minutes: 61));
     expect(controller.sessionId, id);
@@ -40,7 +40,7 @@ void main() {
           scenario: 'ip_role_group',
           completionBasis: 'native_playout');
     });
-    await controller.start('ptt', ['a'], false);
+    await controller.start('ptt', ['a']);
     expect(controller.sessionId, opened);
     await controller.close();
     expect(controller.sessionId, isNull);
@@ -66,7 +66,7 @@ void main() {
           scenario: 'ip_role_group',
           completionBasis: 'native_playout');
     });
-    await controller.start('ptt', ['a', 'b'], false);
+    await controller.start('ptt', ['a', 'b']);
     final id = controller.sessionId;
     await controller.close();
     expect(controller.closeUnconfirmed, isTrue);
@@ -78,7 +78,7 @@ void main() {
     remoteState = 'closing';
     await controller.refresh();
     expect(controller.notice, contains('重试结束'));
-    await controller.start('other', ['b'], false);
+    await controller.start('other', ['b']);
     expect(controller.sessionId, id);
     await controller.close();
     expect(controller.sessionId, isNull);
@@ -87,14 +87,18 @@ void main() {
     expect(controller.state, 'closed');
     controller.dispose();
   });
-  testWidgets('accepted close waits for host completion without losing scene', (tester) async {
+  testWidgets('accepted close waits for host completion without losing scene',
+      (tester) async {
     var remoteState = 'ready';
     final controller = RoleGroupController((action, id, selection) async {
       if (action == 'close') remoteState = 'closing';
-      return RoleGroupStatus(sessionId: id, state: remoteState,
-          scenario: 'ip_role_group', completionBasis: 'native_playout');
+      return RoleGroupStatus(
+          sessionId: id,
+          state: remoteState,
+          scenario: 'ip_role_group',
+          completionBasis: 'native_playout');
     });
-    await controller.start('ptt', ['a', 'b'], false);
+    await controller.start('ptt', ['a', 'b']);
     final id = controller.sessionId;
     await controller.close();
     expect(controller.sessionId, id);
@@ -107,5 +111,4 @@ void main() {
     expect(controller.sessionId, isNull);
     controller.dispose();
   });
-
 }

@@ -3682,7 +3682,7 @@ class RoleGroupAssignment {
 
 class RoleGroupStart {
   const RoleGroupStart({
-    this.discussion,
+    this.goal,
     required this.inputDeviceId,
     required this.outputDeviceIds,
     this.replyBudget,
@@ -3690,7 +3690,7 @@ class RoleGroupStart {
     required this.sessionId,
   });
 
-  final bool? discussion;
+  final String? goal;
 
   final String inputDeviceId;
 
@@ -3704,7 +3704,7 @@ class RoleGroupStart {
 
   factory RoleGroupStart.fromJson(Map<String, dynamic> value) {
     return RoleGroupStart(
-      discussion: value['discussion'] as bool?,
+      goal: value['goal'] as String?,
       inputDeviceId: value['input_device_id'] as String,
       outputDeviceIds: ((value['output_device_ids'] as List<dynamic>)
           .map((entry) => entry as String)
@@ -3725,7 +3725,7 @@ class RoleGroupStart {
 
   Map<String, dynamic> toJson() {
     return {
-      if (discussion != null) 'discussion': discussion,
+      if (goal != null) 'goal': goal,
       'input_device_id': inputDeviceId,
       'output_device_ids': outputDeviceIds,
       if (replyBudget != null) 'reply_budget': replyBudget,

@@ -6,7 +6,7 @@ import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'shared_conversation_preparation_test.dart' show scene, device;
 
 void main() {
-  testWidgets('UI starts ordered team and reopens same explicit close control',
+  testWidgets('UI starts semantic team and reopens same explicit close control',
       (tester) async {
     final calls = <(String, String)>[];
     final controller = RoleGroupController((action, id, selection) async {

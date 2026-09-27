@@ -20,8 +20,11 @@ class RoleGroupController extends ChangeNotifier {
   Timer? _poll;
   bool _disposed = false;
 
-  Future<void> start(String input, List<String> outputs, bool discussion,
-      {Map<String, String> roles = const {}}) async {
+  Future<void> start(String input, List<String> outputs,
+      {Map<String, String> roles = const {},
+      Map<String, String> descriptions = const {},
+      String goal = '',
+      int replyBudget = 8}) async {
     if (sessionId != null || busy) return;
     sessionId =
         'team-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 30)}';
@@ -34,10 +37,12 @@ class RoleGroupController extends ChangeNotifier {
             if ((roles[output] ?? '').trim().isNotEmpty)
               RoleGroupAssignment(
                   outputDeviceId: output,
-                  role: SceneRole(name: roles[output]!.trim()))
+                  role: SceneRole(
+                      name: roles[output]!.trim(),
+                      description: (descriptions[output] ?? '').trim()))
         ],
-        discussion: discussion,
-        replyBudget: discussion ? 4 : outputs.length);
+        goal: goal.trim(),
+        replyBudget: replyBudget);
     await _invoke('open');
   }
 
@@ -68,7 +73,7 @@ class RoleGroupController extends ChangeNotifier {
           ? '结束尚未确认，请重试结束；确认前不能开始新团队。'
           : switch (state) {
               'preparing' => '正在让所选设备进入团队…',
-              'ready' => '团队已就绪。按住 PTT 说话，松开后依次回复。',
+              'ready' => '团队已就绪。按住 PTT 说话，可点名、追问或让成员讨论；再次按下即可打断。',
               'closing' => '正在停止播放并结束团队…',
               'closed' => '团队已结束，可使用原来的单聊。',
               'failed' => '团队未能继续，请结束团队后重试。',
