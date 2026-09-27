@@ -90,7 +90,9 @@ class RoleGroupController extends ChangeNotifier {
                   'ready' => '团队已就绪。按住 PTT 说话，可点名、追问或让成员讨论；再次按下即可打断。',
                   'closing' => '正在停止播放并结束团队…',
                   'closed' => '团队已结束，可使用原来的单聊。',
-                  'failed' => '团队未能继续，请结束团队后重试。',
+                  'failed' => (result.error ?? '').trim().isEmpty
+                      ? '团队未能继续，请结束团队后重试。'
+                      : '团队未能继续：${result.error}。请结束团队后重试。',
                   _ => '正在确认团队状态…',
                 };
       if (state == 'closed') {
