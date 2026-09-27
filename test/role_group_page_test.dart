@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/role_group_page.dart';
@@ -71,6 +72,48 @@ void main() {
     await tester.tap(find.byKey(const Key('close-role-group')));
     await tester.pumpAndSettle();
     expect(calls.last, ('close', id!));
+    expect(controller.sessionId, isNull);
+    await tester.pumpWidget(const SizedBox());
+    controller.dispose();
+  });
+  testWidgets('close button remains actionable during a pending status poll',
+      (tester) async {
+    final gate = Completer<void>();
+    final calls = <String>[];
+    final controller = RoleGroupController((action, id, selection) async {
+      calls.add(action);
+      if (action == 'status') await gate.future;
+      return RoleGroupStatus(
+          sessionId: id,
+          state: action == 'close' ? 'closed' : 'ready',
+          scenario: 'ip_role_group',
+          completionBasis: 'native_playout');
+    });
+    await controller.start('Waveshare', ['StackChan']);
+    await tester.pumpWidget(MaterialApp(
+        home: RoleGroupPage(
+            controller: controller,
+            load: () async => scene(devices: [
+                  device('Mobile'),
+                  device('Waveshare', companion: null),
+                  device('StackChan', companion: 'a')
+                ]))));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+        find.byKey(const Key('close-role-group')), 200,
+        scrollable: find.byType(Scrollable).first);
+    final poll = controller.refresh();
+    await tester.pump();
+    final button = find.byKey(const Key('close-role-group'));
+    expect(tester.widget<OutlinedButton>(button).onPressed, isNotNull);
+    await tester.tap(button);
+    await tester.pump();
+    expect(find.text('正在停止播放并结束团队…'), findsOneWidget);
+    await tester.tap(button); // Repeated tap must not enqueue a second close.
+    gate.complete();
+    await poll;
+    await tester.pumpAndSettle();
+    expect(calls, ['open', 'status', 'close']);
     expect(controller.sessionId, isNull);
     await tester.pumpWidget(const SizedBox());
     controller.dispose();

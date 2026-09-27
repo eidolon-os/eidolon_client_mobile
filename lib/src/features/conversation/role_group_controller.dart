@@ -50,10 +50,14 @@ class RoleGroupController extends ChangeNotifier {
   Future<void> close() {
     if (_disposed || sessionId == null) return Future.value();
     if (!busy) return _invoke('close');
+    if (closeRequested && !closeUnconfirmed) {
+      return _pendingClose?.future ?? Future.value();
+    }
     // Serialize a user's close intent after the in-flight request. Polling must
     // never consume an explicit command, nor race its response with a close.
     final pending = _pendingClose ??= Completer<void>();
     closeRequested = true;
+    closeUnconfirmed = false;
     notice = '正在停止播放并结束团队…';
     notifyListeners();
     return pending.future;

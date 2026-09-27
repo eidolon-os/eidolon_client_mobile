@@ -190,8 +190,7 @@ class _RoleGroupPageState extends State<RoleGroupPage> {
                   child: const Text('开始团队')),
               OutlinedButton(
                   key: const Key('close-role-group'),
-                  onPressed:
-                      team.sessionId != null && !team.busy ? team.close : null,
+                  onPressed: team.sessionId != null ? team.close : null,
                   child: Text(team.closeUnconfirmed ? '重试结束' : '结束团队')),
             ]));
       });
