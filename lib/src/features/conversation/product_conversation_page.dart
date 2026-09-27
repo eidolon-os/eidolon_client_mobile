@@ -487,7 +487,7 @@ class _ProductConversationPageState extends State<ProductConversationPage>
             ),
             if (widget.roleGroup != null) ListTile(
               key: const Key('open-role-group'), leading: const Icon(Icons.groups),
-              title: const Text('IP 角色团队'), subtitle: const Text('一个 PTT 输入 · 多位伙伴依次回复'),
+              title: const Text('IP 角色团队'), subtitle: const Text('一个 PTT 输入 · 按对话内容决定谁回应'),
               enabled: !flow.client.canLeave && !flow.busy && !flow.client.isBusy,
               onTap: () => Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
                 RoleGroupPage(controller: widget.roleGroup!, load: () async {
