@@ -12,6 +12,18 @@ import 'device_setup_ports.dart';
 import 'owner_domain_directory_verifier.dart';
 import '../host_setup/failure_sentences.dart';
 
+List<DeviceWifiNetwork> _strongestNetworkPerSsid(
+    Iterable<DeviceWifiNetwork> networks) {
+  final strongest = <String, DeviceWifiNetwork>{};
+  for (final network in networks) {
+    final existing = strongest[network.ssid];
+    if (existing == null || network.signalStrength > existing.signalStrength) {
+      strongest[network.ssid] = network;
+    }
+  }
+  return strongest.values.toList(growable: false);
+}
+
 /// One setup act, in the order the device abstraction states it.
 ///
 /// The person picks a device, then a network; the Host and the network are
@@ -209,7 +221,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           }
           if (mounted) setState(() => _progress = '正在扫描设备附近的 Wi-Fi');
           try {
-            networks = await session.scanNetworks();
+            networks = _strongestNetworkPerSsid(await session.scanNetworks());
           } on DeviceProvisioningTransportException catch (error) {
             if (!{
               'device_scan_timeout',
@@ -548,19 +560,20 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
               '${_descriptor!.displayName} · ${_descriptor!.deviceId}',
             ),
           const SizedBox(height: 12),
-          for (final network in _networks)
+          for (final entry in _networks.indexed)
             ListTile(
-              key: Key('network-${network.ssid}'),
-              selected: _network == network,
-              leading: Icon(_network == network
+              key: Key(
+                  'network-${entry.$1 == 0 ? '' : '${entry.$1}-'}${entry.$2.ssid}'),
+              selected: _network == entry.$2,
+              leading: Icon(_network == entry.$2
                   ? Icons.radio_button_checked
                   : Icons.radio_button_off),
-              title: Text(network.ssid),
-              subtitle: Text(network.security),
+              title: Text(entry.$2.ssid),
+              subtitle: Text(entry.$2.security),
               onTap: _busy
                   ? null
                   : () => setState(() {
-                        _network = network;
+                        _network = entry.$2;
                         _hiddenSsid.clear();
                       }),
             ),
