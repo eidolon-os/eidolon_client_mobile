@@ -1085,9 +1085,11 @@ class HostProductController extends ChangeNotifier {
   }
 
   Future<void> _loadReadyWorkspaceResources(WorkspaceStatus workspace) async {
-    await _loadHome(workspace);
-    await _loadCapabilities();
-    await _loadDevices();
+    await Future.wait([
+      _loadHome(workspace),
+      _loadCapabilities(),
+      _loadDevices(),
+    ]);
   }
 
   /// Ask once what this Host can do, and never let the answer be a failure.

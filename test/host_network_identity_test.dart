@@ -492,6 +492,32 @@ void main() {
     expect(dialled.toSet(), {'10.0.0.9'});
   });
 
+  test('list verifies a saved Host without recollecting known machine info',
+      () async {
+    const machine = HostMachineInfo(
+      hostname: 'manson-mac',
+      model: 'MacBook Pro',
+      cpuModel: 'Apple Silicon',
+      operatingSystem: 'macOS',
+      cpuCores: 12,
+      memoryBytes: 32 * 1024 * 1024 * 1024,
+    );
+    final saved = hostFixture(lastKnownBaseUrl: 'https://10.0.0.9:9002')
+        .copyWith(machineInfo: machine);
+    final result = await readHostListInfo(
+      saved,
+      discovery: Discovery(() async => survey('10.0.0.9')),
+      controllerKeys: FakeControllerKeys(),
+      clientFactory: (_) =>
+          LocalApiClient(httpClient: MockClient(hostSessionResponse)),
+      managementClientFactory: (_) =>
+          throw StateError('monitor should not be read again'),
+    );
+    expect(result.status, '可连接');
+    expect(result.host.machineInfo, machine);
+    expect(result.host.lastConnectedAt, isNotNull);
+  });
+
   test(
       'a list refresh shares one discovery pass and the next refresh starts fresh',
       () async {

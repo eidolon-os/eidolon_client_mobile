@@ -55,6 +55,11 @@ Future<HostListInfo> readHostListInfo(
   try {
     onSession?.call(session);
     await session.connect(onProgress: onProgress);
+    // Machine identity changes rarely. A list refresh needs a fresh connection
+    // verdict, but does not need to collect the full process monitor again.
+    if (session.host.machineInfo != null) {
+      return HostListInfo(session.host, '可连接');
+    }
     onProgress?.call('可连接 · 正在读取主机资料');
     try {
       final monitor = await session.executeManagement(
