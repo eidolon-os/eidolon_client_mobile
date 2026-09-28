@@ -16,6 +16,7 @@ import 'src/features/conversation/device_owner_directory.dart';
 import 'src/features/device_setup/owner_authority_routes.dart';
 import 'src/features/conversation/product_conversation_page.dart';
 import 'src/features/device_management/mounted_devices_page.dart';
+import 'src/features/smarthome/smart_home_page.dart';
 import 'src/features/host_setup/host_runtime_status_page.dart';
 import 'src/features/device_setup/mobile_body_enrollment_session.dart';
 import 'src/features/device_setup/device_setup_ports.dart';
@@ -130,6 +131,9 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
                 MaterialPageRoute(
                     builder: (_) =>
                         MountedDevicesPage(controller: controller))),
+            openSmartHome: (context) => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                    builder: (_) => SmartHomePage(controller: controller))),
             openHostStatus: (context) async {
               final connection = controller.connection;
               if (connection == null) throw StateError('请先连接主机管理服务');

@@ -117,6 +117,23 @@ class ManagementV1 {
       '/api/management/v1/shared-sessions/close';
   static const String sharedSessionsOpenPath =
       '/api/management/v1/shared-sessions/open';
+  static const String smarthomeAreasPath = '/api/management/v1/smarthome/areas';
+  static String smarthomeAreasByAreaIdPath(String areaId) =>
+      '/api/management/v1/smarthome/areas/${Uri.encodeComponent(areaId)}';
+  static const String smarthomeDevicesPath =
+      '/api/management/v1/smarthome/devices';
+  static String smarthomeDevicesByDeviceIdPath(String deviceId) =>
+      '/api/management/v1/smarthome/devices/${Uri.encodeComponent(deviceId)}';
+  static String smarthomePlacementsByDeviceRefPath(String deviceRef) =>
+      '/api/management/v1/smarthome/placements/${Uri.encodeComponent(deviceRef)}';
+  static const String smarthomeRegistryPath =
+      '/api/management/v1/smarthome/registry';
+  static const String smarthomeSamplesApartmentPath =
+      '/api/management/v1/smarthome/samples/apartment';
+  static const String smarthomeScenesPath =
+      '/api/management/v1/smarthome/scenes';
+  static String smarthomeScenesBySceneIdPath(String sceneId) =>
+      '/api/management/v1/smarthome/scenes/${Uri.encodeComponent(sceneId)}';
 }
 
 class ActivityMomentView {
@@ -209,6 +226,86 @@ class ActivityView {
       if (contractVersion != null) 'contract_version': contractVersion,
       'moments': moments.map((entry) => entry.toJson()).toList(),
       if (nextCursor != null) 'next_cursor': nextCursor,
+    };
+  }
+}
+
+class Area {
+  const Area({required this.areaId, required this.name, this.order});
+
+  final String areaId;
+
+  final String name;
+
+  final int? order;
+
+  factory Area.fromJson(Map<String, dynamic> value) {
+    return Area(
+      areaId: value['area_id'] as String,
+      name: value['name'] as String,
+      order: value['order'] as int?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'area_id': areaId, 'name': name, if (order != null) 'order': order};
+  }
+}
+
+class AreaWrite {
+  const AreaWrite({required this.area, required this.expectedRevision});
+
+  final Area area;
+
+  final int expectedRevision;
+
+  factory AreaWrite.fromJson(Map<String, dynamic> value) {
+    return AreaWrite(
+      area: Area.fromJson(value['area'] as Map<String, dynamic>),
+      expectedRevision: value['expected_revision'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'area': area.toJson(), 'expected_revision': expectedRevision};
+  }
+}
+
+class Command {
+  const Command({
+    required this.command,
+    required this.deviceId,
+    this.params,
+    required this.trait,
+  });
+
+  final String command;
+
+  final String deviceId;
+
+  final Map<String, Object>? params;
+
+  final String trait;
+
+  factory Command.fromJson(Map<String, dynamic> value) {
+    return Command(
+      command: value['command'] as String,
+      deviceId: value['device_id'] as String,
+      params: value['params'] == null
+          ? null
+          : ((value['params'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as Object),
+            )),
+      trait: value['trait'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'command': command,
+      'device_id': deviceId,
+      if (params != null) 'params': params,
+      'trait': trait,
     };
   }
 }
@@ -965,6 +1062,60 @@ class DefaultCompanionView {
   }
 }
 
+class Device {
+  const Device({
+    this.aliases,
+    this.areaId,
+    required this.deviceId,
+    required this.name,
+    this.provider,
+    this.providerRef,
+    required this.type,
+  });
+
+  final List<String>? aliases;
+
+  final String? areaId;
+
+  final String deviceId;
+
+  final String name;
+
+  final String? provider;
+
+  final String? providerRef;
+
+  final String type;
+
+  factory Device.fromJson(Map<String, dynamic> value) {
+    return Device(
+      aliases: value['aliases'] == null
+          ? null
+          : ((value['aliases'] as List<dynamic>)
+                .map((entry) => entry as String)
+                .toList()),
+      areaId: value['area_id'] as String?,
+      deviceId: value['device_id'] as String,
+      name: value['name'] as String,
+      provider: value['provider'] as String?,
+      providerRef: value['provider_ref'] as String?,
+      type: value['type'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (aliases != null) 'aliases': aliases,
+      if (areaId != null) 'area_id': areaId,
+      'device_id': deviceId,
+      'name': name,
+      if (provider != null) 'provider': provider,
+      if (providerRef != null) 'provider_ref': providerRef,
+      'type': type,
+    };
+  }
+}
+
 class DeviceCompanionRequest {
   const DeviceCompanionRequest({
     this.companionId,
@@ -1306,6 +1457,25 @@ class DeviceView {
       'trust_epoch': trustEpoch,
       'updated_at': updatedAt,
     };
+  }
+}
+
+class DeviceWrite {
+  const DeviceWrite({required this.device, required this.expectedRevision});
+
+  final Device device;
+
+  final int expectedRevision;
+
+  factory DeviceWrite.fromJson(Map<String, dynamic> value) {
+    return DeviceWrite(
+      device: Device.fromJson(value['device'] as Map<String, dynamic>),
+      expectedRevision: value['expected_revision'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'device': device.toJson(), 'expected_revision': expectedRevision};
   }
 }
 
@@ -3539,6 +3709,44 @@ class PersonaTraitState {
   }
 }
 
+class Placement {
+  const Placement({required this.areaId, required this.deviceRef});
+
+  final String areaId;
+
+  final String deviceRef;
+
+  factory Placement.fromJson(Map<String, dynamic> value) {
+    return Placement(
+      areaId: value['area_id'] as String,
+      deviceRef: value['device_ref'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'area_id': areaId, 'device_ref': deviceRef};
+  }
+}
+
+class PlacementWrite {
+  const PlacementWrite({required this.areaId, required this.expectedRevision});
+
+  final String areaId;
+
+  final int expectedRevision;
+
+  factory PlacementWrite.fromJson(Map<String, dynamic> value) {
+    return PlacementWrite(
+      areaId: value['area_id'] as String,
+      expectedRevision: value['expected_revision'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'area_id': areaId, 'expected_revision': expectedRevision};
+  }
+}
+
 class RecollectionView {
   const RecollectionView({this.rememberedAt, this.text});
 
@@ -3622,6 +3830,87 @@ class Refusal {
       if (reason != null) 'reason': reason,
       if (retryable != null) 'retryable': retryable,
     };
+  }
+}
+
+class Registry {
+  const Registry({
+    this.areas,
+    this.devices,
+    this.placements,
+    required this.revision,
+    this.scenes,
+    this.schemaVersion,
+  });
+
+  final List<Area>? areas;
+
+  final List<Device>? devices;
+
+  final List<Placement>? placements;
+
+  final int revision;
+
+  final List<Scene>? scenes;
+
+  final int? schemaVersion;
+
+  factory Registry.fromJson(Map<String, dynamic> value) {
+    return Registry(
+      areas: value['areas'] == null
+          ? null
+          : ((value['areas'] as List<dynamic>)
+                .map((entry) => Area.fromJson(entry as Map<String, dynamic>))
+                .toList()),
+      devices: value['devices'] == null
+          ? null
+          : ((value['devices'] as List<dynamic>)
+                .map((entry) => Device.fromJson(entry as Map<String, dynamic>))
+                .toList()),
+      placements: value['placements'] == null
+          ? null
+          : ((value['placements'] as List<dynamic>)
+                .map(
+                  (entry) => Placement.fromJson(entry as Map<String, dynamic>),
+                )
+                .toList()),
+      revision: value['revision'] as int,
+      scenes: value['scenes'] == null
+          ? null
+          : ((value['scenes'] as List<dynamic>)
+                .map((entry) => Scene.fromJson(entry as Map<String, dynamic>))
+                .toList()),
+      schemaVersion: value['schema_version'] as int?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (areas != null)
+        'areas': areas?.map((entry) => entry.toJson()).toList(),
+      if (devices != null)
+        'devices': devices?.map((entry) => entry.toJson()).toList(),
+      if (placements != null)
+        'placements': placements?.map((entry) => entry.toJson()).toList(),
+      'revision': revision,
+      if (scenes != null)
+        'scenes': scenes?.map((entry) => entry.toJson()).toList(),
+      if (schemaVersion != null) 'schema_version': schemaVersion,
+    };
+  }
+}
+
+class RegistryWrite {
+  const RegistryWrite({required this.expectedRevision});
+
+  final int expectedRevision;
+
+  factory RegistryWrite.fromJson(Map<String, dynamic> value) {
+    return RegistryWrite(expectedRevision: value['expected_revision'] as int);
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'expected_revision': expectedRevision};
   }
 }
 
@@ -3776,6 +4065,38 @@ class RoleGroupStatus {
   }
 }
 
+class Scene {
+  const Scene({
+    required this.actions,
+    required this.name,
+    required this.sceneId,
+  });
+
+  final List<Command> actions;
+
+  final String name;
+
+  final String sceneId;
+
+  factory Scene.fromJson(Map<String, dynamic> value) {
+    return Scene(
+      actions: ((value['actions'] as List<dynamic>)
+          .map((entry) => Command.fromJson(entry as Map<String, dynamic>))
+          .toList()),
+      name: value['name'] as String,
+      sceneId: value['scene_id'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'actions': actions.map((entry) => entry.toJson()).toList(),
+      'name': name,
+      'scene_id': sceneId,
+    };
+  }
+}
+
 class SceneRole {
   const SceneRole({this.description, required this.name});
 
@@ -3792,6 +4113,25 @@ class SceneRole {
 
   Map<String, dynamic> toJson() {
     return {if (description != null) 'description': description, 'name': name};
+  }
+}
+
+class SceneWrite {
+  const SceneWrite({required this.expectedRevision, required this.scene});
+
+  final int expectedRevision;
+
+  final Scene scene;
+
+  factory SceneWrite.fromJson(Map<String, dynamic> value) {
+    return SceneWrite(
+      expectedRevision: value['expected_revision'] as int,
+      scene: Scene.fromJson(value['scene'] as Map<String, dynamic>),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'expected_revision': expectedRevision, 'scene': scene.toJson()};
   }
 }
 

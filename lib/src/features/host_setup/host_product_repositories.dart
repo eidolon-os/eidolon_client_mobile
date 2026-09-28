@@ -147,6 +147,28 @@ class HostManagementRepository {
 
   final HostProductSession _session;
 
+  Future<Registry> smartHomeRegistry() => _session.executeManagement(
+        (client, baseUri, accessToken) =>
+            client.smartHomeRegistry(baseUri, accessToken: accessToken),
+      );
+
+  Future<Registry> smartHomeWrite({
+    required String method,
+    required String path,
+    Map<String, dynamic>? body,
+    int? expectedRevision,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.smartHomeWrite(
+          baseUri,
+          accessToken: accessToken,
+          method: method,
+          path: path,
+          body: body,
+          expectedRevision: expectedRevision,
+        ),
+      );
+
   Future<ManagementContextView> context() => _session.executeManagement(
         (client, baseUri, accessToken) =>
             client.fetchContext(baseUri, accessToken: accessToken),

@@ -215,6 +215,35 @@ class ManagementClient {
   final bool _ownsHttpClient;
   final Duration timeout;
 
+  Future<Registry> smartHomeRegistry(Uri baseUri, {required String accessToken}) async =>
+      Registry.fromJson(await _get(
+        baseUri.resolve(ManagementV1.smarthomeRegistryPath),
+        accessToken: accessToken,
+        what: '读取家居设备',
+      ));
+
+  Future<Registry> smartHomeWrite(
+    Uri baseUri, {
+    required String accessToken,
+    required String method,
+    required String path,
+    Map<String, dynamic>? body,
+    int? expectedRevision,
+  }) async {
+    final endpoint = baseUri.resolve(path).replace(
+      queryParameters: expectedRevision == null
+          ? null
+          : {'expected_revision': '$expectedRevision'},
+    );
+    return Registry.fromJson(await _send(
+      method,
+      endpoint,
+      accessToken: accessToken,
+      what: '更新家居设备',
+      body: body,
+    ));
+  }
+
   Future<ManagementContextView> fetchContext(
     Uri baseUri, {
     required String accessToken,

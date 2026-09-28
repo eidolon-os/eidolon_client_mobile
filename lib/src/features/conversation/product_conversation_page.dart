@@ -28,6 +28,7 @@ class ProductConversationPage extends StatefulWidget {
       this.deviceConversation,
       this.roleGroup,
       this.openDevices,
+      this.openSmartHome,
       this.openHostStatus});
   final Future<ConversationFlow> Function() createFlow;
   final String hostName;
@@ -37,6 +38,7 @@ class ProductConversationPage extends StatefulWidget {
       changeSharedSession;
   final Future<MountedDeviceInventory> Function()? loadGroupDevices;
   final Future<void> Function(BuildContext)? openDevices;
+  final Future<void> Function(BuildContext)? openSmartHome;
   final Future<void> Function(BuildContext)? openHostStatus;
   @override
   State<ProductConversationPage> createState() =>
@@ -397,6 +399,11 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                         style: Neon.mono(size: 11, color: Neon.inkFaint)),
                   ]),
               actions: [
+                if (widget.openSmartHome != null)
+                  IconButton(
+                      tooltip: '智能家居',
+                      onPressed: () => widget.openSmartHome!(context),
+                      icon: const Icon(Icons.home_outlined)),
                 if (flow != null || _error != null)
                   IconButton(
                       tooltip: '对话诊断',

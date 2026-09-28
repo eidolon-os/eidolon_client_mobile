@@ -162,6 +162,21 @@ class HostProductController extends ChangeNotifier {
   late final HostActivityRepository _activityRepository;
   late final HostManagementRepository _managementRepository;
 
+  Future<Registry> smartHomeRegistry() => _managementRepository.smartHomeRegistry();
+
+  Future<Registry> smartHomeWrite({
+    required String method,
+    required String path,
+    Map<String, dynamic>? body,
+    int? expectedRevision,
+  }) =>
+      _managementRepository.smartHomeWrite(
+        method: method,
+        path: path,
+        body: body,
+        expectedRevision: expectedRevision,
+      );
+
   Future<void>? _connectTask;
   bool _connecting = false;
   bool _workspaceBusy = false;
