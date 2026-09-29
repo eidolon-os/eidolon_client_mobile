@@ -171,6 +171,21 @@
     },
     "SESSION_CONTROL_REQUEST_ID_FIELD": {
       "not_mirrored": "Only prepared device room.join emits this correlation field; this client does not implement prepared device admission."
+    },
+    "VOICE_APPLICATION_PROPERTY": {
+      "not_mirrored": "a manifest property a Body declares to be served something other than the Companion; mobileBodyManifestDocument declares none, and mobile_body_manifest_test.dart holds it equal to the SDK's software-Body vector, which has none either"
+    },
+    "SESSION_APPLICATION_COMPANION": {
+      "not_mirrored": "what a Body that declares no voice.application is served, and so what this phone is served without saying anything; declaring the default would be a second statement of an absence"
+    },
+    "SESSION_APPLICATION_HOME_COMMAND": {
+      "not_mirrored": "served only to a smart-home panel with a microphone; this client manages the smart-home registry over the management API but is not a panel and never opens a home command session"
+    },
+    "SESSION_APPLICATION_FIELD": {
+      "not_mirrored": "written by the Channel Provider into the agent's dispatch metadata; it travels Provider to agent and never reaches a participant, so nothing on this client reads or produces it"
+    },
+    "VALID_SESSION_APPLICATIONS": {
+      "not_mirrored": "a computed set the Provider validates a declared application against; this client declares none"
     }
   }
 }
