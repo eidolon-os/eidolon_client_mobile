@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
+import 'memory_labels.dart';
 import 'refusal_notice.dart';
 
 class MemoryGraphScreen extends StatefulWidget {
@@ -75,6 +76,17 @@ class _MemoryGraphScreenState extends State<MemoryGraphScreen> {
                         ),
                       ),
                     ),
+                    // The Host drew a bounded graph. Saying so is the difference
+                    // between "this is everything it knows" and "this is part".
+                    if (graph.truncated)
+                      Padding(
+                        key: const Key('memory-graph-truncated'),
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                        child: Text(
+                          '关系太多，这里只画出了一部分',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
                     _RelationList(graph: graph),
                   ],
                 ),
@@ -97,7 +109,7 @@ class _RelationList extends StatelessWidget {
           itemBuilder: (_, index) {
             final edge = graph.edges[index];
             return Text(
-              '${edge.subject}  · ${edge.predicate} ·  ${edge.object}',
+              '${edge.subject}  · ${memoryPredicateLabel(edge.predicate)} ·  ${edge.object}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,

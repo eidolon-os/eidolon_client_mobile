@@ -1,46 +1,86 @@
 import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
+import 'management_client.dart';
 import 'memory_labels.dart';
 
-/// 今日：what it wrote down today, newest first.
+/// 最近记下的：what it wrote down, newest first, under the day it happened.
 ///
-/// The library answers "what do you have"; this answers "what happened", which
-/// is the question someone asks daily rather than once. It is also the page most
-/// able to look right while being wrong, because a person cannot tell a missing
-/// entry from an entry that was never recorded — so what it does not claim
-/// matters more here than what it shows:
+/// A person cannot tell a missing entry from one that was never recorded, so
+/// what this does not claim matters more than what it shows:
 ///
-/// - **The window is stated.** A list with no window cannot be told apart from
-///   an answer to a different question.
-/// - **"More in this page" and "the Host stopped reading" are separate.**
-///   Asking again helps with the first and not the second, and a person
+/// - **"There is more" and "the Host stopped reading" are separate.** Asking
+///   for the next page helps with the first and not the second, and a person
 ///   deserves to know which.
 /// - **Entries with no usable time are counted, not hidden.** Someone whose
-///   entry never appears in any day should be able to learn that this is why.
+///   entry never appears under any day should be able to learn that this is why.
+/// - **A failed next page does not erase the pages already read.**
 class MemoryDayPage extends StatelessWidget {
   const MemoryDayPage({
     super.key,
-    required this.day,
-    required this.dayStartedAt,
+    required this.entries,
+    required this.undatedCount,
+    required this.truncated,
+    required this.today,
     this.onLoadMore,
+    this.loadingMore = false,
+    this.moreError,
   });
 
-  final MemoryDayView day;
+  final List<MemoryEntryView> entries;
+  final int undatedCount;
+  final bool truncated;
 
-  /// The local instant this page asked about, for saying so in the person's own
-  /// terms. The wire carries an offset; a person reads a time of day.
-  final DateTime dayStartedAt;
+  /// Which local day is "今天" in the headings.
+  final DateTime today;
 
-  /// Non-null only when the Host said the page ended inside the window.
+  /// Non-null only when the Host said there is another page.
   final VoidCallback? onLoadMore;
+  final bool loadingMore;
+  final Object? moreError;
 
   @override
   Widget build(BuildContext context) {
-    final entries = day.entries;
+    final rows = <Widget>[
+      _Preamble(undatedCount: undatedCount, truncated: truncated),
+    ];
+    String? heading;
+    for (final entry in entries) {
+      final when = DateTime.tryParse(entry.recordedAt)?.toLocal();
+      final day = when == null ? '时间不明' : _dayLabel(when, today);
+      if (day != heading) {
+        heading = day;
+        rows.add(_DayHeading(label: day));
+      }
+      rows.add(_EntryRow(entry: entry, when: when));
+    }
+    if (moreError != null) {
+      rows.add(
+        Padding(
+          key: const Key('memory-day-more-error'),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          child: Text(
+            '没能读到更早的：${refusalText(moreError!, subject: '最近记下的')}',
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ),
+      );
+    }
+    if (onLoadMore != null) {
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: OutlinedButton(
+            key: const Key('memory-day-load-more'),
+            onPressed: loadingMore ? null : onLoadMore,
+            child: Text(loadingMore ? '正在读取…' : '看更早的'),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       key: const Key('memory-day-page'),
-      appBar: AppBar(title: const Text('今天记下的')),
+      appBar: AppBar(title: const Text('最近记下的')),
       body: entries.isEmpty
           ? Center(
               key: const Key('memory-day-empty'),
@@ -49,13 +89,13 @@ class MemoryDayPage extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // A quiet day is a real answer and a common one, so it is
+                    // Nothing yet is a real answer for a new Eidolon, so it is
                     // said plainly rather than drawn as an error.
-                    const Text('这段时间没有记下什么'),
-                    if (day.undatedCount > 0) ...[
+                    const Text('还没有记下什么'),
+                    if (undatedCount > 0) ...[
                       const SizedBox(height: 8),
                       Text(
-                        _undatedSentence(day.undatedCount),
+                        _undatedSentence(undatedCount),
                         style: Theme.of(context).textTheme.bodySmall,
                         textAlign: TextAlign.center,
                       ),
@@ -64,50 +104,29 @@ class MemoryDayPage extends StatelessWidget {
                 ),
               ),
             )
-          : ListView.separated(
+          : ListView(
               key: const Key('memory-day-list'),
               padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: entries.length + 1 + (onLoadMore == null ? 0 : 1),
-              separatorBuilder: (_, index) => index == 0
-                  ? const SizedBox.shrink()
-                  : const Divider(height: 1),
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return _Preamble(day: day, dayStartedAt: dayStartedAt);
-                }
-                if (index == entries.length + 1) {
-                  return Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: OutlinedButton(
-                      key: const Key('memory-day-load-more'),
-                      onPressed: onLoadMore,
-                      child: const Text('看更早的'),
-                    ),
-                  );
-                }
-                final entry = entries[index - 1];
-                return _EntryRow(entry: entry);
-              },
+              children: rows,
             ),
     );
   }
 }
 
 class _Preamble extends StatelessWidget {
-  const _Preamble({required this.day, required this.dayStartedAt});
+  const _Preamble({required this.undatedCount, required this.truncated});
 
-  final MemoryDayView day;
-  final DateTime dayStartedAt;
+  final int undatedCount;
+  final bool truncated;
 
   @override
   Widget build(BuildContext context) {
-    final local = dayStartedAt.toLocal();
     final lines = <String>[
-      '从 ${_clock(local)} 起，记下 ${day.entryCount} 条',
-      if (day.undatedCount > 0) _undatedSentence(day.undatedCount),
-      // Two different partial answers. Only one of them is fixed by asking
-      // again, so they are never merged into one sentence.
-      if (day.truncated) '这次没有读完全部记忆，可能漏了更早的',
+      '按时间从新到旧',
+      if (undatedCount > 0) _undatedSentence(undatedCount),
+      // Two different partial answers. Only one is fixed by reading on, so they
+      // are never merged into one sentence.
+      if (truncated) '主机这次没有读完全部记忆，这里可能不完整',
     ];
     return Padding(
       key: const Key('memory-day-preamble'),
@@ -126,14 +145,27 @@ class _Preamble extends StatelessWidget {
   }
 }
 
+class _DayHeading extends StatelessWidget {
+  const _DayHeading({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+        child: Text(label, style: Theme.of(context).textTheme.titleSmall),
+      );
+}
+
 class _EntryRow extends StatelessWidget {
-  const _EntryRow({required this.entry});
+  const _EntryRow({required this.entry, required this.when});
 
   final MemoryEntryView entry;
+  final DateTime? when;
 
   @override
   Widget build(BuildContext context) {
-    final when = DateTime.tryParse(entry.recordedAt)?.toLocal();
+    final moment = when;
     return ListTile(
       key: Key('memory-day-entry-${entry.entryId}'),
       title: Text(
@@ -145,7 +177,7 @@ class _EntryRow extends StatelessWidget {
         [
           // Unparseable rather than absent: showing the raw string beats
           // inventing a time, and beats hiding the entry.
-          if (when != null) _clock(when) else entry.recordedAt,
+          if (moment != null) _clock(moment) else entry.recordedAt,
           if ((entry.roomId ?? '').isNotEmpty) memoryRoomLabel(entry.roomId!),
         ].join(' · '),
       ),
@@ -153,8 +185,18 @@ class _EntryRow extends StatelessWidget {
   }
 }
 
+String _dayLabel(DateTime moment, DateTime today) {
+  final day = DateTime(moment.year, moment.month, moment.day);
+  final base = DateTime(today.year, today.month, today.day);
+  final difference = base.difference(day).inDays;
+  if (difference == 0) return '今天';
+  if (difference == 1) return '昨天';
+  if (moment.year == today.year) return '${moment.month}月${moment.day}日';
+  return '${moment.year}年${moment.month}月${moment.day}日';
+}
+
 String _clock(DateTime moment) =>
     '${moment.hour.toString().padLeft(2, '0')}:'
     '${moment.minute.toString().padLeft(2, '0')}';
 
-String _undatedSentence(int count) => '另有 $count 条没有可用的时间，不在任何一天的清单里';
+String _undatedSentence(int count) => '另有 $count 条没有可用的时间，不在按日期的清单里';

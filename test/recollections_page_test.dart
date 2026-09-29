@@ -1,4 +1,5 @@
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
+import 'package:eidolon_client_mobile/src/management/management_client.dart';
 import 'package:eidolon_client_mobile/src/management/recollections_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -86,6 +87,23 @@ void main() {
     // things to be told about your own life.
     expect(find.byKey(const Key('recollections-failure')), findsOneWidget);
     expect(find.byKey(const Key('recollections-empty')), findsNothing);
+  });
+
+  testWidgets('a Host refusal is worded, never printed', (tester) async {
+    // It used to read 「没能问到：问它记得什么被拒绝：memory is unavailable」.
+    await _open(
+      tester,
+      (_) async => throw const ManagementRequestException(
+        '问它记得什么被拒绝',
+        statusCode: 503,
+        refusal: Refusal(kind: 'not_running', reason: 'memory is unavailable', retryable: true),
+      ),
+    );
+
+    await _ask(tester, '散步');
+
+    expect(find.textContaining('没能问到：记忆搜索现在没有响应'), findsOneWidget);
+    expect(find.textContaining('被拒绝'), findsNothing);
   });
 
   group('what the Host answered', () {

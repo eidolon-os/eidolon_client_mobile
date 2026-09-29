@@ -87,6 +87,8 @@ class ManagementV1 {
       '/api/management/v1/memory/forget/confirm';
   static const String memoryForgetPreviewPath =
       '/api/management/v1/memory/forget/preview';
+  static const String memoryForgetStatusPath =
+      '/api/management/v1/memory/forget/status';
   static const String memoryGraphPath = '/api/management/v1/memory/graph';
   static const String memoryLibraryPath = '/api/management/v1/memory/library';
   static const String memoryRecollectionsPath =
@@ -1557,9 +1559,38 @@ class ForgetEntryView {
   }
 }
 
+class ForgetProgressView {
+  const ForgetProgressView({
+    this.contractVersion,
+    required this.requestId,
+    required this.status,
+  });
+
+  final String? contractVersion;
+
+  final String requestId;
+
+  final String status;
+
+  factory ForgetProgressView.fromJson(Map<String, dynamic> value) {
+    return ForgetProgressView(
+      contractVersion: value['contract_version'] as String?,
+      requestId: value['request_id'] as String,
+      status: value['status'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      'request_id': requestId,
+      'status': status,
+    };
+  }
+}
+
 class ForgetProposalView {
   const ForgetProposalView({
-    this.action,
     this.confirmationToken,
     this.contractVersion,
     this.detail,
@@ -1569,8 +1600,6 @@ class ForgetProposalView {
     required this.status,
     required this.target,
   });
-
-  final String? action;
 
   final String? confirmationToken;
 
@@ -1590,7 +1619,6 @@ class ForgetProposalView {
 
   factory ForgetProposalView.fromJson(Map<String, dynamic> value) {
     return ForgetProposalView(
-      action: value['action'] as String?,
       confirmationToken: value['confirmation_token'] as String?,
       contractVersion: value['contract_version'] as String?,
       detail: value['detail'] as String?,
@@ -1608,7 +1636,6 @@ class ForgetProposalView {
 
   Map<String, dynamic> toJson() {
     return {
-      if (action != null) 'action': action,
       if (confirmationToken != null) 'confirmation_token': confirmationToken,
       if (contractVersion != null) 'contract_version': contractVersion,
       if (detail != null) 'detail': detail,
@@ -1623,18 +1650,18 @@ class ForgetProposalView {
 
 class ForgetResultView {
   const ForgetResultView({
-    required this.action,
     this.contractVersion,
     required this.entryCount,
+    required this.requestId,
     required this.status,
     required this.target,
   });
 
-  final String action;
-
   final String? contractVersion;
 
   final int entryCount;
+
+  final String requestId;
 
   final String status;
 
@@ -1642,9 +1669,9 @@ class ForgetResultView {
 
   factory ForgetResultView.fromJson(Map<String, dynamic> value) {
     return ForgetResultView(
-      action: value['action'] as String,
       contractVersion: value['contract_version'] as String?,
       entryCount: value['entry_count'] as int,
+      requestId: value['request_id'] as String,
       status: value['status'] as String,
       target: value['target'] as String,
     );
@@ -1652,9 +1679,9 @@ class ForgetResultView {
 
   Map<String, dynamic> toJson() {
     return {
-      'action': action,
       if (contractVersion != null) 'contract_version': contractVersion,
       'entry_count': entryCount,
+      'request_id': requestId,
       'status': status,
       'target': target,
     };
@@ -1662,21 +1689,16 @@ class ForgetResultView {
 }
 
 class ForgetTargetRequest {
-  const ForgetTargetRequest({this.action, required this.target});
-
-  final String? action;
+  const ForgetTargetRequest({required this.target});
 
   final String target;
 
   factory ForgetTargetRequest.fromJson(Map<String, dynamic> value) {
-    return ForgetTargetRequest(
-      action: value['action'] as String?,
-      target: value['target'] as String,
-    );
+    return ForgetTargetRequest(target: value['target'] as String);
   }
 
   Map<String, dynamic> toJson() {
-    return {if (action != null) 'action': action, 'target': target};
+    return {'target': target};
   }
 }
 
@@ -2307,6 +2329,7 @@ class MemoryDayView {
     required this.entries,
     required this.entryCount,
     required this.moreInWindow,
+    this.nextCursor,
     required this.since,
     required this.truncated,
     required this.undatedCount,
@@ -2319,6 +2342,8 @@ class MemoryDayView {
   final int entryCount;
 
   final bool moreInWindow;
+
+  final String? nextCursor;
 
   final String since;
 
@@ -2336,6 +2361,7 @@ class MemoryDayView {
           .toList()),
       entryCount: value['entry_count'] as int,
       moreInWindow: value['more_in_window'] as bool,
+      nextCursor: value['next_cursor'] as String?,
       since: value['since'] as String,
       truncated: value['truncated'] as bool,
       undatedCount: value['undated_count'] as int,
@@ -2348,6 +2374,7 @@ class MemoryDayView {
       'entries': entries.map((entry) => entry.toJson()).toList(),
       'entry_count': entryCount,
       'more_in_window': moreInWindow,
+      if (nextCursor != null) 'next_cursor': nextCursor,
       'since': since,
       'truncated': truncated,
       'undated_count': undatedCount,
@@ -2571,8 +2598,6 @@ class MemoryLibraryView {
     required this.audienceScope,
     this.contractVersion,
     required this.entryCount,
-    required this.materialization,
-    required this.memoryRealmId,
     required this.truncated,
     required this.wings,
     required this.withheldCount,
@@ -2583,10 +2608,6 @@ class MemoryLibraryView {
   final String? contractVersion;
 
   final int entryCount;
-
-  final MemoryMaterialization materialization;
-
-  final String memoryRealmId;
 
   final bool truncated;
 
@@ -2599,10 +2620,6 @@ class MemoryLibraryView {
       audienceScope: value['audience_scope'] as String,
       contractVersion: value['contract_version'] as String?,
       entryCount: value['entry_count'] as int,
-      materialization: MemoryMaterialization.fromJson(
-        value['materialization'] as Map<String, dynamic>,
-      ),
-      memoryRealmId: value['memory_realm_id'] as String,
       truncated: value['truncated'] as bool,
       wings: ((value['wings'] as List<dynamic>)
           .map(
@@ -2618,57 +2635,9 @@ class MemoryLibraryView {
       'audience_scope': audienceScope,
       if (contractVersion != null) 'contract_version': contractVersion,
       'entry_count': entryCount,
-      'materialization': materialization.toJson(),
-      'memory_realm_id': memoryRealmId,
       'truncated': truncated,
       'wings': wings.map((entry) => entry.toJson()).toList(),
       'withheld_count': withheldCount,
-    };
-  }
-}
-
-class MemoryMaterialization {
-  const MemoryMaterialization({
-    required this.dataReadable,
-    this.degradedReason,
-    this.lastMaterializedAt,
-    required this.materializationState,
-    required this.projectionPending,
-    required this.ready,
-  });
-
-  final bool dataReadable;
-
-  final String? degradedReason;
-
-  final String? lastMaterializedAt;
-
-  final String materializationState;
-
-  final int projectionPending;
-
-  final bool ready;
-
-  factory MemoryMaterialization.fromJson(Map<String, dynamic> value) {
-    return MemoryMaterialization(
-      dataReadable: value['data_readable'] as bool,
-      degradedReason: value['degraded_reason'] as String?,
-      lastMaterializedAt: value['last_materialized_at'] as String?,
-      materializationState: value['materialization_state'] as String,
-      projectionPending: value['projection_pending'] as int,
-      ready: value['ready'] as bool,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'data_readable': dataReadable,
-      if (degradedReason != null) 'degraded_reason': degradedReason,
-      if (lastMaterializedAt != null)
-        'last_materialized_at': lastMaterializedAt,
-      'materialization_state': materializationState,
-      'projection_pending': projectionPending,
-      'ready': ready,
     };
   }
 }

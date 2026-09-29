@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-Map<String, dynamic> _graphWire({bool empty = false}) => {
+Map<String, dynamic> _graphWire({bool empty = false, bool truncated = false}) => {
       'contract_version': '1',
       'nodes': empty
           ? []
@@ -28,7 +28,7 @@ Map<String, dynamic> _graphWire({bool empty = false}) => {
                 'recorded_at': '2026-08-28T08:00:00Z',
               },
             ],
-      'truncated': false,
+      'truncated': truncated,
     };
 
 void main() {
@@ -68,7 +68,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('memory-graph-canvas')), findsOneWidget);
-    expect(find.text('我  · likes ·  乌龙茶'), findsOneWidget);
+    expect(find.text('我  · 喜欢 ·  乌龙茶'), findsOneWidget);
   });
 
   testWidgets('distinguishes an empty graph from an unavailable graph',
@@ -84,5 +84,23 @@ void main() {
 
     expect(find.text('还没有形成关系记忆'), findsOneWidget);
     expect(find.textContaining('读不到'), findsNothing);
+  });
+
+  testWidgets('says the relations in words and says when the graph is partial',
+      (tester) async {
+    // 「我 · likes · 乌龙茶」 was the database's vocabulary; and a bounded graph
+    // shown without saying so reads as everything it knows.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MemoryGraphScreen(
+          load: () async => MemoryGraphView.fromJson(_graphWire(truncated: true)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('喜欢'), findsOneWidget);
+    expect(find.textContaining('likes'), findsNothing);
+    expect(find.byKey(const Key('memory-graph-truncated')), findsOneWidget);
   });
 }

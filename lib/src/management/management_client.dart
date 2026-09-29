@@ -1182,6 +1182,7 @@ class ManagementClient {
     required DateTime since,
     int? limit,
     String? companionId,
+    String? cursor,
   }) async {
     final body = await _get(
       baseUri.resolve(ManagementV1.memoryEntriesPath).replace(
@@ -1192,6 +1193,9 @@ class ManagementClient {
           'since': _iso8601WithOffset(since),
           if (limit != null) 'limit': '$limit',
           if (companionId != null) 'companion_id': companionId,
+          // The Host's own position for the next, older page — sent back
+          // unread. Moving `since` earlier never reached past a full page.
+          if (cursor != null) 'cursor': cursor,
         },
       ),
       accessToken: accessToken,
@@ -1431,18 +1435,20 @@ class ManagementClient {
   /// shows what it found, and binds *that* into a token; the confirm acts on the
   /// token. Between the two the words could match something else, and acting on
   /// that would remove what the person never saw.
+  ///
+  /// Always a deletion: nothing in the product brings an archived memory back,
+  /// so there is no reversible option to offer.
   Future<ForgetProposalView> previewForget(
     Uri baseUri, {
     required String accessToken,
     required String target,
-    String? action,
   }) async {
     final body = await _send(
       'POST',
       baseUri.resolve(ManagementV1.memoryForgetPreviewPath),
       accessToken: accessToken,
       what: '查看会忘掉什么',
-      body: {'target': target, if (action != null) 'action': action},
+      body: {'target': target},
     );
     return ForgetProposalView.fromJson(body);
   }
@@ -1465,6 +1471,26 @@ class ManagementClient {
       body: {'confirmation_token': confirmationToken},
     );
     return ForgetResultView.fromJson(body);
+  }
+
+  /// Where a confirmed forget has got to.
+  ///
+  /// The confirm usually answers `accepted` — the Host applies the change in
+  /// the background — so this is how the app learns `applied` or `failed`
+  /// instead of saying 「正在生效」 with nothing behind it.
+  Future<ForgetProgressView> forgetStatus(
+    Uri baseUri, {
+    required String accessToken,
+    required String requestId,
+  }) async {
+    final body = await _get(
+      baseUri.resolve(ManagementV1.memoryForgetStatusPath).replace(
+        queryParameters: {'request_id': requestId},
+      ),
+      accessToken: accessToken,
+      what: '查看忘掉的进度',
+    );
+    return ForgetProgressView.fromJson(body);
   }
 
   Future<Map<String, dynamic>> _get(
@@ -1501,8 +1527,11 @@ class ManagementClient {
           .timeout(request.timeout);
     } on TimeoutException {
       throw ManagementRequestException('$what超时');
-    } catch (error) {
-      throw ManagementRequestException('$what失败：$error');
+    } catch (_) {
+      // Not the exception's own text: a person was shown "SocketException:
+      // Connection refused (OS Error …)" on every memory screen. What they can
+      // act on is that the phone could not reach the Host at all.
+      throw ManagementRequestException('$what失败：连不上主机');
     }
     if (response.statusCode != expectedStatus) {
       final body = _text(response);

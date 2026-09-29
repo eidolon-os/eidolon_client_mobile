@@ -4,23 +4,24 @@ import '../generated/management_v1.dart';
 import 'refusal_notice.dart';
 import 'memory_day_page.dart';
 
-/// Loads today, and decides what "today" means — because the Host cannot.
+/// 最近记下的：everything written down, newest first, a page at a time.
 ///
-/// The window starts at local midnight, computed here. That is the one piece of
-/// judgement this screen owns, and it is here rather than on the Host for a
-/// concrete reason: the Host does not know where the person is standing, so a
-/// day computed there would be wrong by up to a day and would not say so.
-///
-/// "Look further back" widens the same window rather than paging: a person
-/// asking for more of today wants the morning, not an opaque cursor. Each step
-/// goes back a day, and the page says when the window starts so nobody has to
-/// guess which stretch they are looking at.
+/// It used to be "today", with 「看更早的」 widening the window by a day. That
+/// button could never show anything older once today filled a page: the Host
+/// sorts newest first and cuts the page, so an earlier `since` only added older
+/// entries to the part that was cut. Now the list has no window to widen — the
+/// lower bound is the start of the clock — and 「看更早的」 asks for the next
+/// page with the position the Host handed back. Days are shown as headings in
+/// the person's own time, which is the part of "today" worth keeping.
 class MemoryDayScreen extends StatefulWidget {
   const MemoryDayScreen({super.key, required this.load, this.now});
 
-  final Future<MemoryDayView> Function(DateTime since) load;
+  /// Reads one page. [cursor] is the previous page's `nextCursor`, or null for
+  /// the newest page.
+  final Future<MemoryDayView> Function(DateTime since, String? cursor) load;
 
-  /// Injected in tests so "today" is a fact rather than the clock.
+  /// Injected in tests so "today" in the headings is a fact rather than the
+  /// clock.
   final DateTime Function()? now;
 
   @override
@@ -28,32 +29,36 @@ class MemoryDayScreen extends StatefulWidget {
 }
 
 class _MemoryDayScreenState extends State<MemoryDayScreen> {
-  MemoryDayView? _day;
+  /// No window: every dated entry, however old. Local, so the Host is told an
+  /// offset rather than guessing one.
+  static final DateTime _since = DateTime(1970);
+
+  final List<MemoryEntryView> _entries = [];
+  MemoryDayView? _last;
   Object? _error;
+  Object? _moreError;
   bool _busy = true;
-  late DateTime _since = _localMidnight();
+  bool _loadingMore = false;
 
   @override
   void initState() {
     super.initState();
-    _read();
+    _readFirst();
   }
 
-  DateTime _localMidnight() {
-    final now = (widget.now ?? DateTime.now)();
-    return DateTime(now.year, now.month, now.day);
-  }
-
-  Future<void> _read() async {
+  Future<void> _readFirst() async {
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final day = await widget.load(_since);
+      final page = await widget.load(_since, null);
       if (!mounted) return;
       setState(() {
-        _day = day;
+        _entries
+          ..clear()
+          ..addAll(page.entries);
+        _last = page;
         _busy = false;
       });
     } catch (error) {
@@ -65,34 +70,58 @@ class _MemoryDayScreenState extends State<MemoryDayScreen> {
     }
   }
 
-  Future<void> _widen() async {
-    setState(() => _since = _since.subtract(const Duration(days: 1)));
-    await _read();
+  Future<void> _readMore() async {
+    final cursor = _last?.nextCursor;
+    if (cursor == null || _loadingMore) return;
+    setState(() {
+      _loadingMore = true;
+      _moreError = null;
+    });
+    try {
+      final page = await widget.load(_since, cursor);
+      if (!mounted) return;
+      setState(() {
+        _entries.addAll(page.entries);
+        _last = page;
+        _loadingMore = false;
+      });
+    } catch (error) {
+      // Said beside the list, which stays: what was already read is still true.
+      if (!mounted) return;
+      setState(() {
+        _moreError = error;
+        _loadingMore = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final day = _day;
-    if (day != null) {
+    final last = _last;
+    if (last != null) {
       return MemoryDayPage(
-        day: day,
-        dayStartedAt: _since,
-        // Offered whenever the page ended inside the window: there is more to
-        // see, and widening is how this screen shows it.
-        onLoadMore: _busy || !day.moreInWindow ? null : _widen,
+        entries: _entries,
+        undatedCount: last.undatedCount,
+        truncated: last.truncated,
+        today: (widget.now ?? DateTime.now)(),
+        loadingMore: _loadingMore,
+        moreError: _moreError,
+        // Only when the Host said there is another page. Never a button in
+        // front of a page that cannot exist.
+        onLoadMore: last.moreInWindow && last.nextCursor != null ? _readMore : null,
       );
     }
     return Scaffold(
       key: const Key('memory-day-screen'),
-      appBar: AppBar(title: const Text('今天记下的')),
+      appBar: AppBar(title: const Text('最近记下的')),
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(key: Key('memory-day-loading'))
             : RefusalNotice(
                 key: const Key('memory-day-error'),
                 error: _error!,
-                subject: '今天记下的',
-                onRetry: _read,
+                subject: '最近记下的',
+                onRetry: _readFirst,
                 retryKey: const Key('memory-day-retry'),
               ),
       ),

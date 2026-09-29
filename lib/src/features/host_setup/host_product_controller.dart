@@ -595,8 +595,9 @@ class HostProductController extends ChangeNotifier {
   /// Not held on this controller: unlike the face or the name, an answer here
   /// belongs to one question someone just asked, and keeping the last one
   /// would show it again beside the next question.
+  /// [companionId] null asks about the Owner's own memory — every audience.
   Future<RecollectionsView> recollections({
-    required String companionId,
+    String? companionId,
     required String query,
   }) =>
       _managementRepository.recollections(
@@ -738,11 +739,13 @@ class HostProductController extends ChangeNotifier {
     required DateTime since,
     int? limit,
     String? companionId,
+    String? cursor,
   }) =>
       _managementRepository.memoryEntries(
         since: since,
         limit: limit,
         companionId: companionId,
+        cursor: cursor,
       );
 
   /// A copy of everything remembered that this Owner can see.
@@ -750,15 +753,16 @@ class HostProductController extends ChangeNotifier {
       _managementRepository.memoryCopy(companionId: companionId);
 
   /// What forgetting [target] would remove. Nothing changes.
-  Future<ForgetProposalView> previewForget({
-    required String target,
-    String? action,
-  }) =>
-      _managementRepository.previewForget(target: target, action: action);
+  Future<ForgetProposalView> previewForget({required String target}) =>
+      _managementRepository.previewForget(target: target);
 
   /// Forget exactly what a preview showed.
   Future<ForgetResultView> confirmForget({required String confirmationToken}) =>
       _managementRepository.confirmForget(confirmationToken: confirmationToken);
+
+  /// Where a confirmed forget has got to.
+  Future<ForgetProgressView> forgetStatus({required String requestId}) =>
+      _managementRepository.forgetStatus(requestId: requestId);
 
   /// What this Host says it can do at all, for the authenticated Owner.
   Future<ManagementContextView> managementContext() =>

@@ -11,9 +11,14 @@ import 'package:http/testing.dart';
 /// 纠错 — asking it to forget something.
 ///
 /// This is the only destructive thing a person can do from this app, so the
-/// tests are about what stands between typing words and losing something: the
-/// preview, the token that binds it, and the refusal to offer a button when
-/// there is nothing safe to confirm.
+/// tests are about what stands between typing words and losing something — the
+/// preview, the token that binds it, the second question, expiry — and about
+/// what happens after: the Host applies the change in the background, and the
+/// screen must follow it to `applied` or `failed` instead of stopping at
+/// 「正在生效」.
+
+final DateTime _now = DateTime.utc(2026, 9, 23, 12);
+final int _later = _now.add(const Duration(minutes: 10)).millisecondsSinceEpoch ~/ 1000;
 
 Map<String, dynamic> proposalWire({
   String status = 'preview',
@@ -22,29 +27,34 @@ Map<String, dynamic> proposalWire({
   double score = 0.8,
   List<Map<String, dynamic>>? entries,
   String detail = '',
-  String? action = 'delete',
+  int? expiresAt,
 }) => {
       'contract_version': '1',
       'status': status,
       'target': '上周那件事',
-      'action': action,
       'entries': entries ??
           [
             {'entry_id': 'drawer_1', 'preview': '上周那件事的记录', 'score': score},
           ],
       'needs_confirmation': needsConfirmation,
       'confirmation_token': token,
-      'expires_at': 1900000000,
+      'expires_at': token == null ? null : (expiresAt ?? _later),
       'detail': detail,
     };
 
 Map<String, dynamic> resultWire({String status = 'applied', int count = 1}) => {
       'contract_version': '1',
-      'action': 'delete',
+      'request_id': 'owner-forget-p1',
       'target': '上周那件事',
       'entry_count': count,
       'status': status,
     };
+
+ForgetProgressView progressOf(String status) => ForgetProgressView.fromJson({
+      'contract_version': '1',
+      'request_id': 'owner-forget-p1',
+      'status': status,
+    });
 
 http.Response _hostAnswer(Map<String, dynamic> body) => http.Response.bytes(
       utf8.encode(jsonEncode(body)),
@@ -52,17 +62,23 @@ http.Response _hostAnswer(Map<String, dynamic> body) => http.Response.bytes(
       headers: const {'content-type': 'application/json'},
     );
 
+const _fast = [Duration(milliseconds: 10), Duration(milliseconds: 10), Duration(milliseconds: 10)];
+
 Future<void> pumpSheet(
   WidgetTester tester, {
   required Future<ForgetProposalView> Function(String target) preview,
   Future<ForgetResultView> Function(String token)? confirm,
+  Future<ForgetProgressView> Function(String requestId)? progress,
+  DateTime Function()? now,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       home: ForgetSheet(
         preview: preview,
-        confirm: confirm ??
-            (_) async => ForgetResultView.fromJson(resultWire()),
+        confirm: confirm ?? (_) async => ForgetResultView.fromJson(resultWire()),
+        progress: progress,
+        now: now ?? () => _now,
+        pollDelays: _fast,
       ),
     ),
   );
@@ -74,11 +90,20 @@ Future<void> ask(WidgetTester tester, String target) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> decide(WidgetTester tester, {bool sure = true}) async {
+  await tester.tap(find.byKey(const Key('forget-confirm-button')));
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.byKey(Key(sure ? 'forget-decision-confirm' : 'forget-decision-cancel')),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
   group('the forget client', () {
-    test('a preview is a POST and changes nothing by itself', () async {
-      // It mints a token the caller depends on, so it must not be cached or
-      // replayed by anything in between.
+    test('a preview is a POST of the words and nothing else', () async {
+      // There is no action to name: forgetting is a deletion, and the archive
+      // the realm also knows has no way back in this product.
       http.Request? sent;
       final client = ManagementClient(
         httpClient: MockClient((request) async {
@@ -95,33 +120,11 @@ void main() {
 
       expect(sent?.method, 'POST');
       expect(sent?.url.path, '/api/management/v1/memory/forget/preview');
-      expect(jsonDecode(sent!.body)['target'], '上周那件事');
+      expect(jsonDecode(sent!.body), {'target': '上周那件事'});
       expect(proposal.confirmationToken, 'opaque');
     });
 
-    test('the ordinary case names no action', () async {
-      // "forget this" means delete to a person; archive is a deliberate choice,
-      // and a client that always sent one would be making it for them.
-      http.Request? sent;
-      final client = ManagementClient(
-        httpClient: MockClient((request) async {
-          sent = request;
-          return _hostAnswer(proposalWire());
-        }),
-      );
-
-      await client.previewForget(
-        Uri.parse('https://192.168.1.26:9002'),
-        accessToken: 'session-token',
-        target: 'x',
-      );
-
-      expect(jsonDecode(sent!.body).containsKey('action'), isFalse);
-    });
-
     test('the confirm sends the token and nothing else', () async {
-      // Not the target: sending both would invite the Host to prefer the wrong
-      // one, and the token is the half that was actually looked at.
       http.Request? sent;
       final client = ManagementClient(
         httpClient: MockClient((request) async {
@@ -130,30 +133,80 @@ void main() {
         }),
       );
 
-      await client.confirmForget(
+      final result = await client.confirmForget(
         Uri.parse('https://192.168.1.26:9002'),
         accessToken: 'session-token',
         confirmationToken: 'opaque',
       );
 
       expect(jsonDecode(sent!.body), {'confirmation_token': 'opaque'});
+      expect(result.requestId, 'owner-forget-p1');
+    });
+
+    test('progress is asked by the change the Host named', () async {
+      Uri? asked;
+      final client = ManagementClient(
+        httpClient: MockClient((request) async {
+          asked = request.url;
+          return _hostAnswer({
+            'contract_version': '1',
+            'request_id': 'owner-forget-p1',
+            'status': 'applied',
+          });
+        }),
+      );
+
+      final progress = await client.forgetStatus(
+        Uri.parse('https://192.168.1.26:9002'),
+        accessToken: 'session-token',
+        requestId: 'owner-forget-p1',
+      );
+
+      expect(asked?.path, '/api/management/v1/memory/forget/status');
+      expect(asked?.queryParameters, {'request_id': 'owner-forget-p1'});
+      expect(progress.status, 'applied');
     });
   });
 
   group('the forget sheet', () {
-    testWidgets('shows what would go before offering to do it', (tester) async {
-      await pumpSheet(
-        tester,
-        preview: (_) async => ForgetProposalView.fromJson(proposalWire()),
-      );
+    testWidgets('says up front that forgetting cannot be undone', (tester) async {
+      await pumpSheet(tester, preview: (_) async => ForgetProposalView.fromJson(proposalWire()));
 
-      // No button before a preview: there is nothing to confirm yet.
+      expect(find.textContaining('删除后不能恢复'), findsOneWidget);
       expect(find.byKey(const Key('forget-confirm-button')), findsNothing);
+    });
 
+    testWidgets('shows what would go before offering to do it', (tester) async {
+      await pumpSheet(tester, preview: (_) async => ForgetProposalView.fromJson(proposalWire()));
       await ask(tester, '上周那件事');
 
       expect(find.byKey(const Key('forget-entry-drawer_1')), findsOneWidget);
       expect(find.text('上周那件事的记录'), findsOneWidget);
+      expect(find.text('忘掉这 1 条'), findsOneWidget);
+    });
+
+    testWidgets('asks once more before a permanent change, and can be declined',
+        (tester) async {
+      var confirms = 0;
+      await pumpSheet(
+        tester,
+        preview: (_) async => ForgetProposalView.fromJson(proposalWire()),
+        confirm: (_) async {
+          confirms++;
+          return ForgetResultView.fromJson(resultWire());
+        },
+      );
+      await ask(tester, '上周那件事');
+      await tester.tap(find.byKey(const Key('forget-confirm-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('forget-decision')), findsOneWidget);
+      expect(find.textContaining('忘掉后不能恢复'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('forget-decision-cancel')));
+      await tester.pumpAndSettle();
+
+      expect(confirms, 0);
       expect(find.byKey(const Key('forget-confirm-button')), findsOneWidget);
     });
 
@@ -168,15 +221,85 @@ void main() {
         },
       );
       await ask(tester, '上周那件事');
-      await tester.tap(find.byKey(const Key('forget-confirm-button')));
-      await tester.pumpAndSettle();
+      await decide(tester);
 
       expect(confirmedWith, 'opaque');
-      expect(find.text('已经忘掉 1 条'), findsOneWidget);
+      expect(find.text('已经忘掉 1 条，它以后不会再想起这些'), findsOneWidget);
+    });
+
+    testWidgets('follows an accepted change until the Host says it is applied',
+        (tester) async {
+      // The usual case on a Host: the confirm answers `accepted`, the change is
+      // applied in the background. "已受理，正在生效" with nothing behind it was
+      // the dead end; now the screen asks until it knows.
+      final asked = <String>[];
+      final answers = ['accepted', 'retrying', 'applied'];
+      await pumpSheet(
+        tester,
+        preview: (_) async => ForgetProposalView.fromJson(proposalWire()),
+        confirm: (_) async => ForgetResultView.fromJson(resultWire(status: 'accepted')),
+        progress: (requestId) async {
+          asked.add(requestId);
+          return progressOf(answers[asked.length - 1]);
+        },
+      );
+      await ask(tester, '上周那件事');
+      await tester.tap(find.byKey(const Key('forget-confirm-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('forget-decision-confirm')));
+      await tester.pump();
+
+      expect(find.text('正在忘掉 1 条…'), findsOneWidget);
+      expect(find.textContaining('已经忘掉'), findsNothing);
+
+      await tester.pumpAndSettle();
+
+      expect(asked, ['owner-forget-p1', 'owner-forget-p1', 'owner-forget-p1']);
+      expect(find.text('已经忘掉 1 条，它以后不会再想起这些'), findsOneWidget);
+    });
+
+    testWidgets('a failed change is said as stopped, not as still going', (tester) async {
+      await pumpSheet(
+        tester,
+        preview: (_) async => ForgetProposalView.fromJson(proposalWire()),
+        confirm: (_) async => ForgetResultView.fromJson(resultWire(status: 'accepted')),
+        progress: (_) async => progressOf('failed'),
+      );
+      await ask(tester, '上周那件事');
+      await decide(tester);
+
+      expect(find.textContaining('没有忘掉'), findsOneWidget);
+      // The next step is a new preview, and the button for it is live.
+      final preview = tester.widget<FilledButton>(find.byKey(const Key('forget-preview-button')));
+      expect(preview.onPressed, isNotNull);
+    });
+
+    testWidgets('a change still running after every read says it will finish on its own',
+        (tester) async {
+      var reads = 0;
+      await pumpSheet(
+        tester,
+        preview: (_) async => ForgetProposalView.fromJson(proposalWire()),
+        confirm: (_) async => ForgetResultView.fromJson(resultWire(status: 'accepted')),
+        progress: (_) async {
+          reads++;
+          return progressOf(reads > 3 ? 'applied' : 'accepted');
+        },
+      );
+      await ask(tester, '上周那件事');
+      await decide(tester);
+
+      expect(find.textContaining('它会自己完成'), findsOneWidget);
+      expect(reads, 3);
+
+      // Asking again is honest here: the change can still finish.
+      await tester.tap(find.byKey(const Key('forget-ask-again')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('已经忘掉 1 条，它以后不会再想起这些'), findsOneWidget);
     });
 
     testWidgets('offers nothing to press when nothing matched', (tester) async {
-      // A button here would remove nothing and report success.
       await pumpSheet(
         tester,
         preview: (_) async => ForgetProposalView.fromJson(
@@ -186,21 +309,15 @@ void main() {
       await ask(tester, '没有的事');
 
       expect(find.byKey(const Key('forget-confirm-button')), findsNothing);
-      expect(find.text('你没有告诉过它这件事'), findsOneWidget);
+      // Not "you never told it": what was said may simply not have been kept.
+      expect(find.text('没有找到和「上周那件事」有关的记忆'), findsOneWidget);
     });
 
     testWidgets('says "too much" differently from "nothing"', (tester) async {
-      // The two lead a person to different next moves, and an empty list would
-      // say neither.
       await pumpSheet(
         tester,
         preview: (_) async => ForgetProposalView.fromJson(
-          proposalWire(
-            status: 'too_broad',
-            token: null,
-            entries: [],
-            detail: 'too many',
-          ),
+          proposalWire(status: 'too_broad', token: null, entries: [], detail: 'too many'),
         ),
       );
       await ask(tester, '一切');
@@ -210,8 +327,6 @@ void main() {
     });
 
     testWidgets('does not soften an inexact match', (tester) async {
-      // Pressing a button on a guess is how someone loses what they meant to
-      // keep, so the guess is said out loud.
       await pumpSheet(
         tester,
         preview: (_) async => ForgetProposalView.fromJson(proposalWire(score: 0.6)),
@@ -222,8 +337,7 @@ void main() {
       expect(find.byKey(const Key('forget-inexact-warning')), findsOneWidget);
     });
 
-    testWidgets('an exact single match is not dressed up as a doubt',
-        (tester) async {
+    testWidgets('an exact single match is not dressed up as a doubt', (tester) async {
       await pumpSheet(
         tester,
         preview: (_) async => ForgetProposalView.fromJson(
@@ -236,22 +350,27 @@ void main() {
       expect(find.byKey(const Key('forget-inexact-warning')), findsNothing);
     });
 
-    testWidgets('does not claim a change is done when it was only accepted',
-        (tester) async {
-      // The Host publishes durably and applies asynchronously. "已经忘掉" for a
-      // command still on its way is the comfortable lie.
+    testWidgets('an expired preview offers no button', (tester) async {
+      // Checked on the phone rather than discovered by a failed confirm: the
+      // Host said when the decision stops being about now.
+      var clock = _now;
       await pumpSheet(
         tester,
-        preview: (_) async => ForgetProposalView.fromJson(proposalWire()),
-        confirm: (_) async =>
-            ForgetResultView.fromJson(resultWire(status: 'accepted')),
+        now: () => clock,
+        preview: (_) async => ForgetProposalView.fromJson(
+          proposalWire(expiresAt: _now.add(const Duration(seconds: 30)).millisecondsSinceEpoch ~/ 1000),
+        ),
       );
       await ask(tester, '上周那件事');
-      await tester.tap(find.byKey(const Key('forget-confirm-button')));
-      await tester.pumpAndSettle();
+      expect(tester.widget<FilledButton>(find.byKey(const Key('forget-confirm-button'))).onPressed,
+          isNotNull);
 
-      expect(find.text('已受理 1 条，正在生效'), findsOneWidget);
-      expect(find.textContaining('已经忘掉'), findsNothing);
+      clock = _now.add(const Duration(seconds: 31));
+      await tester.pump(const Duration(seconds: 31));
+
+      expect(find.byKey(const Key('forget-expired')), findsOneWidget);
+      expect(tester.widget<FilledButton>(find.byKey(const Key('forget-confirm-button'))).onPressed,
+          isNull);
     });
 
     testWidgets('a spent token is not offered again', (tester) async {
@@ -265,16 +384,13 @@ void main() {
         },
       );
       await ask(tester, '上周那件事');
-      await tester.tap(find.byKey(const Key('forget-confirm-button')));
-      await tester.pumpAndSettle();
+      await decide(tester);
 
       expect(find.byKey(const Key('forget-confirm-button')), findsNothing);
       expect(confirms, 1);
     });
 
     testWidgets('a new question drops the previous answer', (tester) async {
-      // Leaving the old proposal up would let someone confirm a set that
-      // belonged to words they have since changed.
       var asks = 0;
       await pumpSheet(
         tester,
@@ -294,22 +410,59 @@ void main() {
       expect(find.byKey(const Key('forget-confirm-button')), findsNothing);
     });
 
-    testWidgets('an expired confirmation says to look again', (tester) async {
-      // 409 is the Host saying this decision is no longer about now. Retrying
-      // the same token would fail the same way, so the person is sent back to
-      // the preview rather than offered a retry.
+    testWidgets('a preview that can no longer be acted on says to look again', (tester) async {
       await pumpSheet(
         tester,
         preview: (_) async => ForgetProposalView.fromJson(proposalWire()),
         confirm: (_) => Future.error(
-          const ManagementRequestException('拒绝', statusCode: 409),
+          const ManagementRequestException(
+            '忘掉它被拒绝',
+            statusCode: 409,
+            refusal: Refusal(kind: 'conflict', retryable: false),
+          ),
         ),
       );
       await ask(tester, '上周那件事');
-      await tester.tap(find.byKey(const Key('forget-confirm-button')));
-      await tester.pumpAndSettle();
+      await decide(tester);
 
-      expect(find.text('这次确认过期了，请重新看一遍再决定'), findsOneWidget);
+      expect(find.text('这次预览已经失效，请重新看一遍再决定'), findsOneWidget);
+    });
+
+    testWidgets('a Host fault is worded, and no button invites a hopeless retry',
+        (tester) async {
+      // What the phone showed on 2026-09-22: 「没有完成：查看会忘掉什么被拒绝：
+      // memory response violated the consumed contract」 under a live button.
+      await pumpSheet(
+        tester,
+        preview: (_) => Future.error(
+          const ManagementRequestException(
+            '查看会忘掉什么被拒绝',
+            statusCode: 503,
+            refusal: Refusal(
+              kind: 'upstream',
+              reason: 'memory response violated the consumed contract',
+              retryable: false,
+            ),
+          ),
+        ),
+      );
+      await ask(tester, '工资');
+
+      expect(find.text('没有完成：主机在处理记忆纠错时出错了'), findsOneWidget);
+      expect(find.textContaining('被拒绝'), findsNothing);
+      final preview = tester.widget<FilledButton>(find.byKey(const Key('forget-preview-button')));
+      expect(preview.onPressed, isNull);
+    });
+
+    testWidgets('a Host that did not answer can be asked again', (tester) async {
+      await pumpSheet(
+        tester,
+        preview: (_) => Future.error(const ManagementRequestException('查看会忘掉什么超时')),
+      );
+      await ask(tester, '工资');
+
+      final preview = tester.widget<FilledButton>(find.byKey(const Key('forget-preview-button')));
+      expect(preview.onPressed, isNotNull);
     });
 
     testWidgets('empty words ask the Host nothing', (tester) async {

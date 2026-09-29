@@ -9,51 +9,50 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// 今日 — what it wrote down today.
+/// 最近记下的 — what it wrote down, newest first.
 ///
 /// The page most able to look right while being wrong: a person cannot tell a
-/// missing entry from an entry that was never recorded. So these tests are about
-/// the window (whose day is it?) and about what the screen refuses to claim.
+/// missing entry from an entry that was never recorded. It also held a dead
+/// button: 「看更早的」 widened a window whose first page was already full, so
+/// it fetched the same page forever. These tests are about reaching every
+/// entry, and about what the screen refuses to claim.
+
+Map<String, dynamic> entryWire(String id, String recordedAt, {String? preview}) => {
+  'entry_id': id,
+  'recorded_at': recordedAt,
+  'recorded_at_source': 'occurred_at',
+  'wing_id': 'Wing_Life',
+  'room_id': '饮食',
+  'preview': preview ?? '内容 $id',
+};
 
 Map<String, dynamic> dayWire({
-  String since = '2026-08-24T00:00:00.000',
   int undated = 0,
-  bool moreInWindow = false,
+  String? nextCursor,
   bool truncated = false,
   List<Map<String, dynamic>>? entries,
-}) => {
-  'contract_version': '1',
-  'since': since,
-  'entries':
-      entries ??
-      [
-        {
-          'entry_id': 'drawer_1',
-          'recorded_at': '2026-08-24T09:05:00+00:00',
-          'recorded_at_source': 'occurred_at',
-          'wing_id': 'Wing_Life',
-          'room_id': '饮食',
-          'preview': '他早上喝了乌龙茶',
-        },
-      ],
-  'entry_count': entries?.length ?? 1,
-  'more_in_window': moreInWindow,
-  'undated_count': undated,
-  'truncated': truncated,
-};
+}) {
+  final rows =
+      entries ?? [entryWire('drawer_1', '2026-08-24T09:05:00+00:00', preview: '他早上喝了乌龙茶')];
+  return {
+    'contract_version': '1',
+    'since': '1970-01-01T00:00:00.000',
+    'entries': rows,
+    'entry_count': rows.length,
+    'more_in_window': nextCursor != null,
+    if (nextCursor != null) 'next_cursor': nextCursor,
+    'undated_count': undated,
+    'truncated': truncated,
+  };
+}
 
 MemoryDayView day({
   int undated = 0,
-  bool moreInWindow = false,
+  String? nextCursor,
   bool truncated = false,
   List<Map<String, dynamic>>? entries,
 }) => MemoryDayView.fromJson(
-  dayWire(
-    undated: undated,
-    moreInWindow: moreInWindow,
-    truncated: truncated,
-    entries: entries,
-  ),
+  dayWire(undated: undated, nextCursor: nextCursor, truncated: truncated, entries: entries),
 );
 
 http.Response _hostAnswer(Map<String, dynamic> body) => http.Response.bytes(
@@ -62,13 +61,21 @@ http.Response _hostAnswer(Map<String, dynamic> body) => http.Response.bytes(
   headers: const {'content-type': 'application/json'},
 );
 
-final DateTime _noon = DateTime(2026, 8, 24, 12, 30);
+final DateTime _today = DateTime(2026, 8, 24, 12, 30);
+
+Widget _page(MemoryDayView view, {VoidCallback? onLoadMore}) => MaterialApp(
+  home: MemoryDayPage(
+    entries: view.entries,
+    undatedCount: view.undatedCount,
+    truncated: view.truncated,
+    today: _today,
+    onLoadMore: onLoadMore,
+  ),
+);
 
 void main() {
-  group('the day client', () {
-    test('sends the window with its offset', () async {
-      // The Host compares instants. An offset is what lets it place this one
-      // without knowing where the person is.
+  group('the entries client', () {
+    test('sends the lower bound with its offset, and nothing else unasked', () async {
       Uri? asked;
       final client = ManagementClient(
         httpClient: MockClient((request) async {
@@ -87,10 +94,10 @@ void main() {
       final since = asked!.queryParameters['since']!;
       expect(since.startsWith('2026-08-24T00:00:00'), isTrue);
       expect(since, matches(RegExp(r'(Z|[+-]\d{2}:\d{2})$')));
-      expect(asked?.queryParameters.containsKey('owner_id'), isFalse);
+      expect(asked?.queryParameters.keys.toSet(), {'since'});
     });
 
-    test('sends no limit or audience when none was named', () async {
+    test('passes the Host\'s cursor back unread', () async {
       Uri? asked;
       final client = ManagementClient(
         httpClient: MockClient((request) async {
@@ -102,215 +109,112 @@ void main() {
       await client.fetchMemoryEntries(
         Uri.parse('https://192.168.1.26:9002'),
         accessToken: 'session-token',
-        since: DateTime(2026, 8, 24),
+        since: DateTime(1970),
+        cursor: 'opaque-position',
       );
 
-      expect(asked?.queryParameters.keys.toSet(), {'since'});
+      expect(asked?.queryParameters['cursor'], 'opaque-position');
     });
   });
 
-  group('the day page', () {
-    testWidgets('says which window it is answering for', (tester) async {
-      // A list with no window cannot be told apart from an answer to a
-      // different question — which matters most when it is empty.
+  group('the page', () {
+    testWidgets('groups entries under the day they happened', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryDayPage(day: day(), dayStartedAt: DateTime(2026, 8, 24)),
+        _page(
+          day(
+            entries: [
+              entryWire('d_today', '2026-08-24T09:05:00'),
+              entryWire('d_yesterday', '2026-08-23T20:00:00'),
+              entryWire('d_earlier', '2026-08-01T08:00:00'),
+            ],
+          ),
         ),
       );
 
-      expect(find.textContaining('从 00:00 起，记下 1 条'), findsOneWidget);
+      expect(find.text('今天'), findsOneWidget);
+      expect(find.text('昨天'), findsOneWidget);
+      expect(find.text('8月1日'), findsOneWidget);
     });
 
     testWidgets('keeps the two partial answers apart', (tester) async {
-      // Asking again helps with a full page and not with a stopped scan, so the
+      // Reading on helps with a full page and not with a stopped scan, so the
       // page never merges them into one sentence.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryDayPage(
-            day: day(truncated: true),
-            dayStartedAt: DateTime(2026, 8, 24),
-          ),
-        ),
-      );
+      await tester.pumpWidget(_page(day(truncated: true)));
 
-      expect(find.text('这次没有读完全部记忆，可能漏了更早的'), findsOneWidget);
+      expect(find.text('主机这次没有读完全部记忆，这里可能不完整'), findsOneWidget);
       expect(find.byKey(const Key('memory-day-load-more')), findsNothing);
     });
 
-    testWidgets('offers more only when the page ended inside the window', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryDayPage(
-            day: day(moreInWindow: true),
-            dayStartedAt: DateTime(2026, 8, 24),
-            onLoadMore: () {},
-          ),
-        ),
-      );
-
-      expect(find.byKey(const Key('memory-day-load-more')), findsOneWidget);
-    });
-
     testWidgets('counts entries that hold no usable time', (tester) async {
-      // Someone whose entry never shows up in any day should be able to learn
-      // that this is why.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryDayPage(
-            day: day(undated: 2),
-            dayStartedAt: DateTime(2026, 8, 24),
-          ),
-        ),
-      );
+      await tester.pumpWidget(_page(day(undated: 2)));
 
-      expect(find.text('另有 2 条没有可用的时间，不在任何一天的清单里'), findsOneWidget);
+      expect(find.textContaining('另有 2 条没有可用的时间'), findsOneWidget);
     });
 
-    testWidgets('a quiet day is said plainly, not drawn as a failure', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryDayPage(
-            day: day(entries: []),
-            dayStartedAt: DateTime(2026, 8, 24),
-          ),
-        ),
-      );
+    testWidgets('an empty memory is said plainly', (tester) async {
+      await tester.pumpWidget(_page(day(entries: [])));
 
-      expect(find.byKey(const Key('memory-day-empty')), findsOneWidget);
-      expect(find.text('这段时间没有记下什么'), findsOneWidget);
-    });
-
-    testWidgets('a quiet day still reports what is undated', (tester) async {
-      // Otherwise "nothing today" and "two things I cannot place" look the same.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryDayPage(
-            day: day(entries: [], undated: 2),
-            dayStartedAt: DateTime(2026, 8, 24),
-          ),
-        ),
-      );
-
-      expect(find.textContaining('另有 2 条'), findsOneWidget);
-    });
-
-    testWidgets('shows an entry at the time it is about, in local terms', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryDayPage(day: day(), dayStartedAt: DateTime(2026, 8, 24)),
-        ),
-      );
-
-      expect(
-        find.byKey(const Key('memory-day-entry-drawer_1')),
-        findsOneWidget,
-      );
-      expect(find.text('他早上喝了乌龙茶'), findsOneWidget);
-      // The room is context, not a category id.
-      expect(find.textContaining('饮食'), findsOneWidget);
-    });
-
-    testWidgets('does not expose an ingestion room identifier', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryDayPage(
-            day: day(
-              entries: [
-                {
-                  'entry_id': 'drawer_confirmed',
-                  'recorded_at': '2026-08-24T09:05:00+08:00',
-                  'recorded_at_source': 'occurred_at',
-                  'wing_id': 'Wing_Life',
-                  'room_id': 'userconfirm:eview-20260828-1',
-                  'preview': '我喜欢在雨天读书',
-                },
-              ],
-            ),
-            dayStartedAt: DateTime(2026, 8, 24),
-          ),
-        ),
-      );
-
-      expect(find.textContaining('已整理的记录'), findsOneWidget);
-      expect(find.textContaining('userconfirm:'), findsNothing);
-    });
-
-    testWidgets('an unparseable time is shown rather than invented', (
-      tester,
-    ) async {
-      // Hiding the entry would lose it; inventing a time would file it wrongly.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryDayPage(
-            day: day(
-              entries: [
-                {
-                  'entry_id': 'drawer_odd',
-                  'recorded_at': 'sometime',
-                  'recorded_at_source': 'unknown',
-                  'wing_id': '',
-                  'room_id': '',
-                  'preview': '说不清什么时候',
-                },
-              ],
-            ),
-            dayStartedAt: DateTime(2026, 8, 24),
-          ),
-        ),
-      );
-
-      expect(
-        find.byKey(const Key('memory-day-entry-drawer_odd')),
-        findsOneWidget,
-      );
-      expect(find.textContaining('sometime'), findsOneWidget);
+      expect(find.text('还没有记下什么'), findsOneWidget);
     });
   });
 
-  group('the day screen', () {
-    testWidgets('asks from local midnight, which the Host cannot compute', (
+  group('the screen', () {
+    testWidgets('reads on with the cursor until the Host says there is no more', (
       tester,
     ) async {
-      // A day computed on the Host would be wrong by up to a day and would not
-      // say so; this is the one piece of judgement the client owns.
-      DateTime? asked;
+      // Three pages, the last without a cursor. Every entry arrives exactly
+      // once, and the button goes away when there is nothing more — never a
+      // button in front of a page that cannot exist.
+      final asked = <String?>[];
+      final pages = {
+        null: day(
+          entries: [entryWire('d1', '2026-08-24T10:00:00'), entryWire('d2', '2026-08-24T09:00:00')],
+          nextCursor: 'c1',
+        ),
+        'c1': day(
+          entries: [entryWire('d3', '2026-08-23T10:00:00'), entryWire('d4', '2026-08-23T09:00:00')],
+          nextCursor: 'c2',
+        ),
+        'c2': day(entries: [entryWire('d5', '2026-08-01T10:00:00')]),
+      };
       await tester.pumpWidget(
         MaterialApp(
           home: MemoryDayScreen(
-            now: () => _noon,
-            load: (since) async {
-              asked = since;
-              return day();
+            now: () => _today,
+            load: (since, cursor) async {
+              asked.add(cursor);
+              expect(since, DateTime(1970));
+              return pages[cursor]!;
             },
           ),
         ),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('memory-day-load-more')));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.byKey(const Key('memory-day-load-more')), 200);
+      await tester.tap(find.byKey(const Key('memory-day-load-more')));
+      await tester.pumpAndSettle();
 
-      expect(asked, DateTime(2026, 8, 24));
-      expect(asked!.isUtc, isFalse);
+      expect(asked, [null, 'c1', 'c2']);
+      for (final id in ['d1', 'd2', 'd3', 'd4']) {
+        expect(find.byKey(Key('memory-day-entry-$id'), skipOffstage: false), findsOneWidget);
+      }
+      await tester.scrollUntilVisible(find.byKey(const Key('memory-day-entry-d5')), 200);
+      expect(find.byKey(const Key('memory-day-entry-d5')), findsOneWidget);
+      expect(find.byKey(const Key('memory-day-load-more'), skipOffstage: false), findsNothing);
     });
 
-    testWidgets('looking further back widens the window by a day', (
-      tester,
-    ) async {
-      // Not an opaque cursor: someone asking for more of today wants the
-      // morning, and then yesterday.
-      final windows = <DateTime>[];
+    testWidgets('a failed next page keeps what was read and says so', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: MemoryDayScreen(
-            now: () => _noon,
-            load: (since) async {
-              windows.add(since);
-              return day(moreInWindow: true);
+            now: () => _today,
+            load: (since, cursor) async {
+              if (cursor == null) {
+                return day(entries: [entryWire('d1', '2026-08-24T10:00:00')], nextCursor: 'c1');
+              }
+              throw ManagementRequestException('读取今天记下的超时');
             },
           ),
         ),
@@ -319,41 +223,21 @@ void main() {
       await tester.tap(find.byKey(const Key('memory-day-load-more')));
       await tester.pumpAndSettle();
 
-      expect(windows, [DateTime(2026, 8, 24), DateTime(2026, 8, 23)]);
+      expect(find.byKey(const Key('memory-day-entry-d1')), findsOneWidget);
+      expect(find.byKey(const Key('memory-day-more-error')), findsOneWidget);
+      // Still offered: a timeout is something reading again can fix.
+      expect(find.byKey(const Key('memory-day-load-more')), findsOneWidget);
     });
 
-    testWidgets('does not offer to widen when the page held the window', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryDayScreen(now: () => _noon, load: (_) async => day()),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('memory-day-load-more')), findsNothing);
-    });
-
-    testWidgets('a memory that could not be read is not a quiet day', (
-      tester,
-    ) async {
-      // The two are indistinguishable to a person, and only one is a reason to
-      // worry.
+    testWidgets('a memory that could not be read is not shown as empty', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: MemoryDayScreen(
-            now: () => _noon,
-            load: (_) => Future.error(
-              const ManagementRequestException(
-                '读取失败',
-                statusCode: 503,
-                refusal: Refusal(
-                  kind: 'not_running',
-                  reason: 'memory is unavailable',
-                  retryable: true,
-                ),
-              ),
+            now: () => _today,
+            load: (since, cursor) async => throw ManagementRequestException(
+              '读取今天记下的被拒绝',
+              statusCode: 503,
+              refusal: const Refusal(kind: 'not_configured', retryable: false),
             ),
           ),
         ),
@@ -361,34 +245,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('memory-day-error')), findsOneWidget);
-      expect(find.byKey(const Key('memory-day-empty')), findsNothing);
-    });
-
-    testWidgets('retrying after a refusal asks again', (tester) async {
-      var attempts = 0;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MemoryDayScreen(
-            now: () => _noon,
-            load: (_) async {
-              attempts++;
-              if (attempts == 1) {
-                throw const ManagementRequestException('读取失败', statusCode: 503);
-              }
-              return day();
-            },
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('memory-day-retry')));
-      await tester.pumpAndSettle();
-
-      expect(attempts, 2);
-      expect(
-        find.byKey(const Key('memory-day-entry-drawer_1')),
-        findsOneWidget,
-      );
+      expect(find.text('还没有记下什么'), findsNothing);
+      // Nothing this phone can do changes a Host that was never configured.
+      expect(find.byKey(const Key('memory-day-retry')), findsNothing);
     });
   });
 }

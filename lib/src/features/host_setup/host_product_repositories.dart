@@ -266,11 +266,13 @@ class HostManagementRepository {
         ),
       );
 
-  /// What it wrote down since [since]. The window is the caller's.
+  /// What it wrote down since [since], a page at a time. [cursor] is the
+  /// previous page's `nextCursor`, passed back unread.
   Future<MemoryDayView> memoryEntries({
     required DateTime since,
     int? limit,
     String? companionId,
+    String? cursor,
   }) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.fetchMemoryEntries(
@@ -279,6 +281,7 @@ class HostManagementRepository {
           since: since,
           limit: limit,
           companionId: companionId,
+          cursor: cursor,
         ),
       );
 
@@ -397,16 +400,12 @@ class HostManagementRepository {
       );
 
   /// What forgetting [target] would remove. Nothing changes.
-  Future<ForgetProposalView> previewForget({
-    required String target,
-    String? action,
-  }) =>
+  Future<ForgetProposalView> previewForget({required String target}) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.previewForget(
           baseUri,
           accessToken: accessToken,
           target: target,
-          action: action,
         ),
       );
 
@@ -417,6 +416,16 @@ class HostManagementRepository {
           baseUri,
           accessToken: accessToken,
           confirmationToken: confirmationToken,
+        ),
+      );
+
+  /// Where a confirmed forget has got to.
+  Future<ForgetProgressView> forgetStatus({required String requestId}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.forgetStatus(
+          baseUri,
+          accessToken: accessToken,
+          requestId: requestId,
         ),
       );
 

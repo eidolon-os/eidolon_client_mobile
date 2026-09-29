@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
+import 'management_client.dart';
 
-/// Ask one Eidolon what it remembers.
+/// Ask what is remembered about something.
 ///
 /// Search is a focused way into the same Owner-governed memory surface. It is
 /// kept in management so both the overall Memory front door and a Companion
 /// detail page can open it without either feature depending on the other.
+///
+/// [companionName] null is the Owner searching their own memory — everything
+/// any of their Eidolons was told. That search used to be impossible: the Host
+/// answered it 503, so the way in was hidden unless a Companion was selected.
 class RecollectionsPage extends StatefulWidget {
   const RecollectionsPage({
     super.key,
-    required this.companionName,
+    this.companionName,
     required this.onSearch,
   });
 
-  final String companionName;
+  final String? companionName;
   final Future<RecollectionsView> Function(String query) onSearch;
 
   @override
@@ -44,8 +49,17 @@ class _RecollectionsPageState extends State<RecollectionsPage> {
       final answer = await widget.onSearch(query);
       if (mounted) setState(() => _answer = answer);
     } catch (error) {
-      // A failed read is not an empty memory.
-      if (mounted) setState(() => _failure = '没能问到：$error');
+      // A failed read is not an empty memory. Worded by the one place that
+      // words refusals, so this screen cannot print an exception at a person.
+      if (mounted) {
+        final detail = refusalDetail(error);
+        setState(
+          () => _failure = [
+            '没能问到：${refusalText(error, subject: '记忆搜索')}',
+            if (detail != null) detail,
+          ].join('\n'),
+        );
+      }
     } finally {
       if (mounted) setState(() => _asking = false);
     }
@@ -56,7 +70,13 @@ class _RecollectionsPageState extends State<RecollectionsPage> {
     final answer = _answer;
     return Scaffold(
       key: const Key('recollections-page'),
-      appBar: AppBar(title: Text('搜索 ${widget.companionName} 的记忆')),
+      appBar: AppBar(
+        title: Text(
+          widget.companionName == null
+              ? '搜索你的记忆'
+              : '搜索${widget.companionName}的记忆',
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -108,7 +128,9 @@ class _RecollectionsPageState extends State<RecollectionsPage> {
               child: Padding(
                 padding: const EdgeInsets.all(18),
                 child: Text(
-                  '关于「${answer.query}」，它还没有记住什么。',
+                  widget.companionName == null
+                      ? '关于「${answer.query}」，你的记忆里还没有什么。'
+                      : '关于「${answer.query}」，${widget.companionName}还没有记住什么。',
                   key: const Key('recollections-empty'),
                 ),
               ),

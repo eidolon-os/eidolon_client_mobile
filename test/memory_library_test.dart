@@ -16,22 +16,12 @@ import 'package:http/testing.dart';
 Map<String, dynamic> libraryWire({
   int withheld = 1,
   bool truncated = false,
-  String materializationState = 'ready',
-  int projectionPending = 0,
+  String audienceScope = 'owner',
   List<Map<String, dynamic>>? wings,
 }) =>
     {
       'contract_version': '1',
-      'memory_realm_id': 'realm-owner-1',
-      'audience_scope': 'companion:companion-a',
-      'materialization': {
-        'ready': materializationState == 'ready',
-        'data_readable': materializationState != 'unavailable',
-        'materialization_state': materializationState,
-        'projection_pending': projectionPending,
-        'last_materialized_at': '2026-08-29T12:00:00Z',
-        'degraded_reason': materializationState == 'degraded' ? 'KG 暂不可读' : '',
-      },
+      'audience_scope': audienceScope,
       'wings': wings ??
           [
             {
@@ -57,18 +47,10 @@ Map<String, dynamic> libraryWire({
 MemoryLibraryView library({
   int withheld = 1,
   bool truncated = false,
-  String materializationState = 'ready',
-  int projectionPending = 0,
   List<Map<String, dynamic>>? wings,
 }) =>
     MemoryLibraryView.fromJson(
-      libraryWire(
-        withheld: withheld,
-        truncated: truncated,
-        materializationState: materializationState,
-        projectionPending: projectionPending,
-        wings: wings,
-      ),
+      libraryWire(withheld: withheld, truncated: truncated, wings: wings),
     );
 
 http.Response _hostAnswer(Map<String, dynamic> body) => http.Response.bytes(
@@ -141,25 +123,20 @@ void main() {
 
   group('the memory library page', () {
     testWidgets(
-      'shows the Realm materialization rather than process liveness',
+      'names whose memory this is and never an identifier or projection progress',
       (tester) async {
+        // It used to print 「记忆正在整理 · N 项待同步 · companion:… Realm r_…」:
+        // a status no person can act on (and that stayed forever for a failed
+        // projection) above two database identifiers.
         await tester.pumpWidget(
-          MaterialApp(
-            home: MemoryLibraryPage(
-              library: library(
-                materializationState: 'materializing',
-                projectionPending: 3,
-              ),
-            ),
-          ),
+          MaterialApp(home: MemoryLibraryPage(library: library())),
         );
 
-        expect(
-          find.byKey(const Key('memory-materialization-status')),
-          findsOneWidget,
-        );
-        expect(find.textContaining('记忆正在整理 · 3 项待同步'), findsOneWidget);
-        expect(find.textContaining('realm-owner-1'), findsOneWidget);
+        expect(find.text('你的全部记忆'), findsOneWidget);
+        expect(find.text('你的每个伙伴记下的，都在这里'), findsOneWidget);
+        expect(find.textContaining('Realm'), findsNothing);
+        expect(find.textContaining('owner'), findsNothing);
+        expect(find.textContaining('待同步'), findsNothing);
       },
     );
 
@@ -174,8 +151,24 @@ void main() {
 
       expect(find.text('共 3 条'), findsOneWidget);
       expect(find.text('可见记忆'), findsOneWidget);
-      expect(find.text('另有 2 条没有在这个视角展开'), findsOneWidget);
-      expect(find.text('它们可能属于其他 Eidolon，或已被设为不再提及。'), findsOneWidget);
+      // The Owner's view holds every Companion's memory, so what is held back
+      // is only what was set aside — never "another Eidolon's".
+      expect(find.text('另有 2 条你要求不再提起的，没有展开'), findsOneWidget);
+    });
+
+    testWidgets('in one Companion\'s view, withheld includes what it was not told', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MemoryLibraryPage(
+            library: library(withheld: 2),
+            selectedCompanionId: 'companion-a',
+          ),
+        ),
+      );
+
+      expect(find.text('另有 2 条没有在这里展开：它不知道，或你要求不再提起'), findsOneWidget);
     });
 
     testWidgets('says nothing about withholding when nothing was withheld', (
@@ -185,7 +178,7 @@ void main() {
         MaterialApp(home: MemoryLibraryPage(library: library(withheld: 0))),
       );
 
-      expect(find.textContaining('没有在这个视角展开'), findsNothing);
+      expect(find.textContaining('没有展开'), findsNothing);
     });
 
     testWidgets('refuses to present a partial read as the whole memory', (
@@ -290,8 +283,8 @@ void main() {
           find.byKey(const Key('memory-library-forget')),
           200,
         );
-        expect(find.text('记忆纠错与隐私'), findsOneWidget);
-        expect(find.text('仅在内容不准确或涉及隐私时使用；日常记忆由伙伴自动整理。'), findsOneWidget);
+        expect(find.text('让它忘掉一件事'), findsOneWidget);
+        expect(find.textContaining('忘掉后不能恢复'), findsOneWidget);
       },
     );
 
@@ -370,8 +363,11 @@ void main() {
         ];
 
     testWidgets(
-      'defaults to one Companion and switches the private memory read',
+      'opens on the Owner\'s whole memory, switches to one Companion and back',
       (tester) async {
+        // It used to open on the default Companion, so the library and the home
+        // screen (which counts the Owner's whole memory) disagreed, and once a
+        // Companion was chosen the whole memory was unreachable.
         final asked = <String?>[];
         await tester.pumpWidget(
           MaterialApp(
@@ -388,14 +384,24 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(asked, ['companion-a']);
+        expect(asked, [null]);
+        expect(find.text('你的全部记忆'), findsOneWidget);
+
         await tester.tap(find.byKey(const Key('memory-companion-selector')));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('阿力'));
+        await tester.tap(find.text('阿力').last);
         await tester.pumpAndSettle();
 
-        expect(asked, ['companion-a', 'companion-b']);
-        expect(find.text('阿力的视角'), findsOneWidget);
+        expect(asked, [null, 'companion-b']);
+        expect(find.text('阿力能想起的'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('memory-companion-selector')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('全部记忆').last);
+        await tester.pumpAndSettle();
+
+        expect(asked, [null, 'companion-b', null]);
+        expect(find.text('你的全部记忆'), findsOneWidget);
       },
     );
 
@@ -420,14 +426,16 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(asked, ['companion-b']);
-        expect(find.text('阿力的视角'), findsOneWidget);
+        expect(find.text('阿力能想起的'), findsOneWidget);
         expect(find.text('你的记忆'), findsOneWidget);
       },
     );
 
-    testWidgets('opens scoped search from the overall memory front door', (
+    testWidgets('searches the Owner\'s whole memory from the front door', (
       tester,
     ) async {
+      // Hidden until a Companion was picked, because the Host answered an
+      // Owner search with 503. It is the question a person arrives with.
       String? askedCompanion;
       String? askedQuery;
       await tester.pumpWidget(
@@ -453,7 +461,7 @@ void main() {
       await tester.tap(find.byKey(const Key('memory-library-search')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('recollections-page')), findsOneWidget);
-      expect(find.text('搜索 小忆 的记忆'), findsOneWidget);
+      expect(find.text('搜索你的记忆'), findsOneWidget);
 
       await tester.enterText(
         find.byKey(const Key('recollection-question')),
@@ -462,7 +470,7 @@ void main() {
       await tester.tap(find.byKey(const Key('ask-recollections')));
       await tester.pumpAndSettle();
 
-      expect(askedCompanion, 'companion-a');
+      expect(askedCompanion, isNull);
       expect(askedQuery, '雨天读书');
       expect(find.text('你喜欢在雨天读纸质书'), findsOneWidget);
     });
@@ -475,11 +483,12 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: MemoryLibraryScreen(
+              initialCompanionId: 'companion-a',
               load: () async => library(),
               loadForCompanion: (_) async => library(),
               loadContext: () async => context(),
               loadCompanions: () async => companions(),
-              loadDay: (_, companionId) async {
+              loadDay: (_, companionId, __) async {
                 dayCompanion = companionId;
                 return MemoryDayView.fromJson({
                   'contract_version': '1',
@@ -557,7 +566,7 @@ void main() {
               load: () async => library(),
               loadContext: () async => context(),
               loadDay: wired
-                  ? (_, __) async => MemoryDayView.fromJson({
+                  ? (_, __, ___) async => MemoryDayView.fromJson({
                         'contract_version': '1',
                         'since': '2026-08-24T00:00:00.000',
                         'entries': [],
@@ -751,6 +760,36 @@ void main() {
 
       expect(attempts, 2);
       expect(find.byKey(const Key('memory-wing-Wing_Life')), findsOneWidget);
+    });
+  });
+
+  group('a refresh that fails', () {
+    testWidgets('says so above the last answer instead of passing it off as current', (
+      tester,
+    ) async {
+      var reads = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MemoryLibraryScreen(
+            load: () async {
+              reads++;
+              if (reads == 1) return library();
+              throw const ManagementRequestException('读取记忆被拒绝', statusCode: 503,
+                  refusal: Refusal(kind: 'not_running', retryable: true));
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('memory-library-refresh-error')), findsNothing);
+
+      await tester.drag(find.byKey(const Key('memory-library-list')), const Offset(0, 400));
+      await tester.pumpAndSettle();
+
+      expect(reads, 2);
+      expect(find.byKey(const Key('memory-library-refresh-error')), findsOneWidget);
+      expect(find.text('下面是上一次读到的内容'), findsOneWidget);
+      expect(find.text('共 3 条'), findsOneWidget);
     });
   });
 }

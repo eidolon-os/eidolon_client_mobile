@@ -533,8 +533,13 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         previewForget: (target) => _controller.previewForget(target: target),
         confirmForget: (token) =>
             _controller.confirmForget(confirmationToken: token),
-        loadDay: (since, companionId) =>
-            _controller.memoryEntries(since: since, companionId: companionId),
+        forgetProgress: (requestId) =>
+            _controller.forgetStatus(requestId: requestId),
+        loadDay: (since, companionId, cursor) => _controller.memoryEntries(
+          since: since,
+          companionId: companionId,
+          cursor: cursor,
+        ),
         loadCopy: (companionId) =>
             _controller.memoryCopy(companionId: companionId),
         loadCompanions: () async => (await _controller.roster()).companions,

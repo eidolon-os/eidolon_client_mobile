@@ -29,6 +29,7 @@ class MemoryLibraryScreen extends StatefulWidget {
     this.loadContext,
     this.previewForget,
     this.confirmForget,
+    this.forgetProgress,
     this.loadDay,
     this.loadCopy,
     this.loadCompanions,
@@ -42,7 +43,9 @@ class MemoryLibraryScreen extends StatefulWidget {
   /// A Companion detail page already knows which Eidolon it is about. Passing
   /// that fact in is different from maintaining a second Companion-memory
   /// page: this remains the Owner's one memory experience, initially filtered
-  /// to the audience the person chose.
+  /// to the audience the person chose. Null is the Owner's own memory —
+  /// everything any of their Eidolons was told — which is what 「你的记忆」
+  /// means, and what the home screen counts.
   final String? initialCompanionId;
   final Future<MemoryLibraryView> Function(String? companionId)?
   loadForCompanion;
@@ -55,10 +58,15 @@ class MemoryLibraryScreen extends StatefulWidget {
   final Future<ForgetProposalView> Function(String target)? previewForget;
   final Future<ForgetResultView> Function(String confirmationToken)?
   confirmForget;
+  final Future<ForgetProgressView> Function(String requestId)? forgetProgress;
 
   /// Reads a window of recent entries. Null hides the way in rather than
   /// opening a screen that cannot fill itself.
-  final Future<MemoryDayView> Function(DateTime since, String? companionId)?
+  final Future<MemoryDayView> Function(
+    DateTime since,
+    String? companionId,
+    String? cursor,
+  )?
   loadDay;
 
   /// Reads the whole visible memory, for the copy a person keeps. Null hides
@@ -68,10 +76,10 @@ class MemoryLibraryScreen extends StatefulWidget {
   /// Reads names for selecting the Companion-private view of this Owner Realm.
   final Future<List<CompanionSummaryView>> Function()? loadCompanions;
 
-  /// Searches the memory visible to one Companion. Search belongs here as a
-  /// way to explore the same library, even though the answer keeps its own
-  /// focused screen.
-  final Future<RecollectionsView> Function(String companionId, String query)?
+  /// Searches the memory in view: one Companion's, or with null the Owner's
+  /// own. Search belongs here as a way to explore the same library, even
+  /// though the answer keeps its own focused screen.
+  final Future<RecollectionsView> Function(String? companionId, String query)?
   searchRecollections;
 
   @override
@@ -84,6 +92,11 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
   List<CompanionSummaryView> _companions = const [];
   String? _selectedCompanionId;
   Object? _error;
+
+  /// A refresh that failed while a library was already on screen. Shown above
+  /// it rather than swallowed: a stale page that looks current is the moment a
+  /// person stops trusting this screen.
+  Object? _refreshError;
   bool _busy = true;
 
   @override
@@ -97,6 +110,7 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     setState(() {
       _busy = true;
       _error = null;
+      _refreshError = null;
     });
     try {
       // Asked for together: a library drawn before the Host said what it can do
@@ -110,11 +124,13 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
           companions = await widget.loadCompanions!();
         } catch (_) {
           // The selector is enrichment. A transient roster failure must not
-          // turn readable memory into an error page; the context's default
-          // Companion still provides the safe audience for this read.
+          // turn readable memory into an error page.
         }
       }
-      final selected = _selectedCompanionId ?? context?.defaultCompanionId;
+      // No default Companion substituted: without one named this is the
+      // Owner's own memory, the same view the home screen counts. It used to
+      // fall back to the default Companion, so the two numbers disagreed.
+      final selected = _selectedCompanionId;
       final library = widget.loadForCompanion == null
           ? await widget.load()
           : await widget.loadForCompanion!(selected);
@@ -122,14 +138,17 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
       setState(() {
         _context = context;
         _companions = companions;
-        _selectedCompanionId = selected;
         _library = library;
         _busy = false;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error;
+        if (_library == null) {
+          _error = error;
+        } else {
+          _refreshError = error;
+        }
         _busy = false;
       });
     }
@@ -151,6 +170,7 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
         builder: (_) => ForgetSheet(
           preview: widget.previewForget!,
           confirm: widget.confirmForget!,
+          progress: widget.forgetProgress,
         ),
       ),
     );
@@ -166,7 +186,8 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
   Future<void> _openToday() => Navigator.of(context).push<void>(
     MaterialPageRoute(
       builder: (_) => MemoryDayScreen(
-        load: (since) => widget.loadDay!(since, _selectedCompanionId),
+        load: (since, cursor) =>
+            widget.loadDay!(since, _selectedCompanionId, cursor),
       ),
     ),
   );
@@ -186,6 +207,7 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     setState(() {
       _selectedCompanionId = companionId;
       _busy = true;
+      _refreshError = null;
     });
     try {
       final library = widget.loadForCompanion == null
@@ -214,20 +236,21 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     ),
   );
 
-  String get _selectedCompanionName {
+  /// The selected Companion's name, or null for the Owner's own view.
+  String? get _selectedCompanionName {
+    final selected = _selectedCompanionId;
+    if (selected == null) return null;
     for (final companion in _companions) {
-      if (companion.companionId != _selectedCompanionId) continue;
+      if (companion.companionId != selected) continue;
       final name = (companion.displayName ?? '').trim();
-      return name.isEmpty ? '当前 Eidolon' : name;
+      return name.isEmpty ? '这个伙伴' : name;
     }
-    return '当前 Eidolon';
+    return '这个伙伴';
   }
 
   Future<void> _openSearch() {
     final companionId = _selectedCompanionId;
-    if (companionId == null || widget.searchRecollections == null) {
-      return Future.value();
-    }
+    if (widget.searchRecollections == null) return Future.value();
     return Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => RecollectionsPage(
@@ -253,11 +276,9 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
             ? null
             : _selectCompanion,
         onOpenGraph: widget.loadGraph == null ? null : _openGraph,
-        onSearch:
-            _selectedCompanionId == null || widget.searchRecollections == null
-            ? null
-            : _openSearch,
+        onSearch: widget.searchRecollections == null ? null : _openSearch,
         onRefresh: _read,
+        refreshError: _refreshError,
       );
     }
     return Scaffold(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
+import 'management_client.dart';
 import 'memory_labels.dart';
 
 /// The Owner-facing front door to memory.
@@ -24,6 +25,7 @@ class MemoryLibraryPage extends StatelessWidget {
     this.onOpenGraph,
     this.onSearch,
     this.onRefresh,
+    this.refreshError,
   });
 
   final MemoryLibraryView library;
@@ -38,13 +40,20 @@ class MemoryLibraryPage extends StatelessWidget {
   final VoidCallback? onSearch;
   final Future<void> Function()? onRefresh;
 
-  String get _selectedCompanionName {
+  /// A refresh that failed while this page was on screen. What is shown below
+  /// it is the last answer the Host gave, and the page says so.
+  final Object? refreshError;
+
+  /// The selected Companion's name, or null for the Owner's own memory.
+  String? get _selectedCompanionName {
+    final selected = selectedCompanionId;
+    if (selected == null) return null;
     for (final companion in companions) {
-      if (companion.companionId != selectedCompanionId) continue;
+      if (companion.companionId != selected) continue;
       final name = (companion.displayName ?? '').trim();
-      return name.isEmpty ? '当前 Eidolon' : name;
+      return name.isEmpty ? '这个伙伴' : name;
     }
-    return '当前 Eidolon';
+    return '这个伙伴';
   }
 
   @override
@@ -54,6 +63,21 @@ class MemoryLibraryPage extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       children: [
+        if (refreshError != null) ...[
+          Card(
+            key: const Key('memory-library-refresh-error'),
+            margin: EdgeInsets.zero,
+            color: Theme.of(context).colorScheme.errorContainer,
+            child: ListTile(
+              leading: const Icon(Icons.sync_problem_outlined),
+              title: Text(
+                '没能刷新：${refusalText(refreshError!, subject: '它记住的')}',
+              ),
+              subtitle: const Text('下面是上一次读到的内容'),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         _MemoryOverview(
           library: library,
           companions: companions,
@@ -63,7 +87,10 @@ class MemoryLibraryPage extends StatelessWidget {
         ),
         if (library.withheldCount > 0 || library.truncated) ...[
           const SizedBox(height: 12),
-          _ReadNotice(library: library),
+          _ReadNotice(
+            library: library,
+            ownerView: selectedCompanionId == null,
+          ),
         ],
         if (_hasExploreActions) ...[
           const SizedBox(height: 24),
@@ -134,15 +161,13 @@ class _MemoryOverview extends StatelessWidget {
   final MemoryLibraryView library;
   final List<CompanionSummaryView> companions;
   final String? selectedCompanionId;
-  final String selectedCompanionName;
+  final String? selectedCompanionName;
   final ValueChanged<String?>? onCompanionChanged;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final selectedExists = companions.any(
-      (companion) => companion.companionId == selectedCompanionId,
-    );
+    final name = selectedCompanionName;
     return Card(
       key: const Key('memory-library-overview'),
       margin: EdgeInsets.zero,
@@ -173,14 +198,15 @@ class _MemoryOverview extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '$selectedCompanionName的视角',
+                        name == null ? '你的全部记忆' : '$name能想起的',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        key: const Key('memory-materialization-status'),
-                        '${_materializationLabel(library)} · ${library.audienceScope}\n'
-                        'Realm ${library.memoryRealmId}',
+                        key: const Key('memory-library-scope'),
+                        name == null
+                            ? '你的每个伙伴记下的，都在这里'
+                            : '你们共享的，加上只告诉$name的',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -201,13 +227,24 @@ class _MemoryOverview extends StatelessWidget {
                   ),
                 ),
                 child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
+                  child: DropdownButton<String?>(
                     key: const Key('memory-companion-selector'),
-                    value: selectedExists ? selectedCompanionId : null,
+                    value: companions.any(
+                      (companion) => companion.companionId == selectedCompanionId,
+                    )
+                        ? selectedCompanionId
+                        : null,
                     isExpanded: true,
                     items: [
+                      // The Owner's own view, always reachable: choosing one
+                      // Companion used to be a one-way door.
+                      const DropdownMenuItem<String?>(
+                        key: Key('memory-companion-all'),
+                        value: null,
+                        child: Text('全部记忆'),
+                      ),
                       for (final companion in companions)
-                        DropdownMenuItem(
+                        DropdownMenuItem<String?>(
                           value: companion.companionId,
                           child: Text(_companionName(companion)),
                         ),
@@ -240,17 +277,7 @@ class _MemoryOverview extends StatelessWidget {
 
   static String _companionName(CompanionSummaryView companion) {
     final name = (companion.displayName ?? '').trim();
-    return name.isEmpty ? '未命名 Eidolon' : name;
-  }
-
-  static String _materializationLabel(MemoryLibraryView library) {
-    final status = library.materialization;
-    return switch (status.materializationState) {
-      'ready' => '记忆已可读取',
-      'materializing' => '记忆正在整理 · ${status.projectionPending} 项待同步',
-      'degraded' => '部分记忆暂不可用',
-      _ => '记忆数据暂不可读',
-    };
+    return name.isEmpty ? '未命名伙伴' : name;
   }
 }
 
@@ -271,15 +298,19 @@ class _Metric extends StatelessWidget {
 }
 
 class _ReadNotice extends StatelessWidget {
-  const _ReadNotice({required this.library});
+  const _ReadNotice({required this.library, required this.ownerView});
 
   final MemoryLibraryView library;
+  final bool ownerView;
 
   @override
   Widget build(BuildContext context) {
+    final withheld = library.withheldCount;
     final lines = <String>[
-      if (library.withheldCount > 0) '另有 ${library.withheldCount} 条没有在这个视角展开',
-      if (library.withheldCount > 0) '它们可能属于其他 Eidolon，或已被设为不再提及。',
+      // In the Owner's own view every Companion's memory is shown, so what is
+      // held back is only what was set aside — never "another Eidolon's".
+      if (withheld > 0 && ownerView) '另有 $withheld 条你要求不再提起的，没有展开',
+      if (withheld > 0 && !ownerView) '另有 $withheld 条没有在这里展开：它不知道，或你要求不再提起',
       if (library.truncated) '这次只读了一部分，下面不是全部',
     ];
     return Card(
@@ -337,7 +368,7 @@ class _ActionGrid extends StatelessWidget {
     required this.onExport,
   });
 
-  final String companionName;
+  final String? companionName;
   final VoidCallback? onSearch;
   final VoidCallback? onOpenToday;
   final VoidCallback? onOpenGraph;
@@ -351,7 +382,9 @@ class _ActionGrid extends StatelessWidget {
           key: const Key('memory-library-search'),
           icon: Icons.search,
           title: '搜索记忆',
-          subtitle: '问$companionName是否记得一件事',
+          subtitle: companionName == null
+              ? '看看你的记忆里有没有一件事'
+              : '问$companionName是否记得一件事',
           onTap: onSearch!,
         ),
       if (onOpenToday != null)
@@ -642,8 +675,8 @@ class _MemoryCorrectionFallback extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 4),
         onTap: onForget,
         leading: const Icon(Icons.shield_outlined),
-        title: const Text('记忆纠错与隐私'),
-        subtitle: const Text('仅在内容不准确或涉及隐私时使用；日常记忆由伙伴自动整理。'),
+        title: const Text('让它忘掉一件事'),
+        subtitle: const Text('内容不准确或涉及隐私时使用；忘掉后不能恢复。日常记忆由伙伴自动整理。'),
         trailing: const Icon(Icons.chevron_right),
       ),
     );
