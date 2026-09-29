@@ -81,10 +81,57 @@ class DeviceConfiguration {
   /// build happens to know would be a different document at the far end.
   ///
   /// A caller holding a stored ref should write this one back when it differs.
-  /// The generations are all that may differ — the identity is checked against
-  /// what the request presented before this is handed back, because an answer
-  /// about another device is not a correction.
+  /// It is handed back only when [classifyAuthorityDeviceRef] says to adopt
+  /// it: the same device and Owner Domain at the same Owner Domain generation,
+  /// and a later generation of the Claim — never an older one, and never an
+  /// Authority reset, which is the descriptor's to report.
   final Map<String, Object?> deviceRef;
+}
+
+/// What the ref a configuration answer carries means for the ref a Body holds.
+enum DeviceRefCorrection { none, adopt, refuse }
+
+/// Whether this Body takes the ref a `configuration:pull` answer carries.
+///
+/// `classify_authority_device_ref` in the SDK is the rule, and
+/// `device_ref_corrections` in `device-control-configuration-response.json`
+/// pins it; the firmware's `ClassifyAuthorityDeviceRef` is the same rule.
+/// Device, Owner Domain and Owner Domain generation must be the ones held — an
+/// Owner Domain generation change is an Authority reset, and the recovery a
+/// reset requires is not something an answer may skip by handing over a ref at
+/// the new generation. `(claim_generation, trust_epoch)` is compared in that
+/// order, because a re-grant restarts `trust_epoch` at one: a later pair is
+/// adopted, an earlier one refused.
+DeviceRefCorrection classifyAuthorityDeviceRef({
+  required Map<String, Object?> held,
+  required Map<String, Object?> answered,
+}) {
+  if (answered['device_instance_id'] != held['device_instance_id'] ||
+      answered['owner_domain_id'] != held['owner_domain_id'] ||
+      answered['owner_domain_generation'] != held['owner_domain_generation']) {
+    return DeviceRefCorrection.refuse;
+  }
+  final heldClaim = held['claim_generation'];
+  final heldEpoch = held['trust_epoch'];
+  final answeredClaim = answered['claim_generation'];
+  final answeredEpoch = answered['trust_epoch'];
+  if (heldClaim is! int ||
+      heldEpoch is! int ||
+      answeredClaim is! int ||
+      answeredEpoch is! int) {
+    return DeviceRefCorrection.refuse;
+  }
+  if (answeredClaim != heldClaim) {
+    return answeredClaim > heldClaim
+        ? DeviceRefCorrection.adopt
+        : DeviceRefCorrection.refuse;
+  }
+  if (answeredEpoch != heldEpoch) {
+    return answeredEpoch > heldEpoch
+        ? DeviceRefCorrection.adopt
+        : DeviceRefCorrection.refuse;
+  }
+  return DeviceRefCorrection.none;
 }
 
 /// Raised when the Authority refuses or answers unreadably.
@@ -263,7 +310,7 @@ class DeviceControlClient {
     }
     if (answered['device_instance_id'] != deviceRef['device_instance_id'] ||
         answered['owner_domain_id'] != deviceRef['owner_domain_id']) {
-      // Only the generations may move. Identity is what the Claim was found
+      // Only the Claim's generations may move. Identity is what it was found
       // by, so an answer naming a different device or a different Owner Domain
       // is not this device's configuration — it is another one's, wearing this
       // ask's nonce. Refused the way any unreadable answer is, because the one
@@ -279,6 +326,21 @@ class DeviceControlClient {
       );
     }
     final held = Map<String, Object?>.from(answered);
+    if (classifyAuthorityDeviceRef(held: deviceRef, answered: held) ==
+        DeviceRefCorrection.refuse) {
+      // The same Claim, at a generation this phone must not take: older than
+      // the one it holds, or at another Owner Domain generation. Stored, it
+      // would address every later ask to a Claim that no longer stands, or
+      // step past the recovery an Authority reset requires.
+      throw DeviceControlRefusal(
+        detail: 'Device Control answered with a generation this device must '
+            'not adopt: ${held['owner_domain_generation']}/'
+            '${held['claim_generation']}/${held['trust_epoch']}',
+        status: response.statusCode,
+        invalidResponse: true,
+        retryable: false,
+      );
+    }
 
     final manifest = decoded['manifest'] == null
         ? null

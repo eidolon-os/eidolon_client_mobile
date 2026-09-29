@@ -281,6 +281,63 @@ void main() {
     }
   });
 
+  test(
+      'each DeviceRef correction the vector pins is adopted or refused as it '
+      'says', () async {
+    // `classify_authority_device_ref` in the SDK states the conclusion for
+    // every case. The cases are the orderings a member-by-member comparison
+    // gets wrong in each direction: the re-grant, whose trust_epoch restarts
+    // lower, and the Authority reset beside a later claim_generation.
+    final vector = _responses();
+    final held = Map<String, Object?>.from(vector['device_ref']! as Map);
+    final section = vector['device_ref_corrections']! as Map<String, dynamic>;
+    final cases =
+        (section['cases']! as List<Object?>).cast<Map<String, dynamic>>();
+    var adopted = 0;
+    var refused = 0;
+    for (final entry in cases) {
+      final caseId = entry['case_id']! as String;
+      final response = entry['response']! as Map<String, dynamic>;
+      final answered =
+          Map<String, Object?>.from(response['device_ref']! as Map);
+      final pull = client(
+        MockClient((_) async => ok(response)),
+        nonce: vector['request_nonce']! as String,
+      ).pullConfiguration(
+        deviceRef: Map<String, Object?>.from(held),
+        operationalPublicKey: 'p256-spki:AAAA',
+        sign: (_) async => 'x' * 86,
+      );
+      final correction =
+          classifyAuthorityDeviceRef(held: held, answered: answered);
+      if (entry['conclusion'] == 'adopt') {
+        expect(correction, DeviceRefCorrection.adopt, reason: caseId);
+        final configuration = await pull;
+        expect(configuration.deviceRef, answered, reason: caseId);
+        expect(configuration.claimStands,
+            response['lifecycle_state'] == 'approved',
+            reason: caseId);
+        adopted++;
+      } else {
+        expect(entry['conclusion'], 'refuse', reason: caseId);
+        expect(correction, DeviceRefCorrection.refuse, reason: caseId);
+        await expectLater(
+          pull,
+          throwsA(isA<DeviceControlRefusal>()
+              .having(
+                  (error) => error.invalidResponse, 'invalidResponse', isTrue)
+              .having((error) => error.retryable, 'retryable', isFalse)),
+          reason: caseId,
+        );
+        refused++;
+      }
+    }
+    // Both directions, or a client that adopts everything (or nothing) passes.
+    expect(adopted, greaterThan(0));
+    expect(refused, greaterThan(0));
+    expect(adopted + refused, cases.length);
+  });
+
   test('a delivered channel becomes a room this device may join', () async {
     final flow = client(MockClient((request) async {
       final nonce = (jsonDecode(request.body) as Map<String, dynamic>)['nonce']!
@@ -363,10 +420,12 @@ void main() {
     // Authority finds the Claim by identity now and answers with the ref it
     // actually holds, and this answer is the only place a phone can learn
     // what moved.
+    // A re-grant: the next claim_generation, and trust_epoch restarted at one.
+    // The Owner Domain generation stays: a different one would be an Authority
+    // reset, which is refused below rather than adopted.
     final held = deviceRef()
-      ..['owner_domain_generation'] = 4
-      ..['claim_generation'] = 9
-      ..['trust_epoch'] = 5;
+      ..['claim_generation'] = (deviceRef()['claim_generation']! as int) + 1
+      ..['trust_epoch'] = 1;
     final flow = client(MockClient((request) async {
       final nonce = (jsonDecode(request.body) as Map<String, dynamic>)['nonce']!
           as String;
