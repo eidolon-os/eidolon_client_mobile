@@ -12,6 +12,18 @@ import 'device_setup_ports.dart';
 import 'owner_domain_directory_verifier.dart';
 import '../host_setup/failure_sentences.dart';
 
+List<DeviceWifiNetwork> _strongestNetworkPerSsid(
+    Iterable<DeviceWifiNetwork> networks) {
+  final strongest = <String, DeviceWifiNetwork>{};
+  for (final network in networks) {
+    final existing = strongest[network.ssid];
+    if (existing == null || network.signalStrength > existing.signalStrength) {
+      strongest[network.ssid] = network;
+    }
+  }
+  return strongest.values.toList(growable: false);
+}
+
 /// One setup act, in the order the device abstraction states it.
 ///
 /// The person picks a device, then a network; the Host and the network are
@@ -209,7 +221,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           }
           if (mounted) setState(() => _progress = '正在扫描设备附近的 Wi-Fi');
           try {
-            networks = await session.scanNetworks();
+            networks = _strongestNetworkPerSsid(await session.scanNetworks());
           } on DeviceProvisioningTransportException catch (error) {
             if (!{
               'device_scan_timeout',

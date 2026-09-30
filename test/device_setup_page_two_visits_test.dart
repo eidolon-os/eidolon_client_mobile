@@ -43,6 +43,40 @@ void main() {
     expect(transport.sessions.single.writes, 0);
   });
 
+  testWidgets('duplicate Wi-Fi SSIDs keep only the strongest network',
+      (tester) async {
+    final transport = _Transport()
+      ..scanNetworksResult = const [
+        DeviceWifiNetwork(
+          ssid: 'mesh-wifi',
+          signalStrength: -40,
+          security: 'strongest',
+        ),
+        DeviceWifiNetwork(
+          ssid: 'mesh-wifi',
+          signalStrength: -67,
+          security: 'weaker',
+        ),
+      ];
+    await tester.pumpWidget(MaterialApp(
+      home: DeviceSetupPage(
+        transport: transport,
+        admission: _Admission(transport),
+        checkpoints: InMemoryDeviceSetupCheckpointStore(),
+        loadTarget: () async => deviceOnboardingTargetFixture(),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查找设备'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('mesh-wifi'), findsOneWidget);
+    expect(find.text('strongest'), findsOneWidget);
+    expect(find.text('weaker'), findsNothing);
+  });
+
   testWidgets(
       'network maintenance recognizes the original device and reuses standing',
       (tester) async {
@@ -430,6 +464,7 @@ class _Admission implements DeviceAdmissionPort {
 class _Transport implements DeviceProvisioningTransport {
   Object? preparationFailure;
   Object? scanFailure;
+  List<DeviceWifiNetwork>? scanNetworksResult;
   bool requiresVoucher = true;
   String? preparedDeviceId;
   final List<_Session> sessions = [];
@@ -460,6 +495,7 @@ class _Transport implements DeviceProvisioningTransport {
       ..configurationGate = configurationGate
       ..preparationFailure = preparationFailure
       ..scanFailure = scanFailure
+      ..scanNetworksResult = scanNetworksResult
       ..requiresVoucher = requiresVoucher
       ..preparedDeviceId = preparedDeviceId;
     sessions.add(session);
@@ -473,6 +509,7 @@ class _Transport implements DeviceProvisioningTransport {
 class _Session implements DeviceProvisioningSession {
   Object? preparationFailure;
   Object? scanFailure;
+  List<DeviceWifiNetwork>? scanNetworksResult;
   bool requiresVoucher = true;
   String? preparedDeviceId;
   String? sentVoucher;
@@ -515,6 +552,7 @@ class _Session implements DeviceProvisioningSession {
   @override
   Future<List<DeviceWifiNetwork>> scanNetworks() async {
     if (scanFailure != null) throw scanFailure!;
+    if (scanNetworksResult case final result?) return result;
     return const [
       DeviceWifiNetwork(
         ssid: 'owner-wifi',

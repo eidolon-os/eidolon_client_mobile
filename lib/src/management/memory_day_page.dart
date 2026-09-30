@@ -91,7 +91,9 @@ class MemoryDayPage extends StatelessWidget {
                   children: [
                     // Nothing yet is a real answer for a new Eidolon, so it is
                     // said plainly rather than drawn as an error.
-                    const Text('还没有记下什么'),
+                    Text(truncated
+                        ? '主机这次没有读完全部记忆，这里可能不完整'
+                        : '还没有记下什么'),
                     if (undatedCount > 0) ...[
                       const SizedBox(height: 8),
                       Text(

@@ -181,7 +181,13 @@ class _ForgetSheetState extends State<ForgetSheet> {
         ],
       ),
     );
-    if (sure != true || !mounted) return;
+    if (sure != true || !mounted || _busy || _proposal != proposal) return;
+    final expiresAt = proposal.expiresAt;
+    if (_expired || (expiresAt != null &&
+        _now().millisecondsSinceEpoch >= expiresAt * 1000)) {
+      setState(() => _expired = true);
+      return;
+    }
     await _confirm(token);
   }
 
