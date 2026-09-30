@@ -269,6 +269,7 @@ class HostProductController extends ChangeNotifier {
   String? _homeError;
   MountedDeviceInventory? _devices;
   String? _devicesError;
+  HostReleaseView? _release;
 
   ManagedHost get host => _host;
   bool get connecting => _connecting;
@@ -296,6 +297,11 @@ class HostProductController extends ChangeNotifier {
   String? get homeError => _homeError;
   MountedDeviceInventory? get devices => _devices;
   String? get devicesError => _devicesError;
+
+  /// Which release the Host serves from, read on each connection. Null until
+  /// it answers — including a Host too old to be asked — and never kept from
+  /// a connection before this one.
+  HostReleaseView? get release => _release;
 
   Future<void> _observeConnectedHost(ManagedHost observed) async {
     if (_disposed || _powerOffOutcome != null) return;
@@ -342,7 +348,8 @@ class HostProductController extends ChangeNotifier {
       _progress = null;
       _workspaceBusy = true;
       _notify();
-      await _loadProductState();
+      // Machine-scoped, so not behind the Workspace the product state waits on.
+      await Future.wait([_loadProductState(), _loadRelease()]);
     } on SetupTrustException catch (error) {
       // The Host answered and named itself as someone else. Same dead end as a
       // failed pin, reached one layer earlier.
@@ -1182,6 +1189,16 @@ class HostProductController extends ChangeNotifier {
     }
   }
 
+  /// Swallowed on purpose, like capabilities: a Host that cannot say which
+  /// release it runs has lost a line of readout, not the connection.
+  Future<void> _loadRelease() async {
+    try {
+      _release = await _hostServicesRepository.release();
+    } catch (_) {
+      _release = null;
+    }
+  }
+
   void _clearProductState() {
     _workspace = null;
     _clearWorkspaceRefusal();
@@ -1189,6 +1206,7 @@ class HostProductController extends ChangeNotifier {
     _homeError = null;
     _devices = null;
     _devicesError = null;
+    _release = null;
   }
 
   /// A Grant refusal, told to the screen with what is actually left to do.

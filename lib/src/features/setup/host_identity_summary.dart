@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../generated/management_v1.dart';
 import '../../theme/eidolon_theme.dart';
 import '../../theme/neon_components.dart';
 import 'host_registry.dart';
@@ -32,11 +33,17 @@ class HostIdentitySummary extends StatelessWidget {
       this.showAddress = true,
       this.compact = false,
       this.showStatus = true,
-      this.currentAddress});
+      this.currentAddress,
+      this.release});
   final ManagedHost host;
   final String status;
   final bool showAddress;
   final bool compact;
+
+  /// What the Host answered about its release this time. Null means it was
+  /// not asked or did not answer, and then there is no line rather than a
+  /// guess; a null `releaseId` inside is the Host saying it has no release.
+  final HostReleaseView? release;
 
   /// The Host list draws the pill up in the card header next to the name, so
   /// it asks the summary to leave the status out rather than printing it twice.
@@ -67,6 +74,8 @@ class HostIdentitySummary extends StatelessWidget {
           !host.hasCustomDisplayName &&
           host.readableName != host.displayName)
         '设备标识：${host.displayName}',
+      if (release != null)
+        'Release 版本：${release!.releaseId ?? '无（源码运行）'}',
       if (showAddress)
         currentAddress != null
             ? 'Host IP：$currentAddress'

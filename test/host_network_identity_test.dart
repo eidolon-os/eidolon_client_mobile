@@ -8,6 +8,8 @@ import 'package:eidolon_client_mobile/src/features/host_setup/local_api_discover
 import 'package:eidolon_client_mobile/src/features/host_setup/pinned_http_client.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_list_info.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
+import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
+import 'package:eidolon_client_mobile/src/management/management_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:http/http.dart' as http;
@@ -504,6 +506,7 @@ void main() {
     );
     final saved = hostFixture(lastKnownBaseUrl: 'https://10.0.0.9:9002')
         .copyWith(machineInfo: machine);
+    final asked = <String>[];
     final result = await readHostListInfo(
       saved,
       discovery: Discovery(() async => survey('10.0.0.9')),
@@ -511,11 +514,42 @@ void main() {
       clientFactory: (_) =>
           LocalApiClient(httpClient: MockClient(hostSessionResponse)),
       managementClientFactory: (_) =>
-          throw StateError('monitor should not be read again'),
+          ManagementClient(httpClient: MockClient((request) async {
+        asked.add(request.url.path);
+        return http.Response(
+            jsonEncode({
+              'operation': 'host.release',
+              'contract_version': '1',
+              'release_id': 'rk3588-home-hil-20260930-1',
+            }),
+            200,
+            headers: {'content-type': 'application/json'});
+      })),
     );
     expect(result.status, '可连接');
     expect(result.host.machineInfo, machine);
+    // The release is asked on every refresh; the monitor is still not.
+    expect(asked, [ManagementV1.hostReleasePath]);
+    expect(result.release?.releaseId, 'rk3588-home-hil-20260930-1');
     expect(result.host.lastConnectedAt, isNotNull);
+  });
+
+  test('a Host too old to name its release is still connectable', () async {
+    final saved = hostFixture(lastKnownBaseUrl: 'https://10.0.0.9:9002')
+        .copyWith(machineInfo: const HostMachineInfo(hostname: 'pi5'));
+    final result = await readHostListInfo(
+      saved,
+      discovery: Discovery(() async => survey('10.0.0.9')),
+      controllerKeys: FakeControllerKeys(),
+      clientFactory: (_) =>
+          LocalApiClient(httpClient: MockClient(hostSessionResponse)),
+      managementClientFactory: (_) => ManagementClient(
+          httpClient: MockClient((request) async => http.Response(
+              jsonEncode({'detail': 'Not Found'}), 404,
+              headers: {'content-type': 'application/json'}))),
+    );
+    expect(result.status, '可连接');
+    expect(result.release, isNull);
   });
 
   test(

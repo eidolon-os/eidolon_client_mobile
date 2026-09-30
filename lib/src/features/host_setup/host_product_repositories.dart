@@ -610,6 +610,11 @@ class HostServicesRepository {
         ),
       );
 
+  Future<HostReleaseView> release() => _session.executeManagement(
+        (client, baseUri, accessToken) =>
+            client.fetchHostRelease(baseUri, accessToken: accessToken),
+      );
+
   Future<HostServiceInventory> list() async => HostServiceInventory.fromView(
         await _session.executeManagement(
           (client, baseUri, accessToken) =>

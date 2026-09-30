@@ -18,6 +18,7 @@ import '../host_setup/local_api_candidate_sources.dart';
 import '../host_setup/local_api_discovery.dart';
 import '../host_setup/network_changes.dart';
 import 'setup_wizard_page.dart';
+import '../../generated/management_v1.dart';
 import '../../theme/eidolon_theme.dart';
 import '../../theme/neon_components.dart';
 
@@ -68,6 +69,7 @@ class _EidolonAppShellState extends State<EidolonAppShell>
   late final HostRegistry _registry;
   List<ManagedHost>? _hosts;
   final Map<String, String> _hostStatuses = {};
+  final Map<String, HostReleaseView> _hostReleases = {};
   late final NetworkChanges _networkChanges;
   StreamSubscription<void>? _networkSubscription;
   Future<void>? _refreshing;
@@ -156,7 +158,12 @@ class _EidolonAppShellState extends State<EidolonAppShell>
             revision == _revision &&
             ModalRoute.of(context)?.isCurrent != false;
         if (!current()) return;
-        setState(() => _hostStatuses[host.hostId] = '正在查找主机');
+        // The last answer is withdrawn while asking again, so a Host that
+        // stops answering does not keep the release it had before.
+        setState(() {
+          _hostStatuses[host.hostId] = '正在查找主机';
+          _hostReleases.remove(host.hostId);
+        });
         HostProductSession? ownedSession;
         try {
           final result = await Future.any<HostListInfo?>([
@@ -188,6 +195,8 @@ class _EidolonAppShellState extends State<EidolonAppShell>
                 updated.lastConnectedAt == result.host.lastConnectedAt
                     ? result.status
                     : '可连接';
+            final release = result.release;
+            if (release != null) _hostReleases[host.hostId] = release;
           });
         } catch (_) {
           if (current()) {
@@ -266,6 +275,7 @@ class _EidolonAppShellState extends State<EidolonAppShell>
     return _HostsPage(
       hosts: hosts,
       statuses: _hostStatuses,
+      releases: _hostReleases,
       onAdd: _openSetup,
       onHostUpdated: (host) async {
         await _registry.save(host);
@@ -389,6 +399,7 @@ class _HostsPage extends StatelessWidget {
   const _HostsPage({
     required this.hosts,
     required this.statuses,
+    required this.releases,
     required this.onAdd,
     required this.onHostUpdated,
     required this.onHostObserved,
@@ -406,6 +417,7 @@ class _HostsPage extends StatelessWidget {
 
   final List<ManagedHost> hosts;
   final Map<String, String> statuses;
+  final Map<String, HostReleaseView> releases;
   final VoidCallback onAdd;
   final ManagedHostUpdater onHostUpdated;
   final ManagedHostUpdater onHostObserved;
@@ -485,7 +497,8 @@ class _HostsPage extends StatelessWidget {
                         host: host,
                         showAddress: true,
                         showStatus: false,
-                        status: status),
+                        status: status,
+                        release: releases[host.hostId]),
                   ],
                 ),
                 onTap: () async {

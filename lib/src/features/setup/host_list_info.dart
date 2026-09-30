@@ -12,9 +12,14 @@ import 'controller_key_bridge.dart';
 import 'setup_models.dart';
 
 class HostListInfo {
-  const HostListInfo(this.host, this.status);
+  const HostListInfo(this.host, this.status, {this.release});
   final ManagedHost host;
   final String status;
+
+  /// Read on every refresh and never saved with the Host: a release changes
+  /// with each deploy, and the moment after one is when somebody looks here.
+  /// Null when the Host was not reached or did not answer.
+  final HostReleaseView? release;
 }
 
 typedef HostListInfoReader = Future<HostListInfo> Function(ManagedHost host);
@@ -55,10 +60,19 @@ Future<HostListInfo> readHostListInfo(
   try {
     onSession?.call(session);
     await session.connect(onProgress: onProgress);
+    // A Host from before the release read refuses it; that costs the line,
+    // not the connection verdict.
+    HostReleaseView? release;
+    try {
+      release = await session.executeManagement(
+        (client, baseUri, token) =>
+            client.fetchHostRelease(baseUri, accessToken: token),
+      );
+    } catch (_) {}
     // Machine identity changes rarely. A list refresh needs a fresh connection
     // verdict, but does not need to collect the full process monitor again.
     if (session.host.machineInfo != null) {
-      return HostListInfo(session.host, '可连接');
+      return HostListInfo(session.host, '可连接', release: release);
     }
     onProgress?.call('可连接 · 正在读取主机资料');
     try {
@@ -69,9 +83,11 @@ Future<HostListInfo> readHostListInfo(
       return HostListInfo(
         session.host.copyWith(machineInfo: machineInfoFromMonitor(monitor)),
         '可连接',
+        release: release,
       );
     } catch (_) {
-      return HostListInfo(session.host, '可连接 · 设备资料暂不可用');
+      return HostListInfo(session.host, '可连接 · 设备资料暂不可用',
+          release: release);
     }
   } on HostControllerAuthorizationException {
     return HostListInfo(host, '需要恢复管理授权');

@@ -790,6 +790,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               host: _controller.host,
               compact: true,
               currentAddress: connection?.endpoint.ipAddress,
+              release: connection != null ? _controller.release : null,
               status: connection != null ? '已安全连接' : '已保存的主机资料'),
           if (widget.conversationBuilder != null) ...[
             const SizedBox(height: 16),

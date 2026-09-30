@@ -74,6 +74,7 @@ class ManagementV1 {
   static const String hostMonitorPath = '/api/management/v1/host/monitor';
   static const String hostPowerPath = '/api/management/v1/host/power';
   static const String hostPoweroffPath = '/api/management/v1/host/poweroff';
+  static const String hostReleasePath = '/api/management/v1/host/release';
   static const String hostServicesPath = '/api/management/v1/host/services';
   static String hostServicesByServiceIdByOperationPath(
     String serviceId,
@@ -2032,6 +2033,32 @@ class HostPowerStatusWire {
     return {
       'can_power_off': canPowerOff,
       if (unavailableReason != null) 'unavailable_reason': unavailableReason,
+    };
+  }
+}
+
+class HostReleaseView {
+  const HostReleaseView({this.contractVersion, this.operation, this.releaseId});
+
+  final String? contractVersion;
+
+  final String? operation;
+
+  final String? releaseId;
+
+  factory HostReleaseView.fromJson(Map<String, dynamic> value) {
+    return HostReleaseView(
+      contractVersion: value['contract_version'] as String?,
+      operation: value['operation'] as String?,
+      releaseId: value['release_id'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contractVersion != null) 'contract_version': contractVersion,
+      if (operation != null) 'operation': operation,
+      if (releaseId != null) 'release_id': releaseId,
     };
   }
 }

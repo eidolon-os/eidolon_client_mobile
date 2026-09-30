@@ -499,6 +499,21 @@ class ManagementClient {
     return HostVitalsView.fromJson(body);
   }
 
+  /// Which target release the Host is serving from. A null `release_id` is
+  /// the Host saying it runs from a source checkout.
+  Future<HostReleaseView> fetchHostRelease(
+    Uri baseUri, {
+    required String accessToken,
+  }) async {
+    final body = await _send(
+      'GET',
+      baseUri.resolve(ManagementV1.hostReleasePath),
+      accessToken: accessToken,
+      what: '读取主机版本',
+    );
+    return HostReleaseView.fromJson(body);
+  }
+
   /// What is running on the machine, and what is meant to be.
   Future<HostServiceInventoryView> fetchHostServices(
     Uri baseUri, {

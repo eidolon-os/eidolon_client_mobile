@@ -541,7 +541,7 @@ void main() {
       'leaving during Workspace read cancels ownership before late completion',
       (tester) async {
     final gate = Completer<void>();
-    var managementReads = 0;
+    final managementReads = <String>[];
     await tester.pumpWidget(MaterialApp(
         home: HostLocalConnectionPage(
       host: _host(tlsSpkiFingerprint: _tlsFingerprint),
@@ -551,17 +551,20 @@ void main() {
       localApiClientFactory: (_) => _clientFor(_hostOverview(),
           workspaceReady: true, workspaceGate: gate.future),
       managementClientFactory: (_) =>
-          ManagementClient(httpClient: MockClient((_) async {
-        managementReads++;
+          ManagementClient(httpClient: MockClient((request) async {
+        managementReads.add(request.url.path);
         return _jsonResponse({}, 503);
       })),
       onHostUpdated: (_) async {},
     )));
     await tester.pumpAndSettle();
+    // The release is machine-scoped and asked beside the Workspace, while the
+    // page is still open; nothing else may be asked before the Workspace says.
+    expect(managementReads, [ManagementV1.hostReleasePath]);
     await tester.pumpWidget(const SizedBox());
     gate.complete();
     await tester.pumpAndSettle();
-    expect(managementReads, 0);
+    expect(managementReads, [ManagementV1.hostReleasePath]);
     expect(tester.takeException(), isNull);
   });
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:eidolon_client_mobile/src/features/setup/host_identity.dart';
 
 import 'package:eidolon_client_mobile/src/features/setup/eidolon_app_shell.dart';
+import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_list_info.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
 import 'package:flutter/material.dart';
@@ -125,6 +126,42 @@ void main() {
     expect(find.text('上次验证可连接'), findsOneWidget);
     expect((await registry.load()).single.machineInfo!.cpuCores, 12);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'the release a Host answered with is shown, and withdrawn while asking again',
+      (tester) async {
+    final registry = InMemoryHostRegistry([host().copyWith(machineInfo: info)]);
+    final network = _Network();
+    final replies = <Completer<HostListInfo>>[];
+    await tester.pumpWidget(MaterialApp(
+        home: EidolonAppShell(
+      registry: registry,
+      networkChanges: network,
+      hostInfoReader: (_) {
+        replies.add(Completer<HostListInfo>());
+        return replies.last.future;
+      },
+    )));
+    await tester.pumpAndSettle();
+    replies.last.complete(HostListInfo(
+        host().copyWith(machineInfo: info), '可连接',
+        release: const HostReleaseView(
+            releaseId: 'rk3588-home-hil-20260930-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Release 版本：rk3588-home-hil-20260930-1'), findsOneWidget);
+
+    // A redeploy is exactly when this is looked at; the previous answer must
+    // not stand in for the next one while the Host is being asked again.
+    network.events.add(null);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Release 版本'), findsNothing);
+
+    replies.last.complete(HostListInfo(host().copyWith(machineInfo: info), '可连接',
+        release: const HostReleaseView()));
+    await tester.pumpAndSettle();
+    expect(find.text('Release 版本：无（源码运行）'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('late metadata never restores a removed Host', (tester) async {
