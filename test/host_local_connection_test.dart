@@ -1124,7 +1124,7 @@ void main() {
       find.byKey(const Key('mounted-device-device-waveshare-1')),
       findsOneWidget,
     );
-    expect(find.text('已接入'), findsOneWidget);
+    expect(find.text('已添加'), findsOneWidget);
     // A mount revision is a fact about a record. What belongs on a list of
     // someone's devices is what each one is — and when the Host cannot say,
     // the tail of the identifier, which is at least something to read out.
