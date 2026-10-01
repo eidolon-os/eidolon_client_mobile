@@ -2413,9 +2413,11 @@ class MemoryEntryView {
   const MemoryEntryView({
     required this.entryId,
     this.preview,
+    this.provenance,
     required this.recordedAt,
     this.recordedAtSource,
     this.roomId,
+    this.value,
     this.wingId,
   });
 
@@ -2423,11 +2425,15 @@ class MemoryEntryView {
 
   final String? preview;
 
+  final MemoryProvenance? provenance;
+
   final String recordedAt;
 
   final String? recordedAtSource;
 
   final String? roomId;
+
+  final String? value;
 
   final String? wingId;
 
@@ -2435,9 +2441,15 @@ class MemoryEntryView {
     return MemoryEntryView(
       entryId: value['entry_id'] as String,
       preview: value['preview'] as String?,
+      provenance: value['provenance'] == null
+          ? null
+          : MemoryProvenance.fromJson(
+              value['provenance'] as Map<String, dynamic>,
+            ),
       recordedAt: value['recorded_at'] as String,
       recordedAtSource: value['recorded_at_source'] as String?,
       roomId: value['room_id'] as String?,
+      value: value['value'] as String?,
       wingId: value['wing_id'] as String?,
     );
   }
@@ -2446,9 +2458,11 @@ class MemoryEntryView {
     return {
       'entry_id': entryId,
       if (preview != null) 'preview': preview,
+      if (provenance != null) 'provenance': provenance?.toJson(),
       'recorded_at': recordedAt,
       if (recordedAtSource != null) 'recorded_at_source': recordedAtSource,
       if (roomId != null) 'room_id': roomId,
+      if (value != null) 'value': value,
       if (wingId != null) 'wing_id': wingId,
     };
   }
@@ -2458,6 +2472,7 @@ class MemoryExportRecordView {
   const MemoryExportRecordView({
     required this.entryId,
     this.memoryType,
+    this.provenance,
     this.recordedAt,
     this.recordedAtSource,
     this.roomId,
@@ -2468,6 +2483,8 @@ class MemoryExportRecordView {
   final String entryId;
 
   final String? memoryType;
+
+  final MemoryProvenance? provenance;
 
   final String? recordedAt;
 
@@ -2483,6 +2500,11 @@ class MemoryExportRecordView {
     return MemoryExportRecordView(
       entryId: value['entry_id'] as String,
       memoryType: value['memory_type'] as String?,
+      provenance: value['provenance'] == null
+          ? null
+          : MemoryProvenance.fromJson(
+              value['provenance'] as Map<String, dynamic>,
+            ),
       recordedAt: value['recorded_at'] as String?,
       recordedAtSource: value['recorded_at_source'] as String?,
       roomId: value['room_id'] as String?,
@@ -2495,6 +2517,7 @@ class MemoryExportRecordView {
     return {
       'entry_id': entryId,
       if (memoryType != null) 'memory_type': memoryType,
+      if (provenance != null) 'provenance': provenance?.toJson(),
       if (recordedAt != null) 'recorded_at': recordedAt,
       if (recordedAtSource != null) 'recorded_at_source': recordedAtSource,
       if (roomId != null) 'room_id': roomId,
@@ -2512,6 +2535,8 @@ class MemoryGraphEdgeView {
     required this.predicate,
     this.recordedAt,
     required this.subject,
+    this.validFrom,
+    this.validTo,
   });
 
   final double confidence;
@@ -2526,6 +2551,10 @@ class MemoryGraphEdgeView {
 
   final String subject;
 
+  final String? validFrom;
+
+  final String? validTo;
+
   factory MemoryGraphEdgeView.fromJson(Map<String, dynamic> value) {
     return MemoryGraphEdgeView(
       confidence: (value['confidence'] as num).toDouble(),
@@ -2534,6 +2563,8 @@ class MemoryGraphEdgeView {
       predicate: value['predicate'] as String,
       recordedAt: value['recorded_at'] as String?,
       subject: value['subject'] as String,
+      validFrom: value['valid_from'] as String?,
+      validTo: value['valid_to'] as String?,
     );
   }
 
@@ -2545,6 +2576,8 @@ class MemoryGraphEdgeView {
       'predicate': predicate,
       if (recordedAt != null) 'recorded_at': recordedAt,
       'subject': subject,
+      if (validFrom != null) 'valid_from': validFrom,
+      if (validTo != null) 'valid_to': validTo,
     };
   }
 }
@@ -2579,6 +2612,8 @@ class MemoryGraphView {
   const MemoryGraphView({
     this.contractVersion,
     required this.edges,
+    this.history,
+    this.nextCursor,
     required this.nodes,
     required this.truncated,
   });
@@ -2586,6 +2621,10 @@ class MemoryGraphView {
   final String? contractVersion;
 
   final List<MemoryGraphEdgeView> edges;
+
+  final bool? history;
+
+  final String? nextCursor;
 
   final List<MemoryGraphNodeView> nodes;
 
@@ -2600,6 +2639,8 @@ class MemoryGraphView {
                 MemoryGraphEdgeView.fromJson(entry as Map<String, dynamic>),
           )
           .toList()),
+      history: value['history'] as bool?,
+      nextCursor: value['next_cursor'] as String?,
       nodes: ((value['nodes'] as List<dynamic>)
           .map(
             (entry) =>
@@ -2614,6 +2655,8 @@ class MemoryGraphView {
     return {
       if (contractVersion != null) 'contract_version': contractVersion,
       'edges': edges.map((entry) => entry.toJson()).toList(),
+      if (history != null) 'history': history,
+      if (nextCursor != null) 'next_cursor': nextCursor,
       'nodes': nodes.map((entry) => entry.toJson()).toList(),
       'truncated': truncated,
     };
@@ -2665,6 +2708,41 @@ class MemoryLibraryView {
       'truncated': truncated,
       'wings': wings.map((entry) => entry.toJson()).toList(),
       'withheld_count': withheldCount,
+    };
+  }
+}
+
+class MemoryProvenance {
+  const MemoryProvenance({
+    this.lastModifiedAt,
+    this.learnedAt,
+    this.occurredAt,
+    this.sourceQuote,
+  });
+
+  final String? lastModifiedAt;
+
+  final String? learnedAt;
+
+  final String? occurredAt;
+
+  final String? sourceQuote;
+
+  factory MemoryProvenance.fromJson(Map<String, dynamic> value) {
+    return MemoryProvenance(
+      lastModifiedAt: value['last_modified_at'] as String?,
+      learnedAt: value['learned_at'] as String?,
+      occurredAt: value['occurred_at'] as String?,
+      sourceQuote: value['source_quote'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (lastModifiedAt != null) 'last_modified_at': lastModifiedAt,
+      if (learnedAt != null) 'learned_at': learnedAt,
+      if (occurredAt != null) 'occurred_at': occurredAt,
+      if (sourceQuote != null) 'source_quote': sourceQuote,
     };
   }
 }
@@ -3744,7 +3822,9 @@ class PlacementWrite {
 }
 
 class RecollectionView {
-  const RecollectionView({this.rememberedAt, this.text});
+  const RecollectionView({this.provenance, this.rememberedAt, this.text});
+
+  final MemoryProvenance? provenance;
 
   final String? rememberedAt;
 
@@ -3752,6 +3832,11 @@ class RecollectionView {
 
   factory RecollectionView.fromJson(Map<String, dynamic> value) {
     return RecollectionView(
+      provenance: value['provenance'] == null
+          ? null
+          : MemoryProvenance.fromJson(
+              value['provenance'] as Map<String, dynamic>,
+            ),
       rememberedAt: value['remembered_at'] as String?,
       text: value['text'] as String?,
     );
@@ -3759,6 +3844,7 @@ class RecollectionView {
 
   Map<String, dynamic> toJson() {
     return {
+      if (provenance != null) 'provenance': provenance?.toJson(),
       if (rememberedAt != null) 'remembered_at': rememberedAt,
       if (text != null) 'text': text,
     };

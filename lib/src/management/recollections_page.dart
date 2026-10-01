@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../generated/management_v1.dart';
 import 'management_client.dart';
+import 'memory_detail_sheet.dart';
 
 /// Ask what is remembered about something.
 ///
@@ -141,15 +142,27 @@ class _RecollectionsPageState extends State<RecollectionsPage> {
                 child: ListTile(
                   leading: const Icon(Icons.format_quote),
                   title: Text(item.text ?? ''),
-                  subtitle: _day(item.rememberedAt) == null
+                  subtitle: _dateSummary(item) == null
                       ? null
-                      : Text(_day(item.rememberedAt)!),
+                      : Text(_dateSummary(item)!),
+                  trailing: const Icon(Icons.info_outline, size: 20),
+                  onTap: () => showMemoryDetail(context,
+                      content: item.text ?? '',
+                      provenance: item.provenance,
+                      recordedAt: item.rememberedAt),
                 ),
               ),
             ),
         ],
       ),
     );
+  }
+
+  String? _dateSummary(RecollectionView item) {
+    final learned = _day(item.provenance?.learnedAt);
+    if (learned != null) return '记下于 $learned';
+    final recorded = _day(item.rememberedAt);
+    return recorded == null ? null : '记录日期：$recorded';
   }
 
   String? _day(String? value) {

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../generated/management_v1.dart';
 import 'memory_labels.dart';
+import 'memory_detail_sheet.dart';
 
 /// 导出：a copy of what my Eidolon remembers, that I can take with me.
 ///
@@ -36,9 +37,15 @@ class MemoryCopyPage extends StatelessWidget {
     required this.copy,
     this.onCopied,
     this.clipboard,
+    this.title = '完整副本',
+    this.roomView = false,
+    this.scopeLabel,
   });
 
   final MemoryCopyView copy;
+  final String title;
+  final bool roomView;
+  final String? scopeLabel;
 
   /// Told after the copy reached the clipboard, so the screen can say so.
   final VoidCallback? onCopied;
@@ -51,7 +58,7 @@ class MemoryCopyPage extends StatelessWidget {
     final records = copy.records;
     return Scaffold(
       key: const Key('memory-copy-page'),
-      appBar: AppBar(title: const Text('完整副本')),
+      appBar: AppBar(title: Text(title)),
       body: ListView.separated(
         key: const Key('memory-copy-list'),
         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -62,6 +69,8 @@ class MemoryCopyPage extends StatelessWidget {
           if (index == 0) {
             return _Preamble(
               copy: copy,
+              roomView: roomView,
+              scopeLabel: scopeLabel,
               onCopy: records.isEmpty ? null : () => _copy(context),
             );
           }
@@ -100,20 +109,28 @@ Map<String, dynamic> _asJson(MemoryCopyView copy) => {
             'room_id': record.roomId ?? '',
             'memory_type': record.memoryType ?? '',
             'value': record.value,
+            'provenance': record.provenance?.toJson() ?? <String, dynamic>{},
           },
       ],
     };
 
 class _Preamble extends StatelessWidget {
-  const _Preamble({required this.copy, this.onCopy});
+  const _Preamble(
+      {required this.copy,
+      this.onCopy,
+      required this.roomView,
+      this.scopeLabel});
 
   final MemoryCopyView copy;
+  final bool roomView;
+  final String? scopeLabel;
   final VoidCallback? onCopy;
 
   @override
   Widget build(BuildContext context) {
     final taken = DateTime.tryParse(copy.takenAt)?.toLocal();
     final lines = <String>[
+      if (scopeLabel != null) scopeLabel!,
       '共 ${copy.recordCount} 条',
       // Unparseable rather than absent: showing the raw string beats inventing
       // a time for the copy itself.
@@ -121,7 +138,7 @@ class _Preamble extends StatelessWidget {
       if (copy.undatedCount > 0) '其中 ${copy.undatedCount} 条没有可用的时间，排在最后',
       // Said on its own line and in its own words. This is the one thing on
       // this page that means "what you are about to keep is not all of it".
-      if (copy.truncated) '这次没有读完全部记忆，这份副本不完整',
+      if (copy.truncated) roomView ? '这次只读到这一组的部分内容' : '这次没有读完全部记忆，这份副本不完整',
     ];
     return Padding(
       key: const Key('memory-copy-preamble'),
@@ -136,15 +153,15 @@ class _Preamble extends StatelessWidget {
             ),
           const SizedBox(height: 8),
           if (onCopy == null)
-            const Text(
+            Text(
               key: Key('memory-copy-empty'),
-              '这里还没有可以导出的记忆',
+              roomView ? '这一组还没有可见记忆' : '这里还没有可以导出的记忆',
             )
           else
             OutlinedButton(
               key: const Key('memory-copy-button'),
               onPressed: onCopy,
-              child: const Text('复制全部'),
+              child: Text(roomView ? '复制这一组' : '复制全部'),
             ),
         ],
       ),
@@ -173,11 +190,20 @@ class _RecordRow extends StatelessWidget {
       // Whole, not clipped: a person checking their copy is checking that it is
       // one. The row scrolls with the list rather than truncating.
       title: Text(record.value),
+      trailing: const Icon(Icons.info_outline, size: 20),
+      onTap: () => showMemoryDetail(context,
+          content: record.value,
+          provenance: record.provenance,
+          recordedAt: record.recordedAt,
+          category: where),
       subtitle: Text(
         [
           // Empty when nothing on the record gave a time. Said plainly rather
           // than filled in, which is the same reason it sits at the end.
-          if (when != null) _stamp(when) else '没有可用的时间',
+          if (when != null)
+            '${memoryTimeSourceLabel(record.recordedAtSource)}：${_stamp(when)}'
+          else
+            '没有可用的时间',
           if (where.isNotEmpty) where,
         ].join(' · '),
       ),

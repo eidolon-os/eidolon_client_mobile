@@ -12,9 +12,18 @@ import 'memory_copy_page.dart';
 /// last one because pressing a button that gives no sign of having worked is how
 /// someone copies their memory four times and trusts none of them.
 class MemoryCopyScreen extends StatefulWidget {
-  const MemoryCopyScreen({super.key, required this.load, this.clipboard});
+  const MemoryCopyScreen(
+      {super.key,
+      required this.load,
+      this.clipboard,
+      this.title = '完整副本',
+      this.roomView = false,
+      this.scopeLabel});
 
   final Future<MemoryCopyView> Function() load;
+  final String title;
+  final bool roomView;
+  final String? scopeLabel;
 
   /// Injected in tests. The real one is the platform's.
   final Future<void> Function(String text)? clipboard;
@@ -61,6 +70,9 @@ class _MemoryCopyScreenState extends State<MemoryCopyScreen> {
     if (copy != null) {
       return MemoryCopyPage(
         copy: copy,
+        title: widget.title,
+        roomView: widget.roomView,
+        scopeLabel: widget.scopeLabel,
         clipboard: widget.clipboard,
         onCopied: () {
           final messenger = ScaffoldMessenger.maybeOf(context);
@@ -75,14 +87,14 @@ class _MemoryCopyScreenState extends State<MemoryCopyScreen> {
     }
     return Scaffold(
       key: const Key('memory-copy-screen'),
-      appBar: AppBar(title: const Text('完整副本')),
+      appBar: AppBar(title: Text(widget.title)),
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(key: Key('memory-copy-loading'))
             : RefusalNotice(
                 key: const Key('memory-copy-error'),
                 error: _error!,
-                subject: '记忆副本',
+                subject: widget.roomView ? '这一组记忆' : '记忆副本',
                 onRetry: _read,
                 retryKey: const Key('memory-copy-retry'),
               ),

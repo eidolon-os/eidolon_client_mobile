@@ -527,8 +527,9 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         load: _controller.memoryLibrary,
         loadForCompanion: (companionId) =>
             _controller.memoryLibrary(companionId: companionId),
-        loadGraph: (companionId) =>
-            _controller.memoryGraph(companionId: companionId),
+        loadGraph: (companionId, {String? cursor, required bool history}) =>
+            _controller.memoryGraph(
+                companionId: companionId, cursor: cursor, history: history),
         loadContext: _controller.managementContext,
         previewForget: (target) => _controller.previewForget(target: target),
         confirmForget: (token) =>
@@ -540,8 +541,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
           companionId: companionId,
           cursor: cursor,
         ),
-        loadCopy: (companionId) =>
-            _controller.memoryCopy(companionId: companionId),
+        loadCopy: (companionId, {String? wing, String? room}) => _controller
+            .memoryCopy(companionId: companionId, wing: wing, room: room),
         loadCompanions: () async => (await _controller.roster()).companions,
         searchRecollections: (companionId, query) =>
             _controller.recollections(companionId: companionId, query: query),

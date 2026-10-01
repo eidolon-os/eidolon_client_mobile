@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import '../generated/management_v1.dart';
 import 'management_client.dart';
 import 'memory_labels.dart';
+import 'memory_detail_sheet.dart';
 
-/// 最近记下的：what it wrote down, newest first, under the day it happened.
+/// 记忆时间线：stored dates, newest first, with their meaning shown per row.
 ///
 /// A person cannot tell a missing entry from one that was never recorded, so
 /// what this does not claim matters more than what it shows:
@@ -25,6 +26,7 @@ class MemoryDayPage extends StatelessWidget {
     this.onLoadMore,
     this.loadingMore = false,
     this.moreError,
+    this.scopeLabel,
   });
 
   final List<MemoryEntryView> entries;
@@ -38,10 +40,16 @@ class MemoryDayPage extends StatelessWidget {
   final VoidCallback? onLoadMore;
   final bool loadingMore;
   final Object? moreError;
+  final String? scopeLabel;
 
   @override
   Widget build(BuildContext context) {
     final rows = <Widget>[
+      if (scopeLabel != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+          child: Text(scopeLabel!),
+        ),
       _Preamble(undatedCount: undatedCount, truncated: truncated),
     ];
     String? heading;
@@ -60,7 +68,7 @@ class MemoryDayPage extends StatelessWidget {
           key: const Key('memory-day-more-error'),
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
           child: Text(
-            '没能读到更早的：${refusalText(moreError!, subject: '最近记下的')}',
+            '没能读到更早的：${refusalText(moreError!, subject: '记忆时间线')}',
             style: TextStyle(color: Theme.of(context).colorScheme.error),
           ),
         ),
@@ -80,7 +88,7 @@ class MemoryDayPage extends StatelessWidget {
     }
     return Scaffold(
       key: const Key('memory-day-page'),
-      appBar: AppBar(title: const Text('最近记下的')),
+      appBar: AppBar(title: const Text('记忆时间线')),
       body: entries.isEmpty
           ? Center(
               key: const Key('memory-day-empty'),
@@ -89,11 +97,17 @@ class MemoryDayPage extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (scopeLabel != null) ...[
+                      Text(scopeLabel!),
+                      const SizedBox(height: 8),
+                    ],
                     // Nothing yet is a real answer for a new Eidolon, so it is
                     // said plainly rather than drawn as an error.
                     Text(truncated
                         ? '主机这次没有读完全部记忆，这里可能不完整'
-                        : '还没有记下什么'),
+                        : undatedCount > 0
+                            ? '还没有带日期的记忆'
+                            : '还没有记下什么'),
                     if (undatedCount > 0) ...[
                       const SizedBox(height: 8),
                       Text(
@@ -124,7 +138,7 @@ class _Preamble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final lines = <String>[
-      '按时间从新到旧',
+      '按记录中的日期从新到旧，点开可查看原话和不同时间的依据',
       if (undatedCount > 0) _undatedSentence(undatedCount),
       // Two different partial answers. Only one is fixed by reading on, so they
       // are never merged into one sentence.
@@ -179,9 +193,20 @@ class _EntryRow extends StatelessWidget {
         [
           // Unparseable rather than absent: showing the raw string beats
           // inventing a time, and beats hiding the entry.
-          if (moment != null) _clock(moment) else entry.recordedAt,
+          if (moment != null)
+            '${memoryTimeSourceLabel(entry.recordedAtSource)}：${_clock(moment)}'
+          else
+            entry.recordedAt,
           if ((entry.roomId ?? '').isNotEmpty) memoryRoomLabel(entry.roomId!),
         ].join(' · '),
+      ),
+      trailing: const Icon(Icons.info_outline, size: 20),
+      onTap: () => showMemoryDetail(
+        context,
+        content: entry.value ?? entry.preview ?? '',
+        provenance: entry.provenance,
+        recordedAt: entry.recordedAt,
+        category: memoryRoomLabel(entry.roomId ?? ''),
       ),
     );
   }

@@ -51,31 +51,61 @@ MemoryDayView day({
   String? nextCursor,
   bool truncated = false,
   List<Map<String, dynamic>>? entries,
-}) => MemoryDayView.fromJson(
-  dayWire(undated: undated, nextCursor: nextCursor, truncated: truncated, entries: entries),
-);
+}) =>
+    MemoryDayView.fromJson(
+      dayWire(
+          undated: undated,
+          nextCursor: nextCursor,
+          truncated: truncated,
+          entries: entries),
+    );
 
 http.Response _hostAnswer(Map<String, dynamic> body) => http.Response.bytes(
-  utf8.encode(jsonEncode(body)),
-  200,
-  headers: const {'content-type': 'application/json'},
-);
+      utf8.encode(jsonEncode(body)),
+      200,
+      headers: const {'content-type': 'application/json'},
+    );
 
 final DateTime _today = DateTime(2026, 8, 24, 12, 30);
 
 Widget _page(MemoryDayView view, {VoidCallback? onLoadMore}) => MaterialApp(
-  home: MemoryDayPage(
-    entries: view.entries,
-    undatedCount: view.undatedCount,
-    truncated: view.truncated,
-    today: _today,
-    onLoadMore: onLoadMore,
-  ),
-);
+      home: MemoryDayPage(
+        entries: view.entries,
+        undatedCount: view.undatedCount,
+        truncated: view.truncated,
+        today: _today,
+        onLoadMore: onLoadMore,
+      ),
+    );
 
 void main() {
+  testWidgets('a memory opens its original evidence and distinct known dates',
+      (tester) async {
+    final row =
+        entryWire('residence', '2015-01-01T00:00:00Z', preview: '用户住在北京');
+    row['value'] = '用户从2015年起住在北京，完整说明在详情中展示。';
+    row['provenance'] = {
+      'learned_at': '2026-10-02T00:00:00Z',
+      'last_modified_at': '2026-10-02T01:00:00Z',
+      'occurred_at': '2015-01-01T00:00:00Z',
+      'source_quote': '我2015年就搬到北京了。',
+    };
+    await tester
+        .pumpWidget(_page(MemoryDayView.fromJson(dayWire(entries: [row]))));
+    await tester.tap(find.byKey(const Key('memory-day-entry-residence')));
+    await tester.pumpAndSettle();
+    expect(find.text('记忆依据'), findsOneWidget);
+    expect(find.text('用户从2015年起住在北京，完整说明在详情中展示。'), findsOneWidget);
+    expect(find.text('我2015年就搬到北京了。'), findsOneWidget);
+    expect(find.textContaining('首次记下：'), findsOneWidget);
+    expect(find.textContaining('最近变更：'), findsOneWidget);
+    expect(find.textContaining('事件时间：2015-01-01'), findsOneWidget);
+    expect(find.textContaining('indexed_at'), findsNothing);
+  });
+
   group('the entries client', () {
-    test('sends the lower bound with its offset, and nothing else unasked', () async {
+    test('sends the lower bound with its offset, and nothing else unasked',
+        () async {
       Uri? asked;
       final client = ManagementClient(
         httpClient: MockClient((request) async {
@@ -156,10 +186,29 @@ void main() {
 
       expect(find.text('还没有记下什么'), findsOneWidget);
     });
+
+    testWidgets('undated memories are not called an empty memory',
+        (tester) async {
+      final view = day(entries: [], undated: 2);
+      await tester.pumpWidget(MaterialApp(
+        home: MemoryDayPage(
+          entries: view.entries,
+          undatedCount: view.undatedCount,
+          truncated: view.truncated,
+          today: _today,
+          scopeLabel: '伙伴乙能想起的',
+        ),
+      ));
+      expect(find.text('伙伴乙能想起的'), findsOneWidget);
+      expect(find.text('还没有带日期的记忆'), findsOneWidget);
+      expect(find.text('还没有记下什么'), findsNothing);
+      expect(find.textContaining('另有 2 条没有可用的时间'), findsOneWidget);
+    });
   });
 
   group('the screen', () {
-    testWidgets('reads on with the cursor until the Host says there is no more', (
+    testWidgets('reads on with the cursor until the Host says there is no more',
+        (
       tester,
     ) async {
       // Three pages, the last without a cursor. Every entry arrives exactly
@@ -183,7 +232,8 @@ void main() {
             now: () => _today,
             load: (since, cursor) async {
               asked.add(cursor);
-              expect(since, DateTime(1970));
+              expect(since.isUtc, isTrue);
+              expect(since.year, lessThan(1900));
               return pages[cursor]!;
             },
           ),

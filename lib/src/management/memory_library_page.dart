@@ -255,18 +255,18 @@ class _MemoryOverview extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 18),
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
               children: [
                 _Metric(value: '共 ${library.entryCount} 条', label: '可见记忆'),
-                const SizedBox(width: 12),
                 _Metric(value: '${library.wings.length} 个', label: '内容分类'),
-                const Spacer(),
-                Icon(Icons.shield_outlined, size: 18, color: colors.primary),
-                const SizedBox(width: 5),
-                Text(
-                  '仅保存在你的主机',
-                  style: Theme.of(context).textTheme.labelMedium,
-                ),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.shield_outlined, size: 18, color: colors.primary),
+                  const SizedBox(width: 5),
+                  Text('仅保存在你的主机',
+                      style: Theme.of(context).textTheme.labelMedium),
+                ]),
               ],
             ),
           ],
@@ -391,8 +391,8 @@ class _ActionGrid extends StatelessWidget {
         _ActionCard(
           key: const Key('memory-library-today'),
           icon: Icons.today_outlined,
-          title: '最近记下',
-          subtitle: '按时间查看最近形成的记录',
+          title: '记忆时间线',
+          subtitle: '按日期浏览，查看原话和记下的时间',
           onTap: onOpenToday!,
         ),
       if (onOpenGraph != null)

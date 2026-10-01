@@ -738,8 +738,10 @@ class HostProductController extends ChangeNotifier {
   Future<MemoryLibraryView> memoryLibrary({String? companionId}) =>
       _managementRepository.memoryLibrary(companionId: companionId);
 
-  Future<MemoryGraphView> memoryGraph({String? companionId}) =>
-      _managementRepository.memoryGraph(companionId: companionId);
+  Future<MemoryGraphView> memoryGraph(
+          {String? companionId, String? cursor, bool history = false}) =>
+      _managementRepository.memoryGraph(
+          companionId: companionId, cursor: cursor, history: history);
 
   /// What it wrote down since [since].
   Future<MemoryDayView> memoryEntries({
@@ -756,8 +758,10 @@ class HostProductController extends ChangeNotifier {
       );
 
   /// A copy of everything remembered that this Owner can see.
-  Future<MemoryCopyView> memoryCopy({String? companionId}) =>
-      _managementRepository.memoryCopy(companionId: companionId);
+  Future<MemoryCopyView> memoryCopy(
+          {String? companionId, String? wing, String? room}) =>
+      _managementRepository.memoryCopy(
+          companionId: companionId, wing: wing, room: room);
 
   /// What forgetting [target] would remove. Nothing changes.
   Future<ForgetProposalView> previewForget({required String target}) =>

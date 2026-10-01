@@ -257,12 +257,15 @@ class HostManagementRepository {
         ),
       );
 
-  Future<MemoryGraphView> memoryGraph({String? companionId}) =>
+  Future<MemoryGraphView> memoryGraph(
+          {String? companionId, String? cursor, bool history = false}) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.fetchMemoryGraph(
           baseUri,
           accessToken: accessToken,
           companionId: companionId,
+          cursor: cursor,
+          history: history,
         ),
       );
 
@@ -390,12 +393,15 @@ class HostManagementRepository {
       );
 
   /// A copy of the whole visible memory. [companionId] selects an audience.
-  Future<MemoryCopyView> memoryCopy({String? companionId}) =>
+  Future<MemoryCopyView> memoryCopy(
+          {String? companionId, String? wing, String? room}) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.fetchMemoryCopy(
           baseUri,
           accessToken: accessToken,
           companionId: companionId,
+          wing: wing,
+          room: room,
         ),
       );
 

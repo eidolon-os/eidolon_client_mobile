@@ -32,6 +32,76 @@ Map<String, dynamic> _graphWire({bool empty = false, bool truncated = false}) =>
     };
 
 void main() {
+  testWidgets('expands cursor pages and distinguishes ended relations',
+      (tester) async {
+    final asked = <(String?, bool)>[];
+    await tester.pumpWidget(MaterialApp(home: MemoryGraphScreen(
+      load: ({String? cursor, required bool history}) async {
+        asked.add((cursor, history));
+        final wire = _graphWire(truncated: cursor == null && !history);
+        wire['history'] = history;
+        wire['next_cursor'] = cursor == null && !history ? 'next-page' : null;
+        if (cursor != null) {
+          wire['edges'] = [
+            {
+              'edge_id': 'stmt-2',
+              'subject': '我',
+              'predicate': 'likes',
+              'object': '咖啡',
+              'confidence': 0.9,
+              'recorded_at': '2026-08-27T08:00:00Z',
+            }
+          ];
+          wire['nodes'] = [
+            {'node_id': '咖啡', 'label': '咖啡', 'degree': 1}
+          ];
+        }
+        if (history) {
+          (wire['edges'] as List).first['valid_to'] = '2026-09-01T00:00:00Z';
+        }
+        return MemoryGraphView.fromJson(wire);
+      },
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('memory-graph-load-more')));
+    await tester.pumpAndSettle();
+    expect(asked, [(null, false), ('next-page', false)]);
+    expect(find.textContaining('乌龙茶'), findsOneWidget);
+    expect(find.textContaining('咖啡'), findsOneWidget);
+    expect(find.byKey(const Key('memory-graph-load-more')), findsNothing);
+    await tester.tap(find.byKey(const Key('memory-graph-history')));
+    await tester.pumpAndSettle();
+    expect(asked.last, (null, true));
+    expect(find.textContaining('至 2026-09-01'), findsOneWidget);
+    expect(find.textContaining('咖啡'), findsNothing);
+  });
+
+  testWidgets('a failed next page preserves loaded relations and can retry',
+      (tester) async {
+    var failed = false;
+    await tester.pumpWidget(MaterialApp(home: MemoryGraphScreen(
+      load: ({String? cursor, required bool history}) async {
+        if (cursor != null && !failed) {
+          failed = true;
+          throw StateError('offline');
+        }
+        return MemoryGraphView.fromJson({
+          ..._graphWire(truncated: cursor == null),
+          'next_cursor': cursor == null ? 'next-page' : null,
+        });
+      },
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('memory-graph-load-more')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('乌龙茶'), findsOneWidget);
+    expect(find.textContaining('已展开的关系仍然保留'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('memory-graph-load-more')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('乌龙茶'), findsOneWidget);
+    expect(find.byKey(const Key('memory-graph-load-more')), findsNothing);
+  });
+
   test('client sends the selected Companion to the graph endpoint', () async {
     Uri? asked;
     final client = ManagementClient(
@@ -49,10 +119,14 @@ void main() {
       Uri.parse('https://host.invalid'),
       accessToken: 'session-token',
       companionId: 'companion-a',
+      cursor: 'next-page',
+      history: true,
     );
 
     expect(asked?.path, '/api/management/v1/memory/graph');
     expect(asked?.queryParameters['companion_id'], 'companion-a');
+    expect(asked?.queryParameters['cursor'], 'next-page');
+    expect(asked?.queryParameters['history'], 'true');
     expect(graph.edges.single.object, '乌龙茶');
   });
 
@@ -61,7 +135,8 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: MemoryGraphScreen(
-          load: () async => MemoryGraphView.fromJson(_graphWire()),
+          load: ({String? cursor, required bool history}) async =>
+              MemoryGraphView.fromJson(_graphWire()),
         ),
       ),
     );
@@ -76,7 +151,8 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: MemoryGraphScreen(
-          load: () async => MemoryGraphView.fromJson(_graphWire(empty: true)),
+          load: ({String? cursor, required bool history}) async =>
+              MemoryGraphView.fromJson(_graphWire(empty: true)),
         ),
       ),
     );
@@ -93,7 +169,8 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: MemoryGraphScreen(
-          load: () async => MemoryGraphView.fromJson(_graphWire(truncated: true)),
+          load: ({String? cursor, required bool history}) async =>
+              MemoryGraphView.fromJson(_graphWire(truncated: true)),
         ),
       ),
     );

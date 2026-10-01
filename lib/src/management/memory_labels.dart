@@ -91,3 +91,22 @@ String memoryPredicateLabel(String predicate) {
   };
   return labels[predicate.trim()] ?? predicate;
 }
+
+/// Known instants in the person's local time; unknown dates stay unknown.
+String memoryTimestampLabel(String? value, {bool includeTime = true}) {
+  final when = value == null ? null : DateTime.tryParse(value)?.toLocal();
+  if (when == null) return '未记录';
+  final date = '${when.year}-${when.month.toString().padLeft(2, '0')}-'
+      '${when.day.toString().padLeft(2, '0')}';
+  if (!includeTime) return date;
+  return '$date ${when.hour.toString().padLeft(2, '0')}:'
+      '${when.minute.toString().padLeft(2, '0')}';
+}
+
+/// filed_at on an old record can be an event date, so leave it neutral.
+String memoryTimeSourceLabel(String? source) => switch (source) {
+      'occurred_at' || 'valid_from' => '事件时间',
+      'indexed_at' || 'created_at' => '记下时间',
+      'updated_at' || 'last_modified' => '变更时间',
+      _ => '记录日期',
+    };

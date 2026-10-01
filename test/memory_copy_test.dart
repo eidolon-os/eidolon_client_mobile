@@ -59,6 +59,34 @@ http.Response _hostAnswer(Map<String, dynamic> body) => http.Response.bytes(
     );
 
 void main() {
+  testWidgets('copy keeps evidence in the clipboard and the shared detail',
+      (tester) async {
+    String? saved;
+    final view = copy(records: [
+      {
+        'entry_id': 'evidence',
+        'value': '住在北京',
+        'provenance': {
+          'source_quote': '我住在北京。',
+          'learned_at': '2026-10-02T00:00:00Z'
+        },
+      }
+    ]);
+    await tester.pumpWidget(MaterialApp(
+        home: MemoryCopyPage(
+            copy: view, clipboard: (value) async => saved = value)));
+    await tester.tap(find.byKey(const Key('memory-copy-button')));
+    await tester.pumpAndSettle();
+    expect(
+        (jsonDecode(saved!)['records'] as List).single['provenance']
+            ['source_quote'],
+        '我住在北京。');
+    await tester.tap(find.byKey(const Key('memory-copy-record-evidence')));
+    await tester.pumpAndSettle();
+    expect(find.text('记忆依据'), findsOneWidget);
+    expect(find.text('我住在北京。'), findsOneWidget);
+  });
+
   group('the copy client', () {
     test('asks for the whole thing and names no subject', () async {
       Uri? asked;

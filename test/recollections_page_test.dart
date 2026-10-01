@@ -27,6 +27,29 @@ Future<void> _ask(WidgetTester tester, String question) async {
 }
 
 void main() {
+  testWidgets('search opens the shared original evidence and known dates',
+      (tester) async {
+    await _open(
+        tester,
+        (query) async => _answer(query, [
+              const RecollectionView(
+                text: '住在北京',
+                rememberedAt: '2015-01-01T00:00:00Z',
+                provenance: MemoryProvenance(
+                    learnedAt: '2026-10-02T00:00:00Z',
+                    occurredAt: '2015-01-01T00:00:00Z',
+                    sourceQuote: '我2015年就搬到北京了。'),
+              )
+            ]));
+    await _ask(tester, '北京');
+    await tester.tap(find.text('住在北京'));
+    await tester.pumpAndSettle();
+    expect(find.text('记忆依据'), findsOneWidget);
+    expect(find.text('我2015年就搬到北京了。'), findsOneWidget);
+    expect(find.textContaining('首次记下：'), findsOneWidget);
+    expect(find.textContaining('事件时间：'), findsOneWidget);
+  });
+
   testWidgets('opens empty rather than showing a sample of someone\'s life', (
     tester,
   ) async {

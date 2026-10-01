@@ -9,6 +9,7 @@ import 'management_client.dart';
 import 'refusal_notice.dart';
 import 'memory_library_page.dart';
 import 'recollections_page.dart';
+import 'memory_labels.dart';
 
 /// Loads the library and shows one of three honest answers.
 ///
@@ -48,8 +49,9 @@ class MemoryLibraryScreen extends StatefulWidget {
   /// means, and what the home screen counts.
   final String? initialCompanionId;
   final Future<MemoryLibraryView> Function(String? companionId)?
-  loadForCompanion;
-  final Future<MemoryGraphView> Function(String? companionId)? loadGraph;
+      loadForCompanion;
+  final Future<MemoryGraphView> Function(String? companionId,
+      {String? cursor, required bool history})? loadGraph;
 
   /// Read once, for the one thing this screen cannot infer: whether this Host
   /// can govern memory at all.
@@ -66,12 +68,12 @@ class MemoryLibraryScreen extends StatefulWidget {
     DateTime since,
     String? companionId,
     String? cursor,
-  )?
-  loadDay;
+  )? loadDay;
 
-  /// Reads the whole visible memory, for the copy a person keeps. Null hides
-  /// the way in rather than opening a screen that cannot fill itself.
-  final Future<MemoryCopyView> Function(String? companionId)? loadCopy;
+  /// Reads visible records for a full copy or one category, using the same
+  /// Host export contract. Null hides both ways in.
+  final Future<MemoryCopyView> Function(String? companionId,
+      {String? wing, String? room})? loadCopy;
 
   /// Reads names for selecting the Companion-private view of this Owner Realm.
   final Future<List<CompanionSummaryView>> Function()? loadCompanions;
@@ -184,23 +186,38 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
   /// Its own screen: "what happened today" and "what is held overall" are two
   /// questions, and answering both on one page makes each harder to read.
   Future<void> _openToday() => Navigator.of(context).push<void>(
-    MaterialPageRoute(
-      builder: (_) => MemoryDayScreen(
-        load: (since, cursor) =>
-            widget.loadDay!(since, _selectedCompanionId, cursor),
-      ),
-    ),
-  );
+        MaterialPageRoute(
+          builder: (_) => MemoryDayScreen(
+            scopeLabel: _scopeLabel,
+            load: (since, cursor) =>
+                widget.loadDay!(since, _selectedCompanionId, cursor),
+          ),
+        ),
+      );
 
   /// Its own screen as well, and for a sharper reason than the day page: this
   /// one must not shorten anything, and a page that shares room with a roll-up
   /// is a page under pressure to.
   Future<void> _openCopy() => Navigator.of(context).push<void>(
-    MaterialPageRoute(
-      builder: (_) =>
-          MemoryCopyScreen(load: () => widget.loadCopy!(_selectedCompanionId)),
-    ),
-  );
+        MaterialPageRoute(
+          builder: (_) => MemoryCopyScreen(
+              scopeLabel: _scopeLabel,
+              load: () => widget.loadCopy!(_selectedCompanionId)),
+        ),
+      );
+
+  Future<void> _openRoom(MemoryWingView wing, MemoryRoomView room) {
+    final companionId = _selectedCompanionId;
+    return Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => MemoryCopyScreen(
+        title: memoryRoomLabel(room.roomId),
+        roomView: true,
+        scopeLabel: _scopeLabel,
+        load: () =>
+            widget.loadCopy!(companionId, wing: wing.wingId, room: room.roomId),
+      ),
+    ));
+  }
 
   Future<void> _selectCompanion(String? companionId) async {
     if (companionId == _selectedCompanionId) return;
@@ -229,12 +246,15 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
   }
 
   Future<void> _openGraph() => Navigator.of(context).push<void>(
-    MaterialPageRoute(
-      builder: (_) => MemoryGraphScreen(
-        load: () => widget.loadGraph!(_selectedCompanionId),
-      ),
-    ),
-  );
+        MaterialPageRoute(
+          builder: (_) => MemoryGraphScreen(
+            scopeLabel: _scopeLabel,
+            load: ({String? cursor, required bool history}) =>
+                widget.loadGraph!(_selectedCompanionId,
+                    cursor: cursor, history: history),
+          ),
+        ),
+      );
 
   /// The selected Companion's name, or null for the Owner's own view.
   String? get _selectedCompanionName {
@@ -247,6 +267,10 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     }
     return '这个伙伴';
   }
+
+  String get _scopeLabel => _selectedCompanionName == null
+      ? '你的全部记忆'
+      : '${_selectedCompanionName!}能想起的';
 
   Future<void> _openSearch() {
     final companionId = _selectedCompanionId;
@@ -267,14 +291,14 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     if (library != null) {
       return MemoryLibraryPage(
         library: library,
+        onOpenRoom: widget.loadCopy == null ? null : _openRoom,
         onForget: _canForget ? _openForget : null,
         onOpenToday: widget.loadDay == null ? null : _openToday,
         onExport: widget.loadCopy == null ? null : _openCopy,
         companions: _companions,
         selectedCompanionId: _selectedCompanionId,
-        onCompanionChanged: widget.loadForCompanion == null
-            ? null
-            : _selectCompanion,
+        onCompanionChanged:
+            widget.loadForCompanion == null ? null : _selectCompanion,
         onOpenGraph: widget.loadGraph == null ? null : _openGraph,
         onSearch: widget.searchRecollections == null ? null : _openSearch,
         onRefresh: _read,

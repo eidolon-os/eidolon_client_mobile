@@ -274,7 +274,7 @@ void main() {
         expect(find.text('你的记忆'), findsOneWidget);
         expect(find.text('浏览和理解'), findsOneWidget);
         expect(find.text('搜索记忆'), findsOneWidget);
-        expect(find.text('最近记下'), findsOneWidget);
+        expect(find.text('记忆时间线'), findsOneWidget);
         expect(find.text('关系图谱'), findsOneWidget);
         expect(find.text('完整副本'), findsOneWidget);
         expect(find.byType(IconButton), findsNothing);
@@ -500,7 +500,7 @@ void main() {
                   'truncated': false,
                 });
               },
-              loadCopy: (companionId) async {
+              loadCopy: (companionId, {String? wing, String? room}) async {
                 copyCompanion = companionId;
                 return MemoryCopyView.fromJson({
                   'contract_version': '1',
@@ -602,7 +602,8 @@ void main() {
               load: () async => library(),
               loadContext: () async => context(),
               loadCopy: wired
-                  ? (_) async => MemoryCopyView.fromJson({
+                  ? (_, {String? wing, String? room}) async =>
+                      MemoryCopyView.fromJson({
                         'contract_version': '1',
                         'taken_at': '2026-08-24T12:31:00+00:00',
                         'records': [],
@@ -632,7 +633,8 @@ void main() {
           home: MemoryLibraryScreen(
             load: () async => library(),
             loadContext: () async => context(),
-            loadCopy: (_) async => MemoryCopyView.fromJson({
+            loadCopy: (_, {String? wing, String? room}) async =>
+                MemoryCopyView.fromJson({
               'contract_version': '1',
               'taken_at': '2026-08-24T12:31:00+00:00',
               'records': [

@@ -1171,13 +1171,15 @@ class ManagementClient {
     Uri baseUri, {
     required String accessToken,
     String? companionId,
+    String? cursor,
+    bool history = false,
   }) async {
     var endpoint = baseUri.resolve(ManagementV1.memoryGraphPath);
-    if (companionId != null) {
-      endpoint = endpoint.replace(
-        queryParameters: {'companion_id': companionId},
-      );
-    }
+    endpoint = endpoint.replace(queryParameters: {
+      if (companionId != null) 'companion_id': companionId,
+      if (cursor != null) 'cursor': cursor,
+      'history': '$history',
+    });
     final body = await _get(
       endpoint,
       accessToken: accessToken,
@@ -1432,12 +1434,16 @@ class ManagementClient {
     Uri baseUri, {
     required String accessToken,
     String? companionId,
+    String? wing,
+    String? room,
   }) async {
     final endpoint = baseUri.resolve(ManagementV1.memoryExportPath);
     final body = await _get(
-      companionId == null
-          ? endpoint
-          : endpoint.replace(queryParameters: {'companion_id': companionId}),
+      endpoint.replace(queryParameters: {
+        if (companionId != null) 'companion_id': companionId,
+        if (wing != null) 'wing': wing,
+        if (room != null) 'room': room,
+      }),
       accessToken: accessToken,
       what: '导出记忆',
     );
