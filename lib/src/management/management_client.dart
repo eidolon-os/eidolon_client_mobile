@@ -222,6 +222,68 @@ class ManagementClient {
         what: '读取家居设备',
       ));
 
+  // --- Provider accounts: an ecosystem bound through the Host, devices imported from it ---
+
+  Future<ProviderList> smartHomeProviders(Uri baseUri, {required String accessToken}) async =>
+      ProviderList.fromJson(await _get(
+        baseUri.resolve(ManagementV1.smarthomeProvidersPath),
+        accessToken: accessToken,
+        what: '读取可连接的家居平台',
+      ));
+
+  Future<AccountList> smartHomeAccounts(Uri baseUri, {required String accessToken}) async =>
+      AccountList.fromJson(await _get(
+        baseUri.resolve(ManagementV1.smarthomeAccountsPath),
+        accessToken: accessToken,
+        what: '读取家居平台账号',
+      ));
+
+  Future<ProviderAccount> smartHomeBind(
+    Uri baseUri, {
+    required String accessToken,
+    required AccountBind request,
+  }) async =>
+      ProviderAccount.fromJson(await _send(
+        'POST',
+        baseUri.resolve(ManagementV1.smarthomeAccountsBindPath),
+        accessToken: accessToken,
+        what: '连接家居平台',
+        body: request.toJson(),
+        requestTimeout: const Duration(seconds: 30),
+      ));
+
+  Future<SyncReport> smartHomeSync(
+    Uri baseUri, {
+    required String accessToken,
+    required String accountId,
+  }) async =>
+      SyncReport.fromJson(await _send(
+        'POST',
+        baseUri.resolve(ManagementV1.smarthomeAccountsByAccountIdSyncPath(accountId)),
+        accessToken: accessToken,
+        what: '同步家居设备',
+        requestTimeout: const Duration(seconds: 60),
+      ));
+
+  Future<AccountRemoved> smartHomeUnbind(
+    Uri baseUri, {
+    required String accessToken,
+    required String accountId,
+  }) async =>
+      AccountRemoved.fromJson(await _send(
+        'POST',
+        baseUri.resolve(ManagementV1.smarthomeAccountsByAccountIdUnbindPath(accountId)),
+        accessToken: accessToken,
+        what: '断开家居平台',
+      ));
+
+  Future<HomeSnapshotView> smartHomeSnapshot(Uri baseUri, {required String accessToken}) async =>
+      HomeSnapshotView.fromJson(await _get(
+        baseUri.resolve(ManagementV1.smarthomeSnapshotPath),
+        accessToken: accessToken,
+        what: '读取家居设备状态',
+      ));
+
   Future<Registry> smartHomeWrite(
     Uri baseUri, {
     required String accessToken,

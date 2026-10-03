@@ -16,6 +16,9 @@ class SmartHomePage extends StatefulWidget {
 
 class _SmartHomePageState extends State<SmartHomePage> {
   management.Registry? _registry;
+  List<management.ProviderAccount> _accounts = const [];
+  Map<String, management.DeviceStatusView> _status = const {};
+  bool _accountsAvailable = true;
   bool _busy = false;
   String? _error;
 
@@ -34,6 +37,7 @@ class _SmartHomePageState extends State<SmartHomePage> {
       final registry = await widget.controller.smartHomeRegistry();
       if (mounted) setState(() => _registry = registry);
       await widget.controller.refreshDevices();
+      await _reloadEcosystem();
     } catch (error) {
       if (mounted) setState(() => _error = refusalText(error, subject: '家居设备'));
     } finally {
@@ -67,6 +71,170 @@ class _SmartHomePageState extends State<SmartHomePage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Accounts and observed state live behind Hub; a Host without that
+  /// credential answers 503 and the section simply says so.
+  Future<void> _reloadEcosystem() async {
+    try {
+      final accounts = await widget.controller.smartHomeAccounts();
+      final snapshot = await widget.controller.smartHomeSnapshot();
+      if (mounted) {
+        setState(() {
+          _accounts = accounts.accounts;
+          _status = snapshot.status;
+          _accountsAvailable = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _accountsAvailable = false);
+    }
+  }
+
+  Future<void> _ecosystem(Future<void> Function() action, {String subject = '家居平台'}) async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await action();
+      final registry = await widget.controller.smartHomeRegistry();
+      if (mounted) setState(() => _registry = registry);
+      await _reloadEcosystem();
+    } catch (error) {
+      if (mounted) setState(() => _error = refusalText(error, subject: subject));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _connectAccount() async {
+    final providers = (await widget.controller.smartHomeProviders()).providers;
+    if (!mounted) return;
+    if (providers.isEmpty) {
+      setState(() => _error = '这台主机没有装配任何家居平台');
+      return;
+    }
+    final schema = providers.length == 1
+        ? providers.first
+        : await showDialog<management.AccountSchema>(
+            context: context,
+            builder: (context) => SimpleDialog(
+              title: const Text('连接哪个平台'),
+              children: [
+                for (final provider in providers)
+                  SimpleDialogOption(
+                    onPressed: () => Navigator.pop(context, provider),
+                    child: Text(provider.label),
+                  ),
+              ],
+            ),
+          );
+    if (schema == null || !mounted) return;
+    final fields = await _askAccountFields(schema);
+    if (fields == null) return;
+    await _ecosystem(() async {
+      var account = await widget.controller.smartHomeBind(
+          management.AccountBind(kind: schema.kind, fields: fields));
+      // Pending: the platform wants a choice (which home); ask, then bind again.
+      final choiceField = (schema.fields ?? []).where((f) => f.kind == 'choice').firstOrNull;
+      if (account.status == 'pending' && choiceField != null && (account.choices ?? []).isNotEmpty) {
+        if (!mounted) return;
+        final chosen = await showDialog<String>(
+          context: context,
+          builder: (context) => SimpleDialog(
+            title: Text(choiceField.label),
+            children: [
+              for (final choice in account.choices!)
+                SimpleDialogOption(
+                  onPressed: () => Navigator.pop(context, choice.value),
+                  child: Text(choice.label),
+                ),
+            ],
+          ),
+        );
+        if (chosen == null) return;
+        account = await widget.controller.smartHomeBind(management.AccountBind(
+          kind: schema.kind,
+          accountId: account.accountId,
+          fields: {...fields, choiceField.name: chosen},
+        ));
+      }
+      if (account.status == 'connected') {
+        await widget.controller.smartHomeSync(account.accountId);
+      }
+    }, subject: schema.label);
+  }
+
+  /// One text field per declared account field; secrets are obscured, choice
+  /// fields are asked for later with the platform's own options.
+  Future<Map<String, String>?> _askAccountFields(management.AccountSchema schema) async {
+    final inputs = <String, TextEditingController>{
+      for (final field in schema.fields ?? <management.AccountField>[])
+        if (field.kind != 'choice') field.name: TextEditingController(),
+    };
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('连接 ${schema.label}'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            for (final field in schema.fields ?? <management.AccountField>[])
+              if (inputs.containsKey(field.name))
+                TextField(
+                  controller: inputs[field.name],
+                  obscureText: field.kind == 'secret',
+                  keyboardType: field.kind == 'url'
+                      ? TextInputType.url
+                      : field.kind == 'phone'
+                          ? TextInputType.phone
+                          : TextInputType.text,
+                  decoration: InputDecoration(
+                    labelText: field.label + ((field.required ?? true) ? '' : '（可选）'),
+                  ),
+                ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              final values = {
+                for (final entry in inputs.entries)
+                  if (entry.value.text.trim().isNotEmpty) entry.key: entry.value.text.trim(),
+              };
+              final missing = (schema.fields ?? []).where((f) =>
+                  f.kind != 'choice' && (f.required ?? true) && !values.containsKey(f.name));
+              if (missing.isEmpty) Navigator.pop(context, values);
+            },
+            child: const Text('连接'),
+          ),
+        ],
+      ),
+    );
+    for (final controller in inputs.values) {
+      controller.dispose();
+    }
+    return result;
+  }
+
+  String _statusText(management.Device device) {
+    if (device.orphaned ?? false) return '平台里已不存在';
+    final status = _status[device.deviceId];
+    if (status == null) return device.type;
+    if (!status.online) return '离线';
+    final state = status.state;
+    final parts = <String>[];
+    if (state['on'] is bool) parts.add(state['on'] == true ? '开着' : '关着');
+    if (state['level'] != null) parts.add('亮度 ${state['level']}%');
+    if (state['position'] != null) parts.add('开合 ${state['position']}%');
+    if (state['target_c'] != null) parts.add('目标 ${state['target_c']}°C');
+    if (state['current_c'] != null) parts.add('室温 ${state['current_c']}°C');
+    if (state['locked'] is bool) parts.add(state['locked'] == true ? '已上锁' : '未上锁');
+    if (state['temp_c'] != null) parts.add('${state['temp_c']}°C');
+    if (state['humidity'] != null) parts.add('湿度 ${state['humidity']}%');
+    return parts.isEmpty ? '在线' : parts.join(' · ');
   }
 
   String _newId(String prefix) =>
@@ -213,6 +381,11 @@ class _SmartHomePageState extends State<SmartHomePage> {
     );
     nameInput.dispose();
     if (details == null) return;
+    // An imported device keeps what the platform said about it; the fields the
+    // Owner edits by hand are recorded so the next sync leaves them alone.
+    final overrides = {...?device.overrides};
+    if (details.$1 != device.name) overrides.add('name');
+    if (details.$2 != device.areaId) overrides.add('area_id');
     await _write('PUT', management.ManagementV1.smarthomeDevicesByDeviceIdPath(device.deviceId),
         body: {'device': management.Device(
           deviceId: device.deviceId,
@@ -222,6 +395,12 @@ class _SmartHomePageState extends State<SmartHomePage> {
           areaId: details.$2,
           provider: device.provider,
           providerRef: device.providerRef,
+          traits: device.traits,
+          limits: device.limits,
+          source: device.source,
+          overrides: device.source == 'imported' ? (overrides.toList()..sort()) : device.overrides,
+          syncedAtMs: device.syncedAtMs,
+          orphaned: device.orphaned,
         ).toJson()});
   }
 
@@ -271,7 +450,7 @@ class _SmartHomePageState extends State<SmartHomePage> {
                     ListTile(
                       contentPadding: const EdgeInsets.only(left: 28, right: 8),
                       title: Text(device.name),
-                      subtitle: Text(device.type),
+                      subtitle: Text(_statusText(device)),
                       trailing: IconButton(
                         tooltip: '编辑设备', icon: const Icon(Icons.edit_outlined),
                         onPressed: _busy ? null : () => _editDevice(device),
@@ -282,7 +461,7 @@ class _SmartHomePageState extends State<SmartHomePage> {
                   OutlinedButton.icon(onPressed: _busy ? null : _addArea,
                       icon: const Icon(Icons.add), label: const Text('添加房间')),
                   OutlinedButton.icon(onPressed: _busy ? null : _addDevice,
-                      icon: const Icon(Icons.add), label: const Text('添加设备')),
+                      icon: const Icon(Icons.add), label: const Text('添加虚拟设备')),
                   if (registry.revision == 0)
                     FilledButton(onPressed: _busy ? null : () => _write(
                       'POST', management.ManagementV1.smarthomeSamplesApartmentPath,
@@ -310,7 +489,51 @@ class _SmartHomePageState extends State<SmartHomePage> {
                 Text('场景', style: Theme.of(context).textTheme.titleLarge),
                 for (final scene in registry.scenes ?? <management.Scene>[])
                   ListTile(title: Text(scene.name),
-                    subtitle: Text('${scene.actions.length} 个动作')),
+                    subtitle: Text(scene.providerRef != null
+                        ? '由平台执行'
+                        : '${scene.actions?.length ?? 0} 个动作')),
+                const SizedBox(height: 24),
+                Text('家居平台', style: Theme.of(context).textTheme.titleLarge),
+                if (!_accountsAvailable)
+                  const Text('这台主机还没有开通家居平台连接。')
+                else ...[
+                  if (_accounts.isEmpty) const Text('还没有连接任何平台。连接后可以把平台里的设备导入到这里。'),
+                  for (final account in _accounts)
+                    ListTile(
+                      title: Text(account.label),
+                      subtitle: Text([
+                        account.kind,
+                        switch (account.status) {
+                          'connected' => '已连接',
+                          'pending' => '待选择',
+                          'degraded' => '连接异常',
+                          _ => account.status,
+                        },
+                        if (account.error != null) account.error!,
+                      ].join(' · ')),
+                      trailing: Wrap(spacing: 4, children: [
+                        IconButton(
+                          tooltip: '同步设备',
+                          icon: const Icon(Icons.sync),
+                          onPressed: _busy
+                              ? null
+                              : () => _ecosystem(() => widget.controller.smartHomeSync(account.accountId)),
+                        ),
+                        IconButton(
+                          tooltip: '断开',
+                          icon: const Icon(Icons.link_off),
+                          onPressed: _busy
+                              ? null
+                              : () => _ecosystem(() => widget.controller.smartHomeUnbind(account.accountId)),
+                        ),
+                      ]),
+                    ),
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : () => _ecosystem(_connectAccount),
+                    icon: const Icon(Icons.add_link),
+                    label: const Text('连接平台'),
+                  ),
+                ],
               ],
             ]),
     );

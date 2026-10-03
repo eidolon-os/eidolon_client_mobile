@@ -163,6 +163,15 @@ class HostProductController extends ChangeNotifier {
   late final HostManagementRepository _managementRepository;
 
   Future<Registry> smartHomeRegistry() => _managementRepository.smartHomeRegistry();
+  Future<ProviderList> smartHomeProviders() => _managementRepository.smartHomeProviders();
+  Future<AccountList> smartHomeAccounts() => _managementRepository.smartHomeAccounts();
+  Future<ProviderAccount> smartHomeBind(AccountBind request) =>
+      _managementRepository.smartHomeBind(request);
+  Future<SyncReport> smartHomeSync(String accountId) =>
+      _managementRepository.smartHomeSync(accountId);
+  Future<AccountRemoved> smartHomeUnbind(String accountId) =>
+      _managementRepository.smartHomeUnbind(accountId);
+  Future<HomeSnapshotView> smartHomeSnapshot() => _managementRepository.smartHomeSnapshot();
 
   Future<Registry> smartHomeWrite({
     required String method,

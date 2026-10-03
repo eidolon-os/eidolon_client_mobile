@@ -152,6 +152,36 @@ class HostManagementRepository {
             client.smartHomeRegistry(baseUri, accessToken: accessToken),
       );
 
+  Future<ProviderList> smartHomeProviders() => _session.executeManagement(
+        (client, baseUri, accessToken) =>
+            client.smartHomeProviders(baseUri, accessToken: accessToken),
+      );
+
+  Future<AccountList> smartHomeAccounts() => _session.executeManagement(
+        (client, baseUri, accessToken) =>
+            client.smartHomeAccounts(baseUri, accessToken: accessToken),
+      );
+
+  Future<ProviderAccount> smartHomeBind(AccountBind request) => _session.executeManagement(
+        (client, baseUri, accessToken) =>
+            client.smartHomeBind(baseUri, accessToken: accessToken, request: request),
+      );
+
+  Future<SyncReport> smartHomeSync(String accountId) => _session.executeManagement(
+        (client, baseUri, accessToken) =>
+            client.smartHomeSync(baseUri, accessToken: accessToken, accountId: accountId),
+      );
+
+  Future<AccountRemoved> smartHomeUnbind(String accountId) => _session.executeManagement(
+        (client, baseUri, accessToken) =>
+            client.smartHomeUnbind(baseUri, accessToken: accessToken, accountId: accountId),
+      );
+
+  Future<HomeSnapshotView> smartHomeSnapshot() => _session.executeManagement(
+        (client, baseUri, accessToken) =>
+            client.smartHomeSnapshot(baseUri, accessToken: accessToken),
+      );
+
   Future<Registry> smartHomeWrite({
     required String method,
     required String path,
