@@ -120,6 +120,14 @@ class ManagementV1 {
       '/api/management/v1/shared-sessions/close';
   static const String sharedSessionsOpenPath =
       '/api/management/v1/shared-sessions/open';
+  static const String smarthomeAccountsPath =
+      '/api/management/v1/smarthome/accounts';
+  static const String smarthomeAccountsBindPath =
+      '/api/management/v1/smarthome/accounts/bind';
+  static String smarthomeAccountsByAccountIdSyncPath(String accountId) =>
+      '/api/management/v1/smarthome/accounts/${Uri.encodeComponent(accountId)}/sync';
+  static String smarthomeAccountsByAccountIdUnbindPath(String accountId) =>
+      '/api/management/v1/smarthome/accounts/${Uri.encodeComponent(accountId)}/unbind';
   static const String smarthomeAreasPath = '/api/management/v1/smarthome/areas';
   static String smarthomeAreasByAreaIdPath(String areaId) =>
       '/api/management/v1/smarthome/areas/${Uri.encodeComponent(areaId)}';
@@ -129,6 +137,8 @@ class ManagementV1 {
       '/api/management/v1/smarthome/devices/${Uri.encodeComponent(deviceId)}';
   static String smarthomePlacementsByDeviceRefPath(String deviceRef) =>
       '/api/management/v1/smarthome/placements/${Uri.encodeComponent(deviceRef)}';
+  static const String smarthomeProvidersPath =
+      '/api/management/v1/smarthome/providers';
   static const String smarthomeRegistryPath =
       '/api/management/v1/smarthome/registry';
   static const String smarthomeSamplesApartmentPath =
@@ -137,6 +147,169 @@ class ManagementV1 {
       '/api/management/v1/smarthome/scenes';
   static String smarthomeScenesBySceneIdPath(String sceneId) =>
       '/api/management/v1/smarthome/scenes/${Uri.encodeComponent(sceneId)}';
+  static const String smarthomeSnapshotPath =
+      '/api/management/v1/smarthome/snapshot';
+}
+
+class AccountBind {
+  const AccountBind({this.accountId, this.fields, required this.kind});
+
+  final String? accountId;
+
+  final Map<String, String>? fields;
+
+  final String kind;
+
+  factory AccountBind.fromJson(Map<String, dynamic> value) {
+    return AccountBind(
+      accountId: value['account_id'] as String?,
+      fields: value['fields'] == null
+          ? null
+          : ((value['fields'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as String),
+            )),
+      kind: value['kind'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (accountId != null) 'account_id': accountId,
+      if (fields != null) 'fields': fields,
+      'kind': kind,
+    };
+  }
+}
+
+class AccountChoice {
+  const AccountChoice({required this.label, required this.value});
+
+  final String label;
+
+  final String value;
+
+  factory AccountChoice.fromJson(Map<String, dynamic> value) {
+    return AccountChoice(
+      label: value['label'] as String,
+      value: value['value'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'label': label, 'value': value};
+  }
+}
+
+class AccountField {
+  const AccountField({
+    this.choices,
+    this.kind,
+    required this.label,
+    required this.name,
+    this.required,
+  });
+
+  final List<String>? choices;
+
+  final String? kind;
+
+  final String label;
+
+  final String name;
+
+  final bool? required;
+
+  factory AccountField.fromJson(Map<String, dynamic> value) {
+    return AccountField(
+      choices: value['choices'] == null
+          ? null
+          : ((value['choices'] as List<dynamic>)
+                .map((entry) => entry as String)
+                .toList()),
+      kind: value['kind'] as String?,
+      label: value['label'] as String,
+      name: value['name'] as String,
+      required: value['required'] as bool?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (choices != null) 'choices': choices,
+      if (kind != null) 'kind': kind,
+      'label': label,
+      'name': name,
+      if (required != null) 'required': required,
+    };
+  }
+}
+
+class AccountList {
+  const AccountList({required this.accounts});
+
+  final List<ProviderAccount> accounts;
+
+  factory AccountList.fromJson(Map<String, dynamic> value) {
+    return AccountList(
+      accounts: ((value['accounts'] as List<dynamic>)
+          .map(
+            (entry) => ProviderAccount.fromJson(entry as Map<String, dynamic>),
+          )
+          .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'accounts': accounts.map((entry) => entry.toJson()).toList()};
+  }
+}
+
+class AccountRemoved {
+  const AccountRemoved({required this.removed});
+
+  final String removed;
+
+  factory AccountRemoved.fromJson(Map<String, dynamic> value) {
+    return AccountRemoved(removed: value['removed'] as String);
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'removed': removed};
+  }
+}
+
+class AccountSchema {
+  const AccountSchema({this.fields, required this.kind, required this.label});
+
+  final List<AccountField>? fields;
+
+  final String kind;
+
+  final String label;
+
+  factory AccountSchema.fromJson(Map<String, dynamic> value) {
+    return AccountSchema(
+      fields: value['fields'] == null
+          ? null
+          : ((value['fields'] as List<dynamic>)
+                .map(
+                  (entry) =>
+                      AccountField.fromJson(entry as Map<String, dynamic>),
+                )
+                .toList()),
+      kind: value['kind'] as String,
+      label: value['label'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (fields != null)
+        'fields': fields?.map((entry) => entry.toJson()).toList(),
+      'kind': kind,
+      'label': label,
+    };
+  }
 }
 
 class ActivityMomentView {
@@ -1070,9 +1243,15 @@ class Device {
     this.aliases,
     this.areaId,
     required this.deviceId,
+    this.limits,
     required this.name,
+    this.orphaned,
+    this.overrides,
     this.provider,
     this.providerRef,
+    this.source,
+    this.syncedAtMs,
+    this.traits,
     required this.type,
   });
 
@@ -1082,11 +1261,23 @@ class Device {
 
   final String deviceId;
 
+  final Limits? limits;
+
   final String name;
+
+  final bool? orphaned;
+
+  final List<String>? overrides;
 
   final String? provider;
 
   final String? providerRef;
+
+  final String? source;
+
+  final int? syncedAtMs;
+
+  final List<String>? traits;
 
   final String type;
 
@@ -1099,9 +1290,25 @@ class Device {
                 .toList()),
       areaId: value['area_id'] as String?,
       deviceId: value['device_id'] as String,
+      limits: value['limits'] == null
+          ? null
+          : Limits.fromJson(value['limits'] as Map<String, dynamic>),
       name: value['name'] as String,
+      orphaned: value['orphaned'] as bool?,
+      overrides: value['overrides'] == null
+          ? null
+          : ((value['overrides'] as List<dynamic>)
+                .map((entry) => entry as String)
+                .toList()),
       provider: value['provider'] as String?,
       providerRef: value['provider_ref'] as String?,
+      source: value['source'] as String?,
+      syncedAtMs: value['synced_at_ms'] as int?,
+      traits: value['traits'] == null
+          ? null
+          : ((value['traits'] as List<dynamic>)
+                .map((entry) => entry as String)
+                .toList()),
       type: value['type'] as String,
     );
   }
@@ -1111,9 +1318,15 @@ class Device {
       if (aliases != null) 'aliases': aliases,
       if (areaId != null) 'area_id': areaId,
       'device_id': deviceId,
+      if (limits != null) 'limits': limits?.toJson(),
       'name': name,
+      if (orphaned != null) 'orphaned': orphaned,
+      if (overrides != null) 'overrides': overrides,
       if (provider != null) 'provider': provider,
       if (providerRef != null) 'provider_ref': providerRef,
+      if (source != null) 'source': source,
+      if (syncedAtMs != null) 'synced_at_ms': syncedAtMs,
+      if (traits != null) 'traits': traits,
       'type': type,
     };
   }
@@ -1356,6 +1569,27 @@ class DeviceRemovalView {
       'outcome': outcome,
       'request_id': requestId,
     };
+  }
+}
+
+class DeviceStatusView {
+  const DeviceStatusView({required this.online, required this.state});
+
+  final bool online;
+
+  final Map<String, Object?> state;
+
+  factory DeviceStatusView.fromJson(Map<String, dynamic> value) {
+    return DeviceStatusView(
+      online: value['online'] as bool,
+      state: ((value['state'] as Map<String, dynamic>).map(
+        (key, entry) => MapEntry(key, entry as Object?),
+      )),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'online': online, 'state': state};
   }
 }
 
@@ -1760,6 +1994,33 @@ class HomeCountsView {
       'ready': ready,
       'total': total,
       'waiting': waiting,
+    };
+  }
+}
+
+class HomeSnapshotView {
+  const HomeSnapshotView({required this.registry, required this.status});
+
+  final Registry registry;
+
+  final Map<String, DeviceStatusView> status;
+
+  factory HomeSnapshotView.fromJson(Map<String, dynamic> value) {
+    return HomeSnapshotView(
+      registry: Registry.fromJson(value['registry'] as Map<String, dynamic>),
+      status: ((value['status'] as Map<String, dynamic>).map(
+        (key, entry) => MapEntry(
+          key,
+          DeviceStatusView.fromJson(entry as Map<String, dynamic>),
+        ),
+      )),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'registry': registry.toJson(),
+      'status': status.map((key, entry) => MapEntry(key, entry.toJson())),
     };
   }
 }
@@ -2243,6 +2504,36 @@ class InputSelection {
 
   Map<String, dynamic> toJson() {
     return {if (microphone != null) 'microphone': microphone};
+  }
+}
+
+class Limits {
+  const Limits({this.modes, this.targetC});
+
+  final List<String>? modes;
+
+  final List<Object?>? targetC;
+
+  factory Limits.fromJson(Map<String, dynamic> value) {
+    return Limits(
+      modes: value['modes'] == null
+          ? null
+          : ((value['modes'] as List<dynamic>)
+                .map((entry) => entry as String)
+                .toList()),
+      targetC: value['target_c'] == null
+          ? null
+          : ((value['target_c'] as List<dynamic>)
+                .map((entry) => entry as Object?)
+                .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (modes != null) 'modes': modes,
+      if (targetC != null) 'target_c': targetC,
+    };
   }
 }
 
@@ -3821,6 +4112,82 @@ class PlacementWrite {
   }
 }
 
+class ProviderAccount {
+  const ProviderAccount({
+    required this.accountId,
+    this.choices,
+    this.error,
+    required this.kind,
+    required this.label,
+    this.lastSeenMs,
+    required this.status,
+  });
+
+  final String accountId;
+
+  final List<AccountChoice>? choices;
+
+  final String? error;
+
+  final String kind;
+
+  final String label;
+
+  final int? lastSeenMs;
+
+  final String status;
+
+  factory ProviderAccount.fromJson(Map<String, dynamic> value) {
+    return ProviderAccount(
+      accountId: value['account_id'] as String,
+      choices: value['choices'] == null
+          ? null
+          : ((value['choices'] as List<dynamic>)
+                .map(
+                  (entry) =>
+                      AccountChoice.fromJson(entry as Map<String, dynamic>),
+                )
+                .toList()),
+      error: value['error'] as String?,
+      kind: value['kind'] as String,
+      label: value['label'] as String,
+      lastSeenMs: value['last_seen_ms'] as int?,
+      status: value['status'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'account_id': accountId,
+      if (choices != null)
+        'choices': choices?.map((entry) => entry.toJson()).toList(),
+      if (error != null) 'error': error,
+      'kind': kind,
+      'label': label,
+      if (lastSeenMs != null) 'last_seen_ms': lastSeenMs,
+      'status': status,
+    };
+  }
+}
+
+class ProviderList {
+  const ProviderList({required this.providers});
+
+  final List<AccountSchema> providers;
+
+  factory ProviderList.fromJson(Map<String, dynamic> value) {
+    return ProviderList(
+      providers: ((value['providers'] as List<dynamic>)
+          .map((entry) => AccountSchema.fromJson(entry as Map<String, dynamic>))
+          .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'providers': providers.map((entry) => entry.toJson()).toList()};
+  }
+}
+
 class RecollectionView {
   const RecollectionView({this.provenance, this.rememberedAt, this.text});
 
@@ -4149,31 +4516,44 @@ class RoleGroupStatus {
 
 class Scene {
   const Scene({
-    required this.actions,
+    this.actions,
     required this.name,
+    this.provider,
+    this.providerRef,
     required this.sceneId,
   });
 
-  final List<Command> actions;
+  final List<Command>? actions;
 
   final String name;
+
+  final String? provider;
+
+  final String? providerRef;
 
   final String sceneId;
 
   factory Scene.fromJson(Map<String, dynamic> value) {
     return Scene(
-      actions: ((value['actions'] as List<dynamic>)
-          .map((entry) => Command.fromJson(entry as Map<String, dynamic>))
-          .toList()),
+      actions: value['actions'] == null
+          ? null
+          : ((value['actions'] as List<dynamic>)
+                .map((entry) => Command.fromJson(entry as Map<String, dynamic>))
+                .toList()),
       name: value['name'] as String,
+      provider: value['provider'] as String?,
+      providerRef: value['provider_ref'] as String?,
       sceneId: value['scene_id'] as String,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'actions': actions.map((entry) => entry.toJson()).toList(),
+      if (actions != null)
+        'actions': actions?.map((entry) => entry.toJson()).toList(),
       'name': name,
+      if (provider != null) 'provider': provider,
+      if (providerRef != null) 'provider_ref': providerRef,
       'scene_id': sceneId,
     };
   }
@@ -4279,6 +4659,73 @@ class SpokenMessageView {
 
   Map<String, dynamic> toJson() {
     return {'role': role, if (text != null) 'text': text};
+  }
+}
+
+class SyncReport {
+  const SyncReport({
+    required this.added,
+    required this.orphaned,
+    required this.revision,
+    required this.skipped,
+    required this.updated,
+  });
+
+  final List<String> added;
+
+  final List<String> orphaned;
+
+  final int revision;
+
+  final List<SyncSkipped> skipped;
+
+  final List<String> updated;
+
+  factory SyncReport.fromJson(Map<String, dynamic> value) {
+    return SyncReport(
+      added: ((value['added'] as List<dynamic>)
+          .map((entry) => entry as String)
+          .toList()),
+      orphaned: ((value['orphaned'] as List<dynamic>)
+          .map((entry) => entry as String)
+          .toList()),
+      revision: value['revision'] as int,
+      skipped: ((value['skipped'] as List<dynamic>)
+          .map((entry) => SyncSkipped.fromJson(entry as Map<String, dynamic>))
+          .toList()),
+      updated: ((value['updated'] as List<dynamic>)
+          .map((entry) => entry as String)
+          .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'added': added,
+      'orphaned': orphaned,
+      'revision': revision,
+      'skipped': skipped.map((entry) => entry.toJson()).toList(),
+      'updated': updated,
+    };
+  }
+}
+
+class SyncSkipped {
+  const SyncSkipped({required this.reason, required this.ref});
+
+  final String reason;
+
+  final String ref;
+
+  factory SyncSkipped.fromJson(Map<String, dynamic> value) {
+    return SyncSkipped(
+      reason: value['reason'] as String,
+      ref: value['ref'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'reason': reason, 'ref': ref};
   }
 }
 
