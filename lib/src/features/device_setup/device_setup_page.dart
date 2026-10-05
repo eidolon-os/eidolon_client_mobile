@@ -84,6 +84,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   String? _progress;
   bool _busy = false;
   bool _networkConfigured = false;
+  bool _showPassword = false;
+  String? _connectingNetwork;
 
   bool _refused = false;
   List<DeviceSetupCheckpoint> _pendingSetups = const [];
@@ -189,7 +191,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
 
   Future<void> _select(DeviceProvisioningCandidate candidate) => _run(() async {
         setState(() {
-          _progress = '正在读取设备身份';
+          _candidate = candidate;
+          _progress = '正在连接设备并读取信息';
           _scanWarning = null;
         });
         final session = await widget.transport.open(candidate);
@@ -294,10 +297,12 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
       setState(() => _error = '请选择 Wi-Fi,或输入隐藏网络名称');
       return;
     }
+    FocusManager.instance.primaryFocus?.unfocus();
     await _run(() async {
       setState(() {
+        _connectingNetwork = ssid;
         _step = _Step.working;
-        _progress = '正在把网络和 Host 交给设备,然后等它在主机上登记';
+        _progress = '正在连接设备';
       });
       final target = _target;
       if (target == null) {
@@ -370,7 +375,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         _progress = checkpoint.failure != null
             ? null
             : checkpoint.provisioningState == DeviceProvisioningState.selected
-                ? '正在重新连接设备，发送网络配置…'
+                ? '正在连接设备'
                 : '正在等待设备确认 Wi-Fi 和主机连接…';
         _error = checkpoint.failure?.message;
       } else if (checkpoint.isReady) {
@@ -456,6 +461,15 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
               _Step.working => _working(),
               _Step.complete => _complete(),
             },
+            if (_busy &&
+                _candidate?.transportKind == 'softap' &&
+                !_networkConfigured &&
+                (_step == _Step.choosingDevice || _step == _Step.working)) ...[
+              const SizedBox(height: 16),
+              Text('如系统要求连接设备，请选择“${_candidate!.transportId}”并允许连接。'
+                  '若进入 WLAN 页面，连接该热点后返回此处，设置会自动继续。'
+                  '设备热点暂时无法上网是正常现象。'),
+            ],
             if (_progress != null) ...[
               const SizedBox(height: 20),
               Row(
@@ -557,7 +571,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           if (_descriptor != null)
             Text(
               key: const Key('provisionable-device'),
-              '${_descriptor!.displayName} · ${_descriptor!.deviceId}',
+              _descriptor!.displayName,
             ),
           const SizedBox(height: 12),
           for (final network in _networks)
@@ -589,25 +603,32 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           TextField(
             controller: _password,
             enabled: !_busy,
-            obscureText: true,
+            key: const Key('device-wifi-password'),
+            obscureText: !_showPassword,
+            textInputAction: TextInputAction.go,
+            onSubmitted: (_) => _finish(),
             enableSuggestions: false,
             autocorrect: false,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Wi-Fi 密码',
-              border: OutlineInputBorder(),
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                tooltip: _showPassword ? '隐藏密码' : '显示密码',
+                onPressed: () => setState(() => _showPassword = !_showPassword),
+                icon: Icon(
+                    _showPassword ? Icons.visibility_off : Icons.visibility),
+              ),
             ),
           ),
           const SizedBox(height: 16),
           const Text(
-            '确认后，应用会再次连接设备并发送 Wi-Fi 配置。'
-            '若系统弹出“连接到设备”，请点“连接”。'
-            '设备联网后，应用会自动批准它接入所选主机并更新结果。',
+            '点击连接后，将自动完成 Wi-Fi 配置并将设备添加到当前主机。',
           ),
           const SizedBox(height: 12),
           FilledButton(
             key: const Key('confirm-device-setup'),
             onPressed: _busy ? null : _finish,
-            child: const Text('确认配网并批准这次设备接入'),
+            child: Text(_error == null ? '连接' : '重新连接'),
           ),
         ],
       );
@@ -662,10 +683,17 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
                 ? '这次接入已结束或失效。可以重新添加设备；已有设备的状态请在主机设备列表查看。'
                 : _networkConfigured
                     ? '网络配置已保存，无需再次输入密码。接下来由设备向主机登记并完成接入。'
-                    : '正在把网络配置发送给设备，请保持设备通电。',
+                    : '正在自动完成设置，请保持设备通电，无需重复操作。',
           ),
-          const SizedBox(height: 16),
           if (!_refused) ...[
+            const SizedBox(height: 16),
+            Text('1. 连接设备${_networkConfigured ? ' ✓' : ''}'),
+            Text(
+                '2. 配置 Wi-Fi${_connectingNetwork == null ? '' : ' · $_connectingNetwork'}${_networkConfigured ? ' ✓' : ''}'),
+            Text('3. 接入主机${_networkConfigured ? ' · 进行中' : ''}'),
+          ],
+          const SizedBox(height: 16),
+          if (!_refused && _error != null && _networkConfigured) ...[
             FilledButton.icon(
               key: const Key('resume-device-admission'),
               onPressed: _busy ? null : _resumePersistedAdmission,
@@ -674,12 +702,13 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             ),
             const SizedBox(height: 8),
           ],
-          OutlinedButton.icon(
-            key: const Key('restart-device-setup'),
-            onPressed: _busy ? null : _startOver,
-            icon: const Icon(Icons.restart_alt),
-            label: const Text('重新设置设备'),
-          ),
+          if (!_busy)
+            OutlinedButton.icon(
+              key: const Key('restart-device-setup'),
+              onPressed: _busy ? null : _startOver,
+              icon: const Icon(Icons.restart_alt),
+              label: const Text('重新设置设备'),
+            ),
         ],
       );
 

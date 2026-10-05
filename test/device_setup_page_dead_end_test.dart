@@ -138,7 +138,8 @@ void main() {
     expect(admission.recoverCalls, 1);
   });
 
-  testWidgets('a setup still in flight keeps its retry and its way out',
+  testWidgets(
+      'a setup still in flight advances automatically and keeps its way out',
       (tester) async {
     final store = InMemoryDeviceSetupCheckpointStore();
     await store.save(_checkpoint());
@@ -152,7 +153,7 @@ void main() {
     await tester.tap(find.text('继续接入'));
     await _pumpUntil(tester, () => admission.recoverCalls == 1);
 
-    expect(find.byKey(const Key('resume-device-admission')), findsOneWidget);
+    expect(find.byKey(const Key('resume-device-admission')), findsNothing);
     expect(find.byKey(const Key('restart-device-setup')), findsOneWidget);
   });
 

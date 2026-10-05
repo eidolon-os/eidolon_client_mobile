@@ -265,12 +265,23 @@ void main() {
       final confirm = tester
           .widget<FilledButton>(find.byKey(const Key('confirm-device-setup')))
           .onPressed!;
-      // Two callbacks can arrive before Flutter rebuilds the disabled button.
+      if (!restart) {
+        await tester.enterText(
+            find.byKey(const Key('device-wifi-password')), 'test-password');
+        await tester.testTextInput.receiveAction(TextInputAction.go);
+      }
+      // Keyboard submission and a button callback must not start two writes.
       confirm();
       confirm();
       for (var i = 0; i < 30; i++) {
         await tester.pump(const Duration(milliseconds: 10));
       }
+      expect(transport.opened, 2);
+      expect(find.byKey(const Key('resume-device-admission')), findsNothing);
+      expect(find.byKey(const Key('restart-device-setup')), findsNothing);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
       expect(transport.opened, 2);
       expect(find.text('选择家庭 Wi-Fi'), findsNothing);
       expect(find.text('Wi-Fi 已配置，正在接入主机'), findsNothing);
