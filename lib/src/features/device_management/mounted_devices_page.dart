@@ -427,7 +427,7 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            '认领与 Wi-Fi 配网是两个独立步骤。兼容热点入口只配置网络；设备连接 Hub 并进入待认领状态后，再由你确认绑定。',
+            '认领与 Wi-Fi 配网是两个独立步骤。兼容热点入口只配置网络；这里取得凭据的设备，主机在它登记时按这次配网接纳，不用再确认。只有没有凭据的设备会留在「认领待接入设备」等你。',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],

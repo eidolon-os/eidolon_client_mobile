@@ -137,3 +137,16 @@ Mac host（`owner-0342958c…` gen 1）的 App 里点「添加设备或恢复网
   不再误报身份变化或要求重新授权。
 - 终态未知、进程退出和登记恢复由上述自动化验证；本轮没有重新制造 Korvo 的实际终态丢包，
   不宣称这段真机迁移已经全程通过，也没有手工修改旧失败 checkpoint 或设备认领数据。
+
+## 2026-10-10 断路的闭合（方案 B）
+
+真机复现的第二条断路：korvo 00:56 提交入网申请，Owner 的平板在 15 分钟内够不着 Host（换网 + Host 换 IP），
+申请过期后固件进入 Hub 没有对应恢复路径的终态。三层分别收口，App 只剩文案：
+
+- Hub/Admin：Owner 在签 voucher 时的决定被记录（`POST /api/admission/v1/commissioning-standings`），
+  设备的申请到达即由签发它的那台手机自动裁决，不再有「等待批准」与 15 分钟窗口；无凭据的申请仍需人工。
+  见 `eidolon_hub/docs/adr/20261010-admission-standing-at-issuance.md`。
+- 固件：`PROPOSAL_EXPIRED / GRANT_EXPIRED / NOT_FOUND` 不再是终态，丢弃 checkpoint 并在同一次 attempt 内
+  重新申请（`eidolon-client-esp32/docs/hub-onboarding.md`「Enrollment 与迟到响应」）。
+- App：设备页说明改为「取得凭据的设备由主机自动接纳；只有没有凭据的设备留在认领列表」。
+  `pendingReview` 的自动 Decision 路径保留给无凭据场景。
