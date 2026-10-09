@@ -164,3 +164,44 @@ ESP32 复用已有可恢复的 replacement 事务推进旧数据清理、指定�
 不忽略旧 erase，不撤销旧删除记录，也不让新 instance 使用旧 Claim。最终仍需 Host
 为新身份签发凭据并批准。需 mobile 与 ESP32 配套更新，不需要手工更改数据库/NVS。
 此状态快照用于已完成撤销后的重新添加，不承诺与另一 Controller 同时撤销的操作线性化。
+
+
+## 2026-10-10 双设备重新认领与对话验收
+
+验收环境：opi5max `rk3588-admission-standing-20261010-1`，mobile `ef5dacc`，
+ESP32 `9b882277` + `1f301490`；两台实际运行版本均验证为 `1f301490c`。
+应用覆盖安装与 app-only 烧录保留数据；没有手工修改 Host 数据库或恢复旧 Claim。
+
+首次真机暴露两个物理入口遗漏，并由 `1f301490` 修复：StackChan 触摸绕过恢复授权，
+Waveshare 在 esp_timer 按键回调中写 NVS/创建身份触发看门狗。现统一经
+`EnterWifiConfigMode` 投递已有 Application 队列；内部开窗方法私有化，
+自动启动仍不能获得物理恢复授权。
+
+长按后两台均成功开窗、完成配置提交与 ClaimGrant 确认。Host 审计：
+Waveshare 新 instance 尾号 `2c4d2e0` 于 03:33:45 激活，StackChan 新 instance
+尾号 `8062de9` 于 03:35:29 激活（Asia/Shanghai）。两条 Proposal 均为
+`grant_acknowledged`，新 Claim 为 `active`，旧 Claim 仍为 `revoked`；
+批准 actor 为本平板 Controller。此轮真机覆盖已经执行删除后的恢复；
+离线设备尚未消费旧删除命令的竞态由身份替换和旧命令隔离回归覆盖，不能混称真机已验证。
+
+用户后续对话的日志核对（03:34–03:37）：
+
+| 设备 | 有效轮次 | 语音结束至 TTS 提供方首音频 | 结果 |
+| --- | --- | --- | --- |
+| Waveshare（PTT） | 2 | 2.21 秒、2.04 秒 | 两轮识别、模型完成、音频播放完成事件齐全 |
+| StackChan（自动轮次） | 2 | 1.84 秒、3.93 秒 | 两轮识别、模型完成、音频播放完成事件齐全 |
+
+这些时间来自 Channel 时间线，不是扬声器实测延迟。Waveshare 另一次短按被记录为
+`tap_to_stop`，没有作为新问题送入模型；之后以 `idle_normal_end` 正常结束。
+StackChan 第二轮 ASR final 在语音结束约 151ms 后到达，但 EOT 得分 0.360
+低于配置阈值 0.5，final 到提交多等约 2.35 秒，延迟集中在句尾判定而非重新认领。
+两台已记录轮次的客户端音频状态序列均无缺号/乱序；这不代表验证了媒体包零丢失。
+
+StackChan 的会话关闭可见设备主动 `RequestVoiceLeave`、`session_close err=ESP_OK`、
+服务端关闭会话以及随后 `ParticipantRemoved`，不应把后续 signal-stream 警告
+单独判定为网络掉线。欢迎音阶段仍有 LiveKit `playback_finished` 早于输入结束告警，
+本轮未阻断后续对话；此处仅记录，不修改其他会话链路或插话逻辑。
+
+后续重新打开 USB 串口采样记录到 `USB_UART_CHIP_RESET`，该采样会影响设备运行，
+因此启动片段不作为“对话期间无复位”的证据。对话结论以采样之前的 Channel 时间线、
+设备此前连续采集和 Host 审计交叉确认，不凭开机日志推断用户对话历史。
