@@ -65,7 +65,7 @@ class HostLocationException extends LocalApiRequestException {
       // that has been reset. Saying "重新查找" here promised a retry that
       // cannot succeed, which is why it is gone.
       return '这个地址上的主机，不是这台手机配对过的那一台。'
-          '它可能被重置过，也可能是另一台设备占用了这个地址。$controllerResetGuidance';
+          '它可能被重置过，也可能是另一台设备占用了这个地址。$controllerRecoveryGuidance';
     }
     if (relevant.any((f) =>
         f.error is PinnedHttpException &&
@@ -605,7 +605,7 @@ class HostProductSession {
                 error.statusCode == 403 ||
                 error.statusCode == 404 ||
                 error.statusCode == 409
-            ? '主机已重置或不再授权这台管理设备。$controllerResetGuidance'
+            ? '主机已重置或不再授权这台管理设备。$controllerRecoveryGuidance'
             : '管理会话已失效，且暂时无法重新认证。请重新连接主机。',
         reclaimRequired: error.statusCode == 401 ||
             error.statusCode == 403 ||
@@ -653,7 +653,7 @@ class HostProductSession {
           error.statusCode == 404 ||
           error.statusCode == 409) {
         throw const HostControllerAuthorizationException(
-          '主机已重置或不再授权这台管理设备。$controllerResetGuidance',
+          '主机已重置或不再授权这台管理设备。$controllerRecoveryGuidance',
           reclaimRequired: true,
         );
       }

@@ -480,9 +480,9 @@ void main() {
         clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
       );
 
-      final failure = (await service.discover()).failure!;
-      expect(failure.code, 'setup_session_missing');
-      expect(failure.message, contains('Setup'));
+      final report = await service.discover();
+      expect(report.hosts, hasLength(1));
+      expect(report.failure, isNull);
     });
   });
 

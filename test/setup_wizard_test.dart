@@ -31,8 +31,13 @@ class _FakeCommissioningTransport implements CommissioningTransport {
   _FakeCommissioningTransport({
     this.currentNetworkState = 'unconfigured',
     this.currentSsid,
+    this.hasGrant = false,
+    this.failNetwork = false,
   });
 
+  bool hasGrant;
+  bool authenticated = false;
+  bool failNetwork;
   final String currentNetworkState;
   final String? currentSsid;
   final operations = <String>[];
@@ -76,7 +81,31 @@ class _FakeCommissioningTransport implements CommissioningTransport {
     Map<String, dynamic> payload,
   ) async {
     operations.add(operation);
+    if (operation == 'controller.challenge' && !hasGrant) {
+      throw const CommissioningRequestException(
+          'controller_denied', 'No grant');
+    }
+    if (operation == 'claim.complete') hasGrant = true;
+    if (operation == 'controller.authenticate') authenticated = true;
+    if (operation == 'wifi.configure') {
+      expect(authenticated, isTrue,
+          reason: 'Network mutation requires key proof');
+      if (failNetwork) {
+        throw const CommissioningRequestException(
+            'network_stage_failed', 'No Wi-Fi');
+      }
+    }
     return switch (operation) {
+      'controller.challenge' => {
+          'contract_version': '1',
+          'purpose': 'eidolon-controller-ble-auth-v1',
+          'controller_id': 'ectrl-0123456789abcdefabcd',
+          'challenge': validHostChallenge,
+          'reset_epoch': 0,
+        },
+      'controller.authenticate' => {
+          'state': {'claim_state': 'claimed'}
+        },
       'session.authenticate' => {
           'state': {'claim_state': 'unclaimed'},
         },
@@ -185,6 +214,74 @@ class _FakeChangeNetworkTransport implements CommissioningTransport {
 }
 
 void main() {
+  testWidgets(
+      'forgotten Host restores its grant even with an open Setup window',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final registry = InMemoryHostRegistry();
+    final transport = _FakeCommissioningTransport(hasGrant: true);
+    await tester.pumpWidget(MaterialApp(
+        home: SetupWizardPage(
+      registry: registry,
+      transport: transport,
+      controllerKeys: _FakeControllerKeyBridge(),
+      developmentLanCommissioning: emptyLanCommissioning(),
+      onComplete: (_) {},
+    )));
+    await tester.tap(find.byKey(const Key('scan-nearby-hosts')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Eidolon-4c0285'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('development-setup-code')), findsNothing);
+    expect(transport.operations,
+        ['controller.challenge', 'controller.authenticate', 'wifi.scan']);
+    expect((await registry.load()).single.hostId, validHostId);
+    await tester.tap(find.byKey(const Key('finish-without-network-change')));
+    await tester.pumpAndSettle();
+    expect(find.text('主机接入已完成'), findsOneWidget);
+  });
+
+  testWidgets(
+      'network failure retains the enrolled peer and retry does not reenroll',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final registry = InMemoryHostRegistry();
+    final transport = _FakeCommissioningTransport(failNetwork: true);
+    await tester.pumpWidget(MaterialApp(
+        home: SetupWizardPage(
+      registry: registry,
+      transport: transport,
+      controllerKeys: _FakeControllerKeyBridge(),
+      developmentLanCommissioning: emptyLanCommissioning(),
+      clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
+      onComplete: (_) {},
+    )));
+    await tester.tap(find.byKey(const Key('scan-nearby-hosts')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Eidolon-4c0285'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('development-setup-code')), '12345678');
+    await tester.tap(find.byKey(const Key('authenticate-setup-code')));
+    await tester.pumpAndSettle();
+    expect((await registry.load()).single.hostId, validHostId);
+    await tester.tap(find.text('Home'));
+    await tester.enterText(
+        find.byKey(const Key('wifi-passphrase')), 'wifi-password');
+    await tester.tap(find.byKey(const Key('configure-host-network')));
+    await tester.pumpAndSettle();
+    expect((await registry.load()).single.hostId, validHostId);
+    expect(find.byKey(const Key('setup-error')), findsOneWidget);
+    transport.failNetwork = false;
+    await tester.tap(find.byKey(const Key('configure-host-network')));
+    await tester.pumpAndSettle();
+    expect(find.text('主机接入已完成'), findsOneWidget);
+    expect(transport.operations.where((op) => op == 'claim.complete'),
+        hasLength(1));
+  });
+
   testWidgets(
       'scanning a saved Host reconnects without Setup commands or replacing metadata',
       (tester) async {
@@ -336,16 +433,19 @@ void main() {
       find.byKey(const Key('wifi-passphrase')),
       'correct horse battery staple',
     );
-    await tester.tap(find.byKey(const Key('configure-and-claim')));
+    await tester.tap(find.byKey(const Key('configure-host-network')));
     await tester.pumpAndSettle();
 
     expect(find.text('主机接入已完成'), findsOneWidget);
     expect(transport.operations, [
+      'controller.challenge',
       'session.authenticate',
+      'claim.complete',
+      'controller.challenge',
+      'controller.authenticate',
       'wifi.scan',
       'wifi.configure',
       'wifi.confirm',
-      'claim.complete',
     ]);
     await tester.tap(find.byKey(const Key('finish-setup')));
     expect(completed?.hostId, validHostId);
@@ -392,16 +492,19 @@ void main() {
 
     expect(find.text('确认主机网络'), findsOneWidget);
     expect(find.text('主机已连接 Existing Home'), findsOneWidget);
-    final keepNetwork = find.byKey(const Key('keep-network-and-claim'));
+    final keepNetwork = find.byKey(const Key('finish-without-network-change'));
     await tester.ensureVisible(keepNetwork);
     await tester.tap(keepNetwork);
     await tester.pumpAndSettle();
 
     expect(find.text('主机接入已完成'), findsOneWidget);
     expect(transport.operations, [
+      'controller.challenge',
       'session.authenticate',
-      'wifi.scan',
       'claim.complete',
+      'controller.challenge',
+      'controller.authenticate',
+      'wifi.scan',
     ]);
     expect(transport.closed, isTrue);
   });
@@ -479,7 +582,7 @@ void main() {
     // follows went unmentioned.
     // The steps are drawn as one chip each now, so the row is read chip by
     // chip rather than as a single joined string.
-    for (final step in ['选一台主机', '输入 Setup 码', '连上 Wi-Fi', '起名字']) {
+    for (final step in ['选一台主机', '确认管理权限', '设置 Wi-Fi（可选）']) {
       expect(find.text(step), findsOneWidget, reason: step);
     }
     expect(find.text('认领'), findsNothing);

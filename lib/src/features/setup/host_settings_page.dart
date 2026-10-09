@@ -223,7 +223,7 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
                   // Open, but honest about what it needs: the Host opens the
                   // window, not this phone. An entry that could open it remotely
                   // would hand the same key to whoever stole the phone.
-                  subtitle: const Text('需要有人在主机旁边开一次限时窗口；会撤销所有已授权手机'),
+                  subtitle: const Text('通过其他管理手机邀请或主机 Setup 码恢复；其他手机不受影响'),
                   onTap: () => _openControllerRecovery(context),
                 ),
                 if (_rollback case final rollback?)

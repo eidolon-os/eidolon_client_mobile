@@ -1,15 +1,4 @@
-// What the wizard says when a Host has no open Setup window.
-//
-// A Host with `claim_state=unclaimed` and zero Controller grants refused a
-// phone, and the wizard reported "它可能已被认领" — the opposite of the truth —
-// then offered guidance about revoking grants the Host did not have. The
-// endpoint document says only that no window is open (`setup_session: null`);
-// it never said which. So the wizard was guessing, and guessing wrong sent the
-// operator to the heaviest recovery in the product.
-//
-// Two properties are pinned here: the no-window text must not assert anything
-// about who owns the Host, and the claimed case must still be reachable — with
-// its own wording, from the Host's own `already_claimed`.
+// Setup windows govern adding a phone, independently of existing grants.
 
 import 'package:eidolon_client_mobile/src/features/setup/setup_models.dart';
 import 'package:eidolon_client_mobile/src/features/setup/setup_trust.dart';
@@ -33,17 +22,7 @@ void main() {
     expect(firstSetupCodeGuidance, contains('commissioning-code'));
     expect(firstSetupCodeGuidance, contains('Setup 码'));
 
-    // A window does not open by itself, not even on a brand-new Host
-    // (ADR-0006). Someone reading only this sentence must not sit waiting.
-    expect(firstSetupCodeGuidance, contains('不会自己打开'));
-    expect(firstSetupCodeGuidance, contains('全新'));
-
-    // Physical presence is the authority that mints one; a phone cannot.
-    expect(firstSetupCodeGuidance, contains('主机旁边'));
-
-    // The window expires, and the way back is the same command again — the
-    // question a normal user hits second.
-    expect(firstSetupCodeGuidance, contains('过期'));
+    expect(firstSetupCodeGuidance, contains('任意已授权管理手机邀请'));
   });
 
   test('a null expiry reads as no expiry, never as expired', () {
@@ -81,21 +60,21 @@ void main() {
     );
   });
 
-  test('the two guidances stay separate, because they answer different questions',
+  test(
+      'the two guidances stay separate, because they answer different questions',
       () {
     // Merging them is what produced advice about revoking grants on a Host
     // that had none.
-    expect(controllerResetGuidance, isNot(equals(firstSetupCodeGuidance)));
+    expect(controllerRecoveryGuidance, isNot(equals(firstSetupCodeGuidance)));
 
     // The claimed-Host text still owns the reset story.
-    expect(controllerResetGuidance, contains('controller-reset'));
+    expect(controllerRecoveryGuidance, contains('controller-reset'));
 
     // And the no-window text is not a prefix or suffix of it: neither is a
     // step in the other.
-    expect(controllerResetGuidance, isNot(contains(firstSetupCodeGuidance)));
-    expect(firstSetupCodeGuidance, isNot(contains(controllerResetGuidance)));
+    expect(controllerRecoveryGuidance, isNot(contains(firstSetupCodeGuidance)));
+    expect(firstSetupCodeGuidance, isNot(contains(controllerRecoveryGuidance)));
   });
 }
-
 
 // 无期限窗口：null 必须读成「不过期」，不能读成「已过期」（ADR-0007）。

@@ -286,26 +286,20 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       }
       setState(() => _progress = '正在建立加密 Setup 通道');
       await _transport.secure(tlsSpkiFingerprint: endpoint.tlsSpkiFingerprint);
+      _endpoint = endpoint;
+      _selectedNearbyHost = host;
+      try {
+        await _transport.authenticateController(_controllerKeys);
+        await _rememberController(endpoint);
+        await _loadNetworks();
+        return;
+      } on CommissioningRequestException catch (error) {
+        if (error.code != 'controller_denied') rethrow;
+      }
       final developmentSetup = endpoint.developmentSetup;
       if (developmentSetup == null) {
-        // A null `setup_session` says there is no open claim window. It does
-        // not say why, and this branch used to guess "it may already be
-        // claimed" — which was wrong on a factory-fresh Host with no grants at
-        // all, and sent the operator to the controller-reset guidance for
-        // authority nobody held.
-        //
-        // The Host answers the question instead: `already_claimed` when it
-        // belongs to someone, `controller_denied` when nobody is authorized on
-        // it yet. Only the second one is a Host waiting for its first code.
-        try {
-          if (await _recoverCompletedClaim(endpoint)) return;
-        } on CommissioningRequestException catch (error) {
-          if (error.code != 'controller_denied') rethrow;
-        }
         throw const CommissioningRequestException(
-          'setup_code_unavailable',
-          '这台主机没有开放的 Setup 窗口。',
-        );
+            'setup_code_unavailable', '这台主机当前没有开放添加管理手机的窗口。');
       }
       final now = (widget.clock ?? DateTime.now)().toUtc();
       if (!developmentSetup.isOpenAt(now)) {
@@ -328,6 +322,11 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
     final endpoint = _endpoint;
     final developmentSetup = endpoint?.developmentSetup;
     if (endpoint == null || developmentSetup == null) return;
+    if (_controllerName.text.trim().isEmpty ||
+        _controllerName.text.trim().length > 80) {
+      setState(() => _error = '管理手机名称必须包含 1 到 80 个字符');
+      return;
+    }
     final code = _setupCode.text.trim();
     if (!setupCodePattern.hasMatch(code)) {
       setState(() => _error = '请输入 Host 上显示的 $setupCodeDigits 位 Setup 码');
@@ -342,6 +341,8 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         try {
           final host = await _developmentLanCommissioning.claim(lan,
               setupCode: code, controllerName: _controllerName.text);
+          if (!mounted) return;
+          await widget.registry?.save(host);
           if (!mounted) return;
           _setupCode.clear();
           setState(() {
@@ -361,72 +362,51 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         'commissioning_id': developmentSetup.commissioningId,
         'setup_code': code,
       });
-      setState(() => _progress = '正在读取主机可见的 Wi-Fi');
-      final scanned = await _transport.request('wifi.scan', const {});
-      final rawNetworks = scanned['networks'];
-      if (rawNetworks is! List) {
-        throw const CommissioningRequestException(
-          'invalid_response',
-          '主机没有返回 Wi-Fi 列表',
-        );
-      }
-      final networks = rawNetworks
+      await _enrollController(endpoint);
+      await _transport.authenticateController(_controllerKeys);
+      await _loadNetworks();
+    });
+  }
+
+  Future<void> _loadNetworks() async {
+    if (!mounted) return;
+    setState(() => _progress = '管理权限已确认，正在读取主机可见的 Wi-Fi');
+    final scanned = await _transport.request('wifi.scan', const {});
+    final rawNetworks = scanned['networks'];
+    if (rawNetworks is! List) {
+      throw const CommissioningRequestException(
+          'invalid_response', '主机没有返回 Wi-Fi 列表');
+    }
+    final current = scanned['current_network'];
+    final ssid = current is Map ? current['ssid'] : null;
+    if (!mounted) return;
+    _setupCode.clear();
+    setState(() {
+      _networks = rawNetworks
           .whereType<Map<String, dynamic>>()
           .map(WifiNetwork.fromJson)
           .toList(growable: false);
-      final rawCurrentNetwork = scanned['current_network'];
-      final currentNetwork = rawCurrentNetwork is Map
-          ? Map<Object?, Object?>.from(rawCurrentNetwork)
-          : const <Object?, Object?>{};
-      final currentSsid = currentNetwork['ssid'];
-      _setupCode.clear();
-      setState(() {
-        _networks = networks;
-        _canKeepCurrentNetwork = currentNetwork['state'] == 'connected';
-        _currentSsid = currentSsid is String && currentSsid.isNotEmpty
-            ? currentSsid
-            : null;
-        _stage = _SetupStage.wifi;
-        _progress = null;
-      });
+      _canKeepCurrentNetwork =
+          current is Map && current['state'] == 'connected';
+      _currentSsid = ssid is String && ssid.isNotEmpty ? ssid : null;
+      _stage = _SetupStage.wifi;
+      _progress = null;
     });
   }
 
-  Future<void> _claimUsingCurrentNetwork() async {
-    final endpoint = _endpoint;
-    if (endpoint == null || !_canKeepCurrentNetwork) return;
-    if (_controllerName.text.trim().isEmpty) {
-      setState(() => _error = '请为这台管理手机填写一个名称');
-      return;
-    }
-    await _run(() async {
-      setState(() {
-        _stage = _SetupStage.configuring;
-        _progress = '正在保留当前网络并认领主机';
-      });
-      await _completeClaim(endpoint);
+  Future<void> _finishSetup() async {
+    await _transport.close();
+    if (!mounted) return;
+    setState(() {
+      _stage = _SetupStage.complete;
+      _progress = null;
     });
   }
 
-  Future<bool> _recoverCompletedClaim(CommissioningEndpoint endpoint) async {
+  Future<void> _skipNetwork() => _run(_finishSetup);
+
+  Future<void> _rememberController(CommissioningEndpoint endpoint) async {
     final controller = await _controllerKeys.getIdentity();
-    final challenge = await _transport.request('controller.challenge', {
-      'controller_id': controller.controllerId,
-    });
-    if (challenge['contract_version'] != '1' ||
-        challenge['purpose'] != 'eidolon-controller-ble-auth-v1' ||
-        challenge['controller_id'] != controller.controllerId ||
-        challenge['challenge'] is! String ||
-        challenge['reset_epoch'] is! int) {
-      return false;
-    }
-    final signature = await _controllerKeys.signChallenge(challenge);
-    final authenticated = await _transport.request('controller.authenticate', {
-      ...challenge,
-      'signature': signature,
-    });
-    final state = authenticated['state'];
-    if (state is! Map || state['claim_state'] != 'claimed') return false;
     final host = ManagedHost(
       hostId: endpoint.hostId,
       hostPublicKey: endpoint.hostPublicKey,
@@ -437,16 +417,12 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       claimedAt: (widget.clock ?? DateTime.now)().toUtc(),
       tlsSpkiFingerprint: endpoint.tlsSpkiFingerprint,
     );
-    await _transport.close();
-    setState(() {
-      _completedHost = host;
-      _stage = _SetupStage.complete;
-      _progress = null;
-    });
-    return true;
+    // A committed Grant survives a network failure, cancellation, or app exit.
+    await widget.registry?.save(host);
+    _completedHost = host;
   }
 
-  Future<void> _configureAndClaim() async {
+  Future<void> _configureNetwork() async {
     final endpoint = _endpoint;
     if (endpoint == null) return;
     final ssid = (_selectedNetwork?.ssid ?? _hiddenSsid.text).trim();
@@ -463,54 +439,27 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       setState(() => _error = '请为这台管理手机填写一个名称');
       return;
     }
-    var staged = false;
     var networkCompleted = false;
     await _run(() async {
       setState(() {
         _stage = _SetupStage.configuring;
         _progress = '正在让主机加入 $ssid';
       });
-      final configured = await _transport.request('wifi.configure', {
-        'operation_id': _networkOperationId,
-        'ssid': ssid,
-        'passphrase': secured ? _passphrase.text : null,
-        'hidden': _selectedNetwork == null,
-      });
-      final operation = configured['operation'];
-      if (operation is! Map ||
-          !{'waiting_confirmation', 'succeeded'}.contains(operation['state'])) {
-        throw const CommissioningRequestException(
-          'network_stage_failed',
-          '主机没有完成 Wi-Fi 连接，请检查密码、网络安全模式和信号',
-        );
-      }
-      if (operation['state'] == 'waiting_confirmation') {
-        staged = true;
-        setState(() => _progress = 'Wi-Fi 已连接，正在确认网络变更');
-        await _transport.request('wifi.confirm', {
-          'operation_id': _networkOperationId,
-        });
-        staged = false;
-      }
+      await _transport.configureWifi(
+        operationId: _networkOperationId,
+        ssid: ssid,
+        passphrase: secured ? _passphrase.text : null,
+        hidden: _selectedNetwork == null,
+      );
       networkCompleted = true;
-      setState(() => _progress = '正在把这台手机认领为主机管理员');
-      await _completeClaim(endpoint);
+      await _finishSetup();
     });
-    if (staged) {
-      try {
-        await _transport.request('wifi.rollback', {
-          'operation_id': _networkOperationId,
-        });
-      } catch (_) {
-        // NetworkManager's Host-side checkpoint also rolls back on timeout.
-      }
-    }
     if (!networkCompleted && mounted) {
       _networkOperationId = _uuidV4();
     }
   }
 
-  Future<void> _completeClaim(CommissioningEndpoint endpoint) async {
+  Future<void> _enrollController(CommissioningEndpoint endpoint) async {
     final controller = await _controllerKeys.getIdentity();
     final claimed = await _transport.request('claim.complete', {
       'controller_id': controller.controllerId,
@@ -526,22 +475,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         '主机没有确认 Controller 认领结果',
       );
     }
-    final host = ManagedHost(
-      hostId: endpoint.hostId,
-      hostPublicKey: endpoint.hostPublicKey,
-      hostFingerprint: endpoint.hostPublicKeyFingerprint,
-      bleServiceUuid: endpoint.bleServiceUuid,
-      controllerId: controller.controllerId,
-      displayName: defaultHostDisplayName(endpoint.hostId),
-      claimedAt: (widget.clock ?? DateTime.now)().toUtc(),
-      tlsSpkiFingerprint: endpoint.tlsSpkiFingerprint,
-    );
-    await _transport.close();
-    setState(() {
-      _completedHost = host;
-      _stage = _SetupStage.complete;
-      _progress = null;
-    });
+    await _rememberController(endpoint);
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -594,19 +528,13 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         // A wrong code is refused and the window stays open, because revoking
         // an unexpiring one leaves nobody able to reopen it (ADR-0007).
         'commissioning_denied' => 'Setup 码错误或已失效。请核对 $setupCodeDigits 位码后再试。',
-        // Says only what the App knows: there is no window. Whether this Host
-        // was ever claimed is a separate question, and the Host answers it with
-        // `already_claimed` below.
         'setup_code_unavailable' =>
           '这台主机现在没有开放的 Setup 窗口。$firstSetupCodeGuidance',
-        'already_claimed' => '这台主机已被认领，而且它不认这台手机的管理凭据。'
-            '$controllerResetGuidance',
         'setup_code_expired' => '开发 Setup 会话已过期，请重新选择主机。',
         // A refusal an Owner can act on has to carry the action. Without the
         // recovery named here, this said "你没有权限" to someone holding the
         // only phone they own, and stopped.
-        'controller_denied' => '这台主机已被认领，而且它不认这台手机的管理凭据；'
-            '开箱凭据只能用来重新认领，不能改这台主机的设置。$controllerResetGuidance',
+        'controller_denied' => '当前会话没有这台主机的管理权限。$controllerRecoveryGuidance',
         'operation_conflict' => '主机正在处理另一项设置，或本次重试已失效。请重新开始这一步。',
         // Reserved for a failure the Host has no name for. A deterministic
         // conflict arriving here as "retry later" is a Host bug, not a hint;
@@ -807,16 +735,33 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       // The normal connection flow checks current Controller authority.
       widget.onComplete(known);
     } else if (item.lan case final lan?) {
-      setState(() {
-        _selectedLanHost = lan;
-        _selectedNearbyHost = item.ble?.host;
-        _endpoint = lan.endpoint;
-        _lanClaimFailed = false;
-        _setupCode.clear();
-        _error = null;
-        _progress = null;
-        _stage = _SetupStage.code;
-      });
+      unawaited(_run(() async {
+        final recovered = await _developmentLanCommissioning.recover(lan);
+        if (!mounted) return;
+        if (recovered != null) {
+          await widget.registry?.save(recovered);
+          if (!mounted) return;
+          setState(() {
+            _completedHost = recovered;
+            _stage = _SetupStage.complete;
+          });
+          return;
+        }
+        final setup = lan.endpoint.developmentSetup;
+        if (setup == null ||
+            !setup.isOpenAt((widget.clock ?? DateTime.now)())) {
+          throw const CommissioningRequestException(
+              'setup_code_unavailable', '主机没有开放添加管理手机的窗口。');
+        }
+        setState(() {
+          _selectedLanHost = lan;
+          _selectedNearbyHost = item.ble?.host;
+          _endpoint = lan.endpoint;
+          _lanClaimFailed = false;
+          _setupCode.clear();
+          _stage = _SetupStage.code;
+        });
+      }));
     } else {
       unawaited(_selectHost(item.ble!.host));
     }
@@ -835,7 +780,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           ),
           if (_selectedLanHost != null) ...[
             const SizedBox(height: 8),
-            const Text('主机已经联网，无需重新配置 Wi-Fi。'),
+            const Text('已通过局域网找到主机，无需为添加手机重新配网。'),
           ],
           ExpansionTile(
             title: const Text('如何获取 Setup 码'),
@@ -872,10 +817,10 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
             ),
             onSubmitted: (_) => _authenticateSetupCode(),
           ),
-          if (_selectedLanHost != null) ...[
+          ...[
             const SizedBox(height: 12),
             TextField(
-              key: const Key('lan-controller-name'),
+              key: const Key('controller-name'),
               controller: _controllerName,
               enabled: !_busy,
               decoration: const InputDecoration(labelText: '这台管理手机的名称'),
@@ -929,7 +874,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           ),
           const SizedBox(height: 8),
           const Text(
-            '密码只通过已加密的蓝牙 Setup 通道交给 NetworkManager，不保存在 App 或 Bootstrap DB。',
+            '这台手机已获得与其他管理手机平等的权限。Wi-Fi 设置通过加密蓝牙完成，可以选择与手机不同的网络。',
           ),
           if (_canKeepCurrentNetwork) ...[
             const SizedBox(height: 16),
@@ -939,7 +884,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
                 title: Text(
                   _currentSsid == null ? '主机当前已经联网' : '主机已连接 $_currentSsid',
                 ),
-                subtitle: const Text('可以保持当前连接直接认领，也可以在下方选择新的 Wi-Fi。'),
+                subtitle: const Text('可以保持当前连接，也可以选择新的 Wi-Fi。'),
               ),
             ),
             const SizedBox(height: 12),
@@ -992,30 +937,19 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
             ),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _controllerName,
-            enabled: !_busy,
-            decoration: const InputDecoration(
-              labelText: '这台管理手机的名称',
-              border: OutlineInputBorder(),
-            ),
+          FilledButton.tonalIcon(
+            key: const Key('finish-without-network-change'),
+            onPressed: _busy ? null : _skipNetwork,
+            icon: const Icon(Icons.verified_user_outlined),
+            label: Text(_canKeepCurrentNetwork ? '保持当前 Wi-Fi' : '稍后设置 Wi-Fi'),
           ),
-          const SizedBox(height: 16),
-          if (_canKeepCurrentNetwork) ...[
-            FilledButton.tonalIcon(
-              key: const Key('keep-network-and-claim'),
-              onPressed: _busy ? null : _claimUsingCurrentNetwork,
-              icon: const Icon(Icons.verified_user_outlined),
-              label: const Text('保持当前 Wi-Fi，直接认领主机'),
-            ),
-            const SizedBox(height: 12),
-          ],
+          const SizedBox(height: 12),
           FilledButton.icon(
-            key: const Key('configure-and-claim'),
-            onPressed: _busy ? null : _configureAndClaim,
+            key: const Key('configure-host-network'),
+            onPressed: _busy ? null : _configureNetwork,
             icon: const Icon(Icons.rocket_launch_outlined),
             label: Text(
-              _canKeepCurrentNetwork ? '更换 Wi-Fi 并认领主机' : '连接 Wi-Fi 并认领主机',
+              _canKeepCurrentNetwork ? '更换 Wi-Fi' : '连接 Wi-Fi',
             ),
           ),
         ],
@@ -1034,13 +968,13 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
           const SizedBox(height: 8),
           Text(
             '${_completedHost!.readableName} 已接入，'
-            '这台手机已取得 Host Admin 权限。主机已可恢复保存，下一步会通过局域网创建 Workspace。',
+            '管理授权已保存，其他管理手机不受影响。访问主机功能需要手机与主机网络互通。',
           ),
           const SizedBox(height: 24),
           FilledButton(
             key: const Key('finish-setup'),
             onPressed: () => widget.onComplete(_completedHost!),
-            child: const Text('继续创建我的 Eidolon'),
+            child: const Text('打开主机'),
           ),
         ],
       );
@@ -1056,31 +990,17 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   }
 }
 
-/// What the person is being asked to do, and how much of it is left.
-///
-/// It used to list five things — 附近主机 · Setup 码 · Wi-Fi · 认领 · 主机接入
-/// — of which the person does three. 认领 is the phone and the Host talking to
-/// each other, and 主机接入 is the outcome of that conversation; putting them
-/// in the same row as "choose a Wi-Fi network" made the setup look half again
-/// as long as it is. Meanwhile the one thing still waiting on the other side
-/// — giving the Eidolon and yourself a name — was not mentioned at all, so
-/// the bar reached the end and then asked for more.
-///
-/// Protocol phases are not what a progress bar is for. The phases are still
-/// exactly as separate as they were: this only stops presenting them as
-/// errands.
+/// Authorization and optional networking have independent completion.
 class _ProgressHeader extends StatelessWidget {
   const _ProgressHeader({required this.stage, this.alreadyNetworked = false});
 
   final _SetupStage stage;
   final bool alreadyNetworked;
 
-  /// The three things a person does here, plus the one waiting after.
   List<String> get _steps => [
         '选一台主机',
-        '输入 Setup 码',
-        if (!alreadyNetworked) '连上 Wi-Fi',
-        '起名字',
+        '确认管理权限',
+        if (!alreadyNetworked) '设置 Wi-Fi（可选）',
       ];
 
   @override
@@ -1089,11 +1009,8 @@ class _ProgressHeader extends StatelessWidget {
       _SetupStage.nearby => 0,
       _SetupStage.code => 1,
       _SetupStage.wifi => 2,
-      // Working and finished are the same amount of the person's work: all of
-      // it that happens here.
-      _SetupStage.configuring ||
-      _SetupStage.complete =>
-        alreadyNetworked ? 2 : 3,
+      _SetupStage.configuring => 2,
+      _SetupStage.complete => _steps.length,
     };
     final steps = _steps;
     return Column(

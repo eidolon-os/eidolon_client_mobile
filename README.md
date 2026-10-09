@@ -129,10 +129,16 @@ Android 设备 ID 基于系统的 `ANDROID_ID` 确定性生成，因此使用同
 AndroidKeyStore 私钥，所以干净重装后 Hub 会在原设备记录上发起安全的密钥
 重新登记，需要管理员再次批准，不会创建另一台设备。
 
-Host Controller 使用另一个 Keystore alias。卸载 App 会删除 Controller 私钥，不能
-仅靠本地记录恢复主机权限。此时由持有主机的人执行 `eidolon-ops controller-reset`
-撤销全部 Controller，再像首次开箱一样重新认领；Owner、Companion、记忆、网络和
-已准入设备都不受影响。App 不会因为连不上就自动开放认领。
+Host Controller 使用独立 Keystore alias。每个 mobile 安装实例各持一份平等的
+`host_admin` 授权；第一台手机没有特殊权限。添加时先验证已有密钥，成功就恢复本机记录；
+没有有效授权时，用 Setup 码新增授权，再以 Controller challenge 签名建立管理会话。
+首次配置和后续更换 Wi-Fi 都使用管理员会话；Host 离线也可通过 BLE 添加手机。
+网络失败不撤销管理授权，手机与 Host 不同网络不代表配网失败。
+
+从本机列表移除 Host 不撤销服务端授权。卸载 App 会删除私钥；此时可由任意已授权
+手机邀请，或在 Host 执行 `eidolon-ops commissioning-code` 后重新添加。
+只有主动撤销全部管理手机时才使用 `controller-reset --apply`。
+详见 [Host 多手机管理规则](docs/host-peer-administration.md)。
 
 BlueZ、NetworkManager、Android GATT/TLS、LAN mDNS 和 Controller session 已在当前
 Pi 5/Android 平板/路由器组合上完成过一次真实 Host commissioning 与重启恢复；该结果

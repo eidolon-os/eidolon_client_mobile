@@ -38,9 +38,6 @@ enum DevelopmentLanRefusal {
   /// event: an address on the LAN answered where a Host should be.
   unverified,
 
-  /// It proved it is a Host, and has no open development Setup session.
-  noSetupSession,
-
   /// It answered, and said this entrance does not exist on it — a Host older
   /// than the release that opened the LAN route on every Host. A fact about
   /// which door to use, not a fault. Kept apart from [silent] because the two
@@ -127,15 +124,6 @@ class DevelopmentLanDiscovery {
   /// not the thing to put in front of the person.
   CommissioningRequestException? get failure {
     if (hosts.isNotEmpty) return null;
-    final withoutSession = _refused(DevelopmentLanRefusal.noSetupSession);
-    if (withoutSession.isNotEmpty) {
-      return CommissioningRequestException(
-        'setup_session_missing',
-        '已经验证了 ${withoutSession.length} 台 Host 的身份，但它们都没有开放的开发 Setup 会话'
-            '（${withoutSession.first.reason}）。'
-            '请在 Host 上重新生成 $setupCodeDigits 位 Setup 码，然后再查找一次。',
-      );
-    }
     final unverified = _refused(DevelopmentLanRefusal.unverified);
     if (unverified.isNotEmpty) {
       final refused = unverified.first;
@@ -145,7 +133,7 @@ class DevelopmentLanDiscovery {
             '${refused.candidate.endpoint.baseUrl}（${refused.reason}）。'
             '发现只产生候选，验证才是权威，所以这台设备不会被当成你的 Host。'
             '请确认手机连的是自己的局域网；如果这确实是你的 Host，'
-            '说明它的身份已经和这台手机记住的不一样了。$controllerResetGuidance',
+            '说明它的身份已经和这台手机记住的不一样了。$controllerRecoveryGuidance',
       );
     }
     final closed = _refused(DevelopmentLanRefusal.entranceUnavailable);
@@ -192,14 +180,14 @@ class DevelopmentLanDiscovery {
                 '（${rejection.reason}）').join('；')}。'
             '已尝试：${survey.describeAttempts()}。'
             '请确认手机和 Host 在同一个局域网、没有 AP 隔离，'
-            '并且 Host 的 Local API 端口 $localApiPort 可达。$controllerResetGuidance',
+            '并且 Host 的 Local API 端口 $localApiPort 可达。$controllerRecoveryGuidance',
       );
     }
     return CommissioningRequestException(
       'host_not_found',
       '局域网里没有任何设备应答 Eidolon Local API。'
           '已尝试：${survey.describeAttempts()}。'
-          '请确认 Host 已开机、和这台手机在同一个局域网。$controllerResetGuidance',
+          '请确认 Host 已开机、和这台手机在同一个局域网。$controllerRecoveryGuidance',
     );
   }
 }
@@ -295,31 +283,6 @@ class DevelopmentLanCommissioning {
       final endpoint = await CommissioningEndpoint.parseAndVerifyDiscovered(
         raw,
       );
-      if (knownHostForEndpoint(knownHosts, endpoint) != null) {
-        return (
-          host: DevelopmentLanHost(candidate: candidate, endpoint: endpoint),
-          rejection: null
-        );
-      }
-      final setup = endpoint.developmentSetup;
-      if (setup == null) {
-        return (
-          host: null,
-          rejection: refuse(
-            DevelopmentLanRefusal.noSetupSession,
-            '没有开放的开发 Setup 会话',
-          ),
-        );
-      }
-      if (!setup.isOpenAt(_clock())) {
-        return (
-          host: null,
-          rejection: refuse(
-            DevelopmentLanRefusal.noSetupSession,
-            '开发 Setup 会话已过期',
-          ),
-        );
-      }
       return (
         host: DevelopmentLanHost(candidate: candidate, endpoint: endpoint),
         rejection: null,
@@ -355,6 +318,35 @@ class DevelopmentLanCommissioning {
         host: null,
         rejection: refuse(DevelopmentLanRefusal.silent, '$error'),
       );
+    }
+  }
+
+  Future<ManagedHost?> recover(DevelopmentLanHost host) async {
+    _requireDebugBuild();
+    final controller = await _controllerKeys.getIdentity();
+    final client = _pinnedClientFactory(host.endpoint.tlsSpkiFingerprint);
+    try {
+      await LocalApiClient(httpClient: client).authenticateController(
+        host.localApi.baseUrl,
+        expectedControllerId: controller.controllerId,
+        controllerKeys: _controllerKeys,
+      );
+      return ManagedHost(
+        hostId: host.endpoint.hostId,
+        hostPublicKey: host.endpoint.hostPublicKey,
+        hostFingerprint: host.endpoint.hostPublicKeyFingerprint,
+        bleServiceUuid: host.endpoint.bleServiceUuid,
+        controllerId: controller.controllerId,
+        displayName: host.displayName,
+        claimedAt: _clock().toUtc(),
+        tlsSpkiFingerprint: host.endpoint.tlsSpkiFingerprint,
+        lastKnownBaseUrl: host.localApi.baseUrl,
+      );
+    } on LocalApiRequestException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) return null;
+      rethrow;
+    } finally {
+      client.close();
     }
   }
 
@@ -416,7 +408,7 @@ class DevelopmentLanCommissioning {
           throw const CommissioningRequestException(
             'commissioning_denied',
             'Host 拒绝了这台手机（HTTP 401）。Setup 码可能已经用过、过期或输错了，'
-                '请在 Host 上重新生成一个再试。$controllerResetGuidance',
+                '请在 Host 上重新生成一个再试。$controllerRecoveryGuidance',
           );
         }
         final code = switch (response.statusCode) {
@@ -438,8 +430,7 @@ class DevelopmentLanCommissioning {
           (decoded['controller'] as Map)['controller_id'] !=
               controller.controllerId ||
           decoded['state'] is! Map ||
-          (decoded['state'] as Map)['claim_state'] != 'claimed' ||
-          (decoded['state'] as Map)['network_state'] != 'connected') {
+          (decoded['state'] as Map)['claim_state'] != 'claimed') {
         throw const CommissioningRequestException(
           'invalid_response',
           '开发 Host 没有返回有效的认领结果',

@@ -357,7 +357,7 @@ class _WelcomePage extends StatelessWidget {
                     ),
                     const SizedBox(height: Neon.s3),
                     const Text(
-                      '无需屏幕、SSH 或预先联网。手机会找到主机、配置 Wi-Fi、完成本地认领，并创建你的 Eidolon Workspace。',
+                      '无需屏幕、SSH 或预先联网。手机会找到主机、取得管理授权，再按需配置 Wi-Fi；网络可达后继续使用你的 Eidolon。',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                           fontSize: 14, height: 1.7, color: Neon.inkDim),

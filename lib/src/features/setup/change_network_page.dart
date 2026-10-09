@@ -116,24 +116,8 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
       await _transport.secure(
         tlsSpkiFingerprint: endpoint.tlsSpkiFingerprint,
       );
-      final challenge = await _transport.request('controller.challenge', {
-        'controller_id': widget.host.controllerId,
-      });
-      if (challenge['contract_version'] != '1' ||
-          challenge['purpose'] != 'eidolon-controller-ble-auth-v1' ||
-          challenge['controller_id'] != widget.host.controllerId ||
-          challenge['challenge'] is! String ||
-          challenge['reset_epoch'] is! int) {
-        throw const CommissioningRequestException(
-          'controller_denied',
-          '主机返回了无效的 Controller challenge',
-        );
-      }
-      final signature = await _controllerKeys.signChallenge(challenge);
-      await _transport.request('controller.authenticate', {
-        ...challenge,
-        'signature': signature,
-      });
+      await _transport.authenticateController(_controllerKeys,
+          expectedControllerId: widget.host.controllerId);
       final response = await _transport.request('wifi.scan', const {});
       final rawNetworks = response['networks'];
       if (rawNetworks is! List) {
@@ -148,8 +132,8 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
         _networkStatus = current is Map
             ? current['state'] == 'connected'
                 ? '主机当前 Wi-Fi：${current['ssid'] ?? '已连接'}。请选择希望主机使用的网络。'
-                : '主机当前未连接 Wi-Fi。请选择手机所在的网络。'
-            : '请选择手机所在的 Wi-Fi；蓝牙连接不代表手机能通过局域网访问主机。';
+                : '主机当前未连接 Wi-Fi。请选择希望主机使用的网络。'
+            : '请选择主机要使用的 Wi-Fi。设置通过蓝牙完成，手机无需先加入该网络。';
         _networks = rawNetworks
             .whereType<Map<String, dynamic>>()
             .map(WifiNetwork.fromJson)
@@ -171,34 +155,14 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
       setState(() => _error = '受保护 Wi-Fi 的密码至少需要 8 个字符');
       return;
     }
-    var staged = false;
     await _run(() async {
       setState(() => _progress = '正在切换主机 Wi-Fi；Controller 和数据不会改变');
-      final result = await _transport.request('wifi.configure', {
-        'operation_id': _operationId,
-        'ssid': ssid,
-        'passphrase': secured ? _passphrase.text : null,
-        'hidden': _selected == null,
-      });
-      final operation = result['operation'];
-      if (operation is! Map ||
-          !{'waiting_confirmation', 'succeeded'}.contains(operation['state'])) {
-        throw const CommissioningRequestException(
-          'network_stage_failed',
-          '主机没有完成新 Wi-Fi 连接',
-        );
-      }
-      if (operation['state'] == 'waiting_confirmation') {
-        staged = true;
-        final confirmed = await _transport
-            .request('wifi.confirm', {'operation_id': _operationId});
-        if (confirmed['operation'] is! Map ||
-            (confirmed['operation'] as Map)['state'] != 'succeeded') {
-          throw const CommissioningRequestException(
-              'network_confirm_failed', '主机没有确认新 Wi-Fi 已保存');
-        }
-        staged = false;
-      }
+      await _transport.configureWifi(
+        operationId: _operationId,
+        ssid: ssid,
+        passphrase: secured ? _passphrase.text : null,
+        hidden: _selected == null,
+      );
       await _transport.close();
       if (!mounted) return;
       setState(() {
@@ -206,14 +170,6 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
         _progress = null;
       });
     });
-    if (staged) {
-      try {
-        await _transport
-            .request('wifi.rollback', {'operation_id': _operationId});
-      } catch (_) {
-        // The Host-side NetworkManager checkpoint also has an automatic timeout.
-      }
-    }
     if (!_complete && mounted) _operationId = _uuidV4();
   }
 
@@ -336,7 +292,7 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
               const SizedBox(height: 12),
               const Text('Wi-Fi 已更换', textAlign: TextAlign.center),
               const SizedBox(height: 8),
-              const Text('请让手机连接同一网络。返回后会重新查找主机并验证连接。',
+              const Text('网络配置已保存。手机需能访问主机所在网络才能继续使用局域网功能。',
                   textAlign: TextAlign.center),
               const SizedBox(height: 16),
               FilledButton(

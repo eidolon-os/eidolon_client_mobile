@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'setup_models.dart';
+import 'controller_key_bridge.dart';
 
 abstract interface class CommissioningTransport {
   Future<bool> requestPermission();
@@ -168,5 +169,73 @@ class PlatformBleCommissioningTransport implements CommissioningTransport {
         bytes.map((value) => value.toRadixString(16).padLeft(2, '0')).join();
     return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
         '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+  }
+}
+
+/// Prove possession of this installation's key on an already pinned BLE link.
+/// Enrollment and subsequent visits use the same Controller authentication.
+extension ControllerCommissioning on CommissioningTransport {
+  Future<void> configureWifi(
+      {required String operationId,
+      required String ssid,
+      required String? passphrase,
+      required bool hidden}) async {
+    var staged = false;
+    try {
+      final result = await request('wifi.configure', {
+        'operation_id': operationId,
+        'ssid': ssid,
+        'passphrase': passphrase,
+        'hidden': hidden,
+      });
+      final operation = result['operation'];
+      if (operation is! Map ||
+          !{'waiting_confirmation', 'succeeded'}.contains(operation['state'])) {
+        throw const CommissioningRequestException(
+            'network_stage_failed', '主机没有完成 Wi-Fi 连接。');
+      }
+      if (operation['state'] == 'succeeded') return;
+      staged = true;
+      final confirmed =
+          await request('wifi.confirm', {'operation_id': operationId});
+      if (confirmed['operation'] is! Map ||
+          (confirmed['operation'] as Map)['state'] != 'succeeded') {
+        throw const CommissioningRequestException(
+            'network_confirm_failed', '主机没有确认新 Wi-Fi 已保存。');
+      }
+    } catch (_) {
+      if (staged) {
+        try {
+          await request('wifi.rollback', {'operation_id': operationId});
+        } catch (_) {
+          // NetworkManager's checkpoint also rolls back without a confirmation.
+        }
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> authenticateController(ControllerKeyBridge keys,
+      {String? expectedControllerId}) async {
+    final identity = await keys.getIdentity();
+    if (expectedControllerId != null &&
+        identity.controllerId != expectedControllerId) {
+      throw const CommissioningRequestException(
+          'controller_denied', '本机管理凭据已变化，请重新添加管理授权。');
+    }
+    final challenge = await request('controller.challenge', {
+      'controller_id': identity.controllerId,
+    });
+    if (challenge['contract_version'] != '1' ||
+        challenge['purpose'] != 'eidolon-controller-ble-auth-v1' ||
+        challenge['controller_id'] != identity.controllerId ||
+        challenge['challenge'] is! String ||
+        challenge['reset_epoch'] is! int) {
+      throw const CommissioningRequestException(
+          'invalid_response', '主机返回的管理员身份验证请求无效。');
+    }
+    final signature = await keys.signChallenge(challenge);
+    await request(
+        'controller.authenticate', {...challenge, 'signature': signature});
   }
 }

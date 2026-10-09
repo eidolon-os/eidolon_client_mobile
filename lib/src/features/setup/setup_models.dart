@@ -64,63 +64,18 @@ class ControllerIdentity {
   final String fingerprint;
 }
 
-/// Digits in a Setup code. Mirrors the Host's own rule: eight is what Matter
-/// and HomeKit both settled on, short enough to read aloud and safe only
-/// because the session it unlocks is one-time, expiring, and dies after a few
-/// wrong guesses.
+/// The eight-digit credential authorizes adding one peer Controller grant.
 const int setupCodeDigits = 8;
 final RegExp setupCodePattern = RegExp('^[0-9]{$setupCodeDigits}\$');
 
-/// The Owner's way back in, spelled out because it is invisible from the phone.
-///
-/// Reinstalling the App throws away the controller credential, and the Host
-/// then correctly refuses a phone it has never authorized. Nothing on the phone
-/// can undo that — deliberately: a phone that lost its authorization must not
-/// be able to grant itself another. The only way through is an operator command
-/// on the Host, which the App must never trigger remotely for the same reason.
-///
-/// It says "限时窗口" and names the Setup code because the command used to only
-/// revoke: an Owner who ran it landed on a Host that nothing held and nothing
-/// could claim, and getting out needed a second command nobody had mentioned.
-/// It is written into the failure text because of what happened without it: a
-/// phone that could reach its Host, be refused, and say nothing about a
-/// recovery that exists reads as broken hardware.
-/// Two ways back, and the lighter one first.
-///
-/// This used to name only `controller-reset --apply`, which **revokes every
-/// authorized management phone** (`eidolon_admin/.../bootstrap/cli.py`: "revoke
-/// every Controller Grant and open one bounded window"). For the case this text
-/// actually appears in — the Host is fine and *this* phone lost its authority —
-/// that is far more than is needed, and someone following it would have cut off
-/// every other phone in the household to get one back. `commissioning-code`
-/// mints the same one-time Setup code and revokes nothing.
-///
-/// Verified on a real Host rather than read: a phone in exactly this state got
-/// back in with 「不再管理这台主机」 → re-add → a code from `commissioning-code`,
-/// with no reset anywhere.
-///
-/// The constant is still called `controllerResetGuidance` because two of its
-/// call sites are in a file another session has open; the name is now narrower
-/// than what it says.
-/// What to do about a Host that has no open Setup window, claimed or not.
-///
-/// Kept apart from [controllerResetGuidance] because the two answer different
-/// questions, and merging them is what produced advice about revoking grants on
-/// a Host that had none. This one is the whole story for a Host nobody has
-/// claimed yet — including a brand-new one, which does **not** open a window on
-/// its own: a window exists if and only if someone minted one (ADR-0006).
-const String firstSetupCodeGuidance = '认领窗口不会自己打开——包括一台全新的主机：'
-    '要有人在主机旁边、能登进这台主机，执行 `eidolon-ops commissioning-code` '
-    '取一个一次性 Setup 码，然后在这里输入。码有有效期，过期就再取一次。';
+/// Adding or recovering one peer does not revoke any other Controller.
+const String firstSetupCodeGuidance = '请使用主机提供的 Setup 码；没有开放窗口时，'
+    '可由任意已授权管理手机邀请，或在主机上执行 `eidolon-ops commissioning-code`。';
 
-const String controllerResetGuidance = '如果这台手机以前连得上（例如重装过 App，管理凭据已随之清空），'
-    '需要有人在主机旁边、能登进这台主机。通常这样就够了：执行 '
-    '`eidolon-ops commissioning-code`，它会给出一个一次性 Setup 码；'
-    '在这台手机上「不再管理这台主机」，再重新添加并输入这个码。'
-    '其他已授权的手机不受影响，Host 上的数据也不会丢失。'
-    '只有在你确实想收回所有管理手机的授权时，才需要 `eidolon-ops controller-reset --apply`：'
-    '它会撤销全部授权并当场打开一个限时认领窗口。'
-    '两者都要物理/本机在场，App 不能远程发起。';
+const String controllerRecoveryGuidance = '可由另一台已授权管理手机邀请，'
+    '或在主机上执行 `eidolon-ops commissioning-code`，取得 Setup 码后重新添加这台主机。'
+    '新增管理授权不会撤销其他手机，也不会改变主机数据或网络。'
+    '只有需要撤销全部管理授权时，才使用 `eidolon-ops controller-reset --apply`。';
 
 class CommissioningEndpoint {
   const CommissioningEndpoint._({

@@ -15,6 +15,7 @@ import 'package:http/testing.dart';
 import 'support/host_session_fixtures.dart';
 import 'support/setup_discovery_fixtures.dart';
 import 'support/setup_fixtures.dart';
+import 'support/local_api_fixtures.dart' show signedEndpointDocument;
 
 class _LanDiscovery implements LocalApiDiscovery {
   @override
@@ -41,6 +42,7 @@ class _LanDiscovery implements LocalApiDiscovery {
 
 class _Ble extends NoopTransport {
   int secureCalls = 0;
+  bool granted = false;
   final operations = <String>[];
   @override
   Future<List<NearbyEidolonHost>> scan(
@@ -68,7 +70,23 @@ class _Ble extends NoopTransport {
   Future<Map<String, dynamic>> request(
       String operation, Map<String, dynamic> payload) async {
     operations.add(operation);
+    if (operation == 'controller.challenge' && !granted) {
+      throw const CommissioningRequestException(
+          'controller_denied', 'Not enrolled');
+    }
+    if (operation == 'claim.complete') granted = true;
     return switch (operation) {
+      'controller.challenge' => {
+          'contract_version': '1',
+          'purpose': 'eidolon-controller-ble-auth-v1',
+          'controller_id': controllerIdFixture,
+          'challenge': validHostChallenge,
+          'reset_epoch': 0,
+        },
+      'controller.authenticate' => {},
+      'claim.complete' => {
+          'controller': {'controller_id': controllerIdFixture}
+        },
       'session.authenticate' => {
           'state': {'claim_state': 'unclaimed'}
         },
@@ -119,6 +137,32 @@ Future<void> _scan(
 }
 
 void main() {
+  testWidgets('LAN recovers a forgotten Controller without a Setup window',
+      (tester) async {
+    final registry = InMemoryHostRegistry();
+    final document = await signedEndpointDocument();
+    final endpoint =
+        await CommissioningEndpoint.parseAndVerifyDiscovered(document);
+    final requests = <String>[];
+    await _scan(tester,
+        ble: UnavailableBleTransport(),
+        registry: registry,
+        lan: _lan(
+            fetch: (_) async => document,
+            client: (_) => MockClient((request) {
+                  requests.add(request.url.path);
+                  return hostSessionResponse(request);
+                })));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('添加'));
+    await tester.pumpAndSettle();
+    expect(find.text('主机接入已完成'), findsOneWidget);
+    expect(find.byKey(const Key('development-setup-code')), findsNothing);
+    expect(requests,
+        ['/api/local/v1/auth/challenges', '/api/local/v1/auth/sessions']);
+    expect((await registry.load()).single.hostId, endpoint.hostId);
+  });
+
   testWidgets(
       'LAN-only Host can be claimed without BLE permission or Wi-Fi setup',
       (tester) async {
@@ -129,6 +173,9 @@ void main() {
         lan: _lan(client: (pin) {
           expect(pin, validCommissioningEndpoint['tls_spki_fingerprint']);
           return MockClient((request) async {
+            if (request.url.path == '/api/local/v1/auth/challenges') {
+              return http.Response('{}', 401);
+            }
             requests.add(request);
             return http.Response(
                 jsonEncode({
@@ -155,12 +202,11 @@ void main() {
     expect(requests, isEmpty);
     await tester.tap(find.text('添加'));
     await tester.pumpAndSettle();
-    expect(find.text('主机已经联网，无需重新配置 Wi-Fi。'), findsOneWidget);
+    expect(find.text('已通过局域网找到主机，无需为添加手机重新配网。'), findsOneWidget);
     expect(find.textContaining('连上 Wi-Fi'), findsNothing);
     await tester.enterText(
         find.byKey(const Key('development-setup-code')), '12345678');
-    await tester.enterText(
-        find.byKey(const Key('lan-controller-name')), '我的平板');
+    await tester.enterText(find.byKey(const Key('controller-name')), '我的平板');
     await tester.tap(find.byKey(const Key('authenticate-setup-code')));
     await tester.pumpAndSettle();
     expect(find.text('主机接入已完成'), findsOneWidget);
@@ -236,13 +282,20 @@ void main() {
     await tester.tap(find.text('添加'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('setup-code-title')), findsOneWidget);
-    expect(find.byKey(const Key('lan-controller-name')), findsNothing);
+    expect(find.byKey(const Key('controller-name')), findsOneWidget);
     await tester.enterText(
         find.byKey(const Key('development-setup-code')), '12345678');
     await tester.tap(find.byKey(const Key('authenticate-setup-code')));
     await tester.pumpAndSettle();
     expect(find.text('让主机加入 Wi-Fi'), findsOneWidget);
-    expect(ble.operations, ['session.authenticate', 'wifi.scan']);
+    expect(ble.operations, [
+      'controller.challenge',
+      'session.authenticate',
+      'claim.complete',
+      'controller.challenge',
+      'controller.authenticate',
+      'wifi.scan'
+    ]);
   });
 
   testWidgets('a refused LAN claim is not automatically replayed over BLE',
@@ -252,7 +305,10 @@ void main() {
     await _scan(tester,
         ble: ble,
         lan: _lan(
-            client: (_) => MockClient((_) async {
+            client: (_) => MockClient((request) async {
+                  if (request.url.path == '/api/local/v1/auth/challenges') {
+                    return http.Response('{}', 401);
+                  }
                   claims++;
                   return http.Response('{}', 401);
                 })));
@@ -271,8 +327,8 @@ void main() {
     await tester.tap(find.byKey(const Key('retry-setup-via-nearby')));
     await tester.pumpAndSettle();
     expect(ble.secureCalls, 1);
-    expect(ble.operations, isEmpty);
-    expect(find.byKey(const Key('lan-controller-name')), findsNothing);
+    expect(ble.operations, ['controller.challenge']);
+    expect(find.byKey(const Key('controller-name')), findsOneWidget);
     expect(
         tester
             .widget<TextField>(find.byKey(const Key('development-setup-code')))

@@ -171,23 +171,16 @@ void main() {
 
     expect(find.byType(ControllerRecoveryPage), findsOneWidget);
     expect(find.byKey(const Key('controller-recovery-page')), findsOneWidget);
-    // The three facts an Owner needs before starting: who has to be there,
-    // what it takes away, and what it keeps.
-    expect(find.textContaining('主机旁边'), findsWidgets);
-    expect(find.textContaining('撤销'), findsWidgets);
-    expect(find.textContaining('不会丢'), findsWidgets);
-    // And why the App cannot do it: a phone that could open this window
-    // remotely would hand the same key to whoever stole it.
-    expect(find.textContaining('这台 App 不能'), findsWidgets);
-
+    expect(find.textContaining('任意管理手机'), findsWidgets);
+    expect(find.textContaining('无需撤销其他手机'), findsWidgets);
     // The command, verbatim, because this is the one step the App cannot take.
     await tester.drag(find.byType(ListView), const Offset(0, -600));
     await tester.pumpAndSettle();
     final command = tester.widget<SelectableText>(
       find.byKey(const Key('recovery-command')),
     );
-    expect(command.data, contains('controller-reset'));
-    expect(command.data, contains('--apply'));
+    expect(command.data, contains('commissioning-code'));
+    expect(command.data, isNot(contains('controller-reset')));
   });
 
   testWidgets('the recovery page hands the Owner back to the claim flow',
@@ -235,10 +228,6 @@ void main() {
     await tester.tap(find.byKey(const Key('authenticate-setup-code')));
     await tester.pumpAndSettle();
 
-    final keepNetwork = find.byKey(const Key('keep-network-and-claim'));
-    await tester.ensureVisible(keepNetwork);
-    await tester.tap(keepNetwork);
-    await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('setup-error')));
     await tester.pumpAndSettle();
 
@@ -249,7 +238,7 @@ void main() {
       ),
     );
     expect(notice.data, contains('controller-reset'));
-    expect(notice.data, contains('物理'));
+    expect(notice.data, contains('管理手机邀请'));
   });
 
   test('each way back is one bounded act, and the lighter one comes first', () {
@@ -272,22 +261,22 @@ void main() {
     //
     // So: both commands may be named, because they are alternatives rather
     // than steps. What must never happen is one recovery split across two.
-    expect(controllerResetGuidance, contains('commissioning-code'));
-    expect(controllerResetGuidance, contains('controller-reset'));
-    expect(controllerResetGuidance, contains('Setup 码'));
+    expect(controllerRecoveryGuidance, contains('commissioning-code'));
+    expect(controllerRecoveryGuidance, contains('controller-reset'));
+    expect(controllerRecoveryGuidance, contains('Setup 码'));
 
     // The lighter path is offered first, because it is the one that fits the
     // situation this text is shown in.
     expect(
-      controllerResetGuidance.indexOf('commissioning-code'),
-      lessThan(controllerResetGuidance.indexOf('controller-reset')),
+      controllerRecoveryGuidance.indexOf('commissioning-code'),
+      lessThan(controllerRecoveryGuidance.indexOf('controller-reset')),
     );
 
     // And the heavier one says what it costs, so choosing it is a decision.
-    expect(controllerResetGuidance, contains('撤销全部授权'));
+    expect(controllerRecoveryGuidance, contains('撤销全部管理授权'));
 
     // Neither is presented as a step in the other: no "then", no "再执行".
-    expect(controllerResetGuidance, isNot(contains('然后执行')));
-    expect(controllerResetGuidance, isNot(contains('再执行')));
+    expect(controllerRecoveryGuidance, isNot(contains('然后执行')));
+    expect(controllerRecoveryGuidance, isNot(contains('再执行')));
   });
 }
