@@ -205,3 +205,37 @@ StackChan 的会话关闭可见设备主动 `RequestVoiceLeave`、`session_close
 后续重新打开 USB 串口采样记录到 `USB_UART_CHIP_RESET`，该采样会影响设备运行，
 因此启动片段不作为“对话期间无复位”的证据。对话结论以采样之前的 Channel 时间线、
 设备此前连续采集和 Host 审计交叉确认，不凭开机日志推断用户对话历史。
+
+
+### 补充验收：离线删除竞态与重启持久性（同日 03:46–04:05）
+
+补齐上一轮尚未真机覆盖的边界，设备继续运行 `1f301490c`，不新增固件逻辑：
+
+1. 用户将两台仍有有效 Claim 的设备长按进入配网模式，设备离开 Host 网络。
+2. 通过 mobile 正常移除两台设备。Host 两条擦除操作均为 `pending`，
+   `attempt_count=0`、`delivery_accepted_at=null`、`acknowledged_at=null`。
+   没有先重启、手工擦除或改库，因此保留了“Host 已撤销、设备未收到删除”的现场。
+3. 从“添加设备或恢复网络”重新设置 eidolon 网络，完成两次设备访问和新身份认领。
+   Waveshare 新 instance 尾号 `a731b0e4ca93` 于 03:55:04 激活；StackChan 新
+   instance 尾号 `df2d549c2e4a` 于 04:00:26 激活。旧 Claim 保持 revoked，
+   旧擦除操作仍 pending 且未投递，新身份未被旧命令清理。
+4. 通过产品界面恢复原伙伴和输出权限：Waveshare → mac（收音、说话、文字）；
+   StackChan → 小栈（收音、说话、文字、表情、提示音、动作）。
+5. 04:02:57 复用 `tests/hil/device_admission_hil.py` 的 `Device.capture(reset=True)`
+   明确复位两台并连续采集 90 秒。两台自动连回 eidolon，恢复同一新 instance 的
+   approved 配置，无需重新配网或认领。Waveshare 于 04:03:14、StackChan 于
+   04:03:20 达到 `operational_ready=1`。重启后 Host Claim 身份与激活时间不变，
+   旧删除操作仍绑定旧身份；采集期没有看门狗或异常崩溃记录。
+6. 用户分别实际对话并确认听到回复。Channel 时间线交叉确认：
+   StackChan `baa229ff392947a9`（04:04:14）、Waveshare `1cfaa648eeed495e`
+   （04:04:30）均有提交、模型完成、提供方音频与播放完成事件。
+
+所有时间为 Asia/Shanghai。此轮证明旧命令不会路由到新身份；强制把旧命令交给新
+instance 时拒绝执行的行为仍由 `device_local_erase_core_test` 覆盖，并未在生产服务
+伪造投递。临时 worktree 已由工作区其他操作清理，核查两仓只登记 main，未再次删除。
+
+观察项：Waveshare 首次访问后 Android 自动回到 rcgy5#305，切回已保存的 eidolon 后
+保留的流程继续完成；StackChan 首次 `/prov-session` 有一次 unexpected-end-of-stream，
+在写配置之前重试成功。两项均如实保留，不将本轮通过描述为零瞬态失败，也不因此扩展
+本任务去改网络选择或安全握手机制。本轮未手工更改数据库/NVS、未重新烧录、未清除旧
+删除审计；新认领、重启和对话均走既有产品流程。
