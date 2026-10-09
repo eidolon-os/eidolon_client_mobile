@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../../theme/eidolon_theme.dart';
 
@@ -11,6 +13,10 @@ import 'device_setup_models.dart';
 import 'device_setup_ports.dart';
 import 'owner_domain_directory_verifier.dart';
 import '../host_setup/failure_sentences.dart';
+import '../host_setup/host_locator.dart';
+import '../host_setup/host_product_session.dart';
+import '../host_setup/local_api_client.dart';
+import '../host_setup/pinned_http_client.dart';
 
 List<DeviceWifiNetwork> _strongestNetworkPerSsid(
     Iterable<DeviceWifiNetwork> networks) {
@@ -41,7 +47,14 @@ class DeviceSetupPage extends StatefulWidget {
     this.allowDevelopmentTrust = true,
     this.expectedDeviceId,
     this.knownDevices = const {},
+    this.hostReturnBudget = const Duration(seconds: 90),
+    this.hostReturnInterval = const Duration(seconds: 3),
+    this.clock = DateTime.now,
   });
+
+  /// Where the time comes from, for the wait above. The coordinator's own
+  /// notion, so a test can move it rather than wait it out.
+  final DeviceSetupClock clock;
 
   final DeviceProvisioningTransport transport;
   final DeviceAdmissionPort admission;
@@ -49,6 +62,23 @@ class DeviceSetupPage extends StatefulWidget {
   final Future<DeviceOnboardingTarget> Function() loadTarget;
   final String? expectedDeviceId;
   final Map<String, String> knownDevices;
+
+  /// How long the Host is given to become reachable again after this phone
+  /// leaves the device's access point, before the person is told to put the
+  /// phone back on the Host's network themselves.
+  ///
+  /// Not a request timeout. Leaving a device's access point hands the radio
+  /// back to the platform, which then has to re-associate with the network
+  /// the Host is on, and that step is the platform's and the router's, not
+  /// ours: measured on real hardware, one tablet was refused by its own home
+  /// router for over a minute and then had that network "temporarily
+  /// disabled" by Android for consecutive failures. Asking the Host four
+  /// times in twelve seconds and giving up — what this screen used to do —
+  /// reported that platform step as the Host's refusal, and threw away the
+  /// identity the device had just prepared, so the person's only move was to
+  /// visit the device again for nothing.
+  final Duration hostReturnBudget;
+  final Duration hostReturnInterval;
 
   /// Development boards carry a shared setup secret rather than a per-device
   /// one, and say so in their descriptor. Refusing them outright would make
@@ -60,7 +90,26 @@ class DeviceSetupPage extends StatefulWidget {
   State<DeviceSetupPage> createState() => _DeviceSetupPageState();
 }
 
-enum _Step { introduction, choosingDevice, choosingNetwork, working, complete }
+enum _Step {
+  introduction,
+  choosingDevice,
+  // The device has prepared its identity and the session is closed, but
+  // this phone has not come back onto the Host's network; the standing is
+  // still to be asked for. Not a failure of the device or the Host.
+  awaitingHost,
+  choosingNetwork,
+  working,
+  complete,
+}
+
+/// The Host did not answer within [DeviceSetupPage.hostReturnBudget] after
+/// the device's access point was left. Internal: the screen turns it into the
+/// awaiting-Host step rather than an error, because nothing is wrong yet.
+class _HostNotBackYet implements Exception {
+  const _HostNotBackYet(this.lastFailure);
+
+  final Object lastFailure;
+}
 
 class _DeviceSetupPageState extends State<DeviceSetupPage>
     with WidgetsBindingObserver {
@@ -116,6 +165,10 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
       if (!_busy) {
         if (_activeSetupId != null && _step == _Step.working && !_refused) {
           unawaited(_resumePersistedAdmission());
+        } else if (_step == _Step.awaitingHost) {
+          // Coming back from the system Wi-Fi settings is the usual way the
+          // network is restored; the person should not also have to tap.
+          unawaited(_resumeVoucher());
         } else if (_step == _Step.introduction) {
           unawaited(_loadPendingSetups());
         }
@@ -166,7 +219,16 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   }
 
   Future<void> _discover() => _run(() async {
-        setState(() => _progress = '正在寻找可以设置的设备');
+        setState(() {
+          _progress = '正在寻找可以设置的设备';
+          // A fresh search forgets the device the previous one prepared;
+          // the one chosen next is read again in full.
+          _candidate = null;
+          _descriptor = null;
+          _voucher = null;
+          _networks = const [];
+          _network = null;
+        });
         if (!await widget.transport.requestPermission()) {
           throw Exception('设置设备需要「附近设备」权限。');
         }
@@ -252,43 +314,161 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         // phone had. So this is two visits, and the standing the device will
         // present is signed between them, for the key it just showed us.
         if (!mounted) return;
-        setState(() => _progress = '正在向主机取得这台设备的准入凭据');
-        final voucher =
-            descriptor.requiresVoucher ? await _issueVoucher(descriptor) : null;
-        if (!mounted) return;
+        // What the first visit established is kept before the Host is asked,
+        // so a Host that cannot be reached yet costs a wait and not a second
+        // visit to the device.
         setState(() {
           _candidate = candidate;
           _descriptor = descriptor;
-          _voucher = voucher;
+          _voucher = null;
           _networks = networks;
-          _step = _Step.choosingNetwork;
-          _progress = null;
         });
+        await _issueVoucherOrWait(descriptor);
+      });
+
+  /// Ask the Host for this device's standing, or leave the screen waiting for
+  /// the phone to get back to the Host's network.
+  ///
+  /// Only the Host's answer moves the screen on; only a refusal is an error.
+  /// Not reaching the Host within the budget is neither — it is the one state
+  /// a person can fix from the system settings without touching the device.
+  Future<void> _issueVoucherOrWait(
+    DeviceProvisioningDescriptor descriptor,
+  ) async {
+    if (!descriptor.requiresVoucher) {
+      if (!mounted) return;
+      setState(() {
+        _step = _Step.choosingNetwork;
+        _progress = null;
+      });
+      return;
+    }
+    final CommissioningVoucher voucher;
+    try {
+      voucher = await _issueVoucher(descriptor);
+    } on _HostNotBackYet {
+      if (!mounted) return;
+      setState(() {
+        _step = _Step.awaitingHost;
+        _progress = null;
+        _error = null;
+      });
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _voucher = voucher;
+      _step = _Step.choosingNetwork;
+      _progress = null;
+    });
+  }
+
+  /// The person says the phone is back on the Host's network; ask again with
+  /// what the device already prepared. Nothing about the device is redone.
+  Future<void> _resumeVoucher() => _run(() async {
+        final descriptor = _descriptor;
+        if (descriptor == null) {
+          throw Exception('还没有读到这台设备的信息，请重新选择设备。');
+        }
+        await _issueVoucherOrWait(descriptor);
       });
 
   /// Ask the Host to sign this device's standing, once this phone is back on
   /// the Host's network.
   ///
-  /// Releasing the device's network is not instant on Android, so a first
-  /// attempt can still leave from the wrong side of the switch. Retried rather
-  /// than reported: the alternative is telling the operator that the Host is
-  /// unreachable at the exact moment it is merely still being handed back.
+  /// Releasing the device's network is not instant on Android, and getting
+  /// back onto the Host's network is slower still and not always automatic:
+  /// the platform re-associates on its own schedule, and a router that does
+  /// not answer leaves the phone with no network at all. So the Host is asked
+  /// for as long as [DeviceSetupPage.hostReturnBudget] allows while the
+  /// failure is "not reachable", and the person can see that this is what is
+  /// being waited for. A refusal is reported at once: waiting cannot change
+  /// the Host's mind, and pretending otherwise hides the one thing the person
+  /// would need to read.
   Future<CommissioningVoucher> _issueVoucher(
     DeviceProvisioningDescriptor descriptor,
   ) async {
-    Object? failure;
-    for (var attempt = 0; attempt < 4; attempt++) {
+    final started = widget.clock();
+    final deadline = started.add(widget.hostReturnBudget);
+    Object? lastFailure;
+    while (true) {
+      if (!mounted) throw _HostNotBackYet(lastFailure ?? 'closed');
+      if (lastFailure == null) {
+        setState(() => _progress = '正在向主机取得这台设备的准入凭据');
+      }
       try {
         return await widget.admission.issueCommissioningVoucher(
           operationalSpkiSha256: descriptor.identityFingerprint,
         );
       } catch (error) {
-        failure = error;
-        await Future<void>.delayed(const Duration(seconds: 3));
+        if (!_hostNotReachedYet(error)) {
+          throw Exception('主机没有为这台设备签发准入凭据：${failureSentence(error)}');
+        }
+        lastFailure = error;
       }
+      if (!widget.clock().isBefore(deadline)) {
+        throw _HostNotBackYet(lastFailure);
+      }
+      if (!mounted) throw _HostNotBackYet(lastFailure);
+      // Said as soon as it is known, not after the first interval: what the
+      // person sees during the wait is what tells them which network to look
+      // at if it goes on.
+      final waited = widget.clock().difference(started).inSeconds;
+      setState(() => _progress =
+          '正在等手机回到主机所在的网络，再向主机取得这台设备的准入凭据（已等 $waited 秒）');
+      await Future<void>.delayed(widget.hostReturnInterval);
     }
-    throw Exception('主机没有为这台设备签发准入凭据：$failure');
   }
+
+  /// Whether a failure says "the Host was not reached", as opposed to the
+  /// Host having answered — or some Host having answered as the wrong one.
+  ///
+  /// Graded by the transports that produced it, and only by the part of the
+  /// failure that carries the cause. The session relocates the Host when its
+  /// address stops working, and a relocation that ends with nothing reports a
+  /// [HostLocationException] carrying every address it tried and why each
+  /// failed: all of them silent is a phone that is not on the Host's network
+  /// yet; any of them answering with the wrong identity, or an answer this
+  /// build cannot read, is not — waiting cannot change either, and telling
+  /// the person to check their Wi-Fi would send them past the real problem.
+  /// An authorization exception is judged by what it wraps. Re-authentication
+  /// starts because a Host answered 401 and then has to reach that Host
+  /// again; the phone's network going away between those two requests is
+  /// still the network, not the Host's refusal. Without a cause, or with a
+  /// cause that is not silence, it is the refusal it says it is.
+  static bool _hostNotReachedYet(Object error) {
+    if (error is PinnedHttpException) return _silentTransport(error);
+    if (error is HostLocationException) {
+      // What the location itself judged by: addresses learned on this network
+      // over an address merely remembered from a previous one, so a stale
+      // address now owned by something else does not speak for the search.
+      final fresh = error.failures
+          .where((f) => f.candidate.evidence != HostAddressEvidence.remembered)
+          .toList();
+      final relevant = fresh.isNotEmpty ? fresh : error.failures;
+      return relevant.every((failure) => _hostNotReachedYet(failure.error));
+    }
+    if (error is LocalApiRequestException) return false;
+    if (error is HostControllerAuthorizationException) {
+      final cause = error.cause;
+      return !error.reclaimRequired &&
+          cause != null &&
+          _hostNotReachedYet(cause);
+    }
+    return error is TimeoutException ||
+        error is SocketException ||
+        error is http.ClientException;
+  }
+
+  static bool _silentTransport(PinnedHttpException error) =>
+      switch (error.kind) {
+        PinnedHttpFailureKind.unreachable ||
+        PinnedHttpFailureKind.timeout ||
+        PinnedHttpFailureKind.io ||
+        PinnedHttpFailureKind.cancelled =>
+          true,
+        _ => false,
+      };
 
   Future<void> _finish() async {
     if (_busy) return;
@@ -428,6 +608,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           _error = null;
           _candidates = const [];
           _candidate = null;
+          _descriptor = null;
+          _voucher = null;
           _networks = const [];
           _network = null;
           _password.clear();
@@ -457,14 +639,20 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             switch (_step) {
               _Step.introduction => _introduction(),
               _Step.choosingDevice => _deviceList(),
+              _Step.awaitingHost => _awaitingHost(),
               _Step.choosingNetwork => _networkForm(),
               _Step.working => _working(),
               _Step.complete => _complete(),
             },
+            // Only while a visit to the device is what is being waited for.
+            // Once the device has answered, what is being waited for is the
+            // Host, and telling the person to join the device's hotspot then
+            // sends them the wrong way.
             if (_busy &&
                 _candidate?.transportKind == 'softap' &&
                 !_networkConfigured &&
-                (_step == _Step.choosingDevice || _step == _Step.working)) ...[
+                ((_step == _Step.choosingDevice && _descriptor == null) ||
+                    _step == _Step.working)) ...[
               const SizedBox(height: 16),
               Text('如系统要求连接设备，请选择“${_candidate!.transportId}”并允许连接。'
                   '若进入 WLAN 页面，连接该热点后返回此处，设置会自动继续。'
@@ -556,6 +744,44 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           TextButton(
             onPressed: _busy ? null : _discover,
             child: const Text('重新查找'),
+          ),
+        ],
+      );
+
+  /// The device is ready and this phone is not where the Host is.
+  ///
+  /// Says which of the three parties is the one to act on, and that the
+  /// device is not it: its setup mode stays open and what it prepared is kept
+  /// on it, so touching it again would only start over. The way forward is
+  /// the phone's own Wi-Fi, which this app cannot change for the person.
+  Widget _awaitingHost() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('手机还没回到主机所在的网络',
+              style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          if (_descriptor != null)
+            Text(
+              key: const Key('provisionable-device'),
+              _descriptor!.displayName,
+            ),
+          const SizedBox(height: 8),
+          const Text('设备已经准备好，设备上的设置模式还开着，不用再碰设备。'),
+          const SizedBox(height: 4),
+          const Text('手机离开设备热点后没有自动连回主机所在的 Wi-Fi。'
+              '请到系统的 Wi-Fi 设置连回那个网络（必要时先关闭再打开 Wi-Fi），然后回到这里。'),
+          const SizedBox(height: 20),
+          FilledButton.icon(
+            key: const Key('retry-host-voucher'),
+            onPressed: _busy ? null : _resumeVoucher,
+            icon: const Icon(Icons.wifi),
+            label: const Text('已连回网络，继续'),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            key: const Key('rescan-devices'),
+            onPressed: _busy ? null : _discover,
+            child: const Text('重新选择设备'),
           ),
         ],
       );

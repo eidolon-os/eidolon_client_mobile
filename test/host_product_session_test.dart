@@ -495,6 +495,128 @@ void main() {
     expect(workspaceCalls, 2);
   });
 
+  test(
+      'a re-authentication that loses the network says so, and the session recovers',
+      () async {
+    // The Host answered 401, so re-authentication starts; by the time it asks
+    // the Host again, the phone's network is gone. That is not the Host
+    // withdrawing anything, and the failure has to keep saying so.
+    var hostCalls = 0;
+    var networkDown = false;
+    final client = MockClient((request) async {
+      if (networkDown) {
+        throw PinnedHttpException(
+          kind: PinnedHttpFailureKind.unreachable,
+          message: 'Failed to connect to /192.168.1.26:9002',
+          uri: request.url,
+        );
+      }
+      switch (request.url.path) {
+        case '/api/local/v1/host':
+          hostCalls += 1;
+          return http.Response(jsonEncode(_overview()), 200);
+        case '/api/local/v1/auth/challenges':
+          return _challenge();
+        case '/api/local/v1/auth/sessions':
+          return _session();
+        case '/api/local/v1/setup/workspace':
+          if (hostCalls == 1) {
+            networkDown = true;
+            return http.Response('', 401);
+          }
+          return _workspace();
+        default:
+          return http.Response('', 404);
+      }
+    });
+    final session = HostProductSession(
+      host: _host(),
+      transport: _NoopTransport(),
+      controllerKeys: _ControllerKeys(),
+      discovery: _Discovery([_endpoint('192.168.1.26')]),
+      clientFactory: (_) => LocalApiClient(httpClient: client),
+    );
+    addTearDown(session.close);
+    await session.connect();
+
+    Object? failure;
+    try {
+      await session.execute(
+        (api, baseUrl, token) => api.fetchWorkspace(baseUrl, accessToken: token),
+      );
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure, isA<HostControllerAuthorizationException>());
+    final wrapped = failure! as HostControllerAuthorizationException;
+    expect(wrapped.reclaimRequired, isFalse);
+    expect(wrapped.cause, isA<PinnedHttpException>());
+    expect((wrapped.cause! as PinnedHttpException).kind,
+        PinnedHttpFailureKind.unreachable);
+
+    // The network comes back, and nobody tells the session so — no connect(),
+    // no network-change event. Retrying the operation itself is enough: the
+    // session relocates and re-authenticates on its own way back.
+    networkDown = false;
+    final result = await session.execute(
+      (api, baseUrl, token) => api.fetchWorkspace(baseUrl, accessToken: token),
+    );
+    expect(result.isReady, isFalse);
+    expect(session.connection, isNotNull);
+  });
+
+  test('a re-authentication refused by the wrong key does not look again',
+      () async {
+    // The other half of the same branch: a Host that answered, with a key this
+    // phone did not pair with. Nothing about waiting or retrying can change
+    // what it answered, so the next request must not quietly go looking.
+    var hostCalls = 0;
+    final client = MockClient((request) async {
+      switch (request.url.path) {
+        case '/api/local/v1/host':
+          hostCalls += 1;
+          if (hostCalls > 1) {
+            throw PinnedHttpException(
+              kind: PinnedHttpFailureKind.secureChannel,
+              message: 'pin mismatch',
+              uri: request.url,
+            );
+          }
+          return http.Response(jsonEncode(_overview()), 200);
+        case '/api/local/v1/auth/challenges':
+          return _challenge();
+        case '/api/local/v1/auth/sessions':
+          return _session();
+        case '/api/local/v1/setup/workspace':
+          return http.Response('', 401);
+        default:
+          return http.Response('', 404);
+      }
+    });
+    final session = HostProductSession(
+      host: _host(),
+      transport: _NoopTransport(),
+      controllerKeys: _ControllerKeys(),
+      discovery: _Discovery([_endpoint('192.168.1.26')]),
+      clientFactory: (_) => LocalApiClient(httpClient: client),
+    );
+    addTearDown(session.close);
+    await session.connect();
+
+    Future<void> ask() => session.execute(
+          (api, baseUrl, token) =>
+              api.fetchWorkspace(baseUrl, accessToken: token),
+        );
+    await expectLater(ask(), throwsA(isA<HostControllerAuthorizationException>()
+        .having((e) => e.cause, 'cause', isA<PinnedHttpException>())));
+    // Asked again, it refuses at once rather than relocating.
+    await expectLater(
+        ask(),
+        throwsA(isA<HostControllerAuthorizationException>()
+            .having((e) => e.cause, 'cause', isNull)));
+    expect(hostCalls, 2);
+  });
+
   test('a Host already claimed stays reachable when discovery finds nothing',
       () async {
     // Same Wi-Fi, same subnet, the Host answering on its address — and not one

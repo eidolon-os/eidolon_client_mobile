@@ -3,6 +3,11 @@ import 'dart:async';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_page.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_ports.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/host_locator.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/host_product_session.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/local_api_client.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/local_api_discovery.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/pinned_http_client.dart';
 import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -409,6 +414,332 @@ void main() {
     expect(transport.opened, 1);
     expect(transport.sessions.single.closed, isTrue);
   });
+
+  // Leaving the device's access point hands the radio back to the platform,
+  // and getting back onto the Host's network is the platform's and the
+  // router's step. Measured on real hardware: a tablet's own home router
+  // refused its re-association for over a minute after a setup visit, and
+  // Android then disabled that network for consecutive failures. The Host
+  // was never asked anything it could have refused.
+  group('the Host is asked only once this phone is back on its network', () {
+    PinnedHttpException notBack() => PinnedHttpException(
+          kind: PinnedHttpFailureKind.unreachable,
+          message: 'Failed to connect to /192.168.100.21:9002',
+        );
+
+    testWidgets('a Host that is not reachable yet is waited for, not reported',
+        (tester) async {
+      var now = DateTime.utc(2026, 10, 9, 22, 28);
+      final transport = _Transport();
+      final admission = _Admission(transport)
+        ..voucherFailure = (attempt) => attempt <= 3 ? notBack() : null;
+      await tester.pumpWidget(MaterialApp(
+          home: DeviceSetupPage(
+        transport: transport,
+        admission: admission,
+        checkpoints: InMemoryDeviceSetupCheckpointStore(),
+        loadTarget: () async => deviceOnboardingTargetFixture(),
+        clock: () => now,
+      )));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查找设备'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await tester.pump();
+      await tester.pump();
+      // The device has answered and been left; what is waited for is the Host.
+      expect(transport.sessions.single.prepared, isTrue);
+      expect(transport.sessions.single.closed, isTrue);
+      expect(admission.voucherAttempts, 1);
+      expect(find.textContaining('正在等手机回到主机所在的网络'), findsOneWidget);
+      expect(find.textContaining('如系统要求连接设备'), findsNothing);
+      expect(find.textContaining('签发准入凭据：'), findsNothing);
+      for (var i = 0; i < 3; i++) {
+        now = now.add(const Duration(seconds: 3));
+        await tester.pump(const Duration(seconds: 3));
+        await tester.pump();
+      }
+      expect(admission.voucherAttempts, 4);
+      expect(find.text('选择家庭 Wi-Fi'), findsOneWidget);
+      // The device was not visited again for the Host's delay.
+      expect(transport.opened, 1);
+      expect(transport.sessions.single.writes, 0);
+    });
+
+    testWidgets(
+        'past the budget the prepared device is kept and the Host is asked again without a second visit',
+        (tester) async {
+      var now = DateTime.utc(2026, 10, 9, 22, 28);
+      final transport = _Transport();
+      final admission = _Admission(transport)
+        ..voucherFailure = (attempt) => notBack();
+      await tester.pumpWidget(MaterialApp(
+          home: DeviceSetupPage(
+        transport: transport,
+        admission: admission,
+        checkpoints: InMemoryDeviceSetupCheckpointStore(),
+        loadTarget: () async => deviceOnboardingTargetFixture(),
+        hostReturnBudget: const Duration(seconds: 10),
+        hostReturnInterval: const Duration(seconds: 2),
+        clock: () => now,
+      )));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查找设备'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await tester.pump();
+      for (var i = 0; i < 6; i++) {
+        now = now.add(const Duration(seconds: 2));
+        await tester.pump(const Duration(seconds: 2));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      expect(find.text('手机还没回到主机所在的网络'), findsOneWidget);
+      expect(find.textContaining('不用再碰设备'), findsOneWidget);
+      expect(find.byKey(const Key('provisionable-device')), findsOneWidget);
+      // Not an error: nothing has refused anything.
+      expect(find.byIcon(Icons.error_outline), findsNothing);
+      expect(admission.voucherAttempts, 6);
+      expect(transport.opened, 1);
+
+      admission.voucherFailure = null;
+      await tester.tap(find.byKey(const Key('retry-host-voucher')));
+      await tester.pumpAndSettle();
+      expect(find.text('选择家庭 Wi-Fi'), findsOneWidget);
+      expect(admission.voucherAttempts, 7);
+      expect(admission.requestedKey, 'p256:${'a' * 64}');
+      expect(transport.opened, 1);
+      expect(transport.sessions.single.writes, 0);
+    });
+
+    testWidgets('coming back to the app asks the Host again by itself',
+        (tester) async {
+      var now = DateTime.utc(2026, 10, 9, 22, 28);
+      final transport = _Transport();
+      final admission = _Admission(transport)
+        ..voucherFailure = (attempt) => notBack();
+      await tester.pumpWidget(MaterialApp(
+          home: DeviceSetupPage(
+        transport: transport,
+        admission: admission,
+        checkpoints: InMemoryDeviceSetupCheckpointStore(),
+        loadTarget: () async => deviceOnboardingTargetFixture(),
+        hostReturnBudget: const Duration(seconds: 4),
+        hostReturnInterval: const Duration(seconds: 2),
+        clock: () => now,
+      )));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查找设备'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await tester.pump();
+      for (var i = 0; i < 3; i++) {
+        now = now.add(const Duration(seconds: 2));
+        await tester.pump(const Duration(seconds: 2));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      expect(find.text('手机还没回到主机所在的网络'), findsOneWidget);
+
+      // The person went to the system Wi-Fi settings and came back.
+      admission.voucherFailure = null;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(find.text('选择家庭 Wi-Fi'), findsOneWidget);
+      expect(transport.opened, 1);
+    });
+
+    testWidgets('a refusal from the Host is reported at once, not waited out',
+        (tester) async {
+      final transport = _Transport();
+      final admission = _Admission(transport)
+        ..voucherFailure = (attempt) => const LocalApiRequestException(
+              'refused',
+              statusCode: 403,
+              reason: '这台管理设备不能为设备签发凭据',
+            );
+      await tester.pumpWidget(MaterialApp(
+          home: DeviceSetupPage(
+        transport: transport,
+        admission: admission,
+        checkpoints: InMemoryDeviceSetupCheckpointStore(),
+        loadTarget: () async => deviceOnboardingTargetFixture(),
+      )));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查找设备'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('主机没有为这台设备签发准入凭据：这台管理设备不能为设备签发凭据'),
+          findsOneWidget);
+      expect(admission.voucherAttempts, 1);
+      expect(find.text('手机还没回到主机所在的网络'), findsNothing);
+      expect(transport.sessions.single.closed, isTrue);
+      expect(transport.sessions.single.writes, 0);
+    });
+
+    // A relocation that ends with nothing carries every address it tried and
+    // why. Only silence on all of them is "not on the Host's network yet".
+    HostCandidateFailure candidateFailure(
+      Object error, {
+      HostAddressEvidence evidence = HostAddressEvidence.announced,
+    }) =>
+        HostCandidateFailure(
+          HostAddressCandidate(
+            endpoint: const LocalApiEndpoint(
+              instanceName: 'mac-dev',
+              baseUrl: 'https://192.168.100.21:9002',
+              ipAddress: '192.168.100.21',
+              contractVersion: '1',
+            ),
+            evidence: evidence,
+          ),
+          error,
+        );
+
+    testWidgets('a relocation that found only silence is waited for',
+        (tester) async {
+      var now = DateTime.utc(2026, 10, 9, 22, 28);
+      final transport = _Transport();
+      final admission = _Admission(transport)
+        ..voucherFailure = (attempt) => switch (attempt) {
+              1 => HostLocationException(const []),
+              2 => HostLocationException([
+                  candidateFailure(TimeoutException('no answer')),
+                  candidateFailure(notBack(),
+                      evidence: HostAddressEvidence.remembered),
+                ]),
+              _ => null,
+            };
+      await tester.pumpWidget(MaterialApp(
+          home: DeviceSetupPage(
+        transport: transport,
+        admission: admission,
+        checkpoints: InMemoryDeviceSetupCheckpointStore(),
+        loadTarget: () async => deviceOnboardingTargetFixture(),
+        clock: () => now,
+      )));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查找设备'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await tester.pump();
+      for (var i = 0; i < 2; i++) {
+        now = now.add(const Duration(seconds: 3));
+        await tester.pump(const Duration(seconds: 3));
+        await tester.pump();
+      }
+      expect(admission.voucherAttempts, 3);
+      expect(find.text('选择家庭 Wi-Fi'), findsOneWidget);
+      expect(transport.opened, 1);
+    });
+
+    testWidgets(
+        'an address answering as a different Host is reported, not waited out',
+        (tester) async {
+      final transport = _Transport();
+      final admission = _Admission(transport)
+        ..voucherFailure = (attempt) => HostLocationException([
+              candidateFailure(PinnedHttpException(
+                kind: PinnedHttpFailureKind.secureChannel,
+                message: 'pin mismatch',
+              )),
+            ]);
+      await tester.pumpWidget(MaterialApp(
+          home: DeviceSetupPage(
+        transport: transport,
+        admission: admission,
+        checkpoints: InMemoryDeviceSetupCheckpointStore(),
+        loadTarget: () async => deviceOnboardingTargetFixture(),
+      )));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查找设备'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('不是这台手机配对过的那一台'), findsOneWidget);
+      expect(find.textContaining('回到主机所在的网络'), findsNothing);
+      expect(admission.voucherAttempts, 1);
+    });
+
+    // Re-authentication starts because the Host answered 401, and then has
+    // to reach that Host again. The network going away between those two
+    // requests arrives here wrapped as an authorization failure — with the
+    // transport's own grading kept as its cause, which is what decides.
+    testWidgets(
+        'a re-authentication that lost the network is waited for; one the Host refused is not',
+        (tester) async {
+      var now = DateTime.utc(2026, 10, 9, 22, 28);
+      final transport = _Transport();
+      final admission = _Admission(transport)
+        ..voucherFailure = (attempt) => attempt == 1
+            ? HostControllerAuthorizationException(
+                '管理会话已失效，且当前网络无法完成重新认证。请重新连接主机。',
+                cause: notBack(),
+              )
+            : null;
+      await tester.pumpWidget(MaterialApp(
+          home: DeviceSetupPage(
+        transport: transport,
+        admission: admission,
+        checkpoints: InMemoryDeviceSetupCheckpointStore(),
+        loadTarget: () async => deviceOnboardingTargetFixture(),
+        clock: () => now,
+      )));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查找设备'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.textContaining('正在等手机回到主机所在的网络'), findsOneWidget);
+      now = now.add(const Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      expect(find.text('选择家庭 Wi-Fi'), findsOneWidget);
+      expect(admission.voucherAttempts, 2);
+      expect(transport.opened, 1);
+    });
+
+    for (final refusal in [
+      const HostControllerAuthorizationException(
+        '主机已重置或不再授权这台管理设备。',
+        reclaimRequired: true,
+        cause: LocalApiRequestException('refused', statusCode: 403),
+      ),
+      HostControllerAuthorizationException(
+        '管理会话已失效，且当前网络无法完成重新认证。请重新连接主机。',
+        cause: PinnedHttpException(
+          kind: PinnedHttpFailureKind.secureChannel,
+          message: 'pin mismatch',
+        ),
+      ),
+      const HostControllerAuthorizationException('请先安全连接主机'),
+    ]) {
+      testWidgets('an authorization refusal is reported at once: $refusal',
+          (tester) async {
+        final transport = _Transport();
+        final admission = _Admission(transport)
+          ..voucherFailure = (attempt) => refusal;
+        await tester.pumpWidget(MaterialApp(
+            home: DeviceSetupPage(
+          transport: transport,
+          admission: admission,
+          checkpoints: InMemoryDeviceSetupCheckpointStore(),
+          loadTarget: () async => deviceOnboardingTargetFixture(),
+        )));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('查找设备'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.textContaining('Eidolon Body 1'));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('签发准入凭据：'), findsOneWidget);
+        expect(find.textContaining('回到主机所在的网络'), findsNothing);
+        expect(admission.voucherAttempts, 1);
+      });
+    }
+  });
 }
 
 class _Admission implements DeviceAdmissionPort {
@@ -422,6 +753,11 @@ class _Admission implements DeviceAdmissionPort {
   final List<int> sessionsOpenWhenAsked = [];
   String? requestedKey;
   int decisions = 0;
+  int voucherAttempts = 0;
+
+  /// What the Host answers, by attempt number: a failure to throw, or null to
+  /// sign. Stands in for a phone that is not yet back on the Host's network.
+  Object? Function(int attempt)? voucherFailure;
   bool publishEnrollment = true;
   EnrollmentRecoveryProjectionV1 current = canonicalProjection(
     state: 'pending_review',
@@ -435,6 +771,9 @@ class _Admission implements DeviceAdmissionPort {
   }) async {
     sessionsOpenWhenAsked.add(_transport.openSessions);
     requestedKey = operationalSpkiSha256;
+    voucherAttempts += 1;
+    final failure = voucherFailure?.call(voucherAttempts);
+    if (failure != null) throw failure;
     return CommissioningVoucher(
       voucher: 'header.payload.signature',
       jti: 'jti-01',

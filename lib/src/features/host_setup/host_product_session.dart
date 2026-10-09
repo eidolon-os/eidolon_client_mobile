@@ -115,9 +115,21 @@ class HostControllerAuthorizationException implements Exception {
   const HostControllerAuthorizationException(
     this.message, {
     this.reclaimRequired = false,
+    this.cause,
   });
 
   final String message;
+
+  /// What actually failed underneath, when this wraps another failure.
+  ///
+  /// Re-authentication starts because a Host answered 401, and it then has
+  /// to reach that Host again — which can fail for a reason that has nothing
+  /// to do with authorization: the phone's network went away between the two
+  /// requests. Wrapping that into "the session lapsed" was true and lost the
+  /// one fact a caller waiting for the network needs, so the sentence was
+  /// right and the screen acted on the wrong thing. Null when the refusal is
+  /// this session's own judgement rather than a transport's.
+  final Object? cause;
 
   /// Whether reconnecting could ever succeed.
   ///
@@ -611,19 +623,35 @@ class HostProductSession {
             error.statusCode == 403 ||
             error.statusCode == 404 ||
             error.statusCode == 409,
+        cause: error,
       );
     } on SetupTrustException catch (error) {
       _clearConnection();
-      throw HostControllerAuthorizationException(error.message);
-    } on PinnedHttpException {
+      throw HostControllerAuthorizationException(error.message, cause: error);
+    } on PinnedHttpException catch (error) {
       _clearConnection();
-      throw const HostControllerAuthorizationException(
+      // The transport's own grading travels with this: a Host that went
+      // silent is a different thing from one that answered with the wrong
+      // key, and only the cause can still tell them apart.
+      //
+      // Silence also leaves the next request a way back on its own. Cleared
+      // alone, the connection reads as never made and the next operation
+      // refuses with "请先安全连接主机" — a caller waiting for the network to
+      // return would be told to go and connect by hand at the exact moment
+      // the session already knows how. Marked stale, the next request
+      // relocates and re-authenticates through the path every other lost
+      // address takes; a Host that answered with the wrong key is not
+      // marked, because looking again cannot change what it answered.
+      if (_hostDidNotAnswer(error)) _locationStale = true;
+      throw HostControllerAuthorizationException(
         '管理会话已失效，且当前网络无法完成重新认证。请重新连接主机。',
+        cause: error,
       );
-    } on FormatException {
+    } on FormatException catch (error) {
       _clearConnection();
-      throw const HostControllerAuthorizationException(
+      throw HostControllerAuthorizationException(
         '管理会话已失效，主机返回的重新认证数据不兼容。',
+        cause: error,
       );
     } finally {
       _release(client.close);
