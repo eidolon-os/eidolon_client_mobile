@@ -18,13 +18,13 @@ Mac host（`owner-0342958c…` gen 1）的 App 里点「添加设备或恢复网
   轮流失败；`22:33:18` 与 `22:43:26` 两次
   `Network temporarily disabled due to consecutive failures`。此后手机一直没有 Wi-Fi。
 - `22:28:00.929` 起 App 向主机取 voucher：`Failed to connect to /192.168.100.21:9002`，
-  12 秒内 4 次后放弃，`_descriptor` 被丢弃；Mac host 的 `local-api.log` 里从头到尾没有
+  按 3 秒间隔重试 4 次后放弃（总耗时还包括每次请求的耗时），`_descriptor` 被丢弃；Mac host 的 `local-api.log` 里从头到尾没有
   `POST /commissioning-vouchers`。
 - 主机侧全部正常（15/15、`app-ready`、Hub 8443 证书链与 mDNS 均验证通过）；固件侧设备在
   124 ms 内完成了准备，设置窗口保持打开。
 
 **根因**：两次访问之间的「回到主机网络」是平台与路由器的一步，不是我们的；App 把它当成
-12 秒内必然完成的事，于是把平台没回网报告成「主机没有签发凭据」，并丢掉设备刚准备好的身份，
+短重试窗口内必然完成的事，于是把平台没回网报告成「主机没有签发凭据」，并丢掉设备刚准备好的身份，
 用户只能再去碰设备——而设备那边什么都没错。
 
 ## 修复（`features/device_setup`）
@@ -68,7 +68,7 @@ Mac host（`owner-0342958c…` gen 1）的 App 里点「添加设备或恢复网
   connect、无网络事件）；重新认证被错误密钥拒绝时下一次请求不再重新定位。
 - 设备配网相关测试 50 项通过；`flutter analyze` 无问题；全量测试见本次提交说明。
 
-## 真机验收（待做）
+## 原定真机验收步骤
 
 1. korvo-1 在 Mac host 的 App 里走「添加设备或恢复网络」，第一次访问后观察进度文案；
    若平板仍回不了 Wi-Fi，应看到「手机还没回到主机所在的网络」而不是错误卡片。
@@ -79,3 +79,48 @@ Mac host（`owner-0342958c…` gen 1）的 App 里点「添加设备或恢复网
 
 路由器对平板的关联拒绝（`assoc_no_resp_received`）本身不在 App 可控范围内；若反复出现，
 应查路由器侧（频段/信道、客户端隔离、MAC 随机化策略）。
+
+
+## 2026-10-10 交接复核与串口证据
+
+本节区分已验证事实与待修复项，不表示跨 Owner 流程已全程验收通过。
+
+- Claude 的新 App 在 00:07 首次取 voucher 连接失败后继续等待，手机回网后请求成功，
+  Mac 出现 `POST /commissioning-vouchers 200`。第一访问后的等待修复已经踩到并通过。
+- 第二访问日志为 00:15:06.387 已下发 Wi-Fi 候选，00:15:51.361 报
+  `COMMISSIONING_TERMINAL_TIMEOUT`。触发的是 Android `configureNetwork` 的 **45 秒总 watchdog**，
+  不是 30 秒轮询期限。另有收到 apply 响应后开始的 30 秒期限；两者不能混称。
+  最后一条约 18 秒的 status 请求被 watchdog 关闭，不能单凭它断言设备成功处理了 18 秒，
+  或确认单射频争用就是根因。
+- 用户连接 Korvo 调试 USB 后，只读采集 CP2102N 串口，日志确认 SKU `korvo-1`。
+  未刷写、未发送复位指令、未清空 NVS、未修改授权数据库。本次启动记录 POWERON；
+  因此只能说明本次重启后的结果，不能补证此前卡住时的运行状态。
+- 该次启动后 5.090 秒连接 `rcgy5#305`，2.4 GHz channel 6，BSSID
+  `82:85:c4:7b:6b:19`；7.310 秒取得 `192.168.100.6`；7.930 秒接受
+  Mac Owner `owner-0342958c2e259f177f43` revision 1；8.470 秒记录
+  `Canonical EnrollmentProposal recorded; awaiting Decision`，随后进入 `PendingApproval`。
+  Mac Hub 中对应申请的状态也为 `pending_review`。这是设备已经进入新 Owner 登记流程的证据，
+  尚不是批准、激活或完整迁移验收通过。
+- Mac 当前地址已变为 `192.168.100.3`，Korvo 通过原有 mDNS 正确定位。
+  平板后来也成功连接 `rcgy5#305`（`192.168.100.7`）。因此不能将此前平板关联失败外推为
+  AP 持续拒绝所有新设备。历史故障仍需同期 Korvo disconnect reason、AP 日志或关联帧取证。
+
+### 应统一的恢复语义（待实现）
+
+1. 第二次访问提交后，终态收不到属于“结果未知”，不能当作已回滚，也不能直接标成成功。
+   当前 coordinator 将传输异常归为 `provisioning_failed`，checkpoint 变成 `failed`；
+   `canResume` 只接受 `networkConfigured`，导致设备后来成功登记时，该 checkpoint 无法沿用
+   已有 admission recovery。应保留设备、目标 Owner/generation、操作标识及不确定结果，
+   返回主机后通过现有 recovery/proposal 查询确认，而不是引导再次下发 Wi-Fi。
+2. 查询必须匹配该候选设备及目标 Owner，不放宽身份校验，不自动批准无关申请；
+   主机拒绝、明确回滚和提交结果未知必须分别处理。
+3. 先补结果恢复，再统一各阶段的期限和可观测日志。仅延长 App 超时无法覆盖断网、进程退出、
+   终态丢失；也不应把固件成功终态提前到 Wi-Fi、Owner 路由验证和持久提交之前。
+4. 本轮 Host 删除重加验收还发现：目标 opi5max 不可达、同网段只有 Mac 可达时，
+   `AnnouncedAddressSource` 返回其他 Host 候选，`HostLocationException._describe` 又优先采用新候选，
+   最终误提示目标 Host 身份不符。它也会使当前 voucher 等待分类提前退出。
+   应区分“发现了另一台 Host”与“目标 Host 确认拒绝/身份变更”；保留严格 pin 验证，
+   不能把无关 Host 的拒绝当成目标授权失效。该问题和终态未知恢复应分别回归。
+
+上述两项恢复缺口不改变多个 mobile 平等管理 Host 的授权模型；它们分别位于 Host 寻址错误分类
+和外设跨 Owner 配网结果恢复。本轮只补充验收与分析记录，尚未修改这些运行时代码。
