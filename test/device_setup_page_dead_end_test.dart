@@ -265,7 +265,7 @@ EnrollmentRecoveryProjectionV1 _projection(
 class _Admission implements DeviceAdmissionPort {
   @override
   Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async =>
-      throw StateError('Unexpected current Claim query');
+      currentClaimPage([], ownerDomainId: ownerDomainIdFixture);
 
   @override
   Future<CommissioningVoucher> issueCommissioningVoucher({
@@ -331,7 +331,7 @@ class _Transport implements DeviceProvisioningTransport {
 class _GoneAdmission implements DeviceAdmissionPort {
   @override
   Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async =>
-      throw StateError('Unexpected current Claim query');
+      currentClaimPage([], ownerDomainId: ownerDomainIdFixture);
 
   @override
   Future<CommissioningVoucher> issueCommissioningVoucher({

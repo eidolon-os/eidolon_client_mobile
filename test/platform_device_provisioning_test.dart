@@ -290,6 +290,41 @@ void main() {
     expect(session.descriptor, same(prepared));
     expect(prepared.sessionId, 'setup_session_01');
   });
+  test('carries revoked identity replacement in authenticated preparation',
+      () async {
+    final digest = 'a' * 64;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'openProvisioningSession') return descriptorJson();
+      if (call.method == 'provisioningHandOverTrust') {
+        final arguments = Map<String, dynamic>.from(call.arguments as Map);
+        final payload = jsonDecode(arguments['payloadJson'] as String) as Map;
+        expect(payload['prepare_only'], isTrue);
+        expect(payload['replace_revoked_identity'], isTrue);
+        expect(payload['owner_domain_id'], target.ownerDomainId);
+        expect(payload.containsKey('commissioning_voucher'), isFalse);
+        return jsonEncode({
+          'contract_version': '1',
+          'prepared': true,
+          'owner_domain_id': target.ownerDomainId,
+          'device_id': 'device-instance-$digest',
+          'identity_fingerprint': 'sha256:$digest',
+        });
+      }
+      return null;
+    });
+    final session = await build().open(const DeviceProvisioningCandidate(
+      transportId: 'eidolon-7e2444',
+      displayName: 'eidolon-7e2444',
+      transportKind: 'softap',
+      trust: SetupDescriptorTrustV1.developmentTofu,
+    ));
+    final prepared =
+        await session.prepareOwner(target.withRevokedIdentityReplacement(true));
+    expect(prepared.deviceId, 'device-instance-$digest');
+    expect(prepared.identityFingerprint, 'p256:$digest');
+    expect(session.descriptor, same(prepared));
+    expect(prepared.sessionId, 'setup_session_01');
+  });
 
   test('authenticated preparation explicitly permits voucher-free maintenance',
       () async {

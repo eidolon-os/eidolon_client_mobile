@@ -150,3 +150,17 @@ Mac host（`owner-0342958c…` gen 1）的 App 里点「添加设备或恢复网
   重新申请（`eidolon-client-esp32/docs/hub-onboarding.md`「Enrollment 与迟到响应」）。
 - App：设备页说明改为「取得凭据的设备由主机自动接纳；只有没有凭据的设备留在认领列表」。
   `pendingReview` 的自动 Decision 路径保留给无凭据场景。
+
+
+## 已撤销设备重新添加
+
+进入设备热点前，通过现有 Claim 分页接口读取目标 Host 的权威状态，不能用设备本地
+`Active` 或 mobile 列表是否存在替代。查询失败停在 Host 网络；不将未知当作撤销。
+已撤销的 instance 通过现有 trust handover 的 `replace_revoked_identity` 请求新生命周期，
+两次访问均保留此意图。第一次响应必须给出不同的候选 instance 和新 voucher 要求；
+否则在写 Wi-Fi 前拒绝。普通换网入口不能隐式变成重新认领。
+
+ESP32 复用已有可恢复的 replacement 事务推进旧数据清理、指定网络和候选身份提交；
+不忽略旧 erase，不撤销旧删除记录，也不让新 instance 使用旧 Claim。最终仍需 Host
+为新身份签发凭据并批准。需 mobile 与 ESP32 配套更新，不需要手工更改数据库/NVS。
+此状态快照用于已完成撤销后的重新添加，不承诺与另一 Controller 同时撤销的操作线性化。

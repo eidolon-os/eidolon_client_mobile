@@ -25,6 +25,90 @@ import 'support/admission_fixtures.dart';
 /// then failed. So the session must be closed before the Host is asked, and
 /// re-opened afterwards to hand over what the Host said.
 void main() {
+  testWidgets('failed authority query never opens a device setup session',
+      (tester) async {
+    final transport = _Transport();
+    final admission = _Admission(transport)
+      ..claimsFailure = StateError('Host unavailable');
+    await tester.pumpWidget(MaterialApp(
+        home: DeviceSetupPage(
+      transport: transport,
+      admission: admission,
+      checkpoints: InMemoryDeviceSetupCheckpointStore(),
+      loadTarget: () async => deviceOnboardingTargetFixture(),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查找设备'));
+    await tester.pumpAndSettle();
+    expect(transport.sessions, isEmpty);
+    expect(find.textContaining('Eidolon Body 1'), findsNothing);
+    expect(admission.voucherAttempts, 0);
+  });
+  for (final rotates in [true, false]) {
+    testWidgets('revoked Host claim requires fresh identity: rotates=$rotates',
+        (tester) async {
+      const channel = MethodChannel('live.eidolon.mobile/platform');
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          (call) async =>
+              call.method == 'verifyOwnerDomainDescriptor' ? true : null);
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null));
+      final id = 'device-instance-${'a' * 64}';
+      final transport = _Transport()
+        ..configureFailure = const DeviceProvisioningTransportException(
+            'commissioning_terminal_timeout', 'Unknown',
+            outcomeUnknown: true)
+        ..preparedDeviceId = rotates ? 'device-instance-${'b' * 64}' : id;
+      final admission = _Admission(transport)..publishEnrollment = false;
+      final claim = canonicalContractValue('DF-ADMISSION-CLAIM-RECORD-VALID');
+      admission.claims = [
+        {
+          ...claim,
+          'state': 'revoked',
+          'device_ref': {
+            ...Map<String, dynamic>.from(claim['device_ref'] as Map),
+            'owner_domain_id': ownerDomainIdFixture,
+            'device_instance_id': id,
+          }
+        }
+      ];
+      await tester.pumpWidget(MaterialApp(
+          home: DeviceSetupPage(
+        transport: transport,
+        admission: admission,
+        checkpoints: InMemoryDeviceSetupCheckpointStore(),
+        loadTarget: () async => deviceOnboardingTargetFixture(),
+        knownDevices: {id: 'old StackChan'},
+      )));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查找设备'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await tester.pumpAndSettle();
+      expect(transport.sessions.single.replacementRequested, isTrue);
+      expect(transport.sessions.single.writes, 0);
+      expect(admission.voucherAttempts, rotates ? 1 : 0);
+      expect(find.textContaining('设备未创建新的认领身份'),
+          rotates ? findsNothing : findsOneWidget);
+      if (rotates) {
+        await tester.tap(find.byKey(const Key('network-owner-wifi')));
+        await tester.pump();
+        await tester.enterText(
+            find.byKey(const Key('device-wifi-password')), 'pw');
+        await tester.tap(find.byKey(const Key('confirm-device-setup')));
+        for (var i = 0; i < 20; i++) {
+          await tester.pump(const Duration(milliseconds: 10));
+        }
+        expect(transport.sessions.last.writes, 1);
+        expect(transport.sessions.last.sentReplacement, isTrue);
+        expect(transport.sessions.last.sentVoucher, isNotNull);
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+      }
+    });
+  }
+
   testWidgets(
       'unknown network outcome keeps admission recovery visible across restart',
       (tester) async {
@@ -818,9 +902,13 @@ void main() {
 }
 
 class _Admission implements DeviceAdmissionPort {
+  List<Map<String, dynamic>> claims = [];
+  Object? claimsFailure;
   @override
   Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async =>
-      throw StateError('Unexpected current Claim query');
+      claimsFailure != null
+          ? throw claimsFailure!
+          : currentClaimPage(claims, ownerDomainId: ownerDomainIdFixture);
 
   _Admission(this._transport);
 
@@ -924,7 +1012,8 @@ class _Transport implements DeviceProvisioningTransport {
       ..scanFailure = scanFailure
       ..scanNetworksResult = scanNetworksResult
       ..requiresVoucher = requiresVoucher
-      ..preparedDeviceId = preparedDeviceId;
+      ..preparedDeviceId = preparedDeviceId
+      ..usePreparedDescriptor = sessions.isNotEmpty;
     sessions.add(session);
     return session;
   }
@@ -944,11 +1033,15 @@ class _Session implements DeviceProvisioningSession {
   Future<void>? configurationGate;
   int writes = 0;
   bool prepared = false;
+  bool usePreparedDescriptor = false;
+  bool sentReplacement = false;
+  bool replacementRequested = false;
   @override
   Future<DeviceProvisioningDescriptor> prepareOwner(
       DeviceOnboardingTarget target) async {
     if (preparationFailure != null) throw preparationFailure!;
     prepared = true;
+    replacementRequested = target.replaceRevokedIdentity;
     return DeviceProvisioningDescriptor(
       setup: SetupDescriptorV1.fromJson({
         ...descriptor.setup.toJson(),
@@ -966,7 +1059,9 @@ class _Session implements DeviceProvisioningSession {
   DeviceProvisioningDescriptor get descriptor => DeviceProvisioningDescriptor(
         setup: SetupDescriptorV1.fromJson({
           'contract_version': '1',
-          'device_id': 'device-instance-${'a' * 64}',
+          'device_id': usePreparedDescriptor && preparedDeviceId != null
+              ? preparedDeviceId
+              : 'device-instance-${'a' * 64}',
           'device_kind': 'esp32-display',
           'display_name': 'Eidolon Body 1',
           'identity_fingerprint': 'p256:${'5' * 64}',
@@ -999,6 +1094,7 @@ class _Session implements DeviceProvisioningSession {
     required String ackCommandId,
   }) async {
     sentVoucher = onboardingTarget.commissioningVoucher;
+    sentReplacement = onboardingTarget.replaceRevokedIdentity;
     writes += 1;
     if (configureFailure != null) throw configureFailure!;
     await configurationGate;

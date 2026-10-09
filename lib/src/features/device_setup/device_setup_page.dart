@@ -9,6 +9,8 @@ import '../../theme/eidolon_theme.dart';
 
 import 'device_setup_coordinator.dart';
 import 'admission_observation.dart';
+import 'admission_projection.dart';
+import '../../generated/device_foundation_v1.dart';
 import 'device_setup_models.dart';
 import 'device_setup_ports.dart';
 import 'owner_domain_directory_verifier.dart';
@@ -219,6 +221,34 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     }
   }
 
+  final Set<String> _revokedDeviceIds = {};
+
+  Future<void> _readRevokedClaims(DeviceOnboardingTarget target) async {
+    _revokedDeviceIds.clear();
+    AdmissionListCursorV1? cursor;
+    final seen = <String>{};
+    do {
+      final page = await widget.admission.listClaims(after: cursor);
+      if (page.json['owner_domain_id'] != target.ownerDomainId) {
+        throw const FormatException('Claim page belongs to another Owner');
+      }
+      for (final claim in page.claims) {
+        final ref = DeviceRefV1.fromJson(
+            Map<String, dynamic>.from(claim.json['device_ref'] as Map));
+        if (ref.ownerDomainId.value != target.ownerDomainId) {
+          throw const FormatException('Claim belongs to another Owner');
+        }
+        if (claim.json['state'] == 'revoked') {
+          _revokedDeviceIds.add(ref.deviceInstanceId);
+        }
+      }
+      cursor = page.nextCursor;
+      if (cursor != null && !seen.add(cursor.toJson().toString())) {
+        throw const FormatException('Repeated Claim cursor');
+      }
+    } while (cursor != null);
+  }
+
   Future<void> _discover() => _run(() async {
         setState(() {
           _progress = '正在寻找可以设置的设备';
@@ -239,6 +269,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         // every setup after the device had already answered for itself, which
         // pointed the search at the device rather than at this ordering.
         _target = await widget.loadTarget();
+        await _readRevokedClaims(_target!);
         final found = await widget.transport.discover();
         if (found.isEmpty) {
           throw Exception(
@@ -276,9 +307,25 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             );
           }
           if (mounted) setState(() => _progress = '正在确认设备归属');
-          descriptor = await session.prepareOwner(target);
+          final revoked = _revokedDeviceIds.contains(originalId);
+          if (revoked && expected != null) {
+            throw const DeviceProvisioningTransportException(
+                'claim_revoked', '设备已被移除，请从添加设备入口重新认领。');
+          }
+          final preparedTarget = target.withRevokedIdentityReplacement(revoked);
+          descriptor = await session.prepareOwner(preparedTarget);
+          if (revoked &&
+              (descriptor.deviceId == originalId ||
+                  !descriptor.requiresVoucher)) {
+            throw const DeviceProvisioningTransportException(
+                'revoked_identity_not_replaced',
+                '设备未创建新的认领身份，请更新设备固件后重试。此次未修改网络。');
+          }
+          _target = preparedTarget;
           final preserving = expected ??
-              (widget.knownDevices.containsKey(originalId) ? originalId : null);
+              (!revoked && widget.knownDevices.containsKey(originalId)
+                  ? originalId
+                  : null);
           if (preserving != null && descriptor.deviceId != preserving) {
             throw const DeviceProvisioningTransportException(
               'device_identity_replacement_required',

@@ -169,6 +169,7 @@ class DeviceOnboardingTarget {
     required this.ownerRootCertificate,
     required this.authoritySigningCertificate,
     this.commissioningVoucher,
+    this.replaceRevokedIdentity = false,
   });
 
   final String ownerDomainId;
@@ -187,6 +188,19 @@ class DeviceOnboardingTarget {
   /// commissioning it belonged to.
   final String? commissioningVoucher;
 
+  /// Explicit new lifecycle after the Host reports the old Claim revoked.
+  /// The device stages replacement; existing data changes only at commit.
+  final bool replaceRevokedIdentity;
+
+  DeviceOnboardingTarget withRevokedIdentityReplacement(bool replace) =>
+      DeviceOnboardingTarget(
+        ownerDomainId: ownerDomainId,
+        ownerDomainDescriptor: ownerDomainDescriptor,
+        ownerRootCertificate: ownerRootCertificate,
+        authoritySigningCertificate: authoritySigningCertificate,
+        replaceRevokedIdentity: replace,
+      );
+
   /// This target, carrying the standing the Host just signed for one device.
   DeviceOnboardingTarget withCommissioningVoucher(String voucher) =>
       DeviceOnboardingTarget(
@@ -195,6 +209,7 @@ class DeviceOnboardingTarget {
         ownerRootCertificate: ownerRootCertificate,
         authoritySigningCertificate: authoritySigningCertificate,
         commissioningVoucher: voucher,
+        replaceRevokedIdentity: replaceRevokedIdentity,
       );
 
   factory DeviceOnboardingTarget.fromJson(Map<String, dynamic> value) {

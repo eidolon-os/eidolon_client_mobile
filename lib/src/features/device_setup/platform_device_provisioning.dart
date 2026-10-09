@@ -217,6 +217,7 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
         'payloadJson': jsonEncode({
           'contract_version': '1',
           'prepare_only': true,
+          'replace_revoked_identity': target.replaceRevokedIdentity,
           'owner_domain_id': target.ownerDomainId,
           'owner_domain_descriptor': target.ownerDomainDescriptor.toJson(),
           'owner_root_certificate': target.ownerRootCertificate,
@@ -292,6 +293,7 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
           'sessionId': sessionId,
           'payloadJson': jsonEncode({
             'contract_version': '1',
+            'replace_revoked_identity': onboardingTarget.replaceRevokedIdentity,
             'owner_domain_id': onboardingTarget.ownerDomainId,
             'owner_domain_descriptor':
                 onboardingTarget.ownerDomainDescriptor.toJson(),
