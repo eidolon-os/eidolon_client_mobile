@@ -26,6 +26,77 @@ import 'support/admission_fixtures.dart';
 /// re-opened afterwards to hand over what the Host said.
 void main() {
   testWidgets(
+      'unknown network outcome keeps admission recovery visible across restart',
+      (tester) async {
+    const channel = MethodChannel('live.eidolon.mobile/platform');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        (call) async =>
+            call.method == 'verifyOwnerDomainDescriptor' ? true : null);
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null));
+    final transport = _Transport()
+      ..configureFailure = const DeviceProvisioningTransportException(
+          'commissioning_terminal_timeout', 'Unknown',
+          outcomeUnknown: true);
+    final admission = _Admission(transport)..publishEnrollment = false;
+    final store = InMemoryDeviceSetupCheckpointStore();
+    Widget page() => MaterialApp(
+        home: DeviceSetupPage(
+            transport: transport,
+            admission: admission,
+            checkpoints: store,
+            loadTarget: () async => deviceOnboardingTargetFixture()));
+    await tester.pumpWidget(page());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查找设备'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('network-owner-wifi')));
+    await tester.pump();
+    await tester.enterText(find.byKey(const Key('device-wifi-password')), 'pw');
+    await tester.tap(find.byKey(const Key('confirm-device-setup')));
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(find.text('正在确认设备接入结果'), findsOneWidget);
+    expect(find.text('Wi-Fi 已配置，正在接入主机'), findsNothing);
+    expect(find.byKey(const Key('resume-device-admission')), findsOneWidget);
+    expect(transport.opened, 2);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(page());
+    await tester.pumpAndSettle();
+    expect(find.text('继续接入'), findsOneWidget);
+    admission.publishEnrollment = true;
+    await tester.tap(find.text('继续接入'));
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(admission.decisions, 1);
+    expect(transport.opened, 2);
+    expect(find.text('选择家庭 Wi-Fi'), findsNothing);
+    admission.current = canonicalProjection(
+        state: 'grant_acknowledged',
+        ownerDomainId: ownerDomainIdFixture,
+        deviceId: 'device-instance-${'a' * 64}',
+        withDecision: true,
+        withDelivery: true,
+        claimState: 'active',
+        claimOwnerDomainGeneration: 1);
+    await tester.pump(const Duration(seconds: 3));
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(find.text('主机已确认设备接入'), findsOneWidget);
+    expect(find.textContaining('本次 Wi-Fi 配置结果仍未确认'), findsOneWidget);
+    expect(find.text('设备已接入这台主机'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
       'network maintenance refuses another identity before owner preparation',
       (tester) async {
     final transport = _Transport();
@@ -571,8 +642,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.textContaining('Eidolon Body 1'));
       await tester.pumpAndSettle();
-      expect(find.text('主机没有为这台设备签发准入凭据：这台管理设备不能为设备签发凭据'),
-          findsOneWidget);
+      expect(find.text('主机没有为这台设备签发准入凭据：这台管理设备不能为设备签发凭据'), findsOneWidget);
       expect(admission.voucherAttempts, 1);
       expect(find.text('手机还没回到主机所在的网络'), findsNothing);
       expect(transport.sessions.single.closed, isTrue);
@@ -606,6 +676,9 @@ void main() {
         ..voucherFailure = (attempt) => switch (attempt) {
               1 => HostLocationException(const []),
               2 => HostLocationException([
+                  candidateFailure(PinnedHttpException(
+                      kind: PinnedHttpFailureKind.secureChannel,
+                      message: 'another Host on this network')),
                   candidateFailure(TimeoutException('no answer')),
                   candidateFailure(notBack(),
                       evidence: HostAddressEvidence.remembered),
@@ -636,15 +709,17 @@ void main() {
     });
 
     testWidgets(
-        'an address answering as a different Host is reported, not waited out',
+        'a published target address with another identity stops the wait',
         (tester) async {
       final transport = _Transport();
       final admission = _Admission(transport)
         ..voucherFailure = (attempt) => HostLocationException([
-              candidateFailure(PinnedHttpException(
-                kind: PinnedHttpFailureKind.secureChannel,
-                message: 'pin mismatch',
-              )),
+              candidateFailure(
+                  PinnedHttpException(
+                    kind: PinnedHttpFailureKind.secureChannel,
+                    message: 'pin mismatch',
+                  ),
+                  evidence: HostAddressEvidence.published),
             ]);
       await tester.pumpWidget(MaterialApp(
           home: DeviceSetupPage(
@@ -812,6 +887,7 @@ class _Admission implements DeviceAdmissionPort {
 }
 
 class _Transport implements DeviceProvisioningTransport {
+  Object? configureFailure;
   Object? preparationFailure;
   Object? scanFailure;
   List<DeviceWifiNetwork>? scanNetworksResult;
@@ -842,6 +918,7 @@ class _Transport implements DeviceProvisioningTransport {
   ) async {
     opened += 1;
     final session = _Session()
+      ..configureFailure = configureFailure
       ..configurationGate = configurationGate
       ..preparationFailure = preparationFailure
       ..scanFailure = scanFailure
@@ -857,6 +934,7 @@ class _Transport implements DeviceProvisioningTransport {
 }
 
 class _Session implements DeviceProvisioningSession {
+  Object? configureFailure;
   Object? preparationFailure;
   Object? scanFailure;
   List<DeviceWifiNetwork>? scanNetworksResult;
@@ -922,6 +1000,7 @@ class _Session implements DeviceProvisioningSession {
   }) async {
     sentVoucher = onboardingTarget.commissioningVoucher;
     writes += 1;
+    if (configureFailure != null) throw configureFailure!;
     await configurationGate;
     return const CommissioningStatusEvidenceV1(
       sessionId: 'setup_session_01',

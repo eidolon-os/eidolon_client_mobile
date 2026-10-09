@@ -83,8 +83,7 @@ class DeviceSetupCoordinator {
     DeviceOnboardingTarget target,
   ) =>
       belongsTo(checkpoint, target) &&
-      checkpoint.provisioningState ==
-          DeviceProvisioningState.networkConfigured &&
+      checkpoint.canRecoverAdmission &&
       checkpoint.deviceId != null &&
       !checkpoint.isReady &&
       checkpoint.admissionState != DeviceAdmissionState.rejected &&
@@ -174,8 +173,7 @@ class DeviceSetupCoordinator {
             code: 'setup_identity_mismatch',
             message: 'This setup belongs to a different request or Owner');
       }
-      if (saved.provisioningState ==
-          DeviceProvisioningState.networkConfigured) {
+      if (saved.canRecoverAdmission) {
         onCheckpoint?.call(saved);
         return canResume(saved, onboardingTarget)
             ? _resume(saved, waitForEnrollment: false)
@@ -247,6 +245,19 @@ class DeviceSetupCoordinator {
         updatedAt: _now(),
       );
       await _save(checkpoint);
+    } on DeviceProvisioningTransportException catch (error) {
+      if (!error.outcomeUnknown) {
+        return _fail(
+            checkpoint,
+            DeviceSetupException(
+                code: error.code, message: error.message, retryable: true));
+      }
+      checkpoint = checkpoint.copyWith(
+        provisioningState: DeviceProvisioningState.outcomeUnknown,
+        admissionState: DeviceAdmissionState.awaitingEnrollment,
+        updatedAt: _now(),
+      );
+      await _save(checkpoint);
     } on DeviceSetupException catch (error) {
       return _fail(checkpoint, error);
     } catch (error) {
@@ -261,7 +272,9 @@ class DeviceSetupCoordinator {
     } finally {
       await _closeProvisioning(session);
     }
-    return _resume(checkpoint, waitForEnrollment: true);
+    return _resume(checkpoint,
+        waitForEnrollment: checkpoint.provisioningState ==
+            DeviceProvisioningState.networkConfigured);
   }
 
   /// Startup/foreground entry point. Recovery is always queried before replay.
@@ -285,6 +298,16 @@ class DeviceSetupCoordinator {
   }) async {
     var current = checkpoint;
     try {
+      // A process exit during apply leaves no terminal. Query the Authority
+      // before any network retry, just as after a lost terminal response.
+      if (current.provisioningState ==
+          DeviceProvisioningState.configuringNetwork) {
+        current = current.copyWith(
+          provisioningState: DeviceProvisioningState.outcomeUnknown,
+          updatedAt: _now(),
+        );
+        await _save(current);
+      }
       final target = await _verifyCurrentAuthority(current);
       if (!canResume(current, target)) {
         onCheckpoint?.call(current);
@@ -301,9 +324,12 @@ class DeviceSetupCoordinator {
         if (found == null) {
           return _fail(
             current,
-            const DeviceSetupException(
+            DeviceSetupException(
               code: 'enrollment_not_seen',
-              message: 'Wi-Fi 已配置，但主机尚未收到这台设备的登记。应用会自动继续查询，无需重新配网。',
+              message: current.provisioningState ==
+                      DeviceProvisioningState.outcomeUnknown
+                  ? '配网结果尚未确认，主机也尚未收到这台设备的登记。请保持设备通电并让手机连回主机网络，应用会继续查询。'
+                  : 'Wi-Fi 已配置，但主机尚未收到这台设备的登记。应用会自动继续查询，无需重新配网。',
               retryable: true,
             ),
             admissionStage: true,
@@ -313,6 +339,14 @@ class DeviceSetupCoordinator {
         current = found.$2;
       }
 
+      if (projection.proposal.json['device_instance_candidate_id'] !=
+              current.deviceId ||
+          projection.proposal.json['enrollment_id'] != current.enrollmentId) {
+        throw const DeviceSetupException(
+          code: 'enrollment_identity_mismatch',
+          message: '主机返回的登记不属于这次设备接入。',
+        );
+      }
       final stage = projection.validateForOwner(
         current.onboardingTarget.ownerDomainId,
         ownerDomainGeneration: current

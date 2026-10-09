@@ -5,7 +5,11 @@ import '../../generated/management_v1.dart';
 import '../../generated/device_foundation_v1.dart';
 
 class DeviceProvisioningTransportException implements Exception {
-  const DeviceProvisioningTransportException(this.code, this.message);
+  const DeviceProvisioningTransportException(this.code, this.message,
+      {this.outcomeUnknown = false});
+
+  /// The network apply may have committed, but no valid terminal was observed.
+  final bool outcomeUnknown;
 
   final String code;
   final String message;
@@ -19,6 +23,7 @@ enum DeviceProvisioningState {
   discovering,
   selected,
   configuringNetwork,
+  outcomeUnknown,
   networkConfigured,
   failed,
 }
@@ -428,6 +433,11 @@ class DeviceSetupCheckpoint {
   final AdmissionListCursorV1? recoveryCursor;
   final String? companionId;
   final DeviceSetupFailure? failure;
+
+  bool get canRecoverAdmission =>
+      provisioningState == DeviceProvisioningState.networkConfigured ||
+      provisioningState == DeviceProvisioningState.outcomeUnknown ||
+      provisioningState == DeviceProvisioningState.configuringNetwork;
 
   bool get isReady =>
       provisioningState == DeviceProvisioningState.networkConfigured &&

@@ -42,7 +42,8 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
   /// this half cannot see — that Wi-Fi is off, that the system refused to scan.
   /// Letting the raw exception reach the screen would put a Java class name in
   /// front of someone holding a device that is sitting there waiting.
-  static Never _translate(PlatformException error) {
+  static Never _translate(PlatformException error,
+      {bool outcomeUnknown = false}) {
     final message = switch (error.code) {
       'WIFI_DISABLED' => '请先打开手机的 Wi-Fi,设置设备要通过它。',
       // Android will not tell an app what is nearby unless location is on,
@@ -75,6 +76,7 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
     throw DeviceProvisioningTransportException(
       error.code.toLowerCase(),
       message,
+      outcomeUnknown: outcomeUnknown,
     );
   }
 
@@ -126,7 +128,8 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
     _requireAndroid();
     if (_opening) {
       throw const DeviceProvisioningTransportException(
-        'provisioning_busy', '正在连接设备，请稍候。',
+        'provisioning_busy',
+        '正在连接设备，请稍候。',
       );
     }
     final visit = '${DateTime.now().microsecondsSinceEpoch}-${++_nextVisit}';
@@ -140,12 +143,14 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
       );
       if (_activeVisit != visit) {
         throw const DeviceProvisioningTransportException(
-          'provisioning_closed', '这次设备连接已取消。',
+          'provisioning_closed',
+          '这次设备连接已取消。',
         );
       }
       if (raw == null || raw.isEmpty) {
         throw const DeviceProvisioningTransportException(
-          'descriptor_missing', '设备没有说明自己是什么,无法继续设置。',
+          'descriptor_missing',
+          '设备没有说明自己是什么,无法继续设置。',
         );
       }
       return _PlatformProvisioningSession(
@@ -156,12 +161,15 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
     } catch (error) {
       if (_activeVisit == visit) {
         // A native busy refusal never replaced the preceding visit.
-        _activeVisit = error is PlatformException && error.code == 'PROVISIONING_BUSY'
-            ? previousVisit : null;
+        _activeVisit =
+            error is PlatformException && error.code == 'PROVISIONING_BUSY'
+                ? previousVisit
+                : null;
       }
       try {
         await _channel.invokeMethod<void>(
-          'closeProvisioningSession', {'sessionId': visit},
+          'closeProvisioningSession',
+          {'sessionId': visit},
         );
       } catch (_) {
         // Preserve the original open/descriptor error. Native failures own
@@ -271,6 +279,7 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
     required String collectCommandId,
     required String ackCommandId,
   }) async {
+    var networkSubmitted = false;
     try {
       // Trust first, network second. The order is the controller's to enforce
       // because the controller is the party that knows it — and it matters twice
@@ -304,6 +313,7 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
         expectedOwnerDomainId: onboardingTarget.ownerDomainId,
       );
 
+      networkSubmitted = true;
       final rawEvidence = await _channel.invokeMapMethod<Object?, Object?>(
         'provisioningConfigureNetwork',
         {
@@ -316,6 +326,7 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
         throw const DeviceProvisioningTransportException(
           'network_terminal_missing',
           '设备没有确认已连接到新网络。',
+          outcomeUnknown: true,
         );
       }
       final CommissioningStatusEvidenceV1 evidence;
@@ -341,7 +352,14 @@ class _PlatformProvisioningSession implements DeviceProvisioningSession {
       // A failed close must never turn a successful network write into a retry.
       return evidence;
     } on PlatformException catch (error) {
-      PlatformDeviceProvisioning._translate(error);
+      PlatformDeviceProvisioning._translate(error,
+          outcomeUnknown: networkSubmitted &&
+              const {
+                'COMMISSIONING_TERMINAL_TIMEOUT',
+                'COMMISSIONING_STATUS_UNAVAILABLE',
+                'NETWORK_APPLY_UNAVAILABLE',
+                'DEVICE_DISCONNECTED',
+              }.contains(error.code));
     }
   }
 

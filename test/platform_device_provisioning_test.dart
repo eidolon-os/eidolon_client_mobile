@@ -70,7 +70,9 @@ void main() {
         clock: () => now,
       );
 
-  test('cancel during open rejects a late descriptor and closes only that visit', () async {
+  test(
+      'cancel during open rejects a late descriptor and closes only that visit',
+      () async {
     final response = Completer<String>();
     final entered = Completer<void>();
     final calls = <MethodCall>[];
@@ -84,18 +86,25 @@ void main() {
     });
     final transport = build();
     final opening = transport.open(const DeviceProvisioningCandidate(
-      transportId: 'eidolon-test', displayName: 'test', transportKind: 'softap',
+      transportId: 'eidolon-test',
+      displayName: 'test',
+      transportKind: 'softap',
       trust: SetupDescriptorTrustV1.developmentTofu,
     ));
-    final rejected = expectLater(opening, throwsA(
-      isA<DeviceProvisioningTransportException>().having((e) => e.code, 'code', 'provisioning_closed')));
+    final rejected = expectLater(
+        opening,
+        throwsA(isA<DeviceProvisioningTransportException>()
+            .having((e) => e.code, 'code', 'provisioning_closed')));
     await entered.future;
     await transport.close();
     response.complete(descriptorJson());
     await rejected;
     final visit = (calls.first.arguments as Map)['sessionId'];
-    expect(calls.skip(1).every((c) => c.method == 'closeProvisioningSession' &&
-      (c.arguments as Map)['sessionId'] == visit), isTrue);
+    expect(
+        calls.skip(1).every((c) =>
+            c.method == 'closeProvisioningSession' &&
+            (c.arguments as Map)['sessionId'] == visit),
+        isTrue);
   });
 
   test('native busy refusal retains the preceding visit for close', () async {
@@ -110,17 +119,21 @@ void main() {
       return null;
     });
     const candidate = DeviceProvisioningCandidate(
-      transportId: 'eidolon-test', displayName: 'test', transportKind: 'softap',
+      transportId: 'eidolon-test',
+      displayName: 'test',
+      transportKind: 'softap',
       trust: SetupDescriptorTrustV1.developmentTofu,
     );
     final transport = build();
     await transport.open(candidate);
     final previous = (calls.first.arguments as Map)['sessionId'];
-    await expectLater(transport.open(candidate), throwsA(isA<DeviceProvisioningTransportException>()));
+    await expectLater(transport.open(candidate),
+        throwsA(isA<DeviceProvisioningTransportException>()));
     await transport.close();
     expect(calls.last.method, 'closeProvisioningSession');
     expect((calls.last.arguments as Map)['sessionId'], previous);
-    expect((calls[calls.length - 2].arguments as Map)['sessionId'], isNot(previous));
+    expect((calls[calls.length - 2].arguments as Map)['sessionId'],
+        isNot(previous));
   });
 
   test('invalid descriptor releases the native visit immediately', () async {
@@ -131,12 +144,18 @@ void main() {
       return null;
     });
     final transport = build();
-    await expectLater(transport.open(const DeviceProvisioningCandidate(
-      transportId: 'eidolon-test', displayName: 'test', transportKind: 'softap',
-      trust: SetupDescriptorTrustV1.developmentTofu,
-    )), throwsA(isA<DeviceProvisioningTransportException>()));
-    expect(calls.map((c) => c.method), ['openProvisioningSession', 'closeProvisioningSession']);
-    expect(calls.first.arguments, containsPair('sessionId', (calls.last.arguments as Map)['sessionId']));
+    await expectLater(
+        transport.open(const DeviceProvisioningCandidate(
+          transportId: 'eidolon-test',
+          displayName: 'test',
+          transportKind: 'softap',
+          trust: SetupDescriptorTrustV1.developmentTofu,
+        )),
+        throwsA(isA<DeviceProvisioningTransportException>()));
+    expect(calls.map((c) => c.method),
+        ['openProvisioningSession', 'closeProvisioningSession']);
+    expect(calls.first.arguments,
+        containsPair('sessionId', (calls.last.arguments as Map)['sessionId']));
     await transport.close();
     expect(calls.length, 2);
   });
@@ -154,14 +173,18 @@ void main() {
       return null;
     });
     const candidate = DeviceProvisioningCandidate(
-      transportId: 'eidolon-test', displayName: 'test', transportKind: 'softap',
+      transportId: 'eidolon-test',
+      displayName: 'test',
+      transportKind: 'softap',
       trust: SetupDescriptorTrustV1.developmentTofu,
     );
     final transport = build();
     final first = transport.open(candidate);
     await entered.future;
-    await expectLater(transport.open(candidate), throwsA(
-      isA<DeviceProvisioningTransportException>().having((e) => e.code, 'code', 'provisioning_busy')));
+    await expectLater(
+        transport.open(candidate),
+        throwsA(isA<DeviceProvisioningTransportException>()
+            .having((e) => e.code, 'code', 'provisioning_busy')));
     response.complete(descriptorJson());
     final session = await first;
     expect(opens, 1);
@@ -518,6 +541,49 @@ void main() {
     expect(evidence.isCommittedTerminal, isTrue);
     await expectLater(session.close(), throwsA(isA<PlatformException>()));
   });
+
+  for (final failure in [
+    ('provisioningConfigureNetwork', 'COMMISSIONING_TERMINAL_TIMEOUT', true),
+    ('provisioningConfigureNetwork', 'NETWORK_APPLY_UNAVAILABLE', true),
+    ('provisioningConfigureNetwork', 'DEVICE_DISCONNECTED', true),
+    ('provisioningHandOverTrust', 'DEVICE_DISCONNECTED', false),
+    ('provisioningConfigureNetwork', 'NETWORK_APPLY_REJECTED', false),
+    ('provisioningConfigureNetwork', 'COMMISSIONING_STATUS_INVALID', false),
+    ('provisioningConfigureNetwork', 'WIFI_AUTH_FAILED', false),
+  ]) {
+    test('network outcome classification: $failure', () async {
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'openProvisioningSession') return descriptorJson();
+        if (call.method == failure.$1) {
+          throw PlatformException(code: failure.$2);
+        }
+        if (call.method == 'provisioningHandOverTrust') {
+          return jsonEncode({
+            'contract_version': '1',
+            'device_id': namedDeviceInstanceId('waveshare-2-06'),
+            'owner_domain_id': target.ownerDomainId,
+            'staged': true
+          });
+        }
+        return null;
+      });
+      final session = await build().open(const DeviceProvisioningCandidate(
+          transportId: 't',
+          displayName: 'd',
+          transportKind: 'softap',
+          trust: SetupDescriptorTrustV1.developmentTofu));
+      await expectLater(
+          session.configureNetwork(
+              credentials:
+                  const DeviceWifiCredentials(ssid: 'home', password: 'pw'),
+              onboardingTarget: target,
+              createCommandId: 'create-01',
+              collectCommandId: 'collect-01',
+              ackCommandId: 'ack-01'),
+          throwsA(isA<DeviceProvisioningTransportException>().having(
+              (error) => error.outcomeUnknown, 'outcomeUnknown', failure.$3)));
+    });
+  }
 
   test('credential delivery without terminal device evidence is not success',
       () async {

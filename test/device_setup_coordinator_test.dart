@@ -46,6 +46,110 @@ DeviceProvisioningDescriptor _descriptorExpiringAt(DateTime expiresAt) =>
     DeviceProvisioningDescriptor(setup: _setup, expiresAt: expiresAt);
 
 void main() {
+  test('lost terminal resumes admission without replaying Wi-Fi after restart',
+      () async {
+    final session = _Session(_descriptor)
+      ..configureFailure = const DeviceProvisioningTransportException(
+          'commissioning_terminal_timeout', 'Result unknown',
+          outcomeUnknown: true);
+    final admission = _Admission(_projection())..unavailable = true;
+    final store = InMemoryDeviceSetupCheckpointStore();
+    final result = await _coordinator(session, admission, store)
+        .provisionAndAdmit(
+            setupId: 'unknown',
+            requestId: 'intent-unknown',
+            candidate: _candidate,
+            credentials:
+                const DeviceWifiCredentials(ssid: 'Home', password: 'secret'),
+            onboardingTarget: deviceOnboardingTargetFixture());
+    expect(result.provisioningState, DeviceProvisioningState.outcomeUnknown);
+    expect(result.isReady, isFalse);
+    expect(admission.decisionRequestIds, isEmpty);
+    // Round-trip the actual stored checkpoint, including stable operation IDs.
+    await store.save(DeviceSetupCheckpoint.fromJson(result.toJson()));
+    admission.unavailable = false;
+    final restarted = _coordinator(session, admission, store);
+    expect(await restarted.resumableSetups(), hasLength(1));
+    final recovered = await restarted.resumeAdmission('unknown');
+    expect(
+        recovered.admissionState, DeviceAdmissionState.approvedAwaitingHandoff);
+    expect(recovered.provisioningState, DeviceProvisioningState.outcomeUnknown);
+    expect(admission.decisionRequestIds, ['mobile-decision-unknown']);
+    admission.current = _projection(
+        state: 'grant_acknowledged',
+        withDecision: true,
+        withDelivery: true,
+        claimState: 'active');
+    final active = await restarted.resumeAdmission('unknown');
+    expect(active.admissionState, DeviceAdmissionState.claimActive);
+    expect(active.isReady, isFalse,
+        reason: 'Admission cannot prove this Wi-Fi change');
+    expect(session.configureCalls, 1);
+  });
+
+  test('interrupted apply queries only the matching device and never resends',
+      () async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    final saved = DeviceSetupCheckpoint.fromJson({
+      ..._checkpoint('interrupted').toJson(),
+      'provisioning_state': 'configuringNetwork',
+      'enrollment_id': null
+    });
+    await store.save(saved);
+    final session = _Session(_descriptor);
+    final admission = _Admission(canonicalProjection(
+        deviceId: namedDeviceInstanceId('other'),
+        ownerDomainId: saved.onboardingTarget.ownerDomainId));
+    final coordinator = _coordinator(session, admission, store);
+    final result = await coordinator.provisionAndAdmit(
+        setupId: saved.setupId,
+        requestId: saved.requestId,
+        candidate: _candidate,
+        credentials: const DeviceWifiCredentials(ssid: 'Home', password: 'pw'),
+        onboardingTarget: saved.onboardingTarget);
+    expect(result.provisioningState, DeviceProvisioningState.outcomeUnknown);
+    expect(result.failure?.code, 'enrollment_not_seen');
+    expect(result.failure?.message, isNot(contains('Wi-Fi 已配置')));
+    expect(session.configureCalls, 0);
+    expect(admission.decisionRequestIds, isEmpty);
+  });
+
+  test(
+      'unknown outcome cannot approve a recovered enrollment for another device',
+      () async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    await store.save(_checkpoint('wrong-recovery')
+        .copyWith(provisioningState: DeviceProvisioningState.outcomeUnknown));
+    final admission = _Admission(canonicalProjection(
+        ownerDomainId: ownerDomainIdFixture,
+        deviceId: namedDeviceInstanceId('another')));
+    final result = await _coordinator(_Session(_descriptor), admission, store)
+        .resumeAdmission('wrong-recovery');
+    expect(result.failure?.code, 'enrollment_identity_mismatch');
+    expect(result.failure?.retryable, isFalse);
+    expect(admission.decisionRequestIds, isEmpty);
+  });
+
+  test('explicit network refusal does not recover or approve enrollment',
+      () async {
+    final session = _Session(_descriptor)
+      ..configureFailure = const DeviceProvisioningTransportException(
+          'network_apply_rejected', 'Rejected');
+    final admission = _Admission(_projection());
+    final store = InMemoryDeviceSetupCheckpointStore();
+    final coordinator = _coordinator(session, admission, store);
+    final result = await coordinator.provisionAndAdmit(
+        setupId: 'refused',
+        requestId: 'intent-refused',
+        candidate: _candidate,
+        credentials: const DeviceWifiCredentials(ssid: 'Home', password: 'pw'),
+        onboardingTarget: deviceOnboardingTargetFixture());
+    expect(result.provisioningState, DeviceProvisioningState.failed);
+    expect(result.failure?.code, 'network_apply_rejected');
+    expect(await coordinator.resumableSetups(), isEmpty);
+    expect(admission.decisionRequestIds, isEmpty);
+  });
+
   test(
       'second visit refuses a different device before writing network or admitting',
       () async {
@@ -367,7 +471,8 @@ void main() {
   test('all recovery entry points reject a different authority before requests',
       () async {
     final store = InMemoryDeviceSetupCheckpointStore();
-    final old = _checkpoint('old');
+    final old = _checkpoint('old')
+        .copyWith(provisioningState: DeviceProvisioningState.outcomeUnknown);
     await store.save(old);
     final admission = _Admission(_projection());
     final session = _Session(_descriptor);
@@ -559,6 +664,7 @@ class _Session implements DeviceProvisioningSession {
   DeviceOnboardingTarget? handedOverTarget;
   int configureCalls = 0;
   bool failClose = false;
+  Object? configureFailure;
   Future<void> Function()? beforeClose;
 
   @override
@@ -576,6 +682,7 @@ class _Session implements DeviceProvisioningSession {
     required String ackCommandId,
   }) async {
     configureCalls += 1;
+    if (configureFailure != null) throw configureFailure!;
     commandIds = {
       'create': createCommandId,
       'collect': collectCommandId,

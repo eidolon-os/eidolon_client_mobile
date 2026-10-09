@@ -38,18 +38,33 @@ class HostLocationException extends LocalApiRequestException {
 
   final List<HostCandidateFailure> failures;
 
+  // Discovery finds services, not paired identities. A different key at an
+  // unbound discovery address is not evidence that the target was reset.
+  List<HostCandidateFailure> get targetFailures => _targetFailures(failures);
+
+  static List<HostCandidateFailure> _targetFailures(
+          List<HostCandidateFailure> failures) =>
+      failures
+          .where((failure) =>
+              failure.candidate.evidence != HostAddressEvidence.announced ||
+              !_identityFailure(failure.error))
+          .toList();
+
+  static bool _identityFailure(Object error) =>
+      error is SetupTrustException ||
+      error is PinnedHttpException &&
+          error.kind == PinnedHttpFailureKind.secureChannel;
+
   static String _describe(List<HostCandidateFailure> failures) {
-    final fresh = failures
-        .where((f) => f.candidate.evidence != HostAddressEvidence.remembered)
-        .toList();
-    final relevant = fresh.isNotEmpty ? fresh : failures;
+    final relevant = _targetFailures(failures);
     if (relevant.isEmpty) return '当前网络未发现主机地址，可检查网络后重新查找。';
     if (relevant.any((f) =>
         f.error is TimeoutException ||
         f.error is PinnedHttpException &&
             (f.error as PinnedHttpException).kind ==
                 PinnedHttpFailureKind.timeout)) {
-      return fresh.isNotEmpty
+      return relevant.any(
+              (f) => f.candidate.evidence != HostAddressEvidence.remembered)
           ? '已发现局域网服务，但连接超时 · 重新查找'
           : '上次连接地址超时，当前网络未确认新地址 · 重新查找';
     }
@@ -175,7 +190,8 @@ class HostProductSession {
     SignedEndpointReader? signedEndpointReader,
     this.onHostConnected,
   })  : _host = host,
-        _readSignedEndpoint = signedEndpointReader ?? _readSignedEndpointOverLan,
+        _readSignedEndpoint =
+            signedEndpointReader ?? _readSignedEndpointOverLan,
         _transport = transport ?? PlatformBleCommissioningTransport(),
         _controllerKeys = controllerKeys ?? PlatformControllerKeyBridge(),
         _clientFactory = clientFactory ?? _platformClientFactory,
@@ -384,8 +400,9 @@ class HostProductSession {
         _host = refreshed.host;
         onProgress?.call('正在连接主机');
         race = await probe(refreshed.candidates);
-        failures.removeWhere((failure) => refreshed.candidates
-            .any((candidate) => candidate.endpoint.baseUrl ==
+        failures.removeWhere((failure) => refreshed.candidates.any(
+            (candidate) =>
+                candidate.endpoint.baseUrl ==
                 failure.candidate.endpoint.baseUrl));
         failures.addAll(race.failures);
       }

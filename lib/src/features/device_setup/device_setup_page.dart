@@ -13,7 +13,6 @@ import 'device_setup_models.dart';
 import 'device_setup_ports.dart';
 import 'owner_domain_directory_verifier.dart';
 import '../host_setup/failure_sentences.dart';
-import '../host_setup/host_locator.dart';
 import '../host_setup/host_product_session.dart';
 import '../host_setup/local_api_client.dart';
 import '../host_setup/pinned_http_client.dart';
@@ -133,6 +132,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   String? _progress;
   bool _busy = false;
   bool _networkConfigured = false;
+  bool _networkOutcomeUnknown = false;
+  bool _admissionActive = false;
   bool _showPassword = false;
   String? _connectingNetwork;
 
@@ -414,39 +415,19 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
       // person sees during the wait is what tells them which network to look
       // at if it goes on.
       final waited = widget.clock().difference(started).inSeconds;
-      setState(() => _progress =
-          '正在等手机回到主机所在的网络，再向主机取得这台设备的准入凭据（已等 $waited 秒）');
+      setState(
+          () => _progress = '正在等手机回到主机所在的网络，再向主机取得这台设备的准入凭据（已等 $waited 秒）');
       await Future<void>.delayed(widget.hostReturnInterval);
     }
   }
 
-  /// Whether a failure says "the Host was not reached", as opposed to the
-  /// Host having answered — or some Host having answered as the wrong one.
-  ///
-  /// Graded by the transports that produced it, and only by the part of the
-  /// failure that carries the cause. The session relocates the Host when its
-  /// address stops working, and a relocation that ends with nothing reports a
-  /// [HostLocationException] carrying every address it tried and why each
-  /// failed: all of them silent is a phone that is not on the Host's network
-  /// yet; any of them answering with the wrong identity, or an answer this
-  /// build cannot read, is not — waiting cannot change either, and telling
-  /// the person to check their Wi-Fi would send them past the real problem.
-  /// An authorization exception is judged by what it wraps. Re-authentication
-  /// starts because a Host answered 401 and then has to reach that Host
-  /// again; the phone's network going away between those two requests is
-  /// still the network, not the Host's refusal. Without a cause, or with a
-  /// cause that is not silence, it is the refusal it says it is.
+  /// Discovery candidates with another identity do not speak for the target.
+  /// Actual target refusals and malformed responses still stop this wait.
   static bool _hostNotReachedYet(Object error) {
     if (error is PinnedHttpException) return _silentTransport(error);
     if (error is HostLocationException) {
-      // What the location itself judged by: addresses learned on this network
-      // over an address merely remembered from a previous one, so a stale
-      // address now owned by something else does not speak for the search.
-      final fresh = error.failures
-          .where((f) => f.candidate.evidence != HostAddressEvidence.remembered)
-          .toList();
-      final relevant = fresh.isNotEmpty ? fresh : error.failures;
-      return relevant.every((failure) => _hostNotReachedYet(failure.error));
+      return error.targetFailures
+          .every((failure) => _hostNotReachedYet(failure.error));
     }
     if (error is LocalApiRequestException) return false;
     if (error is HostControllerAuthorizationException) {
@@ -547,8 +528,11 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     setState(() {
       _networkConfigured = checkpoint.provisioningState ==
           DeviceProvisioningState.networkConfigured;
-      if (checkpoint.provisioningState !=
-          DeviceProvisioningState.networkConfigured) {
+      _admissionActive =
+          checkpoint.admissionState == DeviceAdmissionState.claimActive;
+      _networkOutcomeUnknown = checkpoint.provisioningState ==
+          DeviceProvisioningState.outcomeUnknown;
+      if (!_networkConfigured && !_networkOutcomeUnknown) {
         _step = checkpoint.provisioningState == DeviceProvisioningState.failed
             ? _Step.choosingNetwork
             : _Step.working;
@@ -574,15 +558,15 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         final failure = checkpoint.failure;
         _refused = checkpoint.admissionState == DeviceAdmissionState.rejected ||
             (failure != null && !failure.retryable);
-        _progress =
-            _refused ? null : _admissionProgress(checkpoint.admissionState);
+        _progress = _refused || _admissionActive
+            ? null
+            : _admissionProgress(checkpoint.admissionState);
         _error = checkpoint.failure?.message;
       }
     });
     _admissionObservation.setWaiting(
-      checkpoint.provisioningState ==
-              DeviceProvisioningState.networkConfigured &&
-          !checkpoint.isReady &&
+      (_networkConfigured || _networkOutcomeUnknown) &&
+          !_admissionActive &&
           !_refused,
     );
   }
@@ -602,6 +586,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           _activeRequestId = null;
           _refused = false;
           _networkConfigured = false;
+          _networkOutcomeUnknown = false;
+          _admissionActive = false;
           _pendingSetups =
               _pendingSetups.where((item) => item.setupId != setupId).toList();
           _progress = null;
@@ -651,6 +637,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             if (_busy &&
                 _candidate?.transportKind == 'softap' &&
                 !_networkConfigured &&
+                !_networkOutcomeUnknown &&
                 ((_step == _Step.choosingDevice && _descriptor == null) ||
                     _step == _Step.working)) ...[
               const SizedBox(height: 16),
@@ -757,8 +744,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   Widget _awaitingHost() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('手机还没回到主机所在的网络',
-              style: Theme.of(context).textTheme.titleLarge),
+          Text('手机还没回到主机所在的网络', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 12),
           if (_descriptor != null)
             Text(
@@ -900,7 +886,9 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
                 ? '这次接入进行不下去了'
                 : _networkConfigured
                     ? 'Wi-Fi 已配置，正在接入主机'
-                    : '正在配置设备网络',
+                    : _networkOutcomeUnknown
+                        ? (_admissionActive ? '主机已确认设备接入' : '正在确认设备接入结果')
+                        : '正在配置设备网络',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 12),
@@ -909,17 +897,24 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
                 ? '这次接入已结束或失效。可以重新添加设备；已有设备的状态请在主机设备列表查看。'
                 : _networkConfigured
                     ? '网络配置已保存，无需再次输入密码。接下来由设备向主机登记并完成接入。'
-                    : '正在自动完成设置，请保持设备通电，无需重复操作。',
+                    : _networkOutcomeUnknown
+                        ? (_admissionActive
+                            ? '设备接入已生效，但本次 Wi-Fi 配置结果仍未确认。请检查设备实际连接的网络，必要时重新设置。'
+                            : '尚未确认 Wi-Fi 配置结果，正在向主机查询。请保持设备通电，让手机连回主机网络，无需重复配网。')
+                        : '正在自动完成设置，请保持设备通电，无需重复操作。',
           ),
           if (!_refused) ...[
             const SizedBox(height: 16),
             Text('1. 连接设备${_networkConfigured ? ' ✓' : ''}'),
             Text(
                 '2. 配置 Wi-Fi${_connectingNetwork == null ? '' : ' · $_connectingNetwork'}${_networkConfigured ? ' ✓' : ''}'),
-            Text('3. 接入主机${_networkConfigured ? ' · 进行中' : ''}'),
+            Text(
+                '3. 接入主机${_admissionActive ? ' ✓' : (_networkConfigured || _networkOutcomeUnknown) ? ' · 进行中' : ''}'),
           ],
           const SizedBox(height: 16),
-          if (!_refused && _error != null && _networkConfigured) ...[
+          if (!_refused &&
+              _error != null &&
+              (_networkConfigured || _networkOutcomeUnknown)) ...[
             FilledButton.icon(
               key: const Key('resume-device-admission'),
               onPressed: _busy ? null : _resumePersistedAdmission,

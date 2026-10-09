@@ -35,15 +35,16 @@ Mac host（`owner-0342958c…` gen 1）的 App 里点「添加设备或恢复网
   voucher。取 voucher 的失败按来源分级：
   - 「没到主机」——pinned 传输的 `unreachable / timeout / io / cancelled`、
     `TimeoutException / SocketException / ClientException`，以及重定位结束后的
-    `HostLocationException` **且其中每个地址的失败都属于上述沉默类**（按重定位自己的规则，
-    本网段新发现的地址优先于只是记得的旧地址）——在预算内每隔一个间隔重试，进度文案说明
+    `HostLocationException` **且目标候选的失败都属于上述沉默类**（复用会话层的 `targetFailures`，
+    无关发现地址的身份不匹配不代表目标主机拒绝）——在预算内每隔一个间隔重试，进度文案说明
     在等手机回到主机所在的网络和已等秒数；
   - `HostControllerAuthorizationException` 按它包着的原因判断：会话层（`_reauthenticate`）
     现在把底层失败放进 `cause`；401 之后重新认证时网络消失（`cause` 是沉默类传输失败、且
     不要求重新认领）同样等待；没有 `cause`、要求重新认领、或 `cause` 是身份不符/格式不兼容，
     立即报告。
   - 其余一律立即报告、不等待：主机答复的拒绝（`LocalApiRequestException`）、某个地址以另一台
-    主机的身份应答（`secureChannel` / `SetupTrustException`）、响应格式不兼容。
+    主机的身份应答且地址来自已记住或已验证发布的目标地址（`secureChannel` /
+    `SetupTrustException`）、响应格式不兼容。
 - 预算用尽进入新步骤 `awaitingHost`：说明设备已准备好、设置模式仍开着、不用再碰设备；
   指引到系统 Wi-Fi 设置连回主机网络；「已连回网络，继续」只重做取 voucher，不再访问设备；
   App 回到前台时自动重试一次；「重新选择设备」回到搜索。
@@ -57,7 +58,7 @@ Mac host（`owner-0342958c…` gen 1）的 App 里点「添加设备或恢复网
 
 - `device_setup_page_two_visits_test.dart` 新增 10 项：主机晚回来时等待而不报错且不重访设备；
   超出预算保留已准备设备并可仅重取 voucher；回前台自动重试；主机拒绝立即报告；重定位只遇到
-  沉默时等待；某地址以另一台主机身份应答时立即报告；重新认证时断网则等待、三种授权拒绝
+  沉默时等待；已验证发布地址以另一台主机身份应答时立即报告；无关发现地址不终止等待；重新认证时断网则等待、三种授权拒绝
   （要求重新认领 / 身份不符 / 未连接）立即报告。
 - 会话层：重新认证遇到**沉默类**网络失败时，除了带出 `cause`，还把连接标记为「位置失效」
   （与网络变化通知走同一条 `_relocate()` 路径），下一次请求自行重新定位并认证，不依赖
@@ -105,22 +106,34 @@ Mac host（`owner-0342958c…` gen 1）的 App 里点「添加设备或恢复网
   平板后来也成功连接 `rcgy5#305`（`192.168.100.7`）。因此不能将此前平板关联失败外推为
   AP 持续拒绝所有新设备。历史故障仍需同期 Korvo disconnect reason、AP 日志或关联帧取证。
 
-### 应统一的恢复语义（待实现）
+### 已实现的恢复语义（2026-10-10）
 
-1. 第二次访问提交后，终态收不到属于“结果未知”，不能当作已回滚，也不能直接标成成功。
-   当前 coordinator 将传输异常归为 `provisioning_failed`，checkpoint 变成 `failed`；
-   `canResume` 只接受 `networkConfigured`，导致设备后来成功登记时，该 checkpoint 无法沿用
-   已有 admission recovery。应保留设备、目标 Owner/generation、操作标识及不确定结果，
-   返回主机后通过现有 recovery/proposal 查询确认，而不是引导再次下发 Wi-Fi。
-2. 查询必须匹配该候选设备及目标 Owner，不放宽身份校验，不自动批准无关申请；
-   主机拒绝、明确回滚和提交结果未知必须分别处理。
-3. 先补结果恢复，再统一各阶段的期限和可观测日志。仅延长 App 超时无法覆盖断网、进程退出、
-   终态丢失；也不应把固件成功终态提前到 Wi-Fi、Owner 路由验证和持久提交之前。
-4. 本轮 Host 删除重加验收还发现：目标 opi5max 不可达、同网段只有 Mac 可达时，
-   `AnnouncedAddressSource` 返回其他 Host 候选，`HostLocationException._describe` 又优先采用新候选，
-   最终误提示目标 Host 身份不符。它也会使当前 voucher 等待分类提前退出。
-   应区分“发现了另一台 Host”与“目标 Host 确认拒绝/身份变更”；保留严格 pin 验证，
-   不能把无关 Host 的拒绝当成目标授权失效。该问题和终态未知恢复应分别回归。
+- 会话层统一提供 `HostLocationException.targetFailures`：发现来源只提供候选地址，
+  其中身份不匹配的其他 Host 不代表目标拒绝。错误文案与 voucher 等待共用此分类；
+  已记住/已验证发布地址的身份错误、真实授权拒绝和格式错误仍保留，pin 校验不变。
+- 平台 adapter 仅将网络提交阶段的终态超时、status/apply 响应丢失和连接中断标为
+  `outcomeUnknown`；提交前失败、明确拒绝、回滚及无效证据不因此进入恢复。
+- checkpoint 持久保存 `outcomeUnknown`，仍保留原有设备、Owner/generation 和操作 ID，
+  不保存密码。应用退出遗留的 `configuringNetwork` 也先转为未知结果再查询。
+  同一 setup 再次提交只进入现有 admission recovery，不重新打开设备网络。
+- 回主机后复用现有 proposal 查询、恢复和幂等 Decision；校验设备、登记 ID 和 Owner，
+  无匹配登记时继续原有观察，明确失败仍停止。主机返回有效 active Claim 只确认接入有效，
+  不证明这次 Wi-Fi 变更成功；页面明确保留网络结果未知并停止登记轮询，
+  不将 checkpoint 伪造为 `networkConfigured` 或整个设置完成。
+- 页面区分“正在确认设备接入结果”与“Wi-Fi 已配置”，支持回前台/重启后继续以及显式重新设置。
+  未更改固件提交顺序、App 超时预算、Host 协议或多 mobile 平等授权模型。
 
-上述两项恢复缺口不改变多个 mobile 平等管理 Host 的授权模型；它们分别位于 Host 寻址错误分类
-和外设跨 Owner 配网结果恢复。本轮只补充验收与分析记录，尚未修改这些运行时代码。
+回归覆盖：终态丢失后主机暂时不可达、重启继续、apply 期间退出、不重发 Wi-Fi、
+无关登记/Owner 变更拒绝、明确网络拒绝，以及多 Host 发现期间的回网等待。
+旧 App 已保存为普通失败的记录不被猜测性改写；上述恢复语义适用于新版本保留的状态。
+
+### 本次修复验证
+
+- Mobile 全量 1249 项通过、8 项既有跳过；最终收紧完成条件后，相关 46 项再验证通过。
+  `flutter analyze` 无问题，Android debug APK 构建成功。
+- 已保留应用数据覆盖安装到平板 `24091RPADC`。
+- 多 Host 寻址实测：平板由 `eidolon` 切换到 `rcgy5#305` 后，Mac 被重新定位到
+  `192.168.100.3` 并显示可连接；不可达的 opi5max 显示“上次连接地址超时，当前网络未确认新地址”，
+  不再误报身份变化或要求重新授权。
+- 终态未知、进程退出和登记恢复由上述自动化验证；本轮没有重新制造 Korvo 的实际终态丢包，
+  不宣称这段真机迁移已经全程通过，也没有手工修改旧失败 checkpoint 或设备认领数据。

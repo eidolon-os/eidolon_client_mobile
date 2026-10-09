@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:eidolon_client_mobile/src/features/host_setup/host_locator.dart';
+
 import 'package:eidolon_client_mobile/src/features/host_setup/host_product_session.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_client.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_discovery.dart';
@@ -169,6 +171,31 @@ MockClient _workingClient({int overviewResetEpoch = 2}) =>
     });
 
 void main() {
+  test('unrelated discovery identity cannot mask target network failure', () {
+    HostCandidateFailure failure(HostAddressEvidence evidence, Object error) =>
+        HostCandidateFailure(
+            HostAddressCandidate(
+                endpoint: _endpoint('192.168.1.20'), evidence: evidence),
+            error);
+    final other = failure(
+        HostAddressEvidence.announced,
+        PinnedHttpException(
+            kind: PinnedHttpFailureKind.secureChannel,
+            message: 'another Host'));
+    final silent = failure(
+        HostAddressEvidence.remembered,
+        PinnedHttpException(
+            kind: PinnedHttpFailureKind.timeout,
+            message: 'target unreachable'));
+    final error = HostLocationException([other, silent]);
+    expect(error.failures, hasLength(2));
+    expect(error.targetFailures, [silent]);
+    expect(error.message, contains('上次连接地址超时'));
+    expect(HostLocationException([other]).targetFailures, isEmpty);
+    final published = failure(HostAddressEvidence.published, other.error);
+    expect(HostLocationException([published]).message, contains('不是这台手机配对过'));
+  });
+
   test('reports the failure that decided the outcome, not the last one tried',
       () async {
     // A real report from a phone: 「无法连接到 Hub / 请检查局域网连接」 with
@@ -542,7 +569,8 @@ void main() {
     Object? failure;
     try {
       await session.execute(
-        (api, baseUrl, token) => api.fetchWorkspace(baseUrl, accessToken: token),
+        (api, baseUrl, token) =>
+            api.fetchWorkspace(baseUrl, accessToken: token),
       );
     } catch (error) {
       failure = error;
@@ -607,8 +635,10 @@ void main() {
           (api, baseUrl, token) =>
               api.fetchWorkspace(baseUrl, accessToken: token),
         );
-    await expectLater(ask(), throwsA(isA<HostControllerAuthorizationException>()
-        .having((e) => e.cause, 'cause', isA<PinnedHttpException>())));
+    await expectLater(
+        ask(),
+        throwsA(isA<HostControllerAuthorizationException>()
+            .having((e) => e.cause, 'cause', isA<PinnedHttpException>())));
     // Asked again, it refuses at once rather than relocating.
     await expectLater(
         ask(),

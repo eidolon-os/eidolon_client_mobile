@@ -51,7 +51,8 @@ void main() {
     ));
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await _pumpUntil(tester, () => find.text('设备已接入这台主机').evaluate().isNotEmpty);
+    await _pumpUntil(
+        tester, () => find.text('设备已接入这台主机').evaluate().isNotEmpty);
 
     expect(admission.recoverCalls, 1);
     expect(find.text('设备已接入这台主机'), findsOneWidget);
@@ -99,7 +100,8 @@ void main() {
       claimState: 'active',
     );
     await tester.pump(const Duration(seconds: 3));
-    await _pumpUntil(tester, () => find.text('设备已接入这台主机').evaluate().isNotEmpty);
+    await _pumpUntil(
+        tester, () => find.text('设备已接入这台主机').evaluate().isNotEmpty);
 
     expect(find.text('设备已接入这台主机'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
@@ -146,6 +148,7 @@ EnrollmentRecoveryProjectionV1 _projection({
     canonicalProjection(
       state: state,
       ownerDomainId: ownerDomainIdFixture,
+      deviceId: namedDeviceInstanceId('device_01'),
       withDecision: withDecision,
       withDelivery: withDelivery,
       claimState: claimState,

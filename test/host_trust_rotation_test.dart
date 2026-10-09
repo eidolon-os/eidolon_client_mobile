@@ -49,8 +49,8 @@ class _Identity {
     final pair = await Ed25519().newKeyPairFromSeed(List<int>.filled(32, seed));
     final public = await pair.extractPublicKey();
     final digest = crypto.sha256.convert(public.bytes).toString();
-    return _Identity(_b64(public.bytes), 'ehost-${digest.substring(0, 20)}',
-        pair);
+    return _Identity(
+        _b64(public.bytes), 'ehost-${digest.substring(0, 20)}', pair);
   }
 
   Future<String> statement(String pin) async {
@@ -131,7 +131,8 @@ ManagedHost _host(_Identity identity) => ManagedHost(
 
 /// Answers only to the pin the Host currently serves; the stale one is refused
 /// exactly as the pinned transport refuses it.
-LocalApiClientFactory _factoryServing(String servedPin, List<String> pinsTried) =>
+LocalApiClientFactory _factoryServing(
+        String servedPin, List<String> pinsTried) =>
     (pin) {
       pinsTried.add(pin);
       return LocalApiClient(
@@ -167,7 +168,8 @@ void main() {
 
     expect(pins, contains(_stalePin), reason: 'the stored pin is tried first');
     expect(pins, contains(_rotatedPin),
-        reason: 'the key the Host actually presented is adopted and re-dialled');
+        reason:
+            'the key the Host actually presented is adopted and re-dialled');
   });
 
   test('a statement signed by anyone else is not a rotation', () async {
@@ -208,7 +210,7 @@ void main() {
     expect(pins, isNot(contains(_rotatedPin)));
   });
 
-  test('a Host that is not the paired one is not offered a retry', () {
+  test('a remembered address with another Host identity requires recovery', () {
     final sentence = HostLocationException([
       HostCandidateFailure(
         const HostAddressCandidate(
@@ -218,7 +220,7 @@ void main() {
             ipAddress: '192.168.100.19',
             contractVersion: '1',
           ),
-          evidence: HostAddressEvidence.announced,
+          evidence: HostAddressEvidence.remembered,
         ),
         PinnedHttpException(
           kind: PinnedHttpFailureKind.secureChannel,
@@ -238,7 +240,8 @@ void main() {
     expect(failureSentence(error), isNot(contains('subtype')));
   });
 
-  test('a rotated pin is recorded, an identity that moved is refused', () async {
+  test('a rotated pin is recorded, an identity that moved is refused',
+      () async {
     // The last place that treated the pin as the identity. While it did, a
     // session could adopt a rotated key and the list would still show the
     // address and "last connected" from before the rotation, forever, because
