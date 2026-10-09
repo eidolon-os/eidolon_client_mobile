@@ -50,5 +50,14 @@ Setup 身份拒绝网络操作、同一 BLE 链路内新增授权后密钥验证
 
 2026-10-09 验证结果：mobile 全量测试 1224 通过、8 跳过，Flutter analyze 无问题；
 Host Bootstrap 及关联管理员 API、设备准入、NetworkManager 和 Local API CLI 测试共 138 通过；
-Android debug APK 构建成功。改动位于 mobile 与 eidolon_admin 两个工作区，尚未部署到主机或安装到平板。
-SQLite schema 10 仅一次性把历史 initial_network 标签归一为 change_network，不删除授权或重置 Host。
+Android debug APK 构建成功。
+
+## 已有 Host 升级
+
+SQLite schema 9 → 10 在新 Host 服务首次启动时自动完成，仅一次性把历史 initial_network
+标签归一为 change_network，不删除授权或重置 Host；拉取代码后无需手动执行 SQL 或重新认领。
+mobile 应保留应用数据覆盖安装。
+
+通过 Ops 发布时，先备份已有组件数据，再使用 `deploy --activate --cutover-mode forward-only`。
+发布器会拒绝跨 Bootstrap schema 的普通可回滚发布，不能只切回旧代码读取已升级数据库。
+有线发布不要求先配置 Wi-Fi；未联网时应用就绪检查可能无法完成，需由 mobile 配网后验证业务连通性。
