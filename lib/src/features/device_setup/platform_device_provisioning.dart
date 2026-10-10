@@ -139,7 +139,12 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
     try {
       final raw = await _channel.invokeMethod<String>(
         'openProvisioningSession',
-        {'transportId': candidate.transportId, 'sessionId': visit},
+        {
+          'transportId': candidate.transportId,
+          'sessionId': visit,
+          if (candidate.accessPoint != null)
+            'accessPoint': candidate.accessPoint,
+        },
       );
       if (_activeVisit != visit) {
         throw const DeviceProvisioningTransportException(
@@ -421,6 +426,7 @@ DeviceProvisioningCandidate _candidateFromPlatform(
   final displayName = value['displayName'];
   final transportKind = value['transportKind'];
   final signalStrength = value['signalStrength'];
+  final accessPoint = value['accessPoint'];
   if (transportId is! String ||
       transportId.isEmpty ||
       transportId.length > 128 ||
@@ -443,8 +449,15 @@ DeviceProvisioningCandidate _candidateFromPlatform(
     // refuses a session whose trust changed between the two.
     trust: SetupDescriptorTrustV1.developmentTofu,
     signalStrength: signalStrength is int ? signalStrength : null,
+    // Optional and never required: without it the visit still works, the
+    // platform just asks the person again on the way back.
+    accessPoint: accessPoint is String && _accessPointPattern.hasMatch(accessPoint)
+        ? accessPoint.toLowerCase()
+        : null,
   );
 }
+
+final _accessPointPattern = RegExp(r'^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$');
 
 DeviceWifiNetwork _networkFromPlatform(Map<Object?, Object?> value) {
   final ssid = value['ssid'];

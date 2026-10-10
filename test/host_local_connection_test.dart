@@ -562,13 +562,19 @@ void main() {
       onHostUpdated: (_) async {},
     )));
     await tester.pumpAndSettle();
-    // The release is machine-scoped and asked beside the Workspace, while the
+    // The release and — for a record that has none yet — the machine's
+    // details are machine-scoped and asked beside the Workspace, while the
     // page is still open; nothing else may be asked before the Workspace says.
-    expect(managementReads, [ManagementV1.hostReleasePath]);
+    const machineScoped = {
+      ManagementV1.hostReleasePath,
+      ManagementV1.hostMonitorPath,
+    };
+    expect(managementReads.toSet(), machineScoped);
     await tester.pumpWidget(const SizedBox());
     gate.complete();
     await tester.pumpAndSettle();
-    expect(managementReads, [ManagementV1.hostReleasePath]);
+    expect(managementReads.toSet(), machineScoped);
+    expect(managementReads, hasLength(machineScoped.length));
     expect(tester.takeException(), isNull);
   });
 

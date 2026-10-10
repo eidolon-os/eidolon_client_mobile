@@ -590,7 +590,14 @@ class EidolonBackdrop extends StatelessWidget {
         children: [
           const RepaintBoundary(
               child: CustomPaint(painter: _BackdropPainter())),
-          child,
+          // Android draws every app edge to edge now, so pages extend under
+          // the navigation bar. A page that pads its own list loses the
+          // system's inset, and its last button then sits half inside the
+          // gesture area: a tap on its lower half goes home instead (seen on
+          // a phone with a 154 px gesture bar). One inset here, for every
+          // page and dialog, rather than one per page that each must
+          // remember; the backdrop shows through underneath the bar.
+          SafeArea(top: false, left: false, right: false, child: child),
         ],
       );
 }

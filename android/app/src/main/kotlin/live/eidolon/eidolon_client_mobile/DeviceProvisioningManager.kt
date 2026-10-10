@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.location.LocationManager
 import android.net.ConnectivityManager
+import android.net.MacAddress
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
@@ -223,12 +224,16 @@ class DeviceProvisioningManager(
         val candidates = results
             .filter { it.ssidText().startsWith(AP_PREFIX) }
             .map { point ->
-                mapOf(
-                    "transportId" to point.ssidText(),
-                    "displayName" to point.ssidText(),
-                    "transportKind" to TRANSPORT_KIND,
-                    "signalStrength" to point.level,
-                )
+                buildMap {
+                    put("transportId", point.ssidText())
+                    put("displayName", point.ssidText())
+                    put("transportKind", TRANSPORT_KIND)
+                    put("signalStrength", point.level)
+                    // The access point's own address, when the platform shows
+                    // it. Naming it on both visits is what lets Android treat
+                    // the second one as already allowed (see joinDeviceNetwork).
+                    point.accessPointAddress()?.let { put("accessPoint", it) }
+                }
             }
         Log.i(
             TAG,
@@ -266,6 +271,17 @@ class DeviceProvisioningManager(
         SystemClock.elapsedRealtime() - result.timestamp / 1000
 
     @Suppress("DEPRECATION")
+    /**
+     * The access point's address, or null when Android withheld it. A missing
+     * location grant reports every BSSID as `02:00:00:00:00:00`, which names
+     * no access point at all and must not be pinned.
+     */
+    private fun ScanResult.accessPointAddress(): String? {
+        val address = BSSID?.lowercase() ?: return null
+        if (address == "02:00:00:00:00:00" || address == "00:00:00:00:00:00") return null
+        return if (Regex("^[0-9a-f]{2}(:[0-9a-f]{2}){5}$").matches(address)) address else null
+    }
+
     private fun ScanResult.ssidText(): String =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             wifiSsid?.toString()?.trim('"').orEmpty().ifEmpty { SSID.orEmpty() }
@@ -287,7 +303,7 @@ class DeviceProvisioningManager(
      * having nothing behind it. The same discipline was already in this app
      * once, in the path this one replaced.
      */
-    fun open(transportId: String, id: String, result: MethodChannel.Result) {
+    fun open(transportId: String, accessPoint: String?, id: String, result: MethodChannel.Result) {
         synchronized(lock) {
             if (connectResult?.isAnswered == false || activeOperation?.isAnswered == false) {
                 result.error(
@@ -301,19 +317,32 @@ class DeviceProvisioningManager(
             sessionId = id
             connectResult = PendingResult(result)
         }
-        joinDeviceNetwork(transportId)
+        joinDeviceNetwork(transportId, accessPoint)
     }
 
-    private fun joinDeviceNetwork(transportId: String) {
+    private fun joinDeviceNetwork(transportId: String, accessPoint: String?) {
         val pending = synchronized(lock) { connectResult } ?: return
+        val specifier = WifiNetworkSpecifier.Builder().setSsid(transportId)
+        // Setting a device up visits its access point twice, with the Host
+        // asked for the device's standing in between. Android asks the person
+        // to allow every such request — unless it names one exact access point
+        // (SSID and BSSID) that this app was already allowed to join, which
+        // the second visit then is. Without the address the person is asked
+        // again right after typing the Wi-Fi password, on some phones on a
+        // full-screen page that looks like the system's Wi-Fi settings.
+        accessPoint?.let { address ->
+            try {
+                specifier.setBssid(MacAddress.fromString(address))
+            } catch (error: IllegalArgumentException) {
+                Log.w(TAG, "Ignoring an unusable access point address", error)
+            }
+        }
         val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             // Without this, Android validates the network, finds no internet
             // behind it, and drops it — which is exactly what happened.
             .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .setNetworkSpecifier(
-                WifiNetworkSpecifier.Builder().setSsid(transportId).build(),
-            )
+            .setNetworkSpecifier(specifier.build())
             .build()
 
         val callback = object : ConnectivityManager.NetworkCallback() {

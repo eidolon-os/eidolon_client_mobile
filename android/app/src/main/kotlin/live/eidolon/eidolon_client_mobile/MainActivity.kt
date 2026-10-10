@@ -131,6 +131,7 @@ class MainActivity : FlutterActivity() {
                 }
                 "openProvisioningSession" -> deviceProvisioning.open(
                     call.argument<String>("transportId") ?: error("transportId is required"),
+                    call.argument<String>("accessPoint"),
                     call.argument<String>("sessionId") ?: error("sessionId is required"),
                     result,
                 )

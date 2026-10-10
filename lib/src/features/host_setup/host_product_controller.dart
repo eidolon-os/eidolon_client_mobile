@@ -360,7 +360,8 @@ class HostProductController extends ChangeNotifier {
       _workspaceBusy = true;
       _notify();
       // Machine-scoped, so not behind the Workspace the product state waits on.
-      await Future.wait([_loadProductState(), _loadRelease()]);
+      await Future.wait(
+          [_loadProductState(), _loadRelease(), _loadMachineInfoIfMissing()]);
     } on SetupTrustException catch (error) {
       // The Host answered and named itself as someone else. Same dead end as a
       // failed pin, reached one layer earlier.
@@ -1201,6 +1202,20 @@ class HostProductController extends ChangeNotifier {
 
   /// Swallowed on purpose, like capabilities: a Host that cannot say which
   /// release it runs has lost a line of readout, not the connection.
+  /// What kind of machine this is, read once for a Host whose record has none.
+  ///
+  /// A Host added from the setup flow arrives here with only its name: the
+  /// Host list fills the machine in on its next refresh, and until then this
+  /// page said 「机型待主机提供」 about a Host it was connected to. Read once
+  /// and kept on the record, as the list would; best effort, because nothing
+  /// on the page waits on it.
+  Future<void> _loadMachineInfoIfMissing() async {
+    if (_host.machineInfo != null) return;
+    try {
+      await hostMonitor();
+    } catch (_) {}
+  }
+
   Future<void> _loadRelease() async {
     try {
       _release = await _hostServicesRepository.release();

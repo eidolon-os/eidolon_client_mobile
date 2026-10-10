@@ -882,6 +882,70 @@ void main() {
       );
     });
   });
+
+  test('discovery keeps the access point address so the second visit can name it',
+      () async {
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'discoverProvisionableDevices') {
+        return <Object?>[
+          <Object?, Object?>{
+            'transportId': 'eidolon-52f354',
+            'displayName': 'eidolon-52f354',
+            'transportKind': 'softap',
+            'accessPoint': 'F4:12:FA:52:F3:55',
+          },
+          <Object?, Object?>{
+            'transportId': 'eidolon-7e2444',
+            'displayName': 'eidolon-7e2444',
+            'transportKind': 'softap',
+            'accessPoint': 'not-an-address',
+          },
+          <Object?, Object?>{
+            'transportId': 'eidolon-000001',
+            'displayName': 'eidolon-000001',
+            'transportKind': 'softap',
+          },
+        ];
+      }
+      return null;
+    });
+
+    final found = await build().discover();
+
+    expect(found.map((c) => c.accessPoint).toList(),
+        ['f4:12:fa:52:f3:55', null, null]);
+  });
+
+  test('opening a device names its access point when one was seen', () async {
+    final opened = <Map<Object?, Object?>>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'openProvisioningSession') {
+        opened.add(Map<Object?, Object?>.from(call.arguments as Map));
+        return descriptorJson();
+      }
+      return null;
+    });
+    final transport = build();
+
+    final pinned = await transport.open(const DeviceProvisioningCandidate(
+      transportId: 'eidolon-52f354',
+      displayName: 'eidolon-52f354',
+      transportKind: 'softap',
+      trust: SetupDescriptorTrustV1.developmentTofu,
+      accessPoint: 'f4:12:fa:52:f3:55',
+    ));
+    await pinned.close();
+    final unpinned = await transport.open(const DeviceProvisioningCandidate(
+      transportId: 'eidolon-52f354',
+      displayName: 'eidolon-52f354',
+      transportKind: 'softap',
+      trust: SetupDescriptorTrustV1.developmentTofu,
+    ));
+    await unpinned.close();
+
+    expect(opened[0]['accessPoint'], 'f4:12:fa:52:f3:55');
+    expect(opened[1].containsKey('accessPoint'), isFalse);
+  });
 }
 
 MethodChannel _failing(String code, String message) {

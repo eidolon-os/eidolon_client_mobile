@@ -59,6 +59,7 @@ class DeviceProvisioningCandidate {
     required this.transportKind,
     required this.trust,
     this.signalStrength,
+    this.accessPoint,
   });
 
   final String transportId;
@@ -66,6 +67,16 @@ class DeviceProvisioningCandidate {
   final String transportKind;
   final SetupDescriptorTrustV1 trust;
   final int? signalStrength;
+
+  /// The hardware address of the access point this candidate was seen on, as
+  /// a lower-case `aa:bb:cc:dd:ee:ff`, or null when the platform withheld it.
+  ///
+  /// Setting a device up visits it twice — once to read its key, once to hand
+  /// it the network — and the Host is asked for its standing in between. A
+  /// request that names one exact access point lets Android recognise the
+  /// second visit as the one the person already allowed, instead of asking
+  /// them again right after they typed the Wi-Fi password.
+  final String? accessPoint;
 }
 
 /// What a device said about itself, plus the one thing it could not say.

@@ -5,6 +5,7 @@ import 'package:eidolon_client_mobile/src/features/host_setup/host_product_contr
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_client.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/network_changes.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_identity_summary.dart';
+import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:eidolon_client_mobile/src/management/management_client.dart';
 import 'package:flutter/material.dart';
@@ -24,6 +25,49 @@ class _Network implements NetworkChanges {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('a Host added without its machine details learns them on connecting',
+      () async {
+    final saved = <ManagedHost>[];
+    var monitorReads = 0;
+    final controller = HostProductController(
+      host: hostFixture(lastKnownBaseUrl: 'https://192.168.1.26:9002'),
+      onHostUpdated: (host) async => saved.add(host),
+      transport: NoopTransport(),
+      controllerKeys: FakeControllerKeys(),
+      networkChanges: _Network(),
+      localApiClientFactory: (_) =>
+          LocalApiClient(httpClient: MockClient(hostSessionResponse)),
+      managementClientFactory: (_) =>
+          ManagementClient(httpClient: MockClient((request) async {
+        if (request.url.path != ManagementV1.hostMonitorPath) {
+          return http.Response('{}', 404);
+        }
+        monitorReads++;
+        return http.Response(
+            jsonEncode({
+              'operation': 'host.monitor',
+              'hostname': 'eidolon-pi5',
+              'machine_model': 'Raspberry Pi 5 Model B Rev 1.0',
+              'operating_system': 'Debian GNU/Linux 13 (trixie)',
+              'cpu': {'device_id': 'cpu', 'model': 'bcm2712', 'cores': []},
+              'memory': {'total_bytes': 8589934592},
+              'observed_at': '2026-10-11T00:00:00Z',
+            }),
+            200,
+            headers: {'content-type': 'application/json'});
+      })),
+    );
+    addTearDown(controller.dispose);
+
+    await controller.connect(allowBle: false);
+    expect(controller.host.machineInfo?.model, 'Raspberry Pi 5 Model B Rev 1.0');
+    expect(saved.last.machineInfo?.model, 'Raspberry Pi 5 Model B Rev 1.0',
+        reason: 'kept on the record, so the Host list has it too');
+
+    await controller.connect(allowBle: false);
+    expect(monitorReads, 1, reason: 'a record that has it is not re-read');
+  });
 
   test('the detail page reads the release on each connection and keeps none',
       () async {
@@ -93,3 +137,4 @@ void main() {
     expect(find.textContaining('Release 版本'), findsNothing);
   });
 }
+
