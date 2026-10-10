@@ -53,8 +53,6 @@ class ManagementV1 {
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks/${Uri.encodeComponent(taskId)}/retry';
   static const String contextPath = '/api/management/v1/context';
   static const String controllersPath = '/api/management/v1/controllers';
-  static const String controllersInvitationsPath =
-      '/api/management/v1/controllers/invitations';
   static String controllersByControllerIdPath(String controllerId) =>
       '/api/management/v1/controllers/${Uri.encodeComponent(controllerId)}';
   static const String deviceConversationsClosePath =
@@ -932,52 +930,6 @@ class CompanionSummaryView {
   }
 }
 
-class ControllerInvitationRequest {
-  const ControllerInvitationRequest({this.ttlSeconds});
-
-  final int? ttlSeconds;
-
-  factory ControllerInvitationRequest.fromJson(Map<String, dynamic> value) {
-    return ControllerInvitationRequest(
-      ttlSeconds: value['ttl_seconds'] as int?,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {if (ttlSeconds != null) 'ttl_seconds': ttlSeconds};
-  }
-}
-
-class ControllerInvitationView {
-  const ControllerInvitationView({
-    this.contractVersion,
-    required this.expiresAt,
-    required this.setupCode,
-  });
-
-  final String? contractVersion;
-
-  final String expiresAt;
-
-  final String setupCode;
-
-  factory ControllerInvitationView.fromJson(Map<String, dynamic> value) {
-    return ControllerInvitationView(
-      contractVersion: value['contract_version'] as String?,
-      expiresAt: value['expires_at'] as String,
-      setupCode: value['setup_code'] as String,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      if (contractVersion != null) 'contract_version': contractVersion,
-      'expires_at': expiresAt,
-      'setup_code': setupCode,
-    };
-  }
-}
-
 class ControllerView {
   const ControllerView({
     required this.claimedAt,
@@ -1477,6 +1429,46 @@ class DeviceOutputsView {
   }
 }
 
+class DevicePresenceView {
+  const DevicePresenceView({
+    this.observedAt,
+    this.reason,
+    this.source,
+    this.state,
+    this.validUntil,
+  });
+
+  final String? observedAt;
+
+  final String? reason;
+
+  final String? source;
+
+  final String? state;
+
+  final String? validUntil;
+
+  factory DevicePresenceView.fromJson(Map<String, dynamic> value) {
+    return DevicePresenceView(
+      observedAt: value['observed_at'] as String?,
+      reason: value['reason'] as String?,
+      source: value['source'] as String?,
+      state: value['state'] as String?,
+      validUntil: value['valid_until'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (observedAt != null) 'observed_at': observedAt,
+      if (reason != null) 'reason': reason,
+      if (source != null) 'source': source,
+      if (state != null) 'state': state,
+      if (validUntil != null) 'valid_until': validUntil,
+    };
+  }
+}
+
 class DeviceRemovalConditionView {
   const DeviceRemovalConditionView({
     required this.authority,
@@ -1607,6 +1599,7 @@ class DeviceView {
     required this.mountRevision,
     required this.outputs,
     required this.ownerDomainGeneration,
+    this.presence,
     this.quietBecause,
     required this.revision,
     required this.state,
@@ -1638,6 +1631,8 @@ class DeviceView {
 
   final int ownerDomainGeneration;
 
+  final DevicePresenceView? presence;
+
   final String? quietBecause;
 
   final int revision;
@@ -1664,6 +1659,11 @@ class DeviceView {
         value['outputs'] as Map<String, dynamic>,
       ),
       ownerDomainGeneration: value['owner_domain_generation'] as int,
+      presence: value['presence'] == null
+          ? null
+          : DevicePresenceView.fromJson(
+              value['presence'] as Map<String, dynamic>,
+            ),
       quietBecause: value['quiet_because'] as String?,
       revision: value['revision'] as int,
       state: value['state'] as String,
@@ -1688,6 +1688,7 @@ class DeviceView {
       'mount_revision': mountRevision,
       'outputs': outputs.toJson(),
       'owner_domain_generation': ownerDomainGeneration,
+      if (presence != null) 'presence': presence?.toJson(),
       if (quietBecause != null) 'quiet_because': quietBecause,
       'revision': revision,
       'state': state,

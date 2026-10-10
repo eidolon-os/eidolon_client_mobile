@@ -4,7 +4,6 @@ import 'package:eidolon_client_mobile/src/features/setup/eidolon_app_shell.dart'
 import 'package:eidolon_client_mobile/main.dart';
 import 'package:eidolon_client_mobile/src/features/setup/commissioning_transport.dart';
 import 'package:eidolon_client_mobile/src/features/setup/controller_key_bridge.dart';
-import 'package:eidolon_client_mobile/src/features/setup/controller_recovery_page.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
 import 'package:eidolon_client_mobile/src/features/setup/setup_models.dart';
 import 'package:eidolon_client_mobile/src/features/setup/setup_wizard_page.dart';
@@ -104,7 +103,7 @@ Future<void> _openHostDetail(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('open-host-settings')));
   await tester.pumpAndSettle();
   await tester.dragUntilVisible(
-    find.byKey(const Key('controller-recovery')),
+    find.byKey(const Key('open-managed-controllers')),
     find.byType(Scrollable).last,
     const Offset(0, -250),
   );
@@ -112,7 +111,7 @@ Future<void> _openHostDetail(WidgetTester tester) async {
 
 void main() {
   testWidgets(
-      'completed recovery returns to home with the replacement Controller',
+      'common search replaces an existing Controller and preserves the local name',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 2400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -127,15 +126,7 @@ void main() {
       },
     )));
     await tester.pumpAndSettle();
-    await tester.tap(find.text(_host.displayName));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('open-host-settings')));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('controller-recovery')));
-    await tester.tap(find.byKey(const Key('controller-recovery')));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('recovery-reclaim')));
-    await tester.tap(find.byKey(const Key('recovery-reclaim')));
+    await tester.tap(find.byKey(const Key('add-another-host')));
     await tester.pumpAndSettle();
     final restored = ManagedHost.fromJson({
       ..._host.toJson(),
@@ -156,46 +147,11 @@ void main() {
     expect(enteredController, restored.controllerId);
   });
 
-  testWidgets('the recovery entry is open and says what it costs',
+  testWidgets('settings do not expose a separate recovery route',
       (tester) async {
     await _openHostDetail(tester);
-
-    expect(
-      find.byKey(const Key('controller-recovery-unavailable')),
-      findsNothing,
-    );
-    expect(find.byKey(const Key('controller-recovery')), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('controller-recovery')));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(ControllerRecoveryPage), findsOneWidget);
-    expect(find.byKey(const Key('controller-recovery-page')), findsOneWidget);
-    expect(find.textContaining('任意管理手机'), findsWidgets);
-    expect(find.textContaining('无需撤销其他手机'), findsWidgets);
-    // The command, verbatim, because this is the one step the App cannot take.
-    await tester.drag(find.byType(ListView), const Offset(0, -600));
-    await tester.pumpAndSettle();
-    final command = tester.widget<SelectableText>(
-      find.byKey(const Key('recovery-command')),
-    );
-    expect(command.data, contains('commissioning-code'));
-    expect(command.data, isNot(contains('controller-reset')));
-  });
-
-  testWidgets('the recovery page hands the Owner back to the claim flow',
-      (tester) async {
-    await _openHostDetail(tester);
-    await tester.tap(find.byKey(const Key('controller-recovery')));
-    await tester.pumpAndSettle();
-
-    await tester.drag(find.byType(ListView), const Offset(0, -600));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('recovery-reclaim')));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(SetupWizardPage), findsOneWidget);
-    expect(find.byKey(const Key('setup-wizard-page')), findsOneWidget);
+    expect(find.byKey(const Key('controller-recovery')), findsNothing);
+    expect(find.byKey(const Key('open-managed-controllers')), findsOneWidget);
   });
 
   testWidgets('a refused claim names the recovery instead of ending there',
@@ -237,46 +193,7 @@ void main() {
         matching: find.byType(Text),
       ),
     );
-    expect(notice.data, contains('controller-reset'));
-    expect(notice.data, contains('管理手机邀请'));
-  });
-
-  test('each way back is one bounded act, and the lighter one comes first', () {
-    // Two separate properties, and they were conflated.
-    //
-    // The one this test was written for: naming `controller-reset` alone left
-    // an Owner in the state between revoking and reopening — nothing held the
-    // Host, nothing could claim it, and the way out was a second command
-    // nobody had mentioned. That property is what matters, and it still holds:
-    // each option below is self-contained.
-    //
-    // It was enforced by proxy, as `isNot(contains('commissioning-code'))`,
-    // and the proxy cost something real. This text appears when the Host is
-    // fine and *this* phone lost its authority, and for that case
-    // `controller-reset` is far more than is needed: the Host's own CLI help
-    // says it "revoke[s] every Controller Grant". Someone following the only
-    // instruction offered would have cut off every other phone in the house to
-    // get one back. `commissioning-code` mints the same one-time Setup code
-    // and revokes nothing — verified on a real Host, not read.
-    //
-    // So: both commands may be named, because they are alternatives rather
-    // than steps. What must never happen is one recovery split across two.
-    expect(controllerRecoveryGuidance, contains('commissioning-code'));
-    expect(controllerRecoveryGuidance, contains('controller-reset'));
-    expect(controllerRecoveryGuidance, contains('Setup 码'));
-
-    // The lighter path is offered first, because it is the one that fits the
-    // situation this text is shown in.
-    expect(
-      controllerRecoveryGuidance.indexOf('commissioning-code'),
-      lessThan(controllerRecoveryGuidance.indexOf('controller-reset')),
-    );
-
-    // And the heavier one says what it costs, so choosing it is a decision.
-    expect(controllerRecoveryGuidance, contains('撤销全部管理授权'));
-
-    // Neither is presented as a step in the other: no "then", no "再执行".
-    expect(controllerRecoveryGuidance, isNot(contains('然后执行')));
-    expect(controllerRecoveryGuidance, isNot(contains('再执行')));
+    expect(notice.data, isNot(contains('controller-reset')));
+    expect(notice.data, contains('重新搜索主机'));
   });
 }

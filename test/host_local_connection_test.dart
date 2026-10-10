@@ -13,6 +13,7 @@ import 'package:eidolon_client_mobile/src/features/setup/commissioning_transport
 import 'package:eidolon_client_mobile/src/features/setup/controller_key_bridge.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
 import 'package:eidolon_client_mobile/src/features/setup/setup_models.dart';
+import 'package:eidolon_client_mobile/src/features/setup/setup_wizard_page.dart';
 import 'package:eidolon_client_mobile/src/management/management_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -678,19 +679,24 @@ void main() {
     // 401 and the screen's only control was 「重新连接」 — but connecting is
     // precisely what a withdrawn Grant fails at. The way back is to be claimed
     // again, and somebody at the Host has to open that window first.
+    await tester.binding.setSurfaceSize(const Size(900, 2400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    ManagedHost? saved;
+    final original = _host(tlsSpkiFingerprint: _tlsFingerprint);
     await tester.pumpWidget(
       MaterialApp(
         home: HostLocalConnectionPage(
           managementClientFactory: (_) => _quietManagementClient(),
-          host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+          host: original,
           transport: _LegacyHostTransport(),
           controllerKeys: _FakeControllerKeys(),
           discovery: _FakeDiscovery(),
           localApiClientFactory: (_) => _clientFor(
             _hostOverview(),
-            authenticationStatusCode: 401,
+            authenticationStatusCode: saved == null ? 401 : 200,
           ),
           onHostUpdated: (_) async {},
+          onHostSaved: (host) async => saved = host,
         ),
       ),
     );
@@ -705,8 +711,26 @@ void main() {
     expect(find.byKey(const Key('open-host-reclaim')), findsOneWidget);
     // Both halves of the way back are named: who opens the window, and what
     // this phone does afterwards.
-    expect(find.textContaining('重新认领'), findsWidgets);
-    expect(find.textContaining('主机设置 → 恢复'), findsOneWidget);
+    expect(find.textContaining('重新搜索主机'), findsWidgets);
+    expect(find.textContaining('主机设置 → 恢复'), findsNothing);
+    await tester.tap(find.byKey(const Key('open-host-reclaim')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SetupWizardPage), findsOneWidget);
+    expect(find.byKey(const Key('host-settings-page')), findsNothing);
+    final replacement = ManagedHost.fromJson({
+      ...original.toJson(),
+      'controller_id': 'ectrl-fedcba9876543210abcd',
+      'display_name': 'Host default',
+    });
+    tester
+        .widget<SetupWizardPage>(find.byType(SetupWizardPage))
+        .onComplete(replacement);
+    await tester.pumpAndSettle();
+    expect(saved!.controllerId, replacement.controllerId);
+    expect(saved!.displayName, original.displayName);
+    expect(find.byType(SetupWizardPage), findsNothing);
+    expect(find.byKey(const Key('local-connection-reclaim-required')),
+        findsNothing);
   });
 
   testWidgets('an ordinary connection failure still offers a retry',
@@ -1143,7 +1167,7 @@ void main() {
     // What this page is and is not. It no longer claims that nothing on this
     // Host observes presence — the channel provider does, for a narrower
     // question than this page would be read as answering.
-    expect(find.textContaining('不是设备此刻的状态'), findsOneWidget);
+    expect(find.textContaining('“已添加”不代表设备在线'), findsOneWidget);
     expect(find.textContaining('运行时遥测投影'), findsNothing);
   });
 

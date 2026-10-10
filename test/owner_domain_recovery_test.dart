@@ -174,7 +174,6 @@ void main() {
         home: HostSettingsPage(
       host: controller.host,
       controller: controller,
-      onHostUpdated: (_) async {},
       onHostRenamed: (_) async {},
       onHostRemoved: (_) async {},
       onOpenControllers: () {},

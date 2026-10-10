@@ -23,14 +23,12 @@ ControllerView _grant(String controllerId, String name) =>
 Future<void> _open(
   WidgetTester tester, {
   required Future<List<ControllerView>> Function() load,
-  Future<ControllerInvitationView> Function()? invite,
   Future<void> Function(String controllerId)? revoke,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       home: ManagedControllersPage(
         loadControllers: load,
-        invite: invite ?? () async => throw StateError('must not invite'),
         revoke: revoke ?? (_) async => throw StateError('must not revoke'),
       ),
     ),
@@ -56,28 +54,11 @@ void main() {
     expect(find.text('这台手机'), findsOneWidget);
   });
 
-  testWidgets('an invitation shows the one-time code and when it lapses',
+  testWidgets('peers obtain authorization from the Host without invitations',
       (tester) async {
-    var invited = 0;
-    await _open(
-      tester,
-      load: () async => [_grant(_thisPhone, 'Pad')],
-      invite: () async {
-        invited += 1;
-        return ControllerInvitationView.fromJson({
-          'contract_version': '1',
-          'setup_code': '482913',
-          'expires_at': '2026-08-13T09:30:00Z',
-        });
-      },
-    );
-
-    await tester.tap(find.byKey(const Key('invite-controller')));
-    await tester.pumpAndSettle();
-
-    expect(invited, 1);
-    expect(find.byKey(const Key('controller-invitation')), findsOneWidget);
-    expect(find.text('482913'), findsOneWidget);
+    await _open(tester, load: () async => [_grant(_thisPhone, 'Pad')]);
+    expect(find.byKey(const Key('invite-controller')), findsNothing);
+    expect(find.textContaining('独立搜索'), findsOneWidget);
   });
 
   testWidgets('revoking another phone is confirmed, then the list is re-read',
@@ -133,8 +114,8 @@ void main() {
     );
     final content = (dialog.content! as Text).data!;
     expect(content, contains('这台手机将立即失去管理'));
-    // Nothing else holds it, so there is no one left to invite this phone back.
-    expect(content, contains('没有任何手机能管理它'));
+    // The Host protects its last administrator.
+    expect(content, contains('主机会拒绝撤销'));
   });
 
   testWidgets('a Host that refuses says so instead of emptying the list',

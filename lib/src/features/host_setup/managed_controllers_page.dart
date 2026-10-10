@@ -2,17 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../generated/management_v1.dart';
 
-/// The phones that manage one Host.
-///
-/// The Host has been able to answer all three of these questions for a while —
-/// who holds me, let one more in, withdraw one — and the App said the protocol
-/// did not exist yet. It did. A household with one phone and no way to add a
-/// second is one dropped phone away from a Host nobody can manage.
 class ManagedControllersPage extends StatefulWidget {
   const ManagedControllersPage({
     super.key,
     required this.loadControllers,
-    required this.invite,
     required this.revoke,
   });
 
@@ -21,7 +14,6 @@ class ManagedControllersPage extends StatefulWidget {
   /// compare identifiers itself, which is a second place to be wrong about the
   /// phone a person is holding while they decide which one to sign out.
   final Future<List<ControllerView>> Function() loadControllers;
-  final Future<ControllerInvitationView> Function() invite;
   final Future<void> Function(String controllerId) revoke;
 
   @override
@@ -30,7 +22,6 @@ class ManagedControllersPage extends StatefulWidget {
 
 class _ManagedControllersPageState extends State<ManagedControllersPage> {
   List<ControllerView>? _controllers;
-  ControllerInvitationView? _invitation;
   String? _error;
   bool _busy = false;
 
@@ -57,23 +48,6 @@ class _ManagedControllersPageState extends State<ManagedControllersPage> {
     }
   }
 
-  Future<void> _invite() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final invitation = await widget.invite();
-      if (!mounted) return;
-      setState(() => _invitation = invitation);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = '$error');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
   Future<void> _confirmRevoke(ControllerView grant) async {
     final itself = grant.isYou;
     final remaining = (_controllers?.length ?? 1) - 1;
@@ -88,9 +62,9 @@ class _ManagedControllersPageState extends State<ManagedControllersPage> {
               // someone else's, and the difference is worth a sentence: after
               // this, this phone manages nothing.
               ? '这台手机将立即失去管理这台主机的权限。'
-                  '${remaining > 0 ? '其他手机不受影响，可以由它们重新邀请你。' : '之后没有任何手机能管理它，只能由主机旁的人做一次恢复。'}'
+                  '${remaining > 0 ? '其他手机不受影响。之后可搜索主机，使用主机提供的 Setup 码重新获得授权。' : '这是最后一台管理手机，主机会拒绝撤销。'}'
               : '这台手机会立即失去管理权限。主机上的 Owner、设备和数据都不受影响；'
-                  '之后可以重新邀请它。',
+                  '之后可在该手机上搜索主机，使用主机提供的 Setup 码重新获得授权。',
         ),
         actions: [
           TextButton(
@@ -157,8 +131,8 @@ class _ManagedControllersPageState extends State<ManagedControllersPage> {
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      '这些手机可以管理这台主机。添加一台由已经在这里的手机发起，'
-                      '主机不会自己决定谁能加入。',
+                      '每台手机都是平等的管理端。其他手机也可以独立搜索这台主机，'
+                      '使用主机提供的 Setup 码获得管理授权。',
                     ),
                   ),
                 ],
@@ -172,35 +146,6 @@ class _ManagedControllersPageState extends State<ManagedControllersPage> {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(error, key: const Key('controllers-error')),
-              ),
-            ),
-          ],
-          if (_invitation case final invitation?) ...[
-            const SizedBox(height: 16),
-            Card(
-              key: const Key('controller-invitation'),
-              color: Theme.of(context).colorScheme.secondaryContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '在另一台手机上打开 Eidolon，选择这台主机，输入：',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 10),
-                    SelectableText(
-                      invitation.setupCode,
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      _lapses(invitation),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
               ),
             ),
           ],
@@ -234,38 +179,18 @@ class _ManagedControllersPageState extends State<ManagedControllersPage> {
                 onRevoke: _busy ? null : () => _confirmRevoke(grant),
               ),
             ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            key: const Key('invite-controller'),
-            onPressed: _busy ? null : _invite,
-            icon: const Icon(Icons.add),
-            label: const Text('添加一台手机'),
-          ),
         ],
       ),
     );
   }
 }
 
-/// When the code stops working, in local time.
-///
-/// A deadline this app cannot parse is left unsaid rather than shown raw or
-/// cropped: "只能用一次" is still true and still useful, and a mangled timestamp
-/// beside a secret is worse than no timestamp at all.
-String _lapses(ControllerInvitationView invitation) {
-  final expires = DateTime.tryParse(invitation.expiresAt);
-  if (expires == null) return '这个码只能用一次，很快就会失效。';
-  return '这个码只能用一次，'
-      '${expires.toLocal().toString().substring(0, 16)} 之前有效。';
-}
-
 /// A phone that never said what it is called still has to be pickable out of a
 /// list, so it is shown by the short end of its identifier rather than by an
 /// empty line.
-String _name(ControllerView grant) =>
-    (grant.displayName ?? '').isNotEmpty
-        ? grant.displayName!
-        : '未命名的手机 ${grant.controllerId.split('-').last}';
+String _name(ControllerView grant) => (grant.displayName ?? '').isNotEmpty
+    ? grant.displayName!
+    : '未命名的手机 ${grant.controllerId.split('-').last}';
 
 /// When it claimed this Host, in local time — and only if the Host sent a
 /// moment this app can actually read. A timestamp it cannot parse is left out

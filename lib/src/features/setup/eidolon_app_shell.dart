@@ -227,8 +227,10 @@ class _EidolonAppShellState extends State<EidolonAppShell>
             final known = (await _registry.load())
                 .where((item) => item.hostId == host.hostId)
                 .firstOrNull;
-            if (known == null) await _registry.save(host);
-            final registered = known ?? host;
+            final registered = known == null
+                ? host
+                : host.copyWith(displayName: known.displayName);
+            await _registry.save(registered);
             if (!context.mounted) return;
             await Navigator.of(context).pushReplacement<void, void>(
               MaterialPageRoute(

@@ -584,15 +584,6 @@ class HostControllerGrantRepository {
     return answer.controllers;
   }
 
-  Future<ControllerInvitationView> invite({required Duration ttl}) =>
-      _session.executeManagement(
-        (client, baseUri, accessToken) => client.inviteController(
-          baseUri,
-          accessToken: accessToken,
-          ttl: ttl,
-        ),
-      );
-
   Future<void> revoke({required String controllerId}) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.revokeController(

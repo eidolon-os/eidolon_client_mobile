@@ -1,8 +1,8 @@
 # Host 多 mobile 平等管理
 
 Host Identity 独立于管理手机。每个 mobile 安装实例持有自己的 Controller 密钥，Host
-为其签发独立的 `host_admin` Grant。所有有效管理员平等；最早加入、邀请者和受邀者
-没有权限差别。邀请者退出不影响受邀者。Host 的 Owner Domain、Workspace、Companion、
+为其签发独立的 `host_admin` Grant。所有有效管理员平等；每台 Mobile 都通过“搜索 Host → 认领／获得管理授权”接入，
+不区分首台或后续手机，不提供手机邀请入口。一台退出不影响其他管理端。Host 的 Owner Domain、Workspace、Companion、
 记忆和外设准入不属于 Controller Grant 生命周期。
 
 ## 状态与权限
@@ -32,8 +32,8 @@ Host Identity 独立于管理手机。每个 mobile 安装实例持有自己的 
 | --- | --- |
 | 从本机列表移除 | 清理本机记录，不清除 Controller 密钥，不改变 Host 授权；重新发现后可恢复 |
 | 撤销一台管理手机 | 该 Controller 后续请求和会话重验被拒绝；其他管理员继续使用 |
-| 用新邀请重新添加被撤销的同一密钥 | 明确重新授予该身份管理权限；旧已消费 Setup 凭据不能用于恢复 |
-| 手机重装、密钥丢失 | 通过另一管理员邀请或 Host 本地 Setup 码新增该安装实例的授权 |
+| 搜索 Host 并用新的 Setup 码重新授权同一密钥 | 明确重新授予该身份管理权限；旧已消费 Setup 凭据不能用于恢复 |
+| 手机重装、密钥丢失 | 搜索 Host，使用 Host 提供的 Setup 码获得该安装实例的授权 |
 | 撤销全部管理员 | 显式 controller-reset；普通恢复不会调用它 |
 
 保留最后一个管理员保护：普通撤销不能留下零个管理员；显式 reset 负责全量撤销并开放恢复入口。
@@ -43,7 +43,7 @@ Host Identity 独立于管理手机。每个 mobile 安装实例持有自己的 
 ## 验证与交付
 
 回归覆盖离线添加两个管理员、双方配网、旧授权恢复、窗口开放时删除重加、配网失败保留授权、
-Setup 身份拒绝网络操作、同一 BLE 链路内新增授权后密钥验证、单个撤销及新邀请恢复。
+Setup 身份拒绝网络操作、同一 BLE 链路内新增授权后密钥验证、单个撤销及独立重新授权。
 
 本次删除旧的 initial_network 分支和 already_claimed 拒绝码。mobile 与 Host 应一起发布；
 不保留旧的“先联网后授权”协议路径。已有有效 Grant 和 Host 身份不需要重置。

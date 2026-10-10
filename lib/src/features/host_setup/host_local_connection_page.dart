@@ -13,6 +13,7 @@ import '../naming/ask_for_a_name.dart';
 import '../device_management/mounted_devices_page.dart';
 import '../device_setup/device_setup_models.dart';
 import '../device_setup/device_setup_ports.dart';
+import '../setup/setup_wizard_page.dart';
 import '../setup/change_network_page.dart';
 import '../setup/commissioning_transport.dart';
 import '../setup/controller_key_bridge.dart';
@@ -180,12 +181,10 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     final remove = widget.onHostRemoved;
     if (save == null || remove == null || widget.onHostRenamed == null) return;
     var removed = false;
-    final recovered =
-        await Navigator.of(context).push<ManagedHost>(MaterialPageRoute(
+    await Navigator.of(context).push<void>(MaterialPageRoute(
       builder: (_) => HostSettingsPage(
         host: _controller.host,
         controller: _controller,
-        onHostUpdated: save,
         onHostRenamed: (name) async {
           await widget.onHostRenamed!(_controller.host.hostId, name);
           if (mounted) _controller.updateDisplayName(name);
@@ -194,8 +193,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
           await remove(id);
           removed = true;
         },
-        setupTransport: widget.transport,
-        controllerKeys: widget.controllerKeys,
         onRealignOwnerDomain: widget.onRealignOwnerDomain,
         verifyOwnerDomain: widget.verifyOwnerDomain,
         onOpenControllers: _openControllers,
@@ -206,14 +203,35 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     if (!mounted) return;
     if (removed) {
       Navigator.of(context).pop();
-    } else if (recovered != null) {
-      _controller
-        ..removeListener(_refresh)
-        ..dispose();
-      _createController(recovered);
-      setState(() {});
-      await _controller.connect(allowBle: false);
     }
+  }
+
+  Future<void> _openAuthorization() async {
+    final save = widget.onHostSaved;
+    if (save == null) return;
+    final previous = _controller.host;
+    final authorized = await Navigator.of(context).push<ManagedHost>(
+      MaterialPageRoute(
+        builder: (wizardContext) => SetupWizardPage(
+          transport: widget.transport,
+          controllerKeys: widget.controllerKeys,
+          onComplete: (host) async {
+            final updated = host.hostId == previous.hostId
+                ? host.copyWith(displayName: previous.displayName)
+                : host;
+            await save(updated);
+            if (wizardContext.mounted) Navigator.of(wizardContext).pop(updated);
+          },
+        ),
+      ),
+    );
+    if (!mounted || authorized == null) return;
+    _controller
+      ..removeListener(_refresh)
+      ..dispose();
+    _createController(authorized);
+    setState(() {});
+    await _controller.connect(allowBle: false);
   }
 
   /// Ask what this person should be called, and tell the Host.
@@ -690,7 +708,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       MaterialPageRoute(
         builder: (_) => ManagedControllersPage(
           loadControllers: _controller.listControllers,
-          invite: _controller.inviteController,
           revoke: (controllerId) =>
               _controller.revokeController(controllerId: controllerId),
         ),
@@ -912,21 +929,20 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               // the way back differs: be claimed again, which somebody at the
               // Host has to open the window for first.
               const Text(
-                '重新连接改变不了这件事：要连上就得先被授权，而授权正是被收回的那一样东西。'
-                '让身边能登进这台主机的人执行一次「重新认领」，他会拿到一个限时的 Setup 码；'
-                '然后在「主机设置 → 恢复」重新认领这台手机，主机上的数据不会丢。',
+                '这台手机的管理授权已失效。请重新搜索主机，'
+                '使用主机提供的 Setup 码获得授权。其他手机和主机数据不受影响。',
                 key: Key('local-connection-reclaim-required'),
               ),
               const SizedBox(height: 12),
               FilledButton.icon(
                 key: const Key('open-host-reclaim'),
                 onPressed: widget.onHostSaved != null
-                    ? _openSettings
+                    ? _openAuthorization
                     : Navigator.of(context).canPop()
                         ? () => Navigator.of(context).pop()
                         : null,
                 icon: const Icon(Icons.arrow_back),
-                label: Text(widget.onHostSaved != null ? '打开主机设置' : '回到主机管理'),
+                label: Text(widget.onHostSaved != null ? '搜索主机并授权' : '回到主机管理'),
               ),
             ] else ...[
               FilledButton.icon(

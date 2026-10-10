@@ -810,26 +810,6 @@ class ManagementClient {
     return ControllersView.fromJson(body);
   }
 
-  /// Open a window in which one more phone may claim this Host.
-  ///
-  /// The answer is a one-time code and the moment it stops working. Both are
-  /// shown together, because a code without its deadline is how someone reads
-  /// it out five minutes too late and concludes the Host is broken.
-  Future<ControllerInvitationView> inviteController(
-    Uri baseUri, {
-    required String accessToken,
-    required Duration ttl,
-  }) async {
-    final body = await _send(
-      'POST',
-      baseUri.resolve(ManagementV1.controllersInvitationsPath),
-      accessToken: accessToken,
-      what: '邀请另一台手机',
-      body: {'ttl_seconds': ttl.inSeconds},
-    );
-    return ControllerInvitationView.fromJson(body);
-  }
-
   /// Withdraw a phone's authority over this Host.
   ///
   /// A phone may withdraw its own. What it cannot do is leave the Host with

@@ -4,23 +4,16 @@ import 'package:flutter/material.dart';
 import '../device_setup/owner_domain_directory_verifier.dart';
 import '../naming/ask_for_a_name.dart';
 import '../host_setup/host_product_controller.dart';
-import 'commissioning_transport.dart';
-import 'controller_key_bridge.dart';
-import 'controller_recovery_page.dart';
 import 'host_registry.dart';
 import 'host_power_section.dart';
 import 'host_identity_summary.dart';
-import 'setup_wizard_page.dart';
 
 class HostSettingsPage extends StatefulWidget {
   const HostSettingsPage({
     super.key,
     required this.host,
-    required this.onHostUpdated,
     required this.onHostRenamed,
     required this.onHostRemoved,
-    this.setupTransport,
-    this.controllerKeys,
     required this.controller,
     required this.onOpenControllers,
     required this.onRenameOwner,
@@ -40,11 +33,8 @@ class HostSettingsPage extends StatefulWidget {
   final Future<void> Function(DeviceOnboardingTarget target)? verifyOwnerDomain;
 
   final ManagedHost host;
-  final ManagedHostUpdater onHostUpdated;
   final Future<void> Function(String name) onHostRenamed;
   final Future<void> Function(String hostId) onHostRemoved;
-  final CommissioningTransport? setupTransport;
-  final ControllerKeyBridge? controllerKeys;
   final HostProductController controller;
   final VoidCallback onOpenControllers;
   final VoidCallback onRenameOwner;
@@ -95,9 +85,6 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
     }
   }
 
-  CommissioningTransport? get setupTransport => widget.setupTransport;
-  ControllerKeyBridge? get controllerKeys => widget.controllerKeys;
-  ManagedHostUpdater get onHostUpdated => widget.onHostUpdated;
   Future<void> Function(String hostId) get onHostRemoved =>
       widget.onHostRemoved;
 
@@ -203,29 +190,12 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
                   title: const Text('管理手机'),
                   subtitle: Text(widget.controller.connection == null
                       ? '连接并查看'
-                      : '查看、添加或撤销管理这台主机的手机'),
+                      : '查看或撤销管理这台主机的手机'),
                   onTap: _manageControllers,
                 ),
                 const SizedBox(height: 20),
                 HostPowerSection(controller: widget.controller),
                 const SizedBox(height: 20),
-                Text(
-                  '恢复',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                ListTile(
-                  key: const Key('controller-recovery'),
-                  leading: const Icon(Icons.phonelink_erase_outlined),
-                  title: const Text('手机丢失或重新认领'),
-                  // Open, but honest about what it needs: the Host opens the
-                  // window, not this phone. An entry that could open it remotely
-                  // would hand the same key to whoever stole the phone.
-                  subtitle: const Text('通过其他管理手机邀请或主机 Setup 码恢复；其他手机不受影响'),
-                  onTap: () => _openControllerRecovery(context),
-                ),
                 if (_rollback case final rollback?)
                   ListTile(
                     key: const Key('realign-owner-domain'),
@@ -280,47 +250,6 @@ class _HostSettingsPageState extends State<HostSettingsPage> {
               ],
             ),
           ));
-
-  /// Explain the recovery, then hand the Owner back to the claim flow.
-  ///
-  /// Re-claiming produces a new Controller grant for the same Host, so the
-  /// registry entry is updated rather than added — and the name this phone
-  /// gave the Host is this phone's, so it survives the Host forgetting who
-  /// held it.
-  Future<void> _openControllerRecovery(BuildContext context) async {
-    final recovered = await Navigator.of(context).push<ManagedHost>(
-      MaterialPageRoute(
-        builder: (recoveryContext) => ControllerRecoveryPage(
-          host: host,
-          onReclaim: () async {
-            final reclaimed =
-                await Navigator.of(recoveryContext).push<ManagedHost>(
-              MaterialPageRoute(
-                builder: (wizardContext) => SetupWizardPage(
-                  transport: setupTransport,
-                  controllerKeys: controllerKeys,
-                  onComplete: (reclaimed) async {
-                    final renamed =
-                        reclaimed.copyWith(displayName: host.displayName);
-                    await onHostUpdated(renamed);
-                    if (wizardContext.mounted) {
-                      Navigator.of(wizardContext).pop(renamed);
-                    }
-                  },
-                ),
-              ),
-            );
-            if (recoveryContext.mounted && reclaimed != null) {
-              Navigator.of(recoveryContext).pop(reclaimed);
-            }
-          },
-        ),
-      ),
-    );
-    if (context.mounted && recovered != null) {
-      Navigator.of(context).pop(recovered);
-    }
-  }
 
   Future<void> _confirmRealign(
     BuildContext context,

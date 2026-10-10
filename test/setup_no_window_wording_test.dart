@@ -22,7 +22,7 @@ void main() {
     expect(firstSetupCodeGuidance, contains('commissioning-code'));
     expect(firstSetupCodeGuidance, contains('Setup 码'));
 
-    expect(firstSetupCodeGuidance, contains('任意已授权管理手机邀请'));
+    expect(firstSetupCodeGuidance, isNot(contains('邀请')));
   });
 
   test('a null expiry reads as no expiry, never as expired', () {
@@ -60,20 +60,11 @@ void main() {
     );
   });
 
-  test(
-      'the two guidances stay separate, because they answer different questions',
-      () {
-    // Merging them is what produced advice about revoking grants on a Host
-    // that had none.
-    expect(controllerRecoveryGuidance, isNot(equals(firstSetupCodeGuidance)));
-
-    // The claimed-Host text still owns the reset story.
-    expect(controllerRecoveryGuidance, contains('controller-reset'));
-
-    // And the no-window text is not a prefix or suffix of it: neither is a
-    // step in the other.
-    expect(controllerRecoveryGuidance, isNot(contains(firstSetupCodeGuidance)));
-    expect(firstSetupCodeGuidance, isNot(contains(controllerRecoveryGuidance)));
+  test('lost authorization uses discovery and Host Setup again', () {
+    expect(controllerRecoveryGuidance, contains('搜索主机'));
+    expect(controllerRecoveryGuidance, contains('Setup 码'));
+    expect(controllerRecoveryGuidance, isNot(contains('邀请')));
+    expect(controllerRecoveryGuidance, isNot(contains('controller-reset')));
   });
 }
 

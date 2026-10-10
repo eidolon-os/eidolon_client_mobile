@@ -30,6 +30,7 @@ class _FakeControllerKeyBridge implements ControllerKeyBridge {
 class _FakeCommissioningTransport implements CommissioningTransport {
   _FakeCommissioningTransport({
     this.currentNetworkState = 'unconfigured',
+    this.claimState = 'unclaimed',
     this.currentSsid,
     this.hasGrant = false,
     this.failNetwork = false,
@@ -39,6 +40,7 @@ class _FakeCommissioningTransport implements CommissioningTransport {
   bool authenticated = false;
   bool failNetwork;
   final String currentNetworkState;
+  final String claimState;
   final String? currentSsid;
   final operations = <String>[];
   bool closed = false;
@@ -107,7 +109,7 @@ class _FakeCommissioningTransport implements CommissioningTransport {
           'state': {'claim_state': 'claimed'}
         },
       'session.authenticate' => {
-          'state': {'claim_state': 'unclaimed'},
+          'state': {'claim_state': claimState},
         },
       'wifi.scan' => {
           'current_network': {
@@ -214,6 +216,35 @@ class _FakeChangeNetworkTransport implements CommissioningTransport {
 }
 
 void main() {
+  testWidgets(
+      'another Mobile authorizes a claimed Host through ordinary search',
+      (tester) async {
+    final registry = InMemoryHostRegistry();
+    final transport = _FakeCommissioningTransport(claimState: 'claimed');
+    await tester.pumpWidget(MaterialApp(
+        home: SetupWizardPage(
+      registry: registry,
+      transport: transport,
+      controllerKeys: _FakeControllerKeyBridge(),
+      developmentLanCommissioning: emptyLanCommissioning(),
+      clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
+      onComplete: (_) {},
+    )));
+    await tester.tap(find.byKey(const Key('scan-nearby-hosts')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Eidolon-4c0285'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('development-setup-code')), '12345678');
+    await tester.tap(find.byKey(const Key('authenticate-setup-code')));
+    await tester.pumpAndSettle();
+    expect(transport.operations.where((op) => op == 'claim.complete'),
+        hasLength(1));
+    expect(transport.authenticated, isTrue);
+    expect((await registry.load()).single.hostId, validHostId);
+    expect(find.byKey(const Key('setup-error')), findsNothing);
+  });
+
   testWidgets(
       'forgotten Host restores its grant even with an open Setup window',
       (tester) async {

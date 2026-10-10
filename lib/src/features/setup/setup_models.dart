@@ -69,13 +69,11 @@ const int setupCodeDigits = 8;
 final RegExp setupCodePattern = RegExp('^[0-9]{$setupCodeDigits}\$');
 
 /// Adding or recovering one peer does not revoke any other Controller.
-const String firstSetupCodeGuidance = '请使用主机提供的 Setup 码；没有开放窗口时，'
-    '可由任意已授权管理手机邀请，或在主机上执行 `eidolon-ops commissioning-code`。';
+const String firstSetupCodeGuidance = '请使用主机提供的 Setup 码获得管理授权；没有开放窗口时，'
+    '可在主机上执行 `eidolon-ops commissioning-code`。';
 
-const String controllerRecoveryGuidance = '可由另一台已授权管理手机邀请，'
-    '或在主机上执行 `eidolon-ops commissioning-code`，取得 Setup 码后重新添加这台主机。'
-    '新增管理授权不会撤销其他手机，也不会改变主机数据或网络。'
-    '只有需要撤销全部管理授权时，才使用 `eidolon-ops controller-reset --apply`。';
+const String controllerRecoveryGuidance = '请重新搜索主机，使用主机提供的 Setup 码获得管理授权。'
+    '新增管理授权不会撤销其他手机，也不会改变主机数据或网络。';
 
 class CommissioningEndpoint {
   const CommissioningEndpoint._({

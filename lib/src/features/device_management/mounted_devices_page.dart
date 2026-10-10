@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -66,7 +67,26 @@ class MountedDevicesPage extends StatefulWidget {
   State<MountedDevicesPage> createState() => _MountedDevicesPageState();
 }
 
-class _MountedDevicesPageState extends State<MountedDevicesPage> {
+class _MountedDevicesPageState extends State<MountedDevicesPage>
+    with WidgetsBindingObserver {
+  Timer? _presenceRefresh;
+
+  void _pollPresence() {
+    if (!mounted) return;
+    // Rebuild even during a slow read so an old observation can expire.
+    setState(() {});
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if ((lifecycle == null || lifecycle == AppLifecycleState.resumed) &&
+        (ModalRoute.of(context)?.isCurrent ?? false)) {
+      unawaited(widget.controller.refreshDevices());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _pollPresence();
+  }
+
   CompanionCreationFlow? _creation;
   String? _creationOwnerId;
   CompanionSetupIntent? _handoff;
@@ -191,12 +211,18 @@ class _MountedDevicesPageState extends State<MountedDevicesPage> {
   void initState() {
     super.initState();
     widget.controller.addListener(_refresh);
+    WidgetsBinding.instance.addObserver(this);
+    _presenceRefresh =
+        Timer.periodic(const Duration(seconds: 5), (_) => _pollPresence());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _pollPresence());
     _loadHandoff();
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_refresh);
+    WidgetsBinding.instance.removeObserver(this);
+    _presenceRefresh?.cancel();
     _creation?.dispose();
     super.dispose();
   }
@@ -520,7 +546,7 @@ class _MountedDeviceCard extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: Neon.ink)),
                 const SizedBox(height: Neon.s1),
-                const Text('连接状态未知', style: TextStyle(color: Neon.inkFaint)),
+                DeviceConnectionStatus(device: device),
                 // What kind of thing it is. The revision is a fact about a
                 // mount record, and nobody reading this list is asking about a
                 // mount record. When the Host cannot say, this is a long
@@ -536,6 +562,34 @@ class _MountedDeviceCard extends StatelessWidget {
           StatusPill(label, color: color),
         ],
       ),
+    );
+  }
+}
+
+class DeviceConnectionStatus extends StatelessWidget {
+  const DeviceConnectionStatus({super.key, required this.device});
+
+  final MountedDevice device;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = device.connectionStateAt(DateTime.now().toUtc());
+    final label = switch (state) {
+      'online' => '在线',
+      'offline' => '离线',
+      _ => '连接状态未知',
+    };
+    final reason = state == 'unknown' && device.presence?.state != 'unknown'
+        ? '尚无有效的连接观测，请刷新设备列表'
+        : device.presence?.reason ?? '这台主机尚未提供连接状态';
+    return Tooltip(
+      message: reason,
+      child: Text(label,
+          style: TextStyle(
+            color: state == 'online'
+                ? Theme.of(context).colorScheme.primary
+                : Neon.inkFaint,
+          )),
     );
   }
 }
@@ -912,7 +966,9 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
                     expectedRevision: _device.revision,
                     companionId: _device.attachedCompanionId))
             .at(CompanionSetupStep.savingOutputs,
-                allowed: chosen.allowed, inputs: chosen.inputs, outputRevision: _device.outputs.revision);
+                allowed: chosen.allowed,
+                inputs: chosen.inputs,
+                outputRevision: _device.outputs.revision);
         await _saveProgress(intent);
       }
       final setup = _setup;
@@ -1265,7 +1321,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
             // bodies are on a channel. That is "in a call", not "switched on",
             // so this page still cannot say — and no longer says anything
             // about what the rest of the Host can see.
-            '这些是主机权威确认的挂载关系，不是设备此刻的状态：这台主机不观测设备有没有通电。',
+            '这些是主机确认的挂载与配置。当前连接状态请看设备列表；“已添加”不代表设备在线。',
           ),
           const SizedBox(height: 24),
           if (_notice case final notice?) ...[
@@ -1415,7 +1471,9 @@ class _OutputsPickerState extends State<_OutputsPicker> {
             child: TextButton(
               key: const Key('device-outputs-allow-all'),
               onPressed: () => setState(() {
-                if (widget.outputs.inputCapabilities?.microphone == true) _microphone = true;
+                if (widget.outputs.inputCapabilities?.microphone == true) {
+                  _microphone = true;
+                }
                 for (final name in _declared) {
                   _chosen[name] = true;
                 }
@@ -1431,8 +1489,13 @@ class _OutputsPickerState extends State<_OutputsPicker> {
                 allowed: OutputSelection.fromJson({
                   for (final entry in _chosen.entries) entry.key: entry.value,
                 }),
-                inputs: widget.outputs.inputCapabilities == null ? null : InputSelection(
-                  microphone: widget.outputs.inputCapabilities?.microphone == true && _microphone),
+                inputs: widget.outputs.inputCapabilities == null
+                    ? null
+                    : InputSelection(
+                        microphone:
+                            widget.outputs.inputCapabilities?.microphone ==
+                                    true &&
+                                _microphone),
                 expectedRevision: widget.outputs.revision,
               ),
             ),

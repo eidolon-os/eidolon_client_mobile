@@ -838,15 +838,6 @@ class HostProductController extends ChangeNotifier {
   Future<List<ControllerView>> listControllers() =>
       _controllerGrantRepository.list();
 
-  /// Open a window in which one more phone may claim this Host.
-  ///
-  /// Asked for by a phone that already holds it, so the Host is never left
-  /// deciding on its own who may join.
-  Future<ControllerInvitationView> inviteController({
-    Duration ttl = const Duration(minutes: 10),
-  }) =>
-      _controllerGrantRepository.invite(ttl: ttl);
-
   /// Withdraw one phone's authority over this Host.
   Future<void> revokeController({required String controllerId}) =>
       _controllerGrantRepository.revoke(controllerId: controllerId);

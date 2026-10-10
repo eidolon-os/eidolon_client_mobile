@@ -100,6 +100,7 @@ class MountedDevice {
     required this.ownerDomainGeneration,
     required this.manifestId,
     required this.outputs,
+    this.presence,
   });
 
   /// Built from the Host's own answer.
@@ -144,6 +145,7 @@ class MountedDevice {
         ownerDomainGeneration: view.ownerDomainGeneration,
         manifestId: view.manifestId ?? '',
         outputs: DeviceOutputs.fromView(view.outputs),
+        presence: view.presence,
       );
 
   final String deviceId;
@@ -186,6 +188,27 @@ class MountedDevice {
 
   /// What it can present and what it is allowed to, as the Host answers it.
   final DeviceOutputs outputs;
+
+  /// A transport observation, independent of admission and output policy.
+  /// Older Hosts omit it; expired observations never remain green.
+  final DevicePresenceView? presence;
+
+  String connectionStateAt(DateTime now) {
+    final observed = DateTime.tryParse(presence?.observedAt ?? '');
+    final until = DateTime.tryParse(presence?.validUntil ?? '');
+    if (observed == null ||
+        until == null ||
+        now.isBefore(observed) ||
+        !now.isBefore(until) ||
+        until.difference(observed) > const Duration(seconds: 15)) {
+      return 'unknown';
+    }
+    return switch (presence?.state) {
+      'online' => 'online',
+      'offline' => 'offline',
+      _ => 'unknown',
+    };
+  }
 }
 
 class MountedDeviceInventory {
@@ -193,7 +216,8 @@ class MountedDeviceInventory {
 
   factory MountedDeviceInventory.fromView(DevicesView view) =>
       MountedDeviceInventory(
-        devices: view.devices.map(MountedDevice.fromView).toList(growable: false),
+        devices:
+            view.devices.map(MountedDevice.fromView).toList(growable: false),
         coverage: view.coverage ?? '',
       );
 
