@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:eidolon_client_mobile/src/features/device_management/mounted_devices_page.dart';
 import 'package:eidolon_client_mobile/src/platform/app_preferences.dart';
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/host_product_controller.dart';
@@ -276,6 +277,7 @@ ManagementClient _managementClientFor(
   _OwnerName ownerName, {
   Map<String, dynamic>? devices,
   int homeStatus = 200,
+  Future<http.Response> Function()? readDevices,
 }) =>
     ManagementClient(
       httpClient: MockClient((request) async {
@@ -291,6 +293,7 @@ ManagementClient _managementClientFor(
         if (request.url.path == '/api/management/v1/devices') {
           // Devices moved to the management contract with the rest of what a
           // person manages; an empty list is a real answer.
+          if (readDevices != null) return readDevices();
           return _jsonResponse(devices ?? _deviceInventory());
         }
         if (request.url.path == '/api/management/v1/context') {
@@ -1091,6 +1094,122 @@ void main() {
     expect(find.byKey(const Key('open-constellation')), findsOneWidget);
     // 而运行驾驶舱按它自己的门（Workspace 就绪）照常缺席。
     expect(find.byKey(const Key('open-runtime-cockpit')), findsNothing);
+  });
+
+  Future<void> openRefreshingDevices(
+    WidgetTester tester,
+    Future<http.Response> Function() readDevices,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 2200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+        home: HostLocalConnectionPage(
+      host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+      transport: _LegacyHostTransport(),
+      controllerKeys: _FakeControllerKeys(),
+      discovery: _FakeDiscovery(),
+      localApiClientFactory: (_) =>
+          _clientFor(_hostOverview(), workspaceReady: true),
+      managementClientFactory: (_) => _managementClientFor(
+        _OwnerName(),
+        readDevices: readDevices,
+      ),
+      onHostUpdated: (_) async {},
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('open-mounted-devices')));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('poll failures retain inventory until a successful replacement',
+      (tester) async {
+    var calls = 0;
+    Future<http.Response> Function() response =
+        () async => _jsonResponse(_deviceInventory(withReadyDevice: true));
+    await openRefreshingDevices(tester, () {
+      calls++;
+      return response();
+    });
+    final controller = tester
+        .widget<MountedDevicesPage>(find.byType(MountedDevicesPage))
+        .controller;
+    final firstUpdate = controller.devicesUpdatedAt;
+    final row = find.byKey(const Key('mounted-device-device-waveshare-1'));
+    expect(row, findsOneWidget);
+    expect(firstUpdate, isNotNull);
+
+    response =
+        () async => _jsonResponse({'detail': 'temporarily unavailable'}, 503);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(row, findsOneWidget);
+    expect(find.textContaining('当前显示上次成功读取'), findsOneWidget);
+    expect(controller.devicesUpdatedAt, firstUpdate);
+    expect(find.byKey(const Key('mounted-devices-empty')), findsNothing);
+
+    response = () async => throw const SocketException('connection refused');
+    await controller.refreshDevices();
+    await tester.pumpAndSettle();
+    expect(row, findsOneWidget);
+    expect(find.textContaining('连不上主机'), findsOneWidget);
+
+    response = () async => _jsonResponse({'devices': 'malformed'});
+    await controller.refreshDevices();
+    await tester.pumpAndSettle();
+    expect(row, findsOneWidget);
+    expect(controller.devicesUpdatedAt, firstUpdate);
+
+    final pending = Completer<http.Response>();
+    response = () => pending.future;
+    final refreshing = controller.refreshDevices();
+    await tester.pump();
+    final duringRead = calls;
+    await tester.pump(const Duration(seconds: 5));
+    expect(calls, duringRead, reason: 'no overlapping polls');
+    expect(row, findsOneWidget);
+    expect(find.textContaining('当前显示上次成功读取'), findsOneWidget);
+    pending.complete(_jsonResponse(_deviceInventory(withReadyDevice: true)));
+    await refreshing;
+    await tester.pumpAndSettle();
+    expect(row, findsOneWidget);
+    expect(find.byKey(const Key('mounted-devices-error')), findsNothing);
+
+    response = () async => _jsonResponse(_deviceInventory());
+    await controller.refreshDevices();
+    await tester.pumpAndSettle();
+    expect(row, findsNothing);
+    expect(find.byKey(const Key('mounted-devices-empty')), findsOneWidget);
+  });
+
+  testWidgets('first failed read is an error, not an empty inventory',
+      (tester) async {
+    await openRefreshingDevices(tester,
+        () async => _jsonResponse({'detail': 'temporarily unavailable'}, 503));
+    expect(find.byKey(const Key('mounted-devices-error')), findsOneWidget);
+    expect(find.byKey(const Key('mounted-devices-empty')), findsNothing);
+    expect(find.textContaining('当前显示上次成功读取'), findsNothing);
+  });
+
+  testWidgets('an explicit inventory permission refusal clears cached devices',
+      (tester) async {
+    var denied = false;
+    await openRefreshingDevices(
+        tester,
+        () async => denied
+            ? _jsonResponse({'detail': 'permission denied'}, 403)
+            : _jsonResponse(_deviceInventory(withReadyDevice: true)));
+    final controller = tester
+        .widget<MountedDevicesPage>(find.byType(MountedDevicesPage))
+        .controller;
+    denied = true;
+    await controller.refreshDevices();
+    await tester.pumpAndSettle();
+    expect(controller.devices, isNull);
+    expect(controller.devicesUpdatedAt, isNull);
+    expect(find.byKey(const Key('mounted-device-device-waveshare-1')),
+        findsNothing);
+    expect(find.byKey(const Key('mounted-devices-empty')), findsNothing);
+    expect(find.byKey(const Key('mounted-devices-error')), findsOneWidget);
   });
 
   testWidgets('ready Workspace shows only Kernel-confirmed mounted devices',

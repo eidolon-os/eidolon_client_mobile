@@ -278,6 +278,7 @@ class HostProductController extends ChangeNotifier {
   String? _homeError;
   MountedDeviceInventory? _devices;
   String? _devicesError;
+  DateTime? _devicesUpdatedAt;
   HostReleaseView? _release;
 
   ManagedHost get host => _host;
@@ -306,6 +307,7 @@ class HostProductController extends ChangeNotifier {
   String? get homeError => _homeError;
   MountedDeviceInventory? get devices => _devices;
   String? get devicesError => _devicesError;
+  DateTime? get devicesUpdatedAt => _devicesUpdatedAt;
 
   /// Which release the Host serves from, read on each connection. Null until
   /// it answers — including a Host too old to be asked — and never kept from
@@ -410,6 +412,7 @@ class HostProductController extends ChangeNotifier {
     _home = null;
     _homeError = null;
     _devices = null;
+    _devicesUpdatedAt = null;
     _devicesError = null;
     _notify();
     try {
@@ -499,7 +502,6 @@ class HostProductController extends ChangeNotifier {
   Future<void> refreshDevices() async {
     if (_devicesBusy || _connection == null || _disposed) return;
     _devicesBusy = true;
-    _devicesError = null;
     _notify();
     try {
       await _loadDevices();
@@ -1093,6 +1095,7 @@ class HostProductController extends ChangeNotifier {
       _home = null;
       _homeError = null;
       _devices = null;
+      _devicesUpdatedAt = null;
       _devicesError = null;
       return;
     }
@@ -1172,23 +1175,26 @@ class HostProductController extends ChangeNotifier {
   Future<void> _loadDevices() async {
     try {
       _devices = await _devicesRepository.fetchMountedDevices();
+      _devicesUpdatedAt = DateTime.now().toUtc();
       _devicesError = null;
     } on HostControllerAuthorizationException {
       rethrow;
     } on ManagementRequestException catch (error) {
-      _devices = null;
+      // Transport/service failures retain the last snapshot. An explicit
+      // permission refusal must not leave protected inventory on screen.
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        _devices = null;
+        _devicesUpdatedAt = null;
+      }
       _devicesError = _managedDeviceFailure(error);
     } on PinnedHttpException catch (error) {
-      _devices = null;
       _devicesError = _pinnedHttpFailure(error);
     } on FormatException {
-      _devices = null;
       _devicesError = '主机返回了不兼容的设备列表。';
     } catch (error) {
       // Named, not swallowed. A failure this app has no word for is still a
       // failure somebody has to act on, and a sentence that erases its cause is
       // how 读不到 becomes the answer to every question.
-      _devices = null;
       _devicesError = '设备列表暂时不可用：$error';
     }
   }
@@ -1209,6 +1215,7 @@ class HostProductController extends ChangeNotifier {
     _home = null;
     _homeError = null;
     _devices = null;
+    _devicesUpdatedAt = null;
     _devicesError = null;
     _release = null;
   }

@@ -356,6 +356,9 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
   Widget build(BuildContext context) {
     final controller = widget.controller;
     final inventory = controller.devices;
+    final error = controller.devicesError ??
+        (controller.connection == null ? controller.connectionError : null);
+    final updatedAt = controller.devicesUpdatedAt?.toLocal();
     return Scaffold(
       key: const Key('mounted-devices-page'),
       appBar: AppBar(
@@ -406,13 +409,20 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
               ),
             ),
           _InventoryMeaningCard(coverage: inventory?.coverage ?? ''),
-          if (controller.devicesError case final error?) ...[
+          if (error != null) ...[
             const SizedBox(height: 16),
             Card(
               color: Theme.of(context).colorScheme.errorContainer,
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text(error, key: const Key('mounted-devices-error')),
+                child: Text(
+                  inventory == null
+                      ? error
+                      : '刷新失败，当前显示上次成功读取的设备列表。'
+                          '${updatedAt == null ? '' : '\n更新时间：${updatedAt.toString().split('.').first}'}'
+                          '\n$error',
+                  key: const Key('mounted-devices-error'),
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -422,7 +432,16 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
               icon: const Icon(Icons.refresh),
               label: const Text('重新加载'),
             ),
-          ] else if (inventory == null || inventory.devices.isEmpty) ...[
+          ],
+          if (inventory == null && error == null) ...[
+            const SizedBox(height: 24),
+            const Center(
+                child: CircularProgressIndicator(
+              key: Key('mounted-devices-loading'),
+            )),
+          ] else if (inventory != null &&
+              inventory.devices.isEmpty &&
+              error == null) ...[
             const SizedBox(height: 24),
             const Center(
               child: Text(
@@ -430,7 +449,7 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
                 key: Key('mounted-devices-empty'),
               ),
             ),
-          ] else ...[
+          ] else if (inventory != null && inventory.devices.isNotEmpty) ...[
             const SizedBox(height: 16),
             ...inventory.devices.map(
               (device) => _MountedDeviceCard(
