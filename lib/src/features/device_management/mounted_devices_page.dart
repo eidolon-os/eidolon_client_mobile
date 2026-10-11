@@ -256,7 +256,11 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
     );
     if (!mounted) return;
     await widget.controller.refreshDevices();
-    if (!mounted || completedDeviceId == null || existing != null) return;
+    if (!mounted ||
+        completedDeviceId == null ||
+        completedDeviceId == existing?.deviceId) {
+      return;
+    }
     // Only continue the device this flow actually completed. Cancelling must
     // never select an unrelated device from the inventory.
     final devices = widget.controller.devices?.devices ?? <MountedDevice>[];

@@ -45,7 +45,8 @@ void main() {
     expect(admission.voucherAttempts, 0);
   });
   for (final rotates in [true, false]) {
-    testWidgets('revoked Host claim renews authorization with stable identity: rotates=$rotates',
+    testWidgets(
+        'revoked Host claim renews authorization with stable identity: rotates=$rotates',
         (tester) async {
       const channel = MethodChannel('live.eidolon.mobile/platform');
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -89,9 +90,13 @@ void main() {
       expect(transport.sessions.single.replacementRequested, isTrue);
       expect(transport.sessions.single.writes, 0);
       expect(admission.voucherAttempts, rotates ? 0 : 1);
-      expect(find.textContaining('设备在切换主机时更换了身份'),
-          rotates ? findsOneWidget : findsNothing);
-      if (!rotates) {
+      expect(find.text('需要作为新设备添加'), rotates ? findsOneWidget : findsNothing);
+      if (rotates) {
+        await tester.tap(find.byKey(const Key('accept-new-device-identity')));
+        await tester.pumpAndSettle();
+        expect(admission.requestedKey, 'p256:${'b' * 64}');
+      }
+      {
         await tester.tap(find.byKey(const Key('network-owner-wifi')));
         await tester.pump();
         await tester.enterText(
@@ -262,15 +267,16 @@ void main() {
   });
 
   testWidgets(
-      'known device cannot silently rotate identity during network setup',
+      'changed identity asks before requesting new authority or writing network',
       (tester) async {
     final id = 'device-instance-${'a' * 64}';
     final transport = _Transport()
       ..preparedDeviceId = 'device-instance-${'b' * 64}';
+    final admission = _Admission(transport);
     await tester.pumpWidget(MaterialApp(
         home: DeviceSetupPage(
       transport: transport,
-      admission: _Admission(transport),
+      admission: admission,
       checkpoints: InMemoryDeviceSetupCheckpointStore(),
       loadTarget: () async => deviceOnboardingTargetFixture(),
       knownDevices: {id: 'BOX-3'},
@@ -280,9 +286,75 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.textContaining('Eidolon Body 1'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('设备在切换主机时更换了身份'), findsOneWidget);
+    expect(find.text('需要作为新设备添加'), findsOneWidget);
     expect(transport.sessions.single.closed, isTrue);
     expect(transport.sessions.single.writes, 0);
+    expect(admission.voucherAttempts, 0);
+    expect(find.textContaining('列表可能同时显示新旧两条记录'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('accept-new-device-identity')));
+    await tester.pumpAndSettle();
+    expect(find.text('选择家庭 Wi-Fi'), findsOneWidget);
+    expect(admission.requestedKey, 'p256:${'b' * 64}');
+    expect(admission.sessionsOpenWhenAsked, [0]);
+    expect(transport.sessions.single.writes, 0);
+  });
+
+  testWidgets('changed identity cannot reuse old authorization',
+      (tester) async {
+    final transport = _Transport()
+      ..preparedDeviceId = 'device-instance-${'b' * 64}'
+      ..requiresVoucher = false;
+    final admission = _Admission(transport);
+    await tester.pumpWidget(MaterialApp(
+        home: DeviceSetupPage(
+      transport: transport,
+      admission: admission,
+      checkpoints: InMemoryDeviceSetupCheckpointStore(),
+      loadTarget: () async => deviceOnboardingTargetFixture(),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查找设备'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('未请求新的授权'), findsOneWidget);
+    expect(find.byKey(const Key('accept-new-device-identity')), findsNothing);
+    expect(admission.voucherAttempts, 0);
+    expect(transport.sessions.single.writes, 0);
+    expect(transport.sessions.single.closed, isTrue);
+  });
+
+  testWidgets(
+      'cancelling identity change creates no authorization or network write',
+      (tester) async {
+    final transport = _Transport()
+      ..preparedDeviceId = 'device-instance-${'b' * 64}';
+    final admission = _Admission(transport);
+    await tester.pumpWidget(MaterialApp(
+        home: Builder(
+      builder: (context) => TextButton(
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => DeviceSetupPage(
+                  transport: transport,
+                  admission: admission,
+                  checkpoints: InMemoryDeviceSetupCheckpointStore(),
+                  loadTarget: () async => deviceOnboardingTargetFixture(),
+                ),
+              )),
+          child: const Text('open setup')),
+    )));
+    await tester.tap(find.text('open setup'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查找设备'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('cancel-new-device-identity')));
+    await tester.pumpAndSettle();
+    expect(find.text('open setup'), findsOneWidget);
+    expect(admission.voucherAttempts, 0);
+    expect(transport.sessions.single.writes, 0);
+    expect(transport.sessions.single.closed, isTrue);
   });
 
   testWidgets('cancelling setup returns no completed device', (tester) async {
@@ -1046,7 +1118,8 @@ class _Session implements DeviceProvisioningSession {
       setup: SetupDescriptorV1.fromJson({
         ...descriptor.setup.toJson(),
         'device_id': preparedDeviceId ?? 'device-instance-${'a' * 64}',
-        'identity_fingerprint': 'p256:${'a' * 64}',
+        'identity_fingerprint':
+            'p256:${(preparedDeviceId ?? 'device-instance-${'a' * 64}').substring(16)}',
       }),
       expiresAt: descriptor.expiresAt,
       requiresVoucher: requiresVoucher,

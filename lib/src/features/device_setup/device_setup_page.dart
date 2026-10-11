@@ -94,6 +94,7 @@ class DeviceSetupPage extends StatefulWidget {
 enum _Step {
   introduction,
   choosingDevice,
+  confirmingNewIdentity,
   // The device has prepared its identity and the session is closed, but
   // this phone has not come back onto the Host's network; the standing is
   // still to be asked for. Not a failure of the device or the Host.
@@ -297,6 +298,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         }
         late final DeviceProvisioningDescriptor descriptor;
         late final List<DeviceWifiNetwork> networks;
+        var identityChanged = false;
         try {
           final originalId = session.descriptor.deviceId;
           final expected = widget.expectedDeviceId;
@@ -320,10 +322,14 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
                 '设备未请求新的管理授权，请更新设备固件后重试。此次未修改网络。');
           }
           _target = preparedTarget;
-          if (descriptor.deviceId != originalId) {
+          identityChanged = descriptor.deviceId != originalId;
+          // Older firmware stages a new key for a different Owner. It can
+          // enroll normally, but must never inherit the original key's Claim.
+          // A changed principal cannot reuse authorization even with consent.
+          if (identityChanged && !descriptor.requiresVoucher) {
             throw const DeviceProvisioningTransportException(
-              'device_identity_changed',
-              '设备在切换主机时更换了身份，请先更新设备固件。此次未修改网络或新增设备。',
+              'owner_preparation_invalid',
+              '设备身份已变化，但未请求新的授权。无法继续配网；尚未提交网络设置，请取消后重试。',
             );
           }
           if (mounted) setState(() => _progress = '正在扫描设备附近的 Wi-Fi');
@@ -365,6 +371,13 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           _voucher = null;
           _networks = networks;
         });
+        if (identityChanged) {
+          setState(() {
+            _step = _Step.confirmingNewIdentity;
+            _progress = null;
+          });
+          return;
+        }
         await _issueVoucherOrWait(descriptor);
       });
 
@@ -666,6 +679,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             switch (_step) {
               _Step.introduction => _introduction(),
               _Step.choosingDevice => _deviceList(),
+              _Step.confirmingNewIdentity => _newIdentityConfirmation(),
               _Step.awaitingHost => _awaitingHost(),
               _Step.choosingNetwork => _networkForm(),
               _Step.working => _working(),
@@ -813,12 +827,43 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         ],
       );
 
+  Widget _newIdentityConfirmation() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('需要作为新设备添加', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          Text(_descriptor!.displayName),
+          const SizedBox(height: 8),
+          const Text('设备在准备连接这台主机时返回了新的身份。部分旧固件在切换主机时会这样处理。'),
+          const SizedBox(height: 8),
+          const Text('继续后将按新设备认领，原设备记录和伙伴设置不会自动迁移或合并。'
+              '如果这台主机已有它的旧记录，列表可能同时显示新旧两条记录；'
+              '确认新设备可用后，可在设备列表中移除不再使用的旧记录。'),
+          const SizedBox(height: 8),
+          const Text('后续切换主机可能再次产生新记录。要保持同一设备身份，需使用支持该能力的固件。'
+              '你也可以取消本次设置，保留当前网络与归属。'),
+          const SizedBox(height: 20),
+          FilledButton(
+            key: const Key('accept-new-device-identity'),
+            onPressed: _busy ? null : _resumeVoucher,
+            child: const Text('作为新设备继续'),
+          ),
+          TextButton(
+            key: const Key('cancel-new-device-identity'),
+            onPressed: _busy ? null : () => Navigator.of(context).pop(),
+            child: const Text('取消本次设置'),
+          ),
+        ],
+      );
+
   Widget _networkForm() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('选择家庭 Wi-Fi', style: Theme.of(context).textTheme.titleLarge),
           if (widget.knownDevices[_descriptor?.deviceId] case final name?)
-            Text('已识别原设备：$name。此次更新网络，不会重复添加。'),
+            Text('已识别原设备：$name。此次更新网络，不会重复添加。')
+          else if (_descriptor?.requiresVoucher ?? false)
+            const Text('将作为新设备添加。已有的其他设备记录和伙伴设置不会自动合并或迁移。'),
           if (_scanWarning != null) Text(_scanWarning!),
           const SizedBox(height: 8),
           if (_descriptor != null)
