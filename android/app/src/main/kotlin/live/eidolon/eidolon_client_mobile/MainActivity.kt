@@ -64,14 +64,14 @@ class MainActivity : FlutterActivity() {
     /** This enrollment's handoff key. In memory only; see HandoffKeyHolder. */
     private val handoffKeys = mutableMapOf<String, HandoffKeyHolder>()
 
-    private fun deviceKeyAlias(call: MethodCall): String {
+    private fun handoffScope(call: MethodCall): String {
         val scope = call.argument<String>("deviceScope") ?: return KEY_ALIAS
         require(scope.isNotBlank() && scope.length <= 256) { "Invalid Device scope" }
         return "$KEY_ALIAS-${hex(sha256(scope.toByteArray(StandardCharsets.UTF_8)))}"
     }
 
     private fun handoffKeys(call: MethodCall): HandoffKeyHolder =
-        handoffKeys.getOrPut(deviceKeyAlias(call)) { HandoffKeyHolder() }
+        handoffKeys.getOrPut(handoffScope(call)) { HandoffKeyHolder() }
 
     private val networkChanges by lazy { NetworkChangesHandler(applicationContext, mainHandler) }
 
@@ -109,7 +109,7 @@ class MainActivity : FlutterActivity() {
                     result.success(signHandoffCanonicalDocument(call))
                 "holdsHandoffKey" -> result.success(handoffKeys(call).holdsKey())
                 "discardHandoffKey" -> {
-                    handoffKeys.remove(deviceKeyAlias(call))?.discard()
+                    handoffKeys.remove(handoffScope(call))?.discard()
                     result.success(true)
                 }
                 "pinnedHttpsRequest" -> pinnedHttpsClient.request(call, result)
@@ -227,7 +227,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun deviceIdentity(call: MethodCall): Map<String, String> {
-        val publicDer = ensureKeyEntry(deviceKeyAlias(call)).certificate.publicKey.encoded
+        val publicDer = ensureKeyEntry(KEY_ALIAS).certificate.publicKey.encoded
         return mapOf(
             // Kept, and no longer offered as this device's identity to anything
             // that talks to Hub. It names the install, which is all ANDROID_ID
@@ -292,9 +292,8 @@ class MainActivity : FlutterActivity() {
      * every Eidolon contract states ES256 that way, and
      * `golden/es256-vectors.json` is the authority for it.
      *
-     * Device scope selects an operational key within the dedicated Device
-     * namespace. It cannot select the separate Controller key alias. The
-     * caller binds scope once, rather than following a mutable current Host.
+     * Device identity is stable across Hosts. Scope isolates only temporary
+     * handoff keys; Controller signing remains a separate capability.
      */
     /**
      * Mint the one-shot key this enrollment's ClaimGrant will be sealed to.
@@ -352,7 +351,7 @@ class MainActivity : FlutterActivity() {
             ?: error("document is required")
         require(document.isNotEmpty()) { "document cannot be empty" }
         val signer = Signature.getInstance("SHA256withECDSA")
-        signer.initSign(ensureKeyEntry(deviceKeyAlias(call)).privateKey)
+        signer.initSign(ensureKeyEntry(KEY_ALIAS).privateKey)
         signer.update(document.toByteArray(StandardCharsets.UTF_8))
         return base64Url(EcdsaSignatureEncoding.derToP1363(signer.sign()))
     }
@@ -361,7 +360,7 @@ class MainActivity : FlutterActivity() {
         val method = call.argument<String>("method") ?: error("method is required")
         val pathQuery = call.argument<String>("pathQuery") ?: error("pathQuery is required")
         val body = call.argument<String>("body") ?: ""
-        val entry = ensureKeyEntry(deviceKeyAlias(call))
+        val entry = ensureKeyEntry(KEY_ALIAS)
         val nonceBytes = ByteArray(16).also(SecureRandom()::nextBytes)
         val nonce = base64Url(nonceBytes)
         val timestamp = (System.currentTimeMillis() / 1000L).toString()

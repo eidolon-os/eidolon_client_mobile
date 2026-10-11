@@ -35,12 +35,12 @@ void main() {
     final platform = FakePhonePlatform();
     MobileDeviceContexts runtime() =>
         MobileDeviceContexts(preferences: prefs, platform: platform);
-    // Start on a different Host: it must not acquire or replace the old key.
+    // Another Host uses the same identity, but cannot acquire the old authorization.
     final b = await runtime().open('owner-b');
     expect(b.platform.deviceScope, 'owner-b');
     expect(await b.claims.load(), isNull);
     final a = await runtime().open('owner-a');
-    expect(identical(a.platform, platform), true);
+    expect(a.platform.deviceScope, 'owner-a');
     expect((await a.claims.load())!.toJson(),
         record('owner-a', pending: true).toJson());
     expect(await old.load(), isNull);
@@ -55,7 +55,7 @@ void main() {
   });
 
   test(
-      'A B A and restart keep immutable Device scopes without a global selected key',
+      'multiple Host switches preserve identity and isolate authorization',
       () async {
     final prefs = InMemoryAppPreferences();
     final platform = FakePhonePlatform();
@@ -68,8 +68,14 @@ void main() {
         MobileDeviceContexts(preferences: prefs, platform: platform);
     final a2 = await restarted.open('owner-a');
     final b2 = await restarted.open('owner-b');
-    expect(a2.platform, same(platform));
-    expect(b2.platform.deviceScope, b.platform.deviceScope);
+    expect(a2.platform.deviceScope, 'owner-a');
+    expect(b2.platform.deviceScope, 'owner-b');
+    for (final owner in ['owner-c', 'owner-d', 'owner-a', 'owner-b', 'owner-e']) {
+      final context = await restarted.open(owner);
+      expect(context.platform.deviceScope, owner);
+      final claim = await context.claims.load();
+      expect(claim == null || claim.ownerDomainId == owner, isTrue);
+    }
     expect((await a2.claims.load())!.ownerDomainId, 'owner-a');
     expect((await b2.claims.load())!.ownerDomainId, 'owner-b');
     expect(() => b.claims.save(record('owner-a')), throwsFormatException);

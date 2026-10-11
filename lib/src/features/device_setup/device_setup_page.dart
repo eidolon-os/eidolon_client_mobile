@@ -314,22 +314,16 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           }
           final preparedTarget = target.withRevokedIdentityReplacement(revoked);
           descriptor = await session.prepareOwner(preparedTarget);
-          if (revoked &&
-              (descriptor.deviceId == originalId ||
-                  !descriptor.requiresVoucher)) {
+          if (revoked && !descriptor.requiresVoucher) {
             throw const DeviceProvisioningTransportException(
-                'revoked_identity_not_replaced',
-                '设备未创建新的认领身份，请更新设备固件后重试。此次未修改网络。');
+                'revoked_authorization_not_renewed',
+                '设备未请求新的管理授权，请更新设备固件后重试。此次未修改网络。');
           }
           _target = preparedTarget;
-          final preserving = expected ??
-              (!revoked && widget.knownDevices.containsKey(originalId)
-                  ? originalId
-                  : null);
-          if (preserving != null && descriptor.deviceId != preserving) {
+          if (descriptor.deviceId != originalId) {
             throw const DeviceProvisioningTransportException(
-              'device_identity_replacement_required',
-              '这次操作需要更换设备身份，不能作为普通换网继续。原设备记录已保留，请先处理设备归属或身份恢复。',
+              'device_identity_changed',
+              '设备在切换主机时更换了身份，请先更新设备固件。此次未修改网络或新增设备。',
             );
           }
           if (mounted) setState(() => _progress = '正在扫描设备附近的 Wi-Fi');

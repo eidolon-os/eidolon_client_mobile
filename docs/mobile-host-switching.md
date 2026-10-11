@@ -1,5 +1,15 @@
 # Mobile Host 切换：数据作用域与生命周期
 
+## 当前边界（2026-10-11）
+
+设备公钥及 `device_instance_id` 独立于 Host / Owner Domain；切换网络、Host 或管理域不会生成新设备身份。Android 只使用既有稳定设备 Keystore alias，Controller 签名密钥仍独立。
+
+Host 地址、信任目录、Claim / DeviceRef 和临时 handoff 属于各自 Owner。现有 scoped Claim 存储只是可重新验证的引用缓存，不是授权依据；不能把 A 的 Claim 发送给 B。每次返回由原 Host 根据同一设备身份查询记录，并按现有流程验证或重新签发授权。撤销后必须重新获得授权。
+
+临时 handoff scope 与持久身份分离，避免旧请求清理另一 Host 的临时密钥。沿用现有串行切换和事务边界，不新增身份映射或身份历史仓库。首次迁移仅搬移旧 Claim，保留其 Owner 边界；旧版本按域创建的其他设备身份不会冒充稳定设备的 Claim。
+
+以下记录为此前“每个 Owner 独立设备密钥”的历史实现与验收，不再作为当前身份规则。
+
 ## 目标与架构边界
 
 Mobile App 能管理多台 Host，也能承载多个独立的标准虚拟 Device。**一个 DeviceInstance 仍只属于一个 Owner Domain**。不同 Owner 使用不同 operational key／DeviceInstance／Claim；同一 Owner 的多个 Host 只是不同入口，复用其 Device。软件发布号、IP 地址、Companion 或对话模式都不是设备身份的分区键。

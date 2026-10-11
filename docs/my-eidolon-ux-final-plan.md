@@ -102,7 +102,7 @@
 - 伙伴和模式均选好才可开始。PTT、半双工、全双工及其静音/打断/释放手势规则全部保留；准备期不入房，接通确认前不发送麦克风音频。
 - `choose/chooseMode` 保存页面草稿，不立即持久改绑。通话中更换先确认结束；取消保留原通话，确认后回准备页，用户再次开始才执行关联确认与入房。已有“确认接入并开始对话”仍保留其明确表达的复合意图。
 - 当前 `_continueConversation` 经 `_confirmCompanion` 调用 `management.device`，必要时 assign，再确认主机结果。Owner 目录/Device 配置可独立读取，不代表整个开始对话过程不依赖管理能力。文案与测试不得承诺“管理服务完全不可用也一定可开聊”。
-- 沿用应用级 MobileDeviceRuntime、串行 open、revision 和可等待的幂等 close。同 Owner 多 Host 复用设备；跨 Owner 独立密钥、DeviceInstance、Claim、handoff 和待批准登记。切换回来保留原状态，禁止按 IP 或每个 Host 新建身份。
+- 沿用应用级 MobileDeviceRuntime、串行 open、revision 和可等待的幂等 close。同 Owner 多 Host 复用设备；跨 Owner 复用稳定设备密钥和 DeviceInstance，Claim、handoff 和待批准登记仍独立。切换回来保留原状态，禁止按 IP 或每个 Host 新建身份。
 - 退出对话、切换 Host、后台收音、诊断子页覆盖各有生命周期；按原规则处理，不能以统一 dispose 简化。借用控制器不销毁父级，页面自建控制器需在对话关闭后释放。
 
 ### 网络与设备接入

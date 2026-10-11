@@ -7,7 +7,8 @@ import '../models/hub_models.dart';
 class PlatformBridge {
   const PlatformBridge({this.deviceScope});
 
-  /// Immutable virtual Device selection; never a mutable globally selected Host.
+  /// Immutable enrollment scope for temporary handoff keys.
+  /// The persistent Device identity is shared across Host scopes.
   final String? deviceScope;
 
   PlatformBridge forDevice(String scope) => PlatformBridge(deviceScope: scope);
@@ -55,8 +56,8 @@ class PlatformBridge {
   /// implementation lives and where the vectors that pin it are applied. The
   /// platform signs the bytes it is given and never re-encodes them.
   ///
-  /// The immutable Device scope selects only an operational key. Controller
-  /// keys remain a separate platform capability and cannot be selected here.
+  /// Host scope does not select a different Device key. Controller keys remain
+  /// a separate platform capability and cannot be selected here.
   Future<String> signDeviceCanonicalDocument(String document) async {
     final signature = await _channel.invokeMethod<String>(
       'signDeviceCanonicalDocument',

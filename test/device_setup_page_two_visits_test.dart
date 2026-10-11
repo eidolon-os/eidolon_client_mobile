@@ -45,7 +45,7 @@ void main() {
     expect(admission.voucherAttempts, 0);
   });
   for (final rotates in [true, false]) {
-    testWidgets('revoked Host claim requires fresh identity: rotates=$rotates',
+    testWidgets('revoked Host claim renews authorization with stable identity: rotates=$rotates',
         (tester) async {
       const channel = MethodChannel('live.eidolon.mobile/platform');
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -88,10 +88,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(transport.sessions.single.replacementRequested, isTrue);
       expect(transport.sessions.single.writes, 0);
-      expect(admission.voucherAttempts, rotates ? 1 : 0);
-      expect(find.textContaining('设备未创建新的认领身份'),
-          rotates ? findsNothing : findsOneWidget);
-      if (rotates) {
+      expect(admission.voucherAttempts, rotates ? 0 : 1);
+      expect(find.textContaining('设备在切换主机时更换了身份'),
+          rotates ? findsOneWidget : findsNothing);
+      if (!rotates) {
         await tester.tap(find.byKey(const Key('network-owner-wifi')));
         await tester.pump();
         await tester.enterText(
@@ -280,7 +280,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.textContaining('Eidolon Body 1'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('不能作为普通换网继续'), findsOneWidget);
+    expect(find.textContaining('设备在切换主机时更换了身份'), findsOneWidget);
     expect(transport.sessions.single.closed, isTrue);
     expect(transport.sessions.single.writes, 0);
   });

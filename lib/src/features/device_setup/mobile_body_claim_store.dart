@@ -23,8 +23,8 @@
 /// app already follows — no Wi-Fi passwords, no pairing material, no Controller
 /// credentials — is intact.
 ///
-/// Each virtual Device has one Claim. The App may host independent Devices
-/// for different Owner Domains; their keys and records must never be shared.
+/// A stable Device may be known to several Hosts. Cached Claim references
+/// belong to one Owner Domain each and never authorize another Owner.
 library;
 
 import 'dart:convert';
