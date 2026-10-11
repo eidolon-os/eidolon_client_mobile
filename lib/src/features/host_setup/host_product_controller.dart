@@ -501,7 +501,13 @@ class HostProductController extends ChangeNotifier {
   }
 
   Future<void> refreshDevices() async {
-    if (_devicesBusy || _connection == null || _disposed) return;
+    // Failed relocation clears the live connection, but the next poll must
+    // still retry. Authorization loss and explicit disconnect clear errors.
+    if (_devicesBusy ||
+        (_connection == null && _devicesError == null) ||
+        _disposed) {
+      return;
+    }
     _devicesBusy = true;
     _notify();
     try {

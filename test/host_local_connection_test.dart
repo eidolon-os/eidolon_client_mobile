@@ -1,3 +1,4 @@
+import 'package:eidolon_client_mobile/src/features/host_setup/network_changes.dart';
 import 'dart:async';
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_devices_page.dart';
 import 'package:eidolon_client_mobile/src/platform/app_preferences.dart';
@@ -28,6 +29,14 @@ import 'support/setup_fixtures.dart';
 const _tlsFingerprint = 'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8';
 const _controllerId = 'ectrl-0123456789abcdefabcd';
 const _workspaceOperationId = '32c421a3-e0df-40f9-8f75-68745ae39d81';
+
+class _TestNetworkChanges implements NetworkChanges {
+  final events = StreamController<void>.broadcast();
+  @override
+  Stream<void> get changes => events.stream;
+  @override
+  Future<void> close() => events.close();
+}
 
 class _FakeDiscovery implements LocalApiDiscovery {
   @override
@@ -1104,8 +1113,10 @@ void main() {
 
   Future<void> openRefreshingDevices(
     WidgetTester tester,
-    Future<http.Response> Function() readDevices,
-  ) async {
+    Future<http.Response> Function() readDevices, {
+    NetworkChanges? networkChanges,
+    LocalApiClient Function()? localClient,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(900, 2200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(
@@ -1114,7 +1125,9 @@ void main() {
       transport: _LegacyHostTransport(),
       controllerKeys: _FakeControllerKeys(),
       discovery: _FakeDiscovery(),
+      networkChanges: networkChanges,
       localApiClientFactory: (_) =>
+          localClient?.call() ??
           _clientFor(_hostOverview(), workspaceReady: true),
       managementClientFactory: (_) => _managementClientFor(
         _OwnerName(),
@@ -1185,6 +1198,44 @@ void main() {
     await tester.pumpAndSettle();
     expect(row, findsNothing);
     expect(find.byKey(const Key('mounted-devices-empty')), findsOneWidget);
+  });
+
+  testWidgets('poll resumes after network loss and failed host relocation',
+      (tester) async {
+    final network = _TestNetworkChanges();
+    var offline = false;
+    var reads = 0;
+    await openRefreshingDevices(tester, () async {
+      reads++;
+      return _jsonResponse(_deviceInventory(withReadyDevice: true));
+    },
+        networkChanges: network,
+        localClient: () => offline
+            ? LocalApiClient(
+                httpClient: MockClient(
+                    (_) async => throw const SocketException('offline')))
+            : _clientFor(_hostOverview(), workspaceReady: true));
+    final controller = tester
+        .widget<MountedDevicesPage>(find.byType(MountedDevicesPage))
+        .controller;
+    offline = true;
+    network.events.add(null);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(controller.connection, isNull);
+    expect(controller.devicesError, isNotNull);
+    expect(find.byKey(const Key('mounted-device-device-waveshare-1')),
+        findsOneWidget);
+    final failedReads = reads;
+    offline = false;
+    network.events.add(null);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(reads, greaterThan(failedReads));
+    expect(controller.devicesError, isNull);
+    expect(controller.connection, isNotNull);
   });
 
   testWidgets('first failed read is an error, not an empty inventory',
