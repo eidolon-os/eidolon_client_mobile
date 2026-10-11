@@ -8,6 +8,14 @@ Host 地址、信任目录、Claim / DeviceRef 和临时 handoff 属于各自 Ow
 
 临时 handoff scope 与持久身份分离，避免旧请求清理另一 Host 的临时密钥。沿用现有串行切换和事务边界，不新增身份映射或身份历史仓库。首次迁移仅搬移旧 Claim，保留其 Owner 边界；旧版本按域创建的其他设备身份不会冒充稳定设备的 Claim。
 
+### 本轮验收（2026-10-11）
+
+- Mobile `a03afc5` 已安装到小米平板；ESP32 `ca2e1b1c` 已以 app-only 更新 Box-3 和 StackChan，启动 buildstamp 均通过校验。
+- 平板完成 Pi5 → Mac → Pi5。两个 Host 的列表均显示稳定身份 `08b2358fd82bf6c46c182251d5bfb3ab7aea4384e06ca24858921453cfdf268d`；Mac 走已有登记恢复，返回 Pi5 无需重新登记，列表没有增加记录。
+- 通过现有产品移除流程撤销 Pi5 的四条历史身份：旧 StackChan `0a077354…`、旧 Box-3 `e7e8b4a0…`、旧 Android `646fcf32…` 与 `cbaca296…`。未改库，也未按名称合并身份。最终列表为 Android、StackChan、Box-3 各一条。
+- StackChan 在 Pi5 在线；Box-3 当前实际连接 Mac（192.168.100.6），启动日志达到 `operational_ready=1`，因此其 Pi5 记录显示离线。此次未把 Box-3 改配回 Pi5。Mac 列表仍显示连接状态未知，本轮未更新 Mac 的状态观测服务。
+- Mobile 相关回归 118 项通过、1 项跳过，静态分析通过；Hub 既有授权回归 13 项通过。ESP32 事务回归覆盖 7 个 Owner 间连续切换 50 次保持身份，以及真实 NVS 掉电恢复、100 次网络维护事务。实体设备跨 Host 来回配网未在本轮真机重做，不能以这些测试替代真机验收。
+
 以下记录为此前“每个 Owner 独立设备密钥”的历史实现与验收，不再作为当前身份规则。
 
 ## 目标与架构边界
