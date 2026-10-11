@@ -40,6 +40,7 @@ Host 地址、信任目录、Claim / DeviceRef 和临时 handoff 属于各自 Ow
 - 首次候选 `pi5-claim-lifecycle-20261011` 的迁移误以为持久化 Claim revision 也重置，健康门禁拒绝启动。发布采用 forward-only，未自动回滚；随后修正为复用持久层版本，并在 Pi5 数据库临时副本验证首次修复 1 条、二次修复 0 条。不能将首次失败描述为发布一次成功。
 - 正式恢复版本 `pi5-claim-lifecycle-20261011-2` 已激活并通过 doctor、app-ready。生产事件序列为 `(revision=1, generation=1)`、`(revision=2, generation=2)`。21:38 平板自动恢复三条设备记录，Box-3 和 StackChan 均在线，旧 Workspace 提示消失。
 - 恢复后 Pi5 实际平板轮询累计 40 次均为 HTTP 200。Mac 经既有备份与重启流程加载同样修复，app-ready 通过，事件版本同样为 1、2，设备列表读取正常。Mac 上 Box-3 只有第 1 代通道观测，当前 Claim 是第 2 代，因此该条仍准确显示未知；未将旧代际离线结果当作当前观测。实体 Box-3 当前连接 Pi5，其在线结果已核实。
+- 后续连接稳定性仍未通过：用户确认没有操作设备，21:41:07 LiveKit 同时替换 Box-3、StackChan 的旧连接（`DUPLICATE_IDENTITY`）；之后分别于 21:41:55、21:42:46 记录 `PEER_CONNECTION_DISCONNECTED`。页面正常读取并显示离线，未再次出现 Workspace 误报。两台分别于 21:47:15、21:47:08 自动恢复在线，21:51 服务端完整 DeviceRef 观测及随后平板页面均确认在线、每台一条。重复连接不等于重复库存记录；服务端日志尚不能确定同时重连的触发原因，不能据恢复在线宣称连接稳定性已修复。现有独立连接超时调查继续负责该问题。
 - 回归：Hub 授权与数据库 93 项、Admin 89 项、Mobile 页面 33 项、Kernel 消费者 10 项、Channel 代际隔离 14 项通过，Flutter 静态分析通过。扩展 Hub 架构检查有一项 SDK 导入边界失败，已在未修改基线复现，未计作本次通过。
 
 以下记录为此前“每个 Owner 独立设备密钥”的历史实现与验收，不再作为当前身份规则。
