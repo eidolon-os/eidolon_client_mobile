@@ -1441,8 +1441,10 @@ class HostProductController extends ChangeNotifier {
         401 => '本次管理会话已失效，请重新连接主机。',
         403 => '这台主机没有把设备清单交给这台手机。',
         404 => '当前主机版本尚未提供设备列表。',
-        409 => '主机尚未建立 Owner Workspace，不能读取设备。',
-        503 => '主机连着，但设备清单的上游没有回应：${error.message}',
+        409 => error.hostHasNoOwner
+            ? refusalText(error, subject: '设备列表')
+            : '设备信息已变化，正在重新获取。',
+        503 => error.reason ?? '暂时无法更新设备列表，请稍候重试。',
         _ => '读不到设备清单：${error.message}',
       };
 

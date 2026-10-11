@@ -1140,6 +1140,29 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('reauthorization conflict preserves rows without inventing missing workspace',
+      (tester) async {
+    var response = _jsonResponse(_deviceInventory(withReadyDevice: true));
+    await openRefreshingDevices(tester, () async => response);
+    final controller = tester
+        .widget<MountedDevicesPage>(find.byType(MountedDevicesPage))
+        .controller;
+    response = _jsonResponse({'detail': 'device generation changed'}, 409);
+    await controller.refreshDevices();
+    await tester.pumpAndSettle();
+    expect(find.textContaining('尚未建立 Owner Workspace'), findsNothing);
+    expect(find.textContaining('设备信息已变化'), findsOneWidget);
+    expect(find.byKey(const Key('mounted-device-device-waveshare-1')), findsOneWidget);
+    response = _jsonResponse({'detail': '设备授权已更新，主机正在同步设备配置，请稍候。'}, 503);
+    await controller.refreshDevices();
+    await tester.pumpAndSettle();
+    expect(find.textContaining('正在同步设备配置'), findsOneWidget);
+    response = _jsonResponse(_deviceInventory(withReadyDevice: true));
+    await controller.refreshDevices();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('mounted-devices-error')), findsNothing);
+  });
+
   testWidgets('poll failures retain inventory until a successful replacement',
       (tester) async {
     var calls = 0;
