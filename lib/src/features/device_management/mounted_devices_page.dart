@@ -409,16 +409,22 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
               ),
             ),
           _InventoryMeaningCard(coverage: inventory?.coverage ?? ''),
-          if (error != null) ...[
+          if (error != null && controller.deviceRefreshBrieflyInterrupted) ...[
+            const SizedBox(height: 12),
+            const Text('更新暂时中断，正在自动重试。当前显示上次成功读取的设备列表。',
+                key: Key('mounted-devices-refresh-interrupted')),
+          ] else if (error != null) ...[
             const SizedBox(height: 16),
             Card(
-              color: Theme.of(context).colorScheme.errorContainer,
+              color: inventory == null
+                  ? Theme.of(context).colorScheme.errorContainer
+                  : Theme.of(context).colorScheme.surfaceContainerHighest,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   inventory == null
                       ? error
-                      : '刷新失败，当前显示上次成功读取的设备列表。'
+                      : '暂时无法更新，正在自动重试。当前显示上次成功读取的设备列表。'
                           '${updatedAt == null ? '' : '\n更新时间：${updatedAt.toString().split('.').first}'}'
                           '\n$error',
                   key: const Key('mounted-devices-error'),

@@ -1163,6 +1163,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(row, findsOneWidget);
     expect(find.textContaining('当前显示上次成功读取'), findsOneWidget);
+    expect(find.byKey(const Key('mounted-devices-refresh-interrupted')),
+        findsOneWidget);
+    expect(find.byKey(const Key('mounted-devices-error')), findsNothing);
     expect(controller.devicesUpdatedAt, firstUpdate);
     expect(find.byKey(const Key('mounted-devices-empty')), findsNothing);
 
@@ -1171,6 +1174,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(row, findsOneWidget);
     expect(find.textContaining('连不上主机'), findsOneWidget);
+    expect(find.byKey(const Key('mounted-devices-error')), findsOneWidget);
+    expect(find.byKey(const Key('mounted-devices-refresh-interrupted')),
+        findsNothing);
 
     response = () async => _jsonResponse({'devices': 'malformed'});
     await controller.refreshDevices();

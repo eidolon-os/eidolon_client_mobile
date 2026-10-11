@@ -279,6 +279,8 @@ class HostProductController extends ChangeNotifier {
   MountedDeviceInventory? _devices;
   String? _devicesError;
   DateTime? _devicesUpdatedAt;
+  int _deviceRefreshFailures = 0;
+  bool _deviceRefreshTransient = false;
   HostReleaseView? _release;
 
   ManagedHost get host => _host;
@@ -308,6 +310,13 @@ class HostProductController extends ChangeNotifier {
   MountedDeviceInventory? get devices => _devices;
   String? get devicesError => _devicesError;
   DateTime? get devicesUpdatedAt => _devicesUpdatedAt;
+  bool get deviceRefreshBrieflyInterrupted =>
+      _deviceRefreshTransient &&
+      _deviceRefreshFailures == 1 &&
+      _devices != null &&
+      _devicesUpdatedAt != null &&
+      DateTime.now().toUtc().difference(_devicesUpdatedAt!) <
+          const Duration(seconds: 15);
 
   /// Which release the Host serves from, read on each connection. Null until
   /// it answers — including a Host too old to be asked — and never kept from
@@ -415,6 +424,8 @@ class HostProductController extends ChangeNotifier {
     _devices = null;
     _devicesUpdatedAt = null;
     _devicesError = null;
+    _deviceRefreshFailures = 0;
+    _deviceRefreshTransient = false;
     _notify();
     try {
       await _loadProductState();
@@ -1104,6 +1115,8 @@ class HostProductController extends ChangeNotifier {
       _devices = null;
       _devicesUpdatedAt = null;
       _devicesError = null;
+      _deviceRefreshFailures = 0;
+      _deviceRefreshTransient = false;
       return;
     }
     await _loadReadyWorkspaceResources(workspace);
@@ -1184,6 +1197,8 @@ class HostProductController extends ChangeNotifier {
       _devices = await _devicesRepository.fetchMountedDevices();
       _devicesUpdatedAt = DateTime.now().toUtc();
       _devicesError = null;
+      _deviceRefreshFailures = 0;
+      _deviceRefreshTransient = false;
     } on HostControllerAuthorizationException {
       rethrow;
     } on ManagementRequestException catch (error) {
@@ -1193,15 +1208,28 @@ class HostProductController extends ChangeNotifier {
         _devices = null;
         _devicesUpdatedAt = null;
       }
+      _deviceRefreshFailures++;
+      _deviceRefreshTransient =
+          error.statusCode == null || error.statusCode! >= 500;
       _devicesError = _managedDeviceFailure(error);
     } on PinnedHttpException catch (error) {
+      _deviceRefreshFailures++;
+      _deviceRefreshTransient = {
+        PinnedHttpFailureKind.timeout,
+        PinnedHttpFailureKind.unreachable,
+        PinnedHttpFailureKind.io,
+      }.contains(error.kind);
       _devicesError = _pinnedHttpFailure(error);
     } on FormatException {
+      _deviceRefreshFailures++;
+      _deviceRefreshTransient = false;
       _devicesError = '主机返回了不兼容的设备列表。';
     } catch (error) {
       // Named, not swallowed. A failure this app has no word for is still a
       // failure somebody has to act on, and a sentence that erases its cause is
       // how 读不到 becomes the answer to every question.
+      _deviceRefreshFailures++;
+      _deviceRefreshTransient = false;
       _devicesError = '设备列表暂时不可用：$error';
     }
   }
@@ -1238,6 +1266,8 @@ class HostProductController extends ChangeNotifier {
     _devices = null;
     _devicesUpdatedAt = null;
     _devicesError = null;
+    _deviceRefreshFailures = 0;
+    _deviceRefreshTransient = false;
     _release = null;
   }
 
