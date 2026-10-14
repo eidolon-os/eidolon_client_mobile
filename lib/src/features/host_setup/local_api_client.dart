@@ -270,6 +270,10 @@ class LocalApiClient {
                 'approved_awaiting_handoff',
                 'grant_delivered',
                 'grant_acknowledged',
+                'rejected',
+                'expired',
+                'canceled',
+                'claim_revoked',
               ],
               'limit': '$limit',
               if (cursor != null) ...{

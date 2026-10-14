@@ -1272,15 +1272,20 @@ class AdmissionListCursorV1 extends _AdmissionMapV1 {
 
 class EnrollmentRecoveryProjectionV1 extends _AdmissionMapV1 {
   EnrollmentRecoveryProjectionV1.fromJson(Map<String, dynamic> value)
-    : super(value, const {
+    : super({'commissioning_proof_digest': null, ...value}, const {
         'proposal',
         'approval_decision',
         'grant_delivery',
+        'commissioning_proof_digest',
         'claim',
         'source_revision',
         'observed_at',
       }) {
     EnrollmentProposalV1.fromJson(_map(json['proposal']));
+    final digest = json['commissioning_proof_digest'];
+    if (digest != null && (digest is! String || !RegExp(r'^sha256:[0-9a-f]{64}$').hasMatch(digest))) {
+      throw const FormatException('Invalid commissioning proof digest');
+    }
   }
 }
 

@@ -35,6 +35,7 @@ enum DeviceAdmissionState {
   approvedAwaitingHandoff,
   grantDelivered,
   claimActive,
+  completed,
   rejected,
   failed,
 }
@@ -425,6 +426,9 @@ class DeviceSetupCheckpoint {
     required this.admissionState,
     required this.updatedAt,
     required this.onboardingTarget,
+    this.reuseExistingClaim = false,
+    this.commissioningProofDigest,
+    this.commissioningExpiresAt,
     this.deviceId,
     this.enrollmentId,
     this.expectedProposalRevision,
@@ -453,6 +457,9 @@ class DeviceSetupCheckpoint {
   final DeviceAdmissionState admissionState;
   final DateTime updatedAt;
   final DeviceOnboardingTarget onboardingTarget;
+  final bool reuseExistingClaim;
+  final String? commissioningProofDigest;
+  final DateTime? commissioningExpiresAt;
   final String? deviceId;
   final String? enrollmentId;
   final int? expectedProposalRevision;
@@ -479,6 +486,7 @@ class DeviceSetupCheckpoint {
     AdmissionListCursorV1? recoveryCursor,
     String? companionId,
     DeviceSetupFailure? failure,
+    bool? reuseExistingClaim,
     bool clearFailure = false,
     bool clearRecoveryCursor = false,
   }) =>
@@ -494,6 +502,9 @@ class DeviceSetupCheckpoint {
         admissionState: admissionState ?? this.admissionState,
         updatedAt: updatedAt ?? this.updatedAt,
         onboardingTarget: onboardingTarget,
+        reuseExistingClaim: reuseExistingClaim ?? this.reuseExistingClaim,
+        commissioningProofDigest: commissioningProofDigest,
+        commissioningExpiresAt: commissioningExpiresAt,
         deviceId: deviceId ?? this.deviceId,
         enrollmentId: enrollmentId ?? this.enrollmentId,
         expectedProposalRevision:
@@ -521,6 +532,10 @@ class DeviceSetupCheckpoint {
         'owner_root_certificate': onboardingTarget.ownerRootCertificate,
         'authority_signing_certificate':
             onboardingTarget.authoritySigningCertificate,
+        'reuse_existing_claim': reuseExistingClaim,
+        'commissioning_proof_digest': commissioningProofDigest,
+        'commissioning_expires_at':
+            commissioningExpiresAt?.toUtc().toIso8601String(),
         'device_id': deviceId,
         'enrollment_id': enrollmentId,
         'expected_proposal_revision': expectedProposalRevision,
@@ -576,6 +591,12 @@ class DeviceSetupCheckpoint {
         authoritySigningCertificate:
             _boundedWireString(value, 'authority_signing_certificate', 4096),
       ),
+      reuseExistingClaim: value['reuse_existing_claim'] == true,
+      commissioningProofDigest:
+          _optionalCheckpointString(value, 'commissioning_proof_digest'),
+      commissioningExpiresAt: value['commissioning_expires_at'] == null
+          ? null
+          : DateTime.parse(value['commissioning_expires_at'] as String).toUtc(),
       deviceId: _optionalCheckpointString(value, 'device_id'),
       enrollmentId: _optionalCheckpointString(value, 'enrollment_id'),
       expectedProposalRevision:

@@ -46,6 +46,91 @@ DeviceProvisioningDescriptor _descriptorExpiringAt(DateTime expiresAt) =>
     DeviceProvisioningDescriptor(setup: _setup, expiresAt: expiresAt);
 
 void main() {
+  test('maintenance network failure is recoverable without writing Wi-Fi again', () async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    await store.save(_checkpoint('maintenance').copyWith(reuseExistingClaim: true));
+    final admission = _Admission(_projection());
+    final session = _Session(_descriptor);
+    final result = await _coordinator(session, admission, store).resumeAdmission('maintenance');
+    expect(result.failure!.code, 'admission_unavailable');
+    expect(result.failure!.retryable, isTrue);
+    expect(admission.recoverCalls, 0);
+    expect(session.configureCalls, 0);
+  });
+
+  test('same device history cannot capture a fresh commissioning attempt',
+      () async {
+    final old = _projection(state: 'grant_acknowledged').toJson();
+    old['proposal'] = {
+      ...old['proposal'] as Map,
+      'enrollment_id': 'enrollment_old'
+    };
+    old['commissioning_proof_digest'] = 'sha256:${'0' * 64}';
+    final admission = _Admission(_projection())
+      ..recoveryItems = [
+        EnrollmentRecoveryProjectionV1.fromJson(old),
+        _projection()
+      ];
+    final store = InMemoryDeviceSetupCheckpointStore();
+    final result = await _coordinator(_Session(_descriptor), admission, store)
+        .provisionAndAdmit(
+            setupId: 'fresh',
+            requestId: 'fresh-request',
+            candidate: _candidate,
+            credentials: const DeviceWifiCredentials(
+                ssid: 'Home', password: 'test-password'),
+            onboardingTarget: deviceOnboardingTargetFixture(),
+            voucher: _voucher);
+    expect(result.enrollmentId, 'enrollment_01');
+    expect(result.admissionState, DeviceAdmissionState.approvedAwaitingHandoff);
+    expect(admission.decisionRequestIds, hasLength(1));
+    expect((await store.load('fresh'))!.commissioningProofDigest, isNotNull);
+  });
+
+  test('legacy checkpoint stops observation without adopting any current Claim',
+      () async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    final document = _checkpoint('legacy').toJson()
+      ..remove('commissioning_proof_digest');
+    await store.save(DeviceSetupCheckpoint.fromJson(document));
+    final admission = _Admission(_projection());
+    final result = await _coordinator(_Session(_descriptor), admission, store)
+        .resumeAdmission('legacy');
+    expect(result.failure!.code, 'setup_correlation_missing');
+    expect(result.failure!.retryable, isFalse);
+    expect(admission.recoverCalls, 0);
+    expect(admission.decisionRequestIds, isEmpty);
+  });
+
+  test('persisted enrollment with another proof never authorizes a Decision',
+      () async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    await store.save(_checkpoint('wrong-attempt'));
+    final wrong = _projection().toJson()
+      ..['commissioning_proof_digest'] = 'sha256:${'0' * 64}';
+    final admission =
+        _Admission(EnrollmentRecoveryProjectionV1.fromJson(wrong));
+    final result = await _coordinator(_Session(_descriptor), admission, store)
+        .resumeAdmission('wrong-attempt');
+    expect(result.failure!.code, 'enrollment_identity_mismatch');
+    expect(result.failure!.retryable, isFalse);
+    expect(admission.decisionRequestIds, isEmpty);
+  });
+
+  test('historical acknowledged operation is terminal without a current Claim',
+      () async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    await store.save(_checkpoint('history'));
+    final admission = _Admission(_projection(
+        state: 'grant_acknowledged', withDecision: true, withDelivery: true));
+    final coordinator = _coordinator(_Session(_descriptor), admission, store);
+    final result = await coordinator.resumeAdmission('history');
+    expect(result.admissionState, DeviceAdmissionState.completed);
+    expect(result.isReady, isFalse);
+    expect(await coordinator.resumableSetups(), isEmpty);
+    expect(admission.decisionRequestIds, isEmpty);
+  });
+
   test('lost terminal resumes admission without replaying Wi-Fi after restart',
       () async {
     final session = _Session(_descriptor)
@@ -56,6 +141,7 @@ void main() {
     final store = InMemoryDeviceSetupCheckpointStore();
     final result = await _coordinator(session, admission, store)
         .provisionAndAdmit(
+            voucher: _voucher,
             setupId: 'unknown',
             requestId: 'intent-unknown',
             candidate: _candidate,
@@ -102,6 +188,7 @@ void main() {
         ownerDomainId: saved.onboardingTarget.ownerDomainId));
     final coordinator = _coordinator(session, admission, store);
     final result = await coordinator.provisionAndAdmit(
+        voucher: _voucher,
         setupId: saved.setupId,
         requestId: saved.requestId,
         candidate: _candidate,
@@ -139,6 +226,7 @@ void main() {
     final store = InMemoryDeviceSetupCheckpointStore();
     final coordinator = _coordinator(session, admission, store);
     final result = await coordinator.provisionAndAdmit(
+        voucher: _voucher,
         setupId: 'refused',
         requestId: 'intent-refused',
         candidate: _candidate,
@@ -158,6 +246,7 @@ void main() {
     final result = await _coordinator(
             session, admission, InMemoryDeviceSetupCheckpointStore())
         .provisionAndAdmit(
+      voucher: _voucher,
       setupId: 'wrong-device',
       requestId: 'intent-wrong-device',
       candidate: _candidate,
@@ -634,6 +723,8 @@ final _voucher = CommissioningVoucher(
 );
 
 DeviceSetupCheckpoint _checkpoint(String setupId) => DeviceSetupCheckpoint(
+      commissioningProofDigest:
+          'sha256:256d04db4e5e4ac308751ed0885b722b758630567c53a7125ed9fbd068e5c3f6',
       contractVersion: DeviceSetupCheckpoint.currentContractVersion,
       setupId: setupId,
       requestId: 'intent-$setupId',
@@ -751,6 +842,7 @@ class _Admission implements DeviceAdmissionPort {
   _Admission(this.current, {this.loseDecisionReply = false});
 
   EnrollmentRecoveryProjectionV1 current;
+  List<EnrollmentRecoveryProjectionV1>? recoveryItems;
   final bool loseDecisionReply;
   bool unavailable = false;
   void Function()? onRecover;
@@ -763,7 +855,7 @@ class _Admission implements DeviceAdmissionPort {
     AdmissionListCursorV1? after,
   }) async {
     if (unavailable) throw StateError('Hub unavailable');
-    return canonicalRecoveryPage([current]);
+    return canonicalRecoveryPage(recoveryItems ?? [current]);
   }
 
   @override

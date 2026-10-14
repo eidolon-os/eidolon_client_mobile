@@ -112,3 +112,16 @@ Controller 密钥、Host pin 和管理会话继续走原有管理链路。设备
 - 对两个 Owner 的完整 Claim 文档进行排序 JSON 后 SHA-256 比较，重装覆盖、冷启动和两轮往返后与基线完全相同。DeviceInstance、DeviceRef、代际、Grant 和 ACK 记录均保留。最终已结束测试对话，停在准备页。
 - **本次 Host 切换真机验收通过**。这项结论针对登记隔离、未完成登记往返、接通、关闭及冷启动持久化，不等同于 ASR→LLM→TTS 全链路语音验收。
 - 本次没有改服务端或发布 Host；原先 LLM 2048-token 上下文限制不属于 Host 切换修复，未在这里改变。
+
+
+### 2026-10-14：设备配网操作与当前归属分离
+
+设备身份不是配网操作身份。同一设备可留下多个历史 Enrollment，不能按设备 ID 取第一条或最新一条来完成本次设置。
+
+新接入时，Mobile 在交付网络配置之前保存本次 commissioning voucher 的 SHA-256 摘要和有效期，不保存凭据本文。设备原样携带该凭据提出 Enrollment，Hub 从既有 ledger 返回 `commissioning_proof_digest`。恢复必须同时匹配 Owner、设备和摘要，随后固定该 Enrollment。摘要只用于关联，不授予权限；Owner、Decision、Claim 校验仍然生效。恢复列表包含终态，避免错过过期或拒绝结果后永远等待。
+
+同 Owner 的 Wi-Fi 维护不创建 Enrollment。设备通过认证的 prepare 响应确认可复用归属后，Mobile 保存维护模式；返回主机网络后查询当前 Claim，核对 Owner generation 与设备身份。历史 Enrollment 不能证明当前授权。
+
+已 ACK、但不再对应当前 Claim 的历史 Enrollment 是已完成操作，不是等待 ACK，也不能宣称设备当前已授权。旧版 checkpoint 缺少关联摘要时，停止轮询，说明无法确认旧设置，并提供返回设备列表的入口。凭据有效期结束仍无匹配登记时也结束等待。恢复只查询状态，不重发 Wi-Fi 配置。
+
+升级顺序为 SDK/Hub/Host 后 Mobile。旧 Host 未返回关联字段时，新 Mobile 明确提示更新，不退回设备 ID 猜测。现有 BOX-3 固件无需修改，数据库无需补写或迁移。

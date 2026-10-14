@@ -453,6 +453,8 @@ void main() {
             ownerDomainId: ownerDomainIdFixture,
             deviceId: 'device-instance-${'a' * 64}');
         await store.save(DeviceSetupCheckpoint(
+          commissioningProofDigest:
+              'sha256:256d04db4e5e4ac308751ed0885b722b758630567c53a7125ed9fbd068e5c3f6',
           contractVersion: DeviceSetupCheckpoint.currentContractVersion,
           setupId: 'previous',
           requestId: 'previous-intent',
@@ -576,6 +578,9 @@ void main() {
         claimState: 'active',
         claimOwnerDomainGeneration: 1,
       );
+    admission.claims = [
+      Map<String, dynamic>.from(admission.current.json['claim'] as Map)
+    ];
     String? completedDeviceId;
     await tester.pumpWidget(MaterialApp(
         home: Builder(

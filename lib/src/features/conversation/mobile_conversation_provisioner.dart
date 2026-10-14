@@ -358,6 +358,7 @@ final class MobileConversationProvisioner
           enrollment,
           MobileBodyStanding.claimRevoked,
         ),
+      AdmissionProjectionStage.completed ||
       AdmissionProjectionStage.rejected ||
       AdmissionProjectionStage.expired ||
       AdmissionProjectionStage.canceled =>

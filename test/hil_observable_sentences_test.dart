@@ -19,7 +19,7 @@ void main() {
   const observed = <String, String>{
     // step id -> the sentence the harness looks for
     'proposal_observed': '明确批准这次 Enrollment',
-    'approval_recorded': '已批准，等待设备领取 Grant',
+    'approval_recorded': '已批准，等待设备领取接入凭据',
     'claim_active_observed': '已接入',
     'mount_active_observed': '挂载 revision',
     'platform_revoked_observed': '已失去访问',

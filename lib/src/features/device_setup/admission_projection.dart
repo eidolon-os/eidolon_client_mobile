@@ -5,6 +5,7 @@ enum AdmissionProjectionStage {
   approvedAwaitingHandoff,
   grantDelivered,
   claimActive,
+  completed,
   rejected,
   expired,
   canceled,
@@ -138,9 +139,8 @@ extension EnrollmentRecoveryProjectionAccess on EnrollmentRecoveryProjectionV1 {
       'pending_review' => AdmissionProjectionStage.pendingReview,
       'approved_awaiting_handoff' =>
         AdmissionProjectionStage.approvedAwaitingHandoff,
-      'grant_delivered' ||
-      'grant_acknowledged' =>
-        AdmissionProjectionStage.grantDelivered,
+      'grant_delivered' => AdmissionProjectionStage.grantDelivered,
+      'grant_acknowledged' => AdmissionProjectionStage.completed,
       'rejected' => AdmissionProjectionStage.rejected,
       'expired' => AdmissionProjectionStage.expired,
       'canceled' => AdmissionProjectionStage.canceled,

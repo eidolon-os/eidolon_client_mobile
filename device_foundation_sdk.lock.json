@@ -1,10 +1,10 @@
 {
-  "sdk_commit": "29553a3e4b8e727afe537880a703e2c844bffdbf",
+  "sdk_commit": "79facac79366d19173a7f621b3a1fc4ff458fc1a",
   "files": [
     {
       "source": "contracts/device_foundation/v1/generated/dart/device_foundation_v1.dart",
       "target": "lib/src/generated/device_foundation_v1.dart",
-      "sha256": "a81df9e87461d9cf065d7025b361013e5570998809e6edd9f794c6c072e336a8"
+      "sha256": "afc83f97514d3e6aef63e95e09e0d4b10b5b8d5bd0d8488f0d7dd9aa4c63d2cb"
     },
     {
       "source": "contracts/device_foundation/v1/examples/valid/admission-consumer-surface.json",

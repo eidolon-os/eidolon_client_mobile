@@ -20,12 +20,31 @@ import 'support/owner_domain_fixtures.dart';
 /// can never move a terminal Enrollment.
 void main() {
   _adapterGrading();
+  testWidgets('legacy attempt ends waiting and offers the device list',
+      (tester) async {
+    final store = InMemoryDeviceSetupCheckpointStore();
+    final legacy = _checkpoint().toJson()..remove('commissioning_proof_digest');
+    await store.save(DeviceSetupCheckpoint.fromJson(legacy));
+    final admission = _GoneAdmission();
+    await tester.pumpWidget(_page(store, admission));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('继续接入'));
+    await tester.pumpAndSettle();
+    expect(find.text('这次设置已结束'), findsOneWidget);
+    expect(find.byKey(const Key('return-to-devices')), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(admission.recoverCalls, 0);
+    await tester.pump(const Duration(seconds: 10));
+    expect(admission.recoverCalls, 0);
+  });
+
   testWidgets('old authority and terminal history never take over new setup',
       (tester) async {
     final store = InMemoryDeviceSetupCheckpointStore();
     final original = _checkpoint();
     for (final state in [
       DeviceAdmissionState.claimActive,
+      DeviceAdmissionState.completed,
       DeviceAdmissionState.rejected
     ]) {
       await store.save(DeviceSetupCheckpoint.fromJson({
@@ -105,7 +124,7 @@ void main() {
     await tester.tap(find.text('继续接入'));
     await _pumpUntil(tester, () => admission.recoverCalls == 1);
 
-    expect(find.text('这次接入进行不下去了'), findsOneWidget);
+    expect(find.text('这次设置已结束'), findsOneWidget);
     expect(find.byKey(const Key('restart-device-setup')), findsOneWidget);
     expect(find.byKey(const Key('resume-device-admission')), findsNothing);
   });
@@ -201,7 +220,7 @@ void main() {
     await _pumpUntil(tester, () => admission.recoverCalls == 1);
 
     // The Host's own sentence, and no retry above it.
-    expect(find.text('这次接入进行不下去了'), findsOneWidget);
+    expect(find.text('这次设置已结束'), findsOneWidget);
     expect(find.byKey(const Key('restart-device-setup')), findsOneWidget);
     expect(find.byKey(const Key('resume-device-admission')), findsNothing);
     expect(find.textContaining('主机上已经没有这台设备了'), findsOneWidget);
@@ -236,6 +255,8 @@ DeviceSetupCheckpoint _checkpoint({
   String? enrollmentId = 'enrollment_01',
 }) =>
     DeviceSetupCheckpoint(
+      commissioningProofDigest:
+          'sha256:256d04db4e5e4ac308751ed0885b722b758630567c53a7125ed9fbd068e5c3f6',
       contractVersion: DeviceSetupCheckpoint.currentContractVersion,
       setupId: 'setup-dead-end',
       requestId: 'intent-dead-end',

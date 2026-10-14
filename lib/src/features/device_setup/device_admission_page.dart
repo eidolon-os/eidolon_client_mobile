@@ -309,11 +309,12 @@ class _DecisionContextCard extends StatelessWidget {
 
 String _stageLabel(AdmissionProjectionStage stage) => switch (stage) {
       AdmissionProjectionStage.pendingReview => '待审批',
-      AdmissionProjectionStage.approvedAwaitingHandoff => '已批准，等待设备领取 Grant',
-      AdmissionProjectionStage.grantDelivered => 'Grant 已交付，等待 ClaimActive',
-      AdmissionProjectionStage.claimActive => 'ClaimActive',
+      AdmissionProjectionStage.approvedAwaitingHandoff => '已批准，等待设备领取接入凭据',
+      AdmissionProjectionStage.grantDelivered => '凭据已交付，等待设备确认',
+      AdmissionProjectionStage.claimActive => '已接入',
+      AdmissionProjectionStage.completed => '该次接入已完成，请在设备列表查看当前状态',
       AdmissionProjectionStage.rejected => '已拒绝',
       AdmissionProjectionStage.expired => '已过期',
       AdmissionProjectionStage.canceled => '已取消',
-      AdmissionProjectionStage.claimRevoked => 'Claim 已撤销',
+      AdmissionProjectionStage.claimRevoked => '接入授权已撤销',
     };

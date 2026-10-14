@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import '../../generated/device_foundation_v1.dart';
 import '../host_setup/failure_sentences.dart';
 import 'admission_projection.dart';
@@ -86,6 +88,7 @@ class DeviceSetupCoordinator {
       checkpoint.canRecoverAdmission &&
       checkpoint.deviceId != null &&
       !checkpoint.isReady &&
+      checkpoint.admissionState != DeviceAdmissionState.completed &&
       checkpoint.admissionState != DeviceAdmissionState.rejected &&
       (checkpoint.failure == null || checkpoint.failure!.retryable);
 
@@ -193,6 +196,10 @@ class DeviceSetupCoordinator {
       updatedAt: _now(),
       onboardingTarget: onboardingTarget,
       companionId: companionId,
+      commissioningProofDigest: voucher == null
+          ? null
+          : 'sha256:${sha256.convert(utf8.encode(voucher.voucher))}',
+      commissioningExpiresAt: voucher?.expiresAt,
     );
     await _save(checkpoint);
 
@@ -214,6 +221,16 @@ class DeviceSetupCoordinator {
           code: 'device_identity_changed',
           message: '设备身份在两次连接之间发生变化，未提交网络配置。请返回重新确认设备。',
         );
+      }
+      if (voucher == null) {
+        final prepared = await session.prepareOwner(onboardingTarget);
+        if (prepared.requiresVoucher ||
+            prepared.deviceId != session.descriptor.deviceId) {
+          throw const DeviceSetupException(
+              code: 'commissioning_voucher_required',
+              message: '设备需要新的接入授权，请返回重新选择设备。');
+        }
+        checkpoint = checkpoint.copyWith(reuseExistingClaim: true);
       }
       checkpoint = checkpoint.copyWith(
         provisioningState: DeviceProvisioningState.configuringNetwork,
@@ -313,6 +330,13 @@ class DeviceSetupCoordinator {
         onCheckpoint?.call(current);
         return current;
       }
+      if (current.reuseExistingClaim) return await _recoverCurrentClaim(current);
+      if (current.commissioningProofDigest == null) {
+        throw const DeviceSetupException(
+          code: 'setup_correlation_missing',
+          message: '这是旧版保存的设置进度，无法确认它属于本次接入。请返回设备列表查看当前状态；设备已在线时无需重新配网。',
+        );
+      }
       var projection = current.enrollmentId == null
           ? null
           : await admission.recover(enrollmentId: current.enrollmentId!);
@@ -339,7 +363,9 @@ class DeviceSetupCoordinator {
         current = found.$2;
       }
 
-      if (projection.proposal.json['device_instance_candidate_id'] !=
+      if (projection.json['commissioning_proof_digest'] !=
+              current.commissioningProofDigest ||
+          projection.proposal.json['device_instance_candidate_id'] !=
               current.deviceId ||
           projection.proposal.json['enrollment_id'] != current.enrollmentId) {
         throw const DeviceSetupException(
@@ -390,6 +416,48 @@ class DeviceSetupCoordinator {
     }
   }
 
+  // Network maintenance does not create an enrollment. Consult current
+  // authorization, never an old admission operation, after returning to LAN.
+  Future<DeviceSetupCheckpoint> _recoverCurrentClaim(
+      DeviceSetupCheckpoint checkpoint) async {
+    AdmissionListCursorV1? cursor;
+    do {
+      final page = await admission.listClaims(after: cursor);
+      if (page.json['owner_domain_id'] !=
+          checkpoint.onboardingTarget.ownerDomainId) {
+        throw const DeviceSetupException(
+            code: 'claim_scope_mismatch', message: '设备状态不属于当前主机。');
+      }
+      for (final claim in page.claims) {
+        final ref = DeviceRefV1.fromJson(
+            Map<String, dynamic>.from(claim.json['device_ref'] as Map));
+        if (ref.deviceInstanceId != checkpoint.deviceId) continue;
+        if (ref.ownerDomainId.value !=
+                checkpoint.onboardingTarget.ownerDomainId ||
+            ref.ownerDomainGeneration !=
+                checkpoint.onboardingTarget.ownerDomainDescriptor
+                    .ownerDomainGeneration) {
+          throw const DeviceSetupException(
+              code: 'claim_scope_mismatch', message: '主机授权已变化，请返回设备列表查看当前状态。');
+        }
+        if (claim.json['state'] != ClaimStateV1.active.wireValue) {
+          throw const DeviceSetupException(
+              code: 'claim_not_active', message: '设备当前接入授权已失效，请返回设备列表处理。');
+        }
+        await _verifyCurrentAuthority(checkpoint);
+        final current = checkpoint.copyWith(
+            admissionState: DeviceAdmissionState.claimActive,
+            updatedAt: _now(),
+            clearFailure: true);
+        await _save(current);
+        return current;
+      }
+      cursor = page.nextCursor;
+    } while (cursor != null);
+    throw const DeviceSetupException(
+        code: 'claim_not_found', message: '主机没有这台设备的有效接入记录，请返回设备列表确认归属。');
+  }
+
   Future<(EnrollmentRecoveryProjectionV1, DeviceSetupCheckpoint)?>
       _findEnrollment(
     DeviceSetupCheckpoint checkpoint, {
@@ -401,13 +469,12 @@ class DeviceSetupCoordinator {
       await _verifyCurrentAuthority(checkpoint);
       final page = await admission.listRecovery(after: cursor);
       for (final projection in page.projections) {
-        projection.validateForOwner(
-          checkpoint.onboardingTarget.ownerDomainId,
-          ownerDomainGeneration: checkpoint
-              .onboardingTarget.ownerDomainDescriptor.ownerDomainGeneration,
-        );
         if (projection.proposal.json['device_instance_candidate_id'] ==
-            checkpoint.deviceId) {
+                checkpoint.deviceId &&
+            projection.json['commissioning_proof_digest'] ==
+                checkpoint.commissioningProofDigest) {
+          projection.validateForOwner(checkpoint.onboardingTarget.ownerDomainId,
+              ownerDomainGeneration: checkpoint.onboardingTarget.ownerDomainDescriptor.ownerDomainGeneration);
           final updated = checkpoint.copyWith(
             enrollmentId: projection.proposal.json['enrollment_id']! as String,
             expectedProposalRevision: projection.proposalRevision,
@@ -418,6 +485,13 @@ class DeviceSetupCoordinator {
           return (projection, updated);
         }
       }
+      if (page.projections
+          .any((item) => item.json['commissioning_proof_digest'] == null)) {
+        throw const DeviceSetupException(
+          code: 'host_correlation_unsupported',
+          message: '主机需要更新后才能确认本次设置。请返回设备列表查看设备状态，无需重复配网。',
+        );
+      }
       cursor = page.nextCursor;
       checkpoint = checkpoint.copyWith(
         recoveryCursor: cursor,
@@ -426,6 +500,12 @@ class DeviceSetupCoordinator {
       );
       await _save(checkpoint);
       if (cursor != null) continue;
+      final expiresAt = checkpoint.commissioningExpiresAt;
+      if (expiresAt != null && !_now().isBefore(expiresAt)) {
+        throw const DeviceSetupException(
+            code: 'commissioning_not_observed_before_expiry',
+            message: '本次设置凭据已过期，主机没有收到对应登记。请先查看设备列表；设备未接入时再重新设置。');
+      }
       if (!wait || !_now().isBefore(deadline)) return null;
       await _sleep(enrollmentInterval);
     }
@@ -448,6 +528,7 @@ class DeviceSetupCoordinator {
           DeviceAdmissionState.grantDelivered,
         AdmissionProjectionStage.claimActive =>
           DeviceAdmissionState.claimActive,
+        AdmissionProjectionStage.completed => DeviceAdmissionState.completed,
         AdmissionProjectionStage.rejected ||
         AdmissionProjectionStage.expired ||
         AdmissionProjectionStage.canceled ||

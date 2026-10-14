@@ -29,7 +29,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('confirm-enrollment-decision')));
     await tester.pumpAndSettle();
-    expect(find.text('已批准，等待设备领取 Grant'), findsOneWidget);
+    expect(find.text('已批准，等待设备领取接入凭据'), findsOneWidget);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     final pausedReads = reads;
@@ -42,7 +42,7 @@ void main() {
         state: 'grant_delivered', withDecision: true, withDelivery: true);
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
-    expect(find.text('Grant 已交付，等待 ClaimActive'), findsOneWidget);
+    expect(find.text('凭据已交付，等待设备确认'), findsOneWidget);
     current = canonicalProjection(
         state: 'grant_acknowledged',
         withDecision: true,
@@ -50,7 +50,7 @@ void main() {
         claimState: 'active');
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
-    expect(find.text('ClaimActive'), findsOneWidget);
+    expect(find.text('已接入'), findsOneWidget);
     expect(decisions, 1);
     final completedReads = reads;
     await tester.pump(const Duration(seconds: 9));
@@ -101,7 +101,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(sentRequestId, startsWith('mobile-decision-'));
-    expect(find.text('已批准，等待设备领取 Grant'), findsOneWidget);
+    expect(find.text('已批准，等待设备领取接入凭据'), findsOneWidget);
     expect(find.byKey(const Key('confirm-enrollment-decision')), findsNothing);
   });
 
@@ -138,9 +138,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ListTile), findsNWidgets(3));
-    expect(find.text('已批准，等待设备领取 Grant'), findsOneWidget);
-    expect(find.text('Grant 已交付，等待 ClaimActive'), findsOneWidget);
-    expect(find.text('ClaimActive'), findsOneWidget);
+    expect(find.text('已批准，等待设备领取接入凭据'), findsOneWidget);
+    expect(find.text('凭据已交付，等待设备确认'), findsOneWidget);
+    expect(find.text('已接入'), findsOneWidget);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);

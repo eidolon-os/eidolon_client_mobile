@@ -93,6 +93,7 @@ EnrollmentRecoveryProjectionV1 canonicalProjection({
     deviceId: deviceId,
     revision: revision,
   );
+  projection['commissioning_proof_digest'] = 'sha256:256d04db4e5e4ac308751ed0885b722b758630567c53a7125ed9fbd068e5c3f6';
   projection['source_revision'] = sourceRevision ?? revision;
   projection['approval_decision'] = withDecision
       ? canonicalDecision(ownerDomainId: ownerDomainId, revision: revision)

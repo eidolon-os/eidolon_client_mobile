@@ -595,7 +595,10 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             : checkpoint.provisioningState == DeviceProvisioningState.selected
                 ? '正在连接设备'
                 : '正在等待设备确认 Wi-Fi 和主机连接…';
-        _error = checkpoint.failure?.message;
+        _error = checkpoint.failure?.message ??
+            (checkpoint.admissionState == DeviceAdmissionState.completed
+                ? '该次接入已完成，当前归属请在设备列表查看。'
+                : null);
       } else if (checkpoint.isReady) {
         _completedDeviceId = checkpoint.deviceId;
         _step = _Step.complete;
@@ -610,12 +613,17 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         // forever — and it used to render as "in progress" with a retry the
         // Host had already ruled out.
         final failure = checkpoint.failure;
-        _refused = checkpoint.admissionState == DeviceAdmissionState.rejected ||
-            (failure != null && !failure.retryable);
+        _refused =
+            checkpoint.admissionState == DeviceAdmissionState.completed ||
+                checkpoint.admissionState == DeviceAdmissionState.rejected ||
+                (failure != null && !failure.retryable);
         _progress = _refused || _admissionActive
             ? null
             : _admissionProgress(checkpoint.admissionState);
-        _error = checkpoint.failure?.message;
+        _error = checkpoint.failure?.message ??
+            (checkpoint.admissionState == DeviceAdmissionState.completed
+                ? '该次接入已完成，当前归属请在设备列表查看。'
+                : null);
       }
     });
     _admissionObservation.setWaiting(
@@ -664,6 +672,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         DeviceAdmissionState.approvedAwaitingHandoff => '已批准，等待设备领取接入凭据',
         DeviceAdmissionState.grantDelivered => '凭据已交付，等待设备确认接入完成',
         DeviceAdmissionState.claimActive => '设备接入已生效',
+        DeviceAdmissionState.completed => '该次接入已完成',
         DeviceAdmissionState.rejected => '这次设备接入已终止',
         DeviceAdmissionState.failed => '正在自动重新查询主机接入状态',
         DeviceAdmissionState.notStarted => '等待设备向主机登记',
@@ -969,7 +978,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         children: [
           Text(
             _refused
-                ? '这次接入进行不下去了'
+                ? '这次设置已结束'
                 : _networkConfigured
                     ? 'Wi-Fi 已配置，正在接入主机'
                     : _networkOutcomeUnknown
@@ -980,7 +989,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           const SizedBox(height: 12),
           Text(
             _refused
-                ? '这次接入已结束或失效。可以重新添加设备；已有设备的状态请在主机设备列表查看。'
+                ? '请在设备列表查看设备的当前状态；设备已在线时无需重新配网。'
                 : _networkConfigured
                     ? '网络配置已保存，无需再次输入密码。接下来由设备向主机登记并完成接入。'
                     : _networkOutcomeUnknown
@@ -1009,6 +1018,12 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             ),
             const SizedBox(height: 8),
           ],
+          if (!_busy && _refused)
+            FilledButton(
+              key: const Key('return-to-devices'),
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('返回设备列表'),
+            ),
           if (!_busy)
             OutlinedButton.icon(
               key: const Key('restart-device-setup'),

@@ -123,6 +123,8 @@ Future<void> _pumpUntil(
 }
 
 DeviceSetupCheckpoint _checkpoint() => DeviceSetupCheckpoint(
+      commissioningProofDigest:
+          'sha256:256d04db4e5e4ac308751ed0885b722b758630567c53a7125ed9fbd068e5c3f6',
       contractVersion: DeviceSetupCheckpoint.currentContractVersion,
       setupId: 'setup-page-recovery',
       requestId: 'intent-page-recovery',
