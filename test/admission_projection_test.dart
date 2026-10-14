@@ -12,6 +12,39 @@ import 'support/admission_fixtures.dart';
 /// other survived every test and then, on a real Host, approved a device and
 /// rejected the Authority's own account of having approved it.
 void main() {
+  for (final claimState in ['active', 'revoked']) {
+    for (final state in ['approved_awaiting_handoff', 'grant_delivered']) {
+      test(
+          '$claimState Claim cannot settle an unacknowledged $state enrollment',
+          () {
+        final projection = canonicalProjection(
+          state: state,
+          withDecision: true,
+          withDelivery: state == 'grant_delivered',
+          claimState: claimState,
+        );
+        expect(
+            projection.validateForOwner('owner-domain_01'),
+            state == 'grant_delivered'
+                ? AdmissionProjectionStage.grantDelivered
+                : AdmissionProjectionStage.approvedAwaitingHandoff);
+      });
+    }
+    test('this Decision still reports its own $claimState Claim', () {
+      final projection = canonicalProjection(
+        state: 'grant_acknowledged',
+        withDecision: true,
+        withDelivery: true,
+        claimState: claimState,
+      );
+      expect(
+          projection.validateForOwner('owner-domain_01'),
+          claimState == 'active'
+              ? AdmissionProjectionStage.claimActive
+              : AdmissionProjectionStage.claimRevoked);
+    });
+  }
+
   test('a projection that advanced past its Proposal is not a mismatch', () {
     final projection = canonicalProjection(
       state: 'grant_delivered',

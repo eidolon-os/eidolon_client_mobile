@@ -12,6 +12,12 @@ enum AdmissionProjectionStage {
 }
 
 extension EnrollmentRecoveryProjectionAccess on EnrollmentRecoveryProjectionV1 {
+  bool get isInFlight => const {
+        'pending_review',
+        'approved_awaiting_handoff',
+        'grant_delivered',
+      }.contains(proposal.json['state']);
+
   EnrollmentProposalV1 get proposal => EnrollmentProposalV1.fromJson(
         _object(json, 'proposal'),
       );
@@ -112,12 +118,19 @@ extension EnrollmentRecoveryProjectionAccess on EnrollmentRecoveryProjectionV1 {
               proposalValue.json['device_instance_candidate_id']) {
         throw const FormatException('Claim identity mismatch');
       }
-      final claimState = claimValue.json['state'];
-      if (claimState == ClaimStateV1.active.wireValue) {
-        return AdmissionProjectionStage.claimActive;
-      }
-      if (claimState == ClaimStateV1.revoked.wireValue) {
-        return AdmissionProjectionStage.claimRevoked;
+      // A Claim cannot complete this operation before its Grant is ACKed.
+      // Older Hosts may attach a previous Claim to an in-flight enrollment.
+      // The Authority owns the exact Decision/generation association; device
+      // authorization is still checked separately by Device Control.
+      if (const {'grant_acknowledged', 'claim_revoked'}
+          .contains(proposalValue.json['state'])) {
+        final claimState = claimValue.json['state'];
+        if (claimState == ClaimStateV1.active.wireValue) {
+          return AdmissionProjectionStage.claimActive;
+        }
+        if (claimState == ClaimStateV1.revoked.wireValue) {
+          return AdmissionProjectionStage.claimRevoked;
+        }
       }
     }
 
@@ -169,8 +182,10 @@ extension EnrollmentProposalPageAccess on EnrollmentProposalPageV1 {
 extension ClaimPageAccess on ClaimPageV1 {
   AdmissionListCursorV1? get nextCursor {
     final value = json['next_cursor'];
-    return value == null ? null : AdmissionListCursorV1.fromJson(
-        Map<String, dynamic>.from(value as Map));
+    return value == null
+        ? null
+        : AdmissionListCursorV1.fromJson(
+            Map<String, dynamic>.from(value as Map));
   }
 
   List<ClaimRecordV1> get claims {

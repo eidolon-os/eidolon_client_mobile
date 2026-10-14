@@ -184,7 +184,9 @@ void main() {
       }
       await expectLater(provisioner.recoverClaim(), throwsA(isA<Exception>()));
       expect(requests, isEmpty);
-      expect(admission.historyReads, 0);
+      // A revoked device can have a new in-flight enrollment. Checking that
+      // operation must never resurrect a completed historical Claim.
+      expect(admission.historyReads, state == 'revoked' ? 1 : 0);
     });
   }
 

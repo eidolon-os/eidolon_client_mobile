@@ -1,5 +1,16 @@
 # Mobile Host 切换：数据作用域与生命周期
 
+## 撤销后重新登记的恢复边界（2026-10-14）
+
+Enrollment 的进度不能由同一设备的历史 Claim 代替。旧 Host 可能在新登记的恢复
+结果中附带上一代 revoked Claim；Mobile 在登记尚未 ACK 时以登记阶段推进领取，
+只在 ACK 后使用该投影中的 Claim 终态。Hub 同时按批准记录及 Claim 代次限定关联。
+
+没有本地在途操作时，当前 active / suspended 授权仍优先；revoked 授权下若已有
+未完成登记，则展示其领取、恢复或过期状态，不能继续创建重复登记。该展示不会
+恢复对话权限，进入对话仍由 Device Control 校验；明确收到撤销响应时仍清除本地
+Claim 缓存。一次性 handoff 密钥丢失后，不能靠历史记录伪造领取能力。
+
 ## 当前边界（2026-10-11）
 
 设备公钥及 `device_instance_id` 独立于 Host / Owner Domain；切换网络、Host 或管理域不会生成新设备身份。Android 只使用既有稳定设备 Keystore alias，Controller 签名密钥仍独立。

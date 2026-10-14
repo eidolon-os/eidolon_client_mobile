@@ -236,6 +236,7 @@ final class MobileConversationProvisioner
     final sameAuthority = held == null ||
         held.deviceRef['owner_domain_generation'] ==
             target.ownerDomainDescriptor.ownerDomainGeneration;
+    HubConfig? revokedStanding;
     if (held != null && sameAuthority && enrollmentId == null) {
       final configuration =
           await _configuration(target, identity, null, mode: mode);
@@ -247,7 +248,7 @@ final class MobileConversationProvisioner
       final current = await _currentClaim(target, deviceInstanceId);
       if (current != null) {
         final state = current.json['state'];
-        return _empty(
+        final standing = _empty(
             state == 'revoked'
                 ? HubConfigStatus.revoked
                 : HubConfigStatus.waitingBinding,
@@ -261,6 +262,8 @@ final class MobileConversationProvisioner
                 : state == 'suspended'
                     ? ChannelRefusal.claimNotActive
                     : null);
+        if (state != 'revoked') return standing;
+        revokedStanding = standing;
       }
     }
     EnrollmentRecoveryProjectionV1? found;
@@ -275,12 +278,7 @@ final class MobileConversationProvisioner
       // No active local operation: prefer an unfinished enrollment over a
       // completed historical one, then the newest proposal in that group.
       matches.sort((a, b) {
-        bool pending(EnrollmentRecoveryProjectionV1 p) => {
-              'pending_review',
-              'approved_awaiting_handoff',
-              'grant_delivered'
-            }.contains(p.proposal.json['state']);
-        if (pending(a) != pending(b)) return pending(a) ? -1 : 1;
+        if (a.isInFlight != b.isInFlight) return a.isInFlight ? -1 : 1;
         return (b.proposal.json['created_at'] as String? ?? '')
             .compareTo(a.proposal.json['created_at'] as String? ?? '');
       });
@@ -288,6 +286,15 @@ final class MobileConversationProvisioner
           .where((p) => !{'grant_acknowledged', 'claim_revoked'}
               .contains(p.proposal.json['state']))
           .firstOrNull;
+    }
+
+    // A restart can lose the handoff key without ending the Authority's
+    // operation. Show that operation (and its recovery/expiry action) before
+    // offering another enrollment. It does not restore device authorization.
+    if (enrollmentId == null &&
+        revokedStanding != null &&
+        found?.isInFlight != true) {
+      return revokedStanding;
     }
 
     if (found == null) {

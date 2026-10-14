@@ -11,6 +11,25 @@ import 'support/owner_domain_fixtures.dart';
 import 'support/phone_identity_fixtures.dart';
 
 void main() {
+  test('restart recovers an approved re-enrollment before a revoked standing',
+      () async {
+    final old = _projection(
+      state: 'grant_acknowledged',
+      deviceId: phoneDeviceInstanceId,
+      withDecision: true,
+      withDelivery: true,
+      claimState: 'revoked',
+    );
+    final pending = _projection(
+      state: 'approved_awaiting_handoff',
+      deviceId: phoneDeviceInstanceId,
+      withDecision: true,
+    );
+    final config = await _provisioner(_Admission([old, pending])).provision();
+    expect(config.bodyStanding, MobileBodyStanding.approvedAwaitingHandoff);
+    expect(config.session.usable, isFalse);
+  });
+
   test('network/pending review never implies approval or active Channel',
       () async {
     final admission = _Admission([
@@ -81,8 +100,7 @@ void main() {
     };
 
     for (final entry in cases.entries) {
-      final config =
-          await _provisioner(_Admission([entry.value])).provision();
+      final config = await _provisioner(_Admission([entry.value])).provision();
       expect(config.status, HubConfigStatus.waitingBinding);
       expect(config.bodyStanding, entry.key);
       expect(config.session.usable, isFalse);
@@ -208,8 +226,12 @@ EnrollmentRecoveryProjectionV1 _projection({
 class _Admission implements DeviceAdmissionPort {
   @override
   Future<ClaimPageV1> listClaims({AdmissionListCursorV1? after}) async =>
-      currentClaimPage(items.map((p) => p.json['claim']).whereType<Map>()
-          .map((c) => Map<String, dynamic>.from(c)), ownerDomainId: ownerDomainIdFixture);
+      currentClaimPage(
+          items
+              .map((p) => p.json['claim'])
+              .whereType<Map>()
+              .map((c) => Map<String, dynamic>.from(c)),
+          ownerDomainId: ownerDomainIdFixture);
 
   @override
   Future<CommissioningVoucher> issueCommissioningVoucher({
