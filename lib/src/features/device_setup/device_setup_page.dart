@@ -1022,7 +1022,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             FilledButton(
               key: const Key('return-to-devices'),
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('返回设备列表'),
+              child: const Text('返回设备页面'),
             ),
           if (!_busy)
             OutlinedButton.icon(
