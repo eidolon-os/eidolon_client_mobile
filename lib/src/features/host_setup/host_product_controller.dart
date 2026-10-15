@@ -557,6 +557,8 @@ class HostProductController extends ChangeNotifier {
       if (error.statusCode == 401 || error.statusCode == 403) {
         _devicePresence.clear();
         _devices = null;
+        _devicesUpdatedAt = null;
+        _devicesError = _managedDeviceFailure(error);
       }
       // Retain last bounded observation on transport failure, never refresh its age.
     } on PinnedHttpException {

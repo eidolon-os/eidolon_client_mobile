@@ -1325,6 +1325,17 @@ void main() {
     expect(inventoryReads, baseline);
   });
 
+  testWidgets('presence permission refusal clears protected inventory and shows an error', (tester) async {
+    await openRefreshingDevices(tester,
+      () async => _jsonResponse(_deviceInventory(withReadyDevice: true)),
+      readPresence: () async => _jsonResponse({'detail': 'permission denied'}, 403));
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('mounted-device-device-waveshare-1')), findsNothing);
+    expect(find.byKey(const Key('mounted-devices-empty')), findsNothing);
+    expect(find.byKey(const Key('mounted-devices-error')), findsOneWidget);
+  });
+
   testWidgets('first failed read is an error, not an empty inventory',
       (tester) async {
     await openRefreshingDevices(tester,
