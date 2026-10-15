@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/features/setup/commissioning_transport.dart';
@@ -540,6 +541,37 @@ void main() {
     expect(transport.closed, isTrue);
   });
 
+  testWidgets('voice recovery failure retains Wi-Fi and retries only recovery', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final transport = _FakeChangeNetworkTransport();
+    final pending = Completer<bool>();
+    var attempts = 0;
+    await tester.pumpWidget(MaterialApp(home: ChangeNetworkPage(
+      host: hostFixture(), transport: transport,
+      controllerKeys: _FakeControllerKeyBridge(),
+      nearbyHost: const NearbyEidolonHost(
+        address: 'AA:BB', name: 'Eidolon', hostMarker: '4c0285', rssi: -41),
+      recoverVoice: () => ++attempts == 1 ? pending.future : Future.value(true),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('New Home'));
+    await tester.enterText(find.byType(TextField).last, 'new-network-secret');
+    await tester.tap(find.byKey(const Key('confirm-network-change')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Wi-Fi 已连接，正在恢复语音'), findsOneWidget);
+    expect(find.text('已恢复，可以对话'), findsNothing);
+    pending.complete(false);
+    await tester.pumpAndSettle();
+    expect(find.text('Wi-Fi 已切换，语音暂未恢复'), findsOneWidget);
+    await tester.tap(find.text('重试语音连接'));
+    await tester.pumpAndSettle();
+    expect(find.text('已恢复，可以对话'), findsOneWidget);
+    expect(transport.operations.where((op) => op == 'wifi.configure').length, 1);
+    expect(transport.operations, isNot(contains('wifi.rollback')));
+  });
+
   testWidgets('claimed Host changes Wi-Fi through Controller challenge',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1600));
@@ -559,6 +591,7 @@ void main() {
       MaterialApp(
         home: ChangeNetworkPage(
           host: host,
+          recoverVoice: () async => true,
           transport: transport,
           controllerKeys: controllerKeys,
         ),
@@ -574,7 +607,7 @@ void main() {
     await tester.tap(find.byKey(const Key('confirm-network-change')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Wi-Fi 已更换'), findsOneWidget);
+    expect(find.text('已恢复，可以对话'), findsOneWidget);
     expect(transport.operations, [
       'controller.challenge',
       'controller.authenticate',

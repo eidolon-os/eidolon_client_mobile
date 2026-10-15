@@ -12,6 +12,9 @@ import 'host_identity.dart';
 import 'host_registry.dart';
 import 'setup_models.dart';
 import 'setup_trust.dart';
+import '../host_setup/host_product_session.dart';
+import '../host_setup/host_product_repositories.dart';
+import '../host_setup/host_service_models.dart';
 
 class ChangeNetworkPage extends StatefulWidget {
   const ChangeNetworkPage({
@@ -20,9 +23,11 @@ class ChangeNetworkPage extends StatefulWidget {
     this.transport,
     this.controllerKeys,
     this.nearbyHost,
+    this.recoverVoice,
   });
 
   final ManagedHost host;
+  final Future<bool> Function()? recoverVoice;
   final CommissioningTransport? transport;
   final ControllerKeyBridge? controllerKeys;
   final NearbyEidolonHost? nearbyHost;
@@ -45,6 +50,9 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
   bool _busy = false;
   bool _connected = false;
   bool _complete = false;
+  bool _voiceReady = false;
+  bool _recovering = false;
+  HostProductSession? _recoverySession;
   String? _networkStatus;
   late String _operationId = _uuidV4();
 
@@ -63,6 +71,7 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
   @override
   void dispose() {
     unawaited(_transport.close());
+    unawaited(_recoverySession?.close());
     _passphrase.dispose();
     _hiddenSsid.dispose();
     super.dispose();
@@ -156,7 +165,7 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
       return;
     }
     await _run(() async {
-      setState(() => _progress = '正在切换主机 Wi-Fi；Controller 和数据不会改变');
+      setState(() => _progress = '正在切换到 $ssid；原对话会中断，恢复后可继续说话');
       await _transport.configureWifi(
         operationId: _operationId,
         ssid: ssid,
@@ -169,8 +178,63 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
         _complete = true;
         _progress = null;
       });
+      await _recoverVoice();
     });
     if (!_complete && mounted) _operationId = _uuidV4();
+  }
+
+  Future<void> _recoverVoice() async {
+    if (!mounted || _recovering) return;
+    setState(() { _recovering = true; _voiceReady = false; });
+    bool ready = false;
+    try {
+      ready = await (widget.recoverVoice?.call() ?? _checkVoiceRecovery())
+          .timeout(const Duration(seconds: 45));
+    } on Object {
+      // Wi-Fi confirmation succeeded; a LAN or voice failure must not send
+      // the user back through configuration or imply that rollback occurred.
+    } finally {
+      await _recoverySession?.close();
+      _recoverySession = null;
+    }
+    if (mounted) {
+      setState(() { _recovering = false; _voiceReady = ready; });
+    }
+  }
+
+  Future<bool> _checkVoiceRecovery() async {
+    final session = HostProductSession(
+      host: widget.host,
+      controllerKeys: _controllerKeys,
+    );
+    _recoverySession = session;
+    final services = HostServicesRepository(session);
+    String? firstObservation;
+    bool connected = false;
+    while (mounted && identical(_recoverySession, session)) {
+      try {
+        if (!connected) {
+          await session.connect(allowBle: false);
+          connected = true;
+        }
+        final inventory = await services.list();
+        final voice = inventory.services.where((s) =>
+            const {'livekit', 'channel', 'channel-provider'}.contains(s.serviceId)).toList();
+        final observation = voice.map((s) => '${s.serviceId}:${s.observedAt}').join('|');
+        // Require a new Host reconciliation observation, not the cached ready
+        // status from before the network change. No phone/Host clock comparison.
+        if (firstObservation != null && observation != firstObservation &&
+            voice.length == 3 && voice.every((s) =>
+              s.enabled && s.runtimeState == HostServiceRuntimeState.ready)) {
+          return true;
+        }
+        firstObservation ??= observation;
+      } on Object {
+        // Existing session discovery handles address changes and identity checks.
+      }
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+    return false;
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -288,13 +352,19 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
               ),
             ],
             if (_complete) ...[
-              const Icon(Icons.check_circle, size: 64, color: Neon.ok),
+              Icon(_voiceReady ? Icons.check_circle : Icons.wifi, size: 64, color: Neon.ok),
               const SizedBox(height: 12),
-              const Text('Wi-Fi 已更换', textAlign: TextAlign.center),
+              Text(_recovering ? 'Wi-Fi 已连接，正在恢复语音' : _voiceReady ? '已恢复，可以对话' : 'Wi-Fi 已切换，语音暂未恢复', textAlign: TextAlign.center),
               const SizedBox(height: 8),
-              const Text('网络配置已保存。手机需能访问主机所在网络才能继续使用局域网功能。',
+              const Text('网络配置已保存。手机需能访问主机所在网络；原对话不会自动重播。',
                   textAlign: TextAlign.center),
               const SizedBox(height: 16),
+              if (_recovering) const Center(child: CircularProgressIndicator()),
+              if (!_recovering && !_voiceReady)
+                OutlinedButton(
+                  onPressed: _recoverVoice,
+                  child: const Text('重试语音连接'),
+                ),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop(true),
                 child: const Text('返回并连接主机'),
