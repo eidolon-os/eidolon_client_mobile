@@ -78,13 +78,19 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     if ((lifecycle == null || lifecycle == AppLifecycleState.resumed) &&
         (ModalRoute.of(context)?.isCurrent ?? false)) {
-      unawaited(widget.controller.refreshDevices());
+      unawaited(widget.controller.refreshDevicePresence());
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _pollPresence();
+    if (state == AppLifecycleState.resumed) {
+      _pollPresence();
+    } else if (state == AppLifecycleState.paused) {
+      // Some platforms pause monotonic clocks during deep sleep. Never reuse
+      // a pre-suspension observation while the resume request is in flight.
+      widget.controller.invalidateDevicePresence();
+    }
   }
 
   CompanionCreationFlow? _creation;
@@ -214,7 +220,9 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
     WidgetsBinding.instance.addObserver(this);
     _presenceRefresh =
         Timer.periodic(const Duration(seconds: 5), (_) => _pollPresence());
-    WidgetsBinding.instance.addPostFrameCallback((_) => _pollPresence());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(widget.controller.refreshDevices());
+    });
     _loadHandoff();
   }
 
@@ -463,7 +471,9 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
             const SizedBox(height: 16),
             ...inventory.devices.map(
               (device) => _MountedDeviceCard(
-                  device: device, onOpen: () => _openDevice(device)),
+                  lease: widget.controller.presenceFor(device),
+                  device: device,
+                  onOpen: () => _openDevice(device)),
             ),
           ],
           const SizedBox(height: 24),
@@ -526,7 +536,9 @@ class _InventoryMeaningCard extends StatelessWidget {
 }
 
 class _MountedDeviceCard extends StatelessWidget {
-  const _MountedDeviceCard({required this.device, required this.onOpen});
+  const _MountedDeviceCard(
+      {required this.device, required this.onOpen, this.lease});
+  final DevicePresenceLease? lease;
   final MountedDevice device;
   final VoidCallback onOpen;
 
@@ -575,7 +587,7 @@ class _MountedDeviceCard extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: Neon.ink)),
                 const SizedBox(height: Neon.s1),
-                DeviceConnectionStatus(device: device),
+                DeviceConnectionStatus(device: device, lease: lease),
                 // What kind of thing it is. The revision is a fact about a
                 // mount record, and nobody reading this list is asking about a
                 // mount record. When the Host cannot say, this is a long
@@ -596,21 +608,23 @@ class _MountedDeviceCard extends StatelessWidget {
 }
 
 class DeviceConnectionStatus extends StatelessWidget {
-  const DeviceConnectionStatus({super.key, required this.device});
+  const DeviceConnectionStatus({super.key, required this.device, this.lease});
 
   final MountedDevice device;
+  final DevicePresenceLease? lease;
 
   @override
   Widget build(BuildContext context) {
-    final state = device.connectionStateAt(DateTime.now().toUtc());
+    final current = lease ?? device.presenceLease;
+    final state = current?.state ?? 'unknown';
     final label = switch (state) {
       'online' => '在线',
       'offline' => '离线',
       _ => '连接状态未知',
     };
-    final reason = state == 'unknown' && device.presence?.state != 'unknown'
+    final reason = state == 'unknown' && current?.presence.state != 'unknown'
         ? '尚无有效的连接观测，请刷新设备列表'
-        : device.presence?.reason ?? '这台主机尚未提供连接状态';
+        : current?.presence.reason ?? '这台主机尚未提供连接状态';
     return Tooltip(
       message: reason,
       child: Text(label,

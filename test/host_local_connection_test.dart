@@ -287,6 +287,7 @@ ManagementClient _managementClientFor(
   Map<String, dynamic>? devices,
   int homeStatus = 200,
   Future<http.Response> Function()? readDevices,
+  Future<http.Response> Function()? readPresence,
 }) =>
     ManagementClient(
       httpClient: MockClient((request) async {
@@ -298,6 +299,11 @@ ManagementClient _managementClientFor(
             return _jsonResponse({'detail': '概览暂时读不到'}, homeStatus);
           }
           return _jsonResponse(_homeAnswer(ownerName));
+        }
+        if (request.url.path == '/api/management/v1/devices/presence') {
+          return readPresence == null
+              ? _jsonResponse({'devices': []})
+              : readPresence();
         }
         if (request.url.path == '/api/management/v1/devices') {
           // Devices moved to the management contract with the rest of what a
@@ -1115,6 +1121,7 @@ void main() {
     WidgetTester tester,
     Future<http.Response> Function() readDevices, {
     NetworkChanges? networkChanges,
+    Future<http.Response> Function()? readPresence,
     LocalApiClient Function()? localClient,
   }) async {
     await tester.binding.setSurfaceSize(const Size(900, 2200));
@@ -1132,6 +1139,7 @@ void main() {
       managementClientFactory: (_) => _managementClientFor(
         _OwnerName(),
         readDevices: readDevices,
+        readPresence: readPresence,
       ),
       onHostUpdated: (_) async {},
     )));
@@ -1140,7 +1148,8 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('reauthorization conflict preserves rows without inventing missing workspace',
+  testWidgets(
+      'reauthorization conflict preserves rows without inventing missing workspace',
       (tester) async {
     var response = _jsonResponse(_deviceInventory(withReadyDevice: true));
     await openRefreshingDevices(tester, () async => response);
@@ -1152,7 +1161,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('尚未建立 Owner Workspace'), findsNothing);
     expect(find.textContaining('设备信息已变化'), findsOneWidget);
-    expect(find.byKey(const Key('mounted-device-device-waveshare-1')), findsOneWidget);
+    expect(find.byKey(const Key('mounted-device-device-waveshare-1')),
+        findsOneWidget);
     response = _jsonResponse({'detail': '设备授权已更新，主机正在同步设备配置，请稍候。'}, 503);
     await controller.refreshDevices();
     await tester.pumpAndSettle();
@@ -1163,7 +1173,8 @@ void main() {
     expect(find.byKey(const Key('mounted-devices-error')), findsNothing);
   });
 
-  testWidgets('poll failures retain inventory until a successful replacement',
+  testWidgets(
+      'manual refresh failures retain inventory until a successful replacement',
       (tester) async {
     var calls = 0;
     Future<http.Response> Function() response =
@@ -1182,7 +1193,7 @@ void main() {
 
     response =
         () async => _jsonResponse({'detail': 'temporarily unavailable'}, 503);
-    await tester.pump(const Duration(seconds: 5));
+    await controller.refreshDevices();
     await tester.pumpAndSettle();
     expect(row, findsOneWidget);
     expect(find.textContaining('当前显示上次成功读取'), findsOneWidget);
@@ -1229,7 +1240,8 @@ void main() {
     expect(find.byKey(const Key('mounted-devices-empty')), findsOneWidget);
   });
 
-  testWidgets('poll resumes after network loss and failed host relocation',
+  testWidgets(
+      'manual refresh recovers after network loss and failed host relocation',
       (tester) async {
     final network = _TestNetworkChanges();
     var offline = false;
@@ -1250,7 +1262,7 @@ void main() {
     offline = true;
     network.events.add(null);
     await tester.pump();
-    await tester.pump(const Duration(seconds: 5));
+    await controller.refreshDevices();
     await tester.pumpAndSettle();
     expect(controller.connection, isNull);
     expect(controller.devicesError, isNotNull);
@@ -1260,11 +1272,57 @@ void main() {
     offline = false;
     network.events.add(null);
     await tester.pump();
-    await tester.pump(const Duration(seconds: 5));
+    await controller.refreshDevices();
     await tester.pumpAndSettle();
     expect(reads, greaterThan(failedReads));
     expect(controller.devicesError, isNull);
     expect(controller.connection, isNotNull);
+  });
+
+  testWidgets('visible polling reads only presence and stops in background',
+      (tester) async {
+    var inventoryReads = 0;
+    var presenceReads = 0;
+    var generation = 1;
+    await openRefreshingDevices(tester, () async {
+      inventoryReads++;
+      final inventory = _deviceInventory(withReadyDevice: true);
+      (inventory['devices'] as List).first['owner_domain_id'] =
+          'owner-domain-test';
+      return _jsonResponse(inventory);
+    }, readPresence: () async {
+      presenceReads++;
+      return _jsonResponse({
+        'devices': [
+          {
+            'device_id': 'device-waveshare-1',
+            'owner_domain_id': 'owner-domain-test',
+            'owner_domain_generation': 3,
+            'claim_generation': generation,
+            'trust_epoch': 1,
+            'presence': {'state': 'offline', 'remaining_ms': 15000},
+          }
+        ]
+      });
+    });
+    final baseline = inventoryReads;
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(inventoryReads, baseline);
+    expect(presenceReads, greaterThan(0));
+    expect(find.text('离线'), findsOneWidget);
+    generation = 2;
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.text('连接状态未知'), findsOneWidget);
+    final beforeBackground = presenceReads;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump(const Duration(seconds: 10));
+    expect(presenceReads, beforeBackground);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(presenceReads, greaterThan(beforeBackground));
+    expect(inventoryReads, baseline);
   });
 
   testWidgets('first failed read is an error, not an empty inventory',

@@ -47,12 +47,18 @@ class HostDevicesRepository {
 
   final HostProductSession _session;
 
-  Future<MountedDeviceInventory> fetchMountedDevices() async =>
-      MountedDeviceInventory.fromView(
-        await _session.executeManagement(
-          (client, baseUri, accessToken) =>
-              client.fetchDevices(baseUri, accessToken: accessToken),
-        ),
+  Future<MountedDeviceInventory> fetchMountedDevices() async {
+    final clock = Stopwatch()..start();
+    final view = await _session.executeManagement(
+      (client, baseUri, accessToken) =>
+          client.fetchDevices(baseUri, accessToken: accessToken),
+    );
+    return MountedDeviceInventory.fromView(view, requestClock: clock);
+  }
+
+  Future<DevicePresencesView> fetchPresence() => _session.executeManagement(
+        (client, baseUri, accessToken) =>
+            client.fetchDevicePresences(baseUri, accessToken: accessToken),
       );
 
   Future<DeviceRemovalView> remove({

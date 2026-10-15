@@ -703,6 +703,16 @@ class ManagementClient {
   /// Composed and phrased by the Host — it is the side that can see both the
   /// Claim and the mount — so this app switches on a state rather than deriving
   /// one from two authorities it would have to reason about together.
+  Future<DevicePresencesView> fetchDevicePresences(Uri baseUri,
+      {required String accessToken}) async {
+    return DevicePresencesView.fromJson(await _send(
+      'GET',
+      baseUri.resolve(ManagementV1.devicesPresencePath),
+      accessToken: accessToken,
+      what: '更新设备连接状态',
+    ));
+  }
+
   Future<DevicesView> fetchDevices(
     Uri baseUri, {
     required String accessToken,

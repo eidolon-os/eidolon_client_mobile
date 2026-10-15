@@ -21,6 +21,7 @@ MountedDevice device({Map<String, Object?>? presence}) =>
     }));
 
 Map<String, Object?> observation(String state, DateTime at) => {
+      'remaining_ms': 15000,
       'state': state,
       'source': 'channel',
       'observed_at': at.toIso8601String(),
@@ -34,28 +35,49 @@ void main() {
   test('old Hosts and admission alone cannot assert connectivity', () {
     final old = device();
     expect(old.state, MountedDeviceState.ready);
-    expect(old.connectionStateAt(at), 'unknown');
+    expect(old.connectionState, 'unknown');
   });
 
-  test('online and offline expire without being converted into each other', () {
-    for (final state in ['online', 'offline']) {
-      final current = device(presence: observation(state, at));
-      expect(current.connectionStateAt(at), state);
-      expect(current.connectionStateAt(at.add(const Duration(seconds: 14))),
-          state);
-      expect(current.connectionStateAt(at.add(const Duration(seconds: 15))),
-          'unknown');
-      expect(current.connectionStateAt(at.subtract(const Duration(seconds: 1))),
-          'unknown');
+  test(
+      'freshness uses elapsed time, independent of Host and phone clock offset',
+      () {
+    for (final offset in [
+      const Duration(milliseconds: 310),
+      const Duration(days: 2),
+      const Duration(days: -2)
+    ]) {
+      for (final state in ['online', 'offline']) {
+        var elapsed = const Duration(milliseconds: 120);
+        final lease = DevicePresenceLease(
+          DevicePresenceView.fromJson(observation(state, at.add(offset))),
+          elapsed: () => elapsed,
+        );
+        expect(lease.state, state);
+        elapsed = const Duration(seconds: 14);
+        expect(lease.state, state);
+        elapsed = const Duration(seconds: 15);
+        expect(lease.state, 'unknown');
+      }
     }
   });
 
-  test('unknown states and malformed timestamps fail to unknown', () {
-    expect(device(presence: observation('new-state', at)).connectionStateAt(at),
-        'unknown');
+  test('transit time consumes freshness; old Hosts cannot grant a lease', () {
+    final lease = DevicePresenceLease(
+      DevicePresenceView(state: 'online', remainingMs: 1000),
+      elapsed: () => const Duration(seconds: 2),
+    );
+    expect(lease.state, 'unknown');
+    for (final ttl in [null, 0, -1, 15001]) {
+      expect(
+          DevicePresenceLease(
+              DevicePresenceView(state: 'online', remainingMs: ttl),
+              elapsed: () => Duration.zero).state,
+          'unknown');
+    }
     expect(
-        device(presence: {...observation('online', at), 'valid_until': 'bad'})
-            .connectionStateAt(at),
+        DevicePresenceLease(
+            DevicePresenceView(state: 'future-state', remainingMs: 1000),
+            elapsed: () => Duration.zero).state,
         'unknown');
   });
 
@@ -74,12 +96,10 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: DeviceConnectionStatus(
-                device: device(
-                    presence: observation(
-                        'online',
-                        DateTime.now()
-                            .toUtc()
-                            .subtract(const Duration(minutes: 1))))))));
+                device: device(presence: {
+      ...observation('online', DateTime.now()),
+      'remaining_ms': 0
+    })))));
     expect(find.text('连接状态未知'), findsOneWidget);
     expect(find.text('在线'), findsNothing);
   });

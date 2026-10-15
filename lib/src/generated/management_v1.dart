@@ -62,6 +62,8 @@ class ManagementV1 {
   static const String deviceConversationsStatusPath =
       '/api/management/v1/device-conversations/status';
   static const String devicesPath = '/api/management/v1/devices';
+  static const String devicesPresencePath =
+      '/api/management/v1/devices/presence';
   static String devicesByDeviceIdCompanionPath(String deviceId) =>
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/companion';
   static String devicesByDeviceIdOutputsPath(String deviceId) =>
@@ -1429,10 +1431,58 @@ class DeviceOutputsView {
   }
 }
 
+class DevicePresenceRow {
+  const DevicePresenceRow({
+    required this.claimGeneration,
+    required this.deviceId,
+    required this.ownerDomainGeneration,
+    required this.ownerDomainId,
+    required this.presence,
+    required this.trustEpoch,
+  });
+
+  final int claimGeneration;
+
+  final String deviceId;
+
+  final int ownerDomainGeneration;
+
+  final String ownerDomainId;
+
+  final DevicePresenceView presence;
+
+  final int trustEpoch;
+
+  factory DevicePresenceRow.fromJson(Map<String, dynamic> value) {
+    return DevicePresenceRow(
+      claimGeneration: value['claim_generation'] as int,
+      deviceId: value['device_id'] as String,
+      ownerDomainGeneration: value['owner_domain_generation'] as int,
+      ownerDomainId: value['owner_domain_id'] as String,
+      presence: DevicePresenceView.fromJson(
+        value['presence'] as Map<String, dynamic>,
+      ),
+      trustEpoch: value['trust_epoch'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'claim_generation': claimGeneration,
+      'device_id': deviceId,
+      'owner_domain_generation': ownerDomainGeneration,
+      'owner_domain_id': ownerDomainId,
+      'presence': presence.toJson(),
+      'trust_epoch': trustEpoch,
+    };
+  }
+}
+
 class DevicePresenceView {
   const DevicePresenceView({
     this.observedAt,
     this.reason,
+    this.remainingMs,
     this.source,
     this.state,
     this.validUntil,
@@ -1441,6 +1491,8 @@ class DevicePresenceView {
   final String? observedAt;
 
   final String? reason;
+
+  final int? remainingMs;
 
   final String? source;
 
@@ -1452,6 +1504,7 @@ class DevicePresenceView {
     return DevicePresenceView(
       observedAt: value['observed_at'] as String?,
       reason: value['reason'] as String?,
+      remainingMs: value['remaining_ms'] as int?,
       source: value['source'] as String?,
       state: value['state'] as String?,
       validUntil: value['valid_until'] as String?,
@@ -1462,10 +1515,32 @@ class DevicePresenceView {
     return {
       if (observedAt != null) 'observed_at': observedAt,
       if (reason != null) 'reason': reason,
+      if (remainingMs != null) 'remaining_ms': remainingMs,
       if (source != null) 'source': source,
       if (state != null) 'state': state,
       if (validUntil != null) 'valid_until': validUntil,
     };
+  }
+}
+
+class DevicePresencesView {
+  const DevicePresencesView({required this.devices});
+
+  final List<DevicePresenceRow> devices;
+
+  factory DevicePresencesView.fromJson(Map<String, dynamic> value) {
+    return DevicePresencesView(
+      devices: ((value['devices'] as List<dynamic>)
+          .map(
+            (entry) =>
+                DevicePresenceRow.fromJson(entry as Map<String, dynamic>),
+          )
+          .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'devices': devices.map((entry) => entry.toJson()).toList()};
   }
 }
 
@@ -1599,6 +1674,7 @@ class DeviceView {
     required this.mountRevision,
     required this.outputs,
     required this.ownerDomainGeneration,
+    this.ownerDomainId,
     this.presence,
     this.quietBecause,
     required this.revision,
@@ -1631,6 +1707,8 @@ class DeviceView {
 
   final int ownerDomainGeneration;
 
+  final String? ownerDomainId;
+
   final DevicePresenceView? presence;
 
   final String? quietBecause;
@@ -1659,6 +1737,7 @@ class DeviceView {
         value['outputs'] as Map<String, dynamic>,
       ),
       ownerDomainGeneration: value['owner_domain_generation'] as int,
+      ownerDomainId: value['owner_domain_id'] as String?,
       presence: value['presence'] == null
           ? null
           : DevicePresenceView.fromJson(
@@ -1688,6 +1767,7 @@ class DeviceView {
       'mount_revision': mountRevision,
       'outputs': outputs.toJson(),
       'owner_domain_generation': ownerDomainGeneration,
+      if (ownerDomainId != null) 'owner_domain_id': ownerDomainId,
       if (presence != null) 'presence': presence?.toJson(),
       if (quietBecause != null) 'quiet_because': quietBecause,
       'revision': revision,

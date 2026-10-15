@@ -82,6 +82,28 @@ class DeviceOutputs {
   bool get decided => allowed != null;
 }
 
+/// A Host-validated observation, aged only by a local monotonic clock.
+/// The clock starts before the request, conservatively charging all transit time.
+class DevicePresenceLease {
+  DevicePresenceLease(this.presence, {required this.elapsed});
+
+  final DevicePresenceView presence;
+  final Duration Function() elapsed;
+
+  String get state {
+    final remaining = presence.remainingMs ?? 0;
+    final age = elapsed().inMilliseconds;
+    if (remaining <= 0 || remaining > 15000 || age < 0 || age >= remaining) {
+      return 'unknown';
+    }
+    return switch (presence.state) {
+      'online' => 'online',
+      'offline' => 'offline',
+      _ => 'unknown',
+    };
+  }
+}
+
 class MountedDevice {
   const MountedDevice({
     required this.deviceId,
@@ -101,6 +123,8 @@ class MountedDevice {
     required this.manifestId,
     required this.outputs,
     this.presence,
+    this.presenceLease,
+    this.ownerDomainId,
   });
 
   /// Built from the Host's own answer.
@@ -109,44 +133,54 @@ class MountedDevice {
   /// facts at a time, from a Claim and a mount this app had to reason about
   /// together. The Host composes and phrases them now — it is the side that can
   /// see both halves — and what is left here is the enum a screen switches on.
-  factory MountedDevice.fromView(DeviceView view) => MountedDevice(
-        deviceId: view.deviceId,
-        label: view.label,
-        detail: (view.kind ?? '').isNotEmpty && view.kind != view.label
-            ? view.kind!
-            : view.deviceId,
-        state: switch (view.state) {
-          'ready' => MountedDeviceState.ready,
-          'awaiting_companion' => MountedDeviceState.awaitingCompanion,
-          'awaiting_outputs' => MountedDeviceState.awaitingOutputs,
-          'access_revoked' => MountedDeviceState.accessRevoked,
-          // A state this version has never heard of is shown as needing
-          // attention rather than as fine: the Host knows something this app
-          // does not, and "fine" is the one guess that costs someone a device.
-          _ => MountedDeviceState.accessRevoked,
-        },
-        attachedCompanionId: view.answersAsCompanionId,
-        attachedCompanionName: view.answersAsCompanionName ?? '',
-        quietBecause: switch (view.quietBecause) {
-          'you_cleared_it' => DeviceQuietBecause.ownerCleared,
-          'companion_put_away' => DeviceQuietBecause.companionPutAway,
-          'host_released_it' => DeviceQuietBecause.hostReleased,
-          // Empty is the ordinary case — something answers, or nobody ever
-          // decided — and a word this version has not heard of falls here too:
-          // saying nothing is better than inventing a reason.
-          _ => DeviceQuietBecause.unstated,
-        },
-        revision: view.revision,
-        mountRevision: view.mountRevision,
-        updatedAt: DateTime.tryParse(view.updatedAt)?.toUtc(),
-        claimState: view.claimState,
-        claimGeneration: view.claimGeneration,
-        trustEpoch: view.trustEpoch,
-        ownerDomainGeneration: view.ownerDomainGeneration,
-        manifestId: view.manifestId ?? '',
-        outputs: DeviceOutputs.fromView(view.outputs),
-        presence: view.presence,
-      );
+  factory MountedDevice.fromView(DeviceView view, {Stopwatch? requestClock}) {
+    final clock = requestClock ?? (Stopwatch()..start());
+    return MountedDevice(
+      deviceId: view.deviceId,
+      label: view.label,
+      detail: (view.kind ?? '').isNotEmpty && view.kind != view.label
+          ? view.kind!
+          : view.deviceId,
+      state: switch (view.state) {
+        'ready' => MountedDeviceState.ready,
+        'awaiting_companion' => MountedDeviceState.awaitingCompanion,
+        'awaiting_outputs' => MountedDeviceState.awaitingOutputs,
+        'access_revoked' => MountedDeviceState.accessRevoked,
+        // A state this version has never heard of is shown as needing
+        // attention rather than as fine: the Host knows something this app
+        // does not, and "fine" is the one guess that costs someone a device.
+        _ => MountedDeviceState.accessRevoked,
+      },
+      attachedCompanionId: view.answersAsCompanionId,
+      attachedCompanionName: view.answersAsCompanionName ?? '',
+      quietBecause: switch (view.quietBecause) {
+        'you_cleared_it' => DeviceQuietBecause.ownerCleared,
+        'companion_put_away' => DeviceQuietBecause.companionPutAway,
+        'host_released_it' => DeviceQuietBecause.hostReleased,
+        // Empty is the ordinary case — something answers, or nobody ever
+        // decided — and a word this version has not heard of falls here too:
+        // saying nothing is better than inventing a reason.
+        _ => DeviceQuietBecause.unstated,
+      },
+      revision: view.revision,
+      mountRevision: view.mountRevision,
+      updatedAt: DateTime.tryParse(view.updatedAt)?.toUtc(),
+      claimState: view.claimState,
+      claimGeneration: view.claimGeneration,
+      trustEpoch: view.trustEpoch,
+      ownerDomainGeneration: view.ownerDomainGeneration,
+      manifestId: view.manifestId ?? '',
+      outputs: DeviceOutputs.fromView(view.outputs),
+      presence: view.presence,
+      ownerDomainId: view.ownerDomainId,
+      presenceLease: view.presence == null
+          ? null
+          : DevicePresenceLease(
+              view.presence!,
+              elapsed: () => clock.elapsed,
+            ),
+    );
+  }
 
   final String deviceId;
 
@@ -193,31 +227,22 @@ class MountedDevice {
   /// Older Hosts omit it; expired observations never remain green.
   final DevicePresenceView? presence;
 
-  String connectionStateAt(DateTime now) {
-    final observed = DateTime.tryParse(presence?.observedAt ?? '');
-    final until = DateTime.tryParse(presence?.validUntil ?? '');
-    if (observed == null ||
-        until == null ||
-        now.isBefore(observed) ||
-        !now.isBefore(until) ||
-        until.difference(observed) > const Duration(seconds: 15)) {
-      return 'unknown';
-    }
-    return switch (presence?.state) {
-      'online' => 'online',
-      'offline' => 'offline',
-      _ => 'unknown',
-    };
-  }
+  final String? ownerDomainId;
+  final DevicePresenceLease? presenceLease;
+
+  String get connectionState => presenceLease?.state ?? 'unknown';
 }
 
 class MountedDeviceInventory {
   const MountedDeviceInventory({required this.devices, this.coverage = ''});
 
-  factory MountedDeviceInventory.fromView(DevicesView view) =>
+  factory MountedDeviceInventory.fromView(DevicesView view,
+          {Stopwatch? requestClock}) =>
       MountedDeviceInventory(
-        devices:
-            view.devices.map(MountedDevice.fromView).toList(growable: false),
+        devices: view.devices
+            .map((view) =>
+                MountedDevice.fromView(view, requestClock: requestClock))
+            .toList(growable: false),
         coverage: view.coverage ?? '',
       );
 

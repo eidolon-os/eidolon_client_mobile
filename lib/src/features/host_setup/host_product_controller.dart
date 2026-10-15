@@ -511,6 +511,64 @@ class HostProductController extends ChangeNotifier {
     }
   }
 
+  bool _presenceBusy = false;
+  int _presenceEpoch = 0;
+  final Map<String, DevicePresenceLease> _devicePresence = {};
+
+  DevicePresenceLease? presenceFor(MountedDevice device) =>
+      _devicePresence[device.deviceId] ?? device.presenceLease;
+
+  void invalidateDevicePresence() {
+    _presenceEpoch++;
+    for (final device in _devices?.devices ?? <MountedDevice>[]) {
+      _devicePresence[device.deviceId] = DevicePresenceLease(
+        const DevicePresenceView(state: 'unknown', reason: '正在更新设备连接状态'),
+        elapsed: () => Duration.zero,
+      );
+    }
+  }
+
+  Future<void> refreshDevicePresence() async {
+    final inventory = _devices;
+    if (_presenceBusy || _disposed || inventory == null) return;
+    _presenceBusy = true;
+    final epoch = _presenceEpoch;
+    final clock = Stopwatch()..start();
+    try {
+      final snapshot = await _devicesRepository.fetchPresence();
+      if (_disposed || epoch != _presenceEpoch || !identical(inventory, _devices)) return;
+      final rows = {for (final row in snapshot.devices) row.deviceId: row};
+      for (final device in inventory.devices) {
+        final row = rows[device.deviceId];
+        final matches = row != null &&
+            row.ownerDomainId == device.ownerDomainId &&
+            row.ownerDomainGeneration == device.ownerDomainGeneration &&
+            row.claimGeneration == device.claimGeneration &&
+            row.trustEpoch == device.trustEpoch;
+        _devicePresence[device.deviceId] = DevicePresenceLease(
+          matches ? row.presence : const DevicePresenceView(state: 'unknown'),
+          elapsed: () => clock.elapsed,
+        );
+      }
+    } on HostControllerAuthorizationException catch (error) {
+      _failAuthorization(error);
+      _devicePresence.clear();
+    } on ManagementRequestException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        _devicePresence.clear();
+        _devices = null;
+      }
+      // Retain last bounded observation on transport failure, never refresh its age.
+    } on PinnedHttpException {
+      // The observation expires locally even when the Host cannot be reached.
+    } on FormatException {
+      // An incompatible response cannot extend an observation's lifetime.
+    } finally {
+      _presenceBusy = false;
+      if (!_disposed) _notify();
+    }
+  }
+
   Future<void> refreshDevices() async {
     // Failed relocation clears the live connection, but the next poll must
     // still retry. Authorization loss and explicit disconnect clear errors.
@@ -1195,6 +1253,7 @@ class HostProductController extends ChangeNotifier {
   Future<void> _loadDevices() async {
     try {
       _devices = await _devicesRepository.fetchMountedDevices();
+      _devicePresence.clear();
       _devicesUpdatedAt = DateTime.now().toUtc();
       _devicesError = null;
       _deviceRefreshFailures = 0;
