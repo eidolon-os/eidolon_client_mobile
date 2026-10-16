@@ -421,6 +421,11 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
               ),
             ),
           _InventoryMeaningCard(coverage: inventory?.coverage ?? ''),
+          if (inventory != null && controller.presenceError != null) ...[
+            const SizedBox(height: 12),
+            Text(controller.presenceError!,
+                key: const Key('mounted-devices-presence-error')),
+          ],
           if (error != null && controller.deviceRefreshBrieflyInterrupted) ...[
             const SizedBox(height: 12),
             const Text('更新暂时中断，正在自动重试。当前显示上次成功读取的设备列表。',

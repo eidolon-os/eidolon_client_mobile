@@ -1325,13 +1325,75 @@ void main() {
     expect(inventoryReads, baseline);
   });
 
-  testWidgets('presence permission refusal clears protected inventory and shows an error', (tester) async {
+  for (final status in [404, 501]) {
+    testWidgets(
+        'unsupported presence $status stops polling and refresh reprobes',
+        (tester) async {
+      var reads = 0;
+      var supported = false;
+      await openRefreshingDevices(tester,
+          () async => _jsonResponse(_deviceInventory(withReadyDevice: true)),
+          readPresence: () async {
+        reads++;
+        return supported
+            ? _jsonResponse({'devices': []})
+            : _jsonResponse({'detail': 'unsupported'}, status);
+      });
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('请更新主机后刷新'), findsOneWidget);
+      expect(find.byKey(const Key('mounted-device-device-waveshare-1')),
+          findsOneWidget);
+      final before = reads;
+      await tester.pump(const Duration(seconds: 20));
+      expect(reads, before);
+      supported = true;
+      await tester.tap(find.byKey(const Key('refresh-mounted-devices')));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(reads, greaterThan(before));
+      expect(find.byKey(const Key('mounted-devices-presence-error')),
+          findsNothing);
+    });
+  }
+
+  testWidgets(
+      'temporary presence failure retries and clears notice on recovery',
+      (tester) async {
+    var unavailable = true;
+    var reads = 0;
     await openRefreshingDevices(tester,
-      () async => _jsonResponse(_deviceInventory(withReadyDevice: true)),
-      readPresence: () async => _jsonResponse({'detail': 'permission denied'}, 403));
+        () async => _jsonResponse(_deviceInventory(withReadyDevice: true)),
+        readPresence: () async {
+      reads++;
+      return unavailable
+          ? _jsonResponse({'detail': 'unavailable'}, 503)
+          : _jsonResponse({'devices': []});
+    });
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('mounted-device-device-waveshare-1')), findsNothing);
+    expect(find.textContaining('暂时无法更新连接状态'), findsOneWidget);
+    final before = reads;
+    unavailable = false;
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(reads, greaterThan(before));
+    expect(
+        find.byKey(const Key('mounted-devices-presence-error')), findsNothing);
+  });
+
+  testWidgets(
+      'presence permission refusal clears protected inventory and shows an error',
+      (tester) async {
+    await openRefreshingDevices(tester,
+        () async => _jsonResponse(_deviceInventory(withReadyDevice: true)),
+        readPresence: () async =>
+            _jsonResponse({'detail': 'permission denied'}, 403));
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('mounted-device-device-waveshare-1')),
+        findsNothing);
     expect(find.byKey(const Key('mounted-devices-empty')), findsNothing);
     expect(find.byKey(const Key('mounted-devices-error')), findsOneWidget);
   });

@@ -512,6 +512,17 @@ class HostProductController extends ChangeNotifier {
   }
 
   bool _presenceBusy = false;
+  bool _presenceUnsupported = false;
+  String? _presenceError;
+  String? get presenceError => _presenceError;
+
+  void _presenceReadFailed({bool unsupported = false}) {
+    _presenceUnsupported = unsupported;
+    _presenceError = unsupported
+        ? '这台主机暂不支持连接状态查询，请更新主机后刷新。设备仍可正常管理。'
+        : '暂时无法更新连接状态，正在自动重试。上次状态过期后将显示未知。';
+  }
+
   int _presenceEpoch = 0;
   final Map<String, DevicePresenceLease> _devicePresence = {};
 
@@ -530,13 +541,20 @@ class HostProductController extends ChangeNotifier {
 
   Future<void> refreshDevicePresence() async {
     final inventory = _devices;
-    if (_presenceBusy || _disposed || inventory == null) return;
+    if (_presenceBusy || _presenceUnsupported || _disposed || inventory == null) {
+      return;
+    }
     _presenceBusy = true;
     final epoch = _presenceEpoch;
     final clock = Stopwatch()..start();
     try {
       final snapshot = await _devicesRepository.fetchPresence();
-      if (_disposed || epoch != _presenceEpoch || !identical(inventory, _devices)) return;
+      if (_disposed ||
+          epoch != _presenceEpoch ||
+          !identical(inventory, _devices)) {
+        return;
+      }
+      _presenceError = null;
       final rows = {for (final row in snapshot.devices) row.deviceId: row};
       for (final device in inventory.devices) {
         final row = rows[device.deviceId];
@@ -554,17 +572,34 @@ class HostProductController extends ChangeNotifier {
       _failAuthorization(error);
       _devicePresence.clear();
     } on ManagementRequestException catch (error) {
+      if (_disposed ||
+          epoch != _presenceEpoch ||
+          !identical(inventory, _devices)) {
+        return;
+      }
       if (error.statusCode == 401 || error.statusCode == 403) {
+        _presenceError = null;
         _devicePresence.clear();
         _devices = null;
         _devicesUpdatedAt = null;
         _devicesError = _managedDeviceFailure(error);
+      } else {
+        _presenceReadFailed(
+            unsupported: error.statusCode == 404 || error.statusCode == 501);
       }
-      // Retain last bounded observation on transport failure, never refresh its age.
+      // Failures never extend the lifetime of the last observation.
     } on PinnedHttpException {
-      // The observation expires locally even when the Host cannot be reached.
+      if (!_disposed &&
+          epoch == _presenceEpoch &&
+          identical(inventory, _devices)) {
+        _presenceReadFailed();
+      }
     } on FormatException {
-      // An incompatible response cannot extend an observation's lifetime.
+      if (!_disposed &&
+          epoch == _presenceEpoch &&
+          identical(inventory, _devices)) {
+        _presenceReadFailed(unsupported: true);
+      }
     } finally {
       _presenceBusy = false;
       if (!_disposed) _notify();
@@ -579,6 +614,9 @@ class HostProductController extends ChangeNotifier {
         _disposed) {
       return;
     }
+    // An explicit refresh also probes again after a Host upgrade.
+    _presenceUnsupported = false;
+    _presenceEpoch++;
     _devicesBusy = true;
     _notify();
     try {
