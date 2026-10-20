@@ -593,6 +593,16 @@ class _MountedDeviceCard extends StatelessWidget {
                         color: Neon.ink)),
                 const SizedBox(height: Neon.s1),
                 DeviceConnectionStatus(device: device, lease: lease),
+                Text(
+                  device.attachedCompanionId == null
+                      ? '未绑定回应伙伴'
+                      : device.attachedCompanionName.trim().isEmpty
+                          ? '已绑定伙伴，名称暂不可用'
+                          : '回应伙伴：${device.attachedCompanionName}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, color: Neon.ink),
+                ),
                 // What kind of thing it is. The revision is a fact about a
                 // mount record, and nobody reading this list is asking about a
                 // mount record. When the Host cannot say, this is a long

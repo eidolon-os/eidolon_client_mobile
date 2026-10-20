@@ -1148,6 +1148,34 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('device list shows and refreshes the assigned companion name',
+      (tester) async {
+    final inventory = _deviceInventory(withReadyDevice: true);
+    await openRefreshingDevices(tester, () async => _jsonResponse(inventory));
+    final controller = tester
+        .widget<MountedDevicesPage>(find.byType(MountedDevicesPage))
+        .controller;
+    final row = find.byKey(const Key('mounted-device-device-waveshare-1'));
+    expect(find.descendant(of: row, matching: find.text('回应伙伴：小忆')),
+        findsOneWidget);
+    final device = (inventory['devices'] as List).first as Map<String, dynamic>;
+    device['answers_as_companion_name'] = '小禾';
+    await controller.refreshDevices();
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: row, matching: find.text('回应伙伴：小禾')),
+        findsOneWidget);
+    device.remove('answers_as_companion_name');
+    await controller.refreshDevices();
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: row, matching: find.text('已绑定伙伴，名称暂不可用')),
+        findsOneWidget);
+    device.remove('answers_as_companion_id');
+    await controller.refreshDevices();
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: row, matching: find.text('未绑定回应伙伴')),
+        findsOneWidget);
+  });
+
   testWidgets(
       'reauthorization conflict preserves rows without inventing missing workspace',
       (tester) async {
