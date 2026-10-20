@@ -1,3 +1,4 @@
+import 'voiceprint_page.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -415,12 +416,16 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               onOpenMemory: () => _openCompanionMemory(current),
               onOpenTasks: () => _openTasks(current),
               onOpenConversations: () => _openConversations(current),
-              voiceprintCall: ({method = 'GET', suffix = '', body}) =>
-                  _controller.voiceprintRequest(
-                      companionId: current.companionId,
-                      method: method,
-                      suffix: suffix,
-                      body: body),
+              onOpenVoiceprints: () => Navigator.of(context).push<void>(
+                  MaterialPageRoute(
+                      builder: (_) => VoiceprintPage(
+                          companionName: current.displayName,
+                          call: ({method = 'GET', suffix = '', body}) =>
+                              _controller.voiceprintRequest(
+                                  companionId: current.companionId,
+                                  method: method,
+                                  suffix: suffix,
+                                  body: body)))),
               face: _controller.faceFor(current.companionId),
               onChangeFace: () => _changeCompanionFace(current),
               onClearFace: _controller.faceFor(current.companionId) == null

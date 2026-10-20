@@ -23,7 +23,8 @@ void main() {
     )));
     await tester.pumpAndSettle();
     expect(find.text('暂无允许的声音，当前不会回应语音'), findsOneWidget);
-    expect(find.byType(SwitchListTile), findsNothing);
+    expect(tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+        isTrue);
     expect(calls, ['GET ']);
   });
 
