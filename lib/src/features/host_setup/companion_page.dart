@@ -36,6 +36,7 @@ class CompanionPage extends StatelessWidget {
     this.onOpenMemory,
     this.onOpenTasks,
     this.onOpenConversations,
+    this.onOpenVoiceprints,
     this.face,
     this.onChangeFace,
     this.onClearFace,
@@ -90,6 +91,7 @@ class CompanionPage extends StatelessWidget {
   /// When we talked, and what was said each time. Null while nothing is behind
   /// it.
   final VoidCallback? onOpenConversations;
+  final VoidCallback? onOpenVoiceprints;
 
   /// What it looks like, when it looks like anything yet.
   final Uint8List? face;
@@ -184,6 +186,14 @@ class CompanionPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
+            if (onOpenVoiceprints != null)
+              _FeatureRow(
+                  tileKey: const Key('companion-open-voiceprints'),
+                  icon: Icons.record_voice_over,
+                  title: '谁可以和它说话',
+                  subtitle: '录入和管理允许对话的声音',
+                  onOpen: onOpenVoiceprints,
+                  hold: _hold('companion.voiceprints')),
             Text('伙伴动态', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             _FeatureRow(
