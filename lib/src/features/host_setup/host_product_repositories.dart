@@ -153,12 +153,6 @@ class HostManagementRepository {
 
   final HostProductSession _session;
 
-  Future<Map<String, dynamic>> voiceprintRequest({required String companionId,
-    String method = 'GET', String suffix = '', Map<String, dynamic>? body}) =>
-      _session.executeManagement((client, baseUri, accessToken) => client.voiceprintRequest(
-        baseUri, accessToken: accessToken, companionId: companionId,
-        method: method, suffix: suffix, body: body));
-
   Future<Registry> smartHomeRegistry() => _session.executeManagement(
         (client, baseUri, accessToken) =>
             client.smartHomeRegistry(baseUri, accessToken: accessToken),

@@ -35,8 +35,6 @@ dependencies:
   # resting placeholder — an mp4 over HTTP, which LiveKit's VideoTrackRenderer
   # (WebRTC tracks only) can't play.
   video_player: ^2.9.2
-  record: ^7.1.2
-  audioplayers: ^6.8.1
 
 dev_dependencies:
   flutter_test:
