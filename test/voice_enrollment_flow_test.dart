@@ -36,10 +36,9 @@ void main() {
       recorderFactory: () => recorder,
       call: ({method = 'GET', suffix = '', body}) async {
         calls.add('$method $suffix');
-        if (suffix.endsWith('/complete') && completionAttempts++ == 0) {
+        if (suffix.endsWith('/complete') && completionAttempts++ == 0)
           throw Exception('network interruption');
-        }
-        if (suffix.endsWith('/complete')) {
+        if (suffix.endsWith('/complete'))
           return {
             'profile_id': 'p',
             'display_name': '我',
@@ -47,7 +46,6 @@ void main() {
             'enrollment_id': 'e',
             'recording_available': true
           };
-        }
         if (method == 'PUT') accepted++;
         return {
           'enrollment_id': 'e',
@@ -69,9 +67,8 @@ void main() {
       // Stream cancellation may finish in Dart's real async zone.
       await tester.runAsync(() => Future<void>.delayed(Duration.zero));
       await tester.pumpAndSettle();
-      if (step < 3) {
+      if (step < 3)
         expect(find.textContaining('第 ${step + 1} 段录音已通过'), findsOneWidget);
-      }
     }
     expect(find.text('声纹已保存'), findsNothing);
     expect(find.text('重试提交'), findsOneWidget);

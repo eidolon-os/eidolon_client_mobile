@@ -40,10 +40,9 @@ class _CompanionVoiceAccessState extends State<CompanionVoiceAccess> {
       final policy = VoicePolicyView.fromJson(await call());
       if (mounted) setState(() => _policy = policy);
     } catch (e) {
-      if (mounted) {
+      if (mounted)
         setState(() => _error =
             e is ManagementRequestException ? e.message : '无法读取声纹设置，请重试');
-      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
