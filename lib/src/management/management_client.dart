@@ -1573,6 +1573,23 @@ class ManagementClient {
   }) =>
       _send('GET', endpoint, accessToken: accessToken, what: what);
 
+  Future<Map<String, dynamic>> voiceprintRequest(
+    Uri baseUri, {
+    required String accessToken,
+    required String companionId,
+    String method = 'GET',
+    String suffix = '',
+    Map<String, dynamic>? body,
+  }) =>
+      _send(
+          method,
+          baseUri.resolve(
+              '${ManagementV1.companionsByCompanionIdVoiceprintsPath(companionId)}$suffix'),
+          accessToken: accessToken,
+          what: '管理声纹',
+          body: body,
+          requestTimeout: const Duration(seconds: 15));
+
   /// One place that talks to the Host, whatever the verb.
   ///
   /// Reads and writes differ only in method and body, deliberately: "how a

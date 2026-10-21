@@ -51,6 +51,54 @@ class ManagementV1 {
     String taskId,
   ) =>
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks/${Uri.encodeComponent(taskId)}/retry';
+  static String companionsByCompanionIdVoiceprintsPath(String companionId) =>
+      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints';
+  static String companionsByCompanionIdVoiceprintsBindingsByProfileIdPath(
+    String companionId,
+    String profileId,
+  ) =>
+      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/bindings/${Uri.encodeComponent(profileId)}';
+  static String companionsByCompanionIdVoiceprintsEnrollmentsPath(
+    String companionId,
+  ) =>
+      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/enrollments';
+  static String companionsByCompanionIdVoiceprintsEnrollmentsByEnrollmentIdPath(
+    String companionId,
+    String enrollmentId,
+  ) =>
+      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/enrollments/${Uri.encodeComponent(enrollmentId)}';
+  static String
+  companionsByCompanionIdVoiceprintsEnrollmentsByEnrollmentIdCompletePath(
+    String companionId,
+    String enrollmentId,
+  ) =>
+      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/enrollments/${Uri.encodeComponent(enrollmentId)}/complete';
+  static String
+  companionsByCompanionIdVoiceprintsEnrollmentsByEnrollmentIdSamplesBySampleIdPath(
+    String companionId,
+    String enrollmentId,
+    String sampleId,
+  ) =>
+      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/enrollments/${Uri.encodeComponent(enrollmentId)}/samples/${Uri.encodeComponent(sampleId)}';
+  static String companionsByCompanionIdVoiceprintsPolicyPath(
+    String companionId,
+  ) =>
+      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/policy';
+  static String companionsByCompanionIdVoiceprintsProfilesByProfileIdPath(
+    String companionId,
+    String profileId,
+  ) =>
+      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/profiles/${Uri.encodeComponent(profileId)}';
+  static String
+  companionsByCompanionIdVoiceprintsProfilesByProfileIdRecordingPath(
+    String companionId,
+    String profileId,
+  ) =>
+      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/profiles/${Uri.encodeComponent(profileId)}/recording';
+  static String companionsByCompanionIdVoiceprintsReadinessPath(
+    String companionId,
+  ) =>
+      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/readiness';
   static const String contextPath = '/api/management/v1/context';
   static const String controllersPath = '/api/management/v1/controllers';
   static String controllersByControllerIdPath(String controllerId) =>
@@ -1825,6 +1873,76 @@ class DevicesView {
       if (contractVersion != null) 'contract_version': contractVersion,
       if (coverage != null) 'coverage': coverage,
       'devices': devices.map((entry) => entry.toJson()).toList(),
+    };
+  }
+}
+
+class EnrollmentCreate {
+  const EnrollmentCreate({
+    required this.displayName,
+    required this.operationId,
+    this.profileId,
+  });
+
+  final String displayName;
+
+  final String operationId;
+
+  final String? profileId;
+
+  factory EnrollmentCreate.fromJson(Map<String, dynamic> value) {
+    return EnrollmentCreate(
+      displayName: value['display_name'] as String,
+      operationId: value['operation_id'] as String,
+      profileId: value['profile_id'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'display_name': displayName,
+      'operation_id': operationId,
+      if (profileId != null) 'profile_id': profileId,
+    };
+  }
+}
+
+class EnrollmentView {
+  const EnrollmentView({
+    required this.acceptedSamples,
+    required this.enrollmentId,
+    required this.expiresAt,
+    required this.profileId,
+    required this.state,
+  });
+
+  final int acceptedSamples;
+
+  final String enrollmentId;
+
+  final double expiresAt;
+
+  final String profileId;
+
+  final String state;
+
+  factory EnrollmentView.fromJson(Map<String, dynamic> value) {
+    return EnrollmentView(
+      acceptedSamples: value['accepted_samples'] as int,
+      enrollmentId: value['enrollment_id'] as String,
+      expiresAt: (value['expires_at'] as num).toDouble(),
+      profileId: value['profile_id'] as String,
+      state: value['state'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'accepted_samples': acceptedSamples,
+      'enrollment_id': enrollmentId,
+      'expires_at': expiresAt,
+      'profile_id': profileId,
+      'state': state,
     };
   }
 }
@@ -4193,6 +4311,25 @@ class PlacementWrite {
   }
 }
 
+class PolicyUpdate {
+  const PolicyUpdate({required this.expectedRevision, required this.mode});
+
+  final int expectedRevision;
+
+  final String mode;
+
+  factory PolicyUpdate.fromJson(Map<String, dynamic> value) {
+    return PolicyUpdate(
+      expectedRevision: value['expected_revision'] as int,
+      mode: value['mode'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'expected_revision': expectedRevision, 'mode': mode};
+  }
+}
+
 class ProviderAccount {
   const ProviderAccount({
     required this.accountId,
@@ -4724,6 +4861,81 @@ class SharedStart {
   }
 }
 
+class SpeakerExtractionReadiness {
+  const SpeakerExtractionReadiness({
+    this.admissionReady,
+    required this.extractionReady,
+    required this.state,
+  });
+
+  final bool? admissionReady;
+
+  final bool extractionReady;
+
+  final String state;
+
+  factory SpeakerExtractionReadiness.fromJson(Map<String, dynamic> value) {
+    return SpeakerExtractionReadiness(
+      admissionReady: value['admission_ready'] as bool?,
+      extractionReady: value['extraction_ready'] as bool,
+      state: value['state'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (admissionReady != null) 'admission_ready': admissionReady,
+      'extraction_ready': extractionReady,
+      'state': state,
+    };
+  }
+}
+
+class SpeakerProfileView {
+  const SpeakerProfileView({
+    required this.displayName,
+    required this.enrollmentId,
+    required this.profileId,
+    this.recordingAvailable,
+    required this.revision,
+    this.validationState,
+  });
+
+  final String displayName;
+
+  final String enrollmentId;
+
+  final String profileId;
+
+  final bool? recordingAvailable;
+
+  final int revision;
+
+  final String? validationState;
+
+  factory SpeakerProfileView.fromJson(Map<String, dynamic> value) {
+    return SpeakerProfileView(
+      displayName: value['display_name'] as String,
+      enrollmentId: value['enrollment_id'] as String,
+      profileId: value['profile_id'] as String,
+      recordingAvailable: value['recording_available'] as bool?,
+      revision: value['revision'] as int,
+      validationState: value['validation_state'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'display_name': displayName,
+      'enrollment_id': enrollmentId,
+      'profile_id': profileId,
+      if (recordingAvailable != null) 'recording_available': recordingAvailable,
+      'revision': revision,
+      if (validationState != null) 'validation_state': validationState,
+    };
+  }
+}
+
 class SpokenMessageView {
   const SpokenMessageView({required this.role, this.text});
 
@@ -5089,6 +5301,82 @@ class VitalView {
       'name': name,
       'reading': reading,
       if (unavailableReason != null) 'unavailable_reason': unavailableReason,
+    };
+  }
+}
+
+class VoiceAudioRequest {
+  const VoiceAudioRequest({required this.pcmBase64});
+
+  final String pcmBase64;
+
+  factory VoiceAudioRequest.fromJson(Map<String, dynamic> value) {
+    return VoiceAudioRequest(pcmBase64: value['pcm_base64'] as String);
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'pcm_base64': pcmBase64};
+  }
+}
+
+class VoicePolicyView {
+  const VoicePolicyView({
+    this.allowedProfileIds,
+    required this.companionId,
+    this.mode,
+    this.profiles,
+    this.readiness,
+    this.revision,
+  });
+
+  final List<String>? allowedProfileIds;
+
+  final String companionId;
+
+  final String? mode;
+
+  final List<SpeakerProfileView>? profiles;
+
+  final SpeakerExtractionReadiness? readiness;
+
+  final int? revision;
+
+  factory VoicePolicyView.fromJson(Map<String, dynamic> value) {
+    return VoicePolicyView(
+      allowedProfileIds: value['allowed_profile_ids'] == null
+          ? null
+          : ((value['allowed_profile_ids'] as List<dynamic>)
+                .map((entry) => entry as String)
+                .toList()),
+      companionId: value['companion_id'] as String,
+      mode: value['mode'] as String?,
+      profiles: value['profiles'] == null
+          ? null
+          : ((value['profiles'] as List<dynamic>)
+                .map(
+                  (entry) => SpeakerProfileView.fromJson(
+                    entry as Map<String, dynamic>,
+                  ),
+                )
+                .toList()),
+      readiness: value['readiness'] == null
+          ? null
+          : SpeakerExtractionReadiness.fromJson(
+              value['readiness'] as Map<String, dynamic>,
+            ),
+      revision: value['revision'] as int?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (allowedProfileIds != null) 'allowed_profile_ids': allowedProfileIds,
+      'companion_id': companionId,
+      if (mode != null) 'mode': mode,
+      if (profiles != null)
+        'profiles': profiles?.map((entry) => entry.toJson()).toList(),
+      if (readiness != null) 'readiness': readiness?.toJson(),
+      if (revision != null) 'revision': revision,
     };
   }
 }
