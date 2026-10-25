@@ -256,6 +256,7 @@ class EidolonSession {
         final topic = event.topic ?? '';
         _dataController.add(
           SessionData(topic, utf8.decode(event.data, allowMalformed: true),
+              fromAgent: event.participant?.kind == ParticipantKind.AGENT,
               fromProvider: _room?.name != null &&
                   event.participant?.identity ==
                       '$channelProviderIdentityPrefix${_room!.name}'),
@@ -374,9 +375,11 @@ class EidolonSession {
 }
 
 class SessionData {
-  const SessionData(this.topic, this.payload, {this.fromProvider = false});
+  const SessionData(this.topic, this.payload,
+      {this.fromProvider = false, this.fromAgent = false});
 
   final bool fromProvider;
+  final bool fromAgent;
 
   final String topic;
   final String payload;

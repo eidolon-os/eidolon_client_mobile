@@ -44,6 +44,47 @@ final sessionConversationIdPattern = RegExp(r'^[A-Za-z0-9\-_.:]{1,64}$');
 /// shows a conversation as live from the moment it *asks* for one, and the
 /// firmware distinguishes those two states (`conversation_confirmed_`).
 const sessionStartedType = 'session_started';
+const voiceAdmissionType = 'voice_admission';
+
+/// Status from the serving agent, never recognized text or permission to act.
+class VoiceAdmissionStatus {
+  const VoiceAdmissionStatus(this.sequence, this.state);
+  final int sequence;
+  final String state;
+  static const states = {
+    'ready',
+    'checking',
+    'accepted',
+    'non_match',
+    'inconclusive',
+    'unavailable',
+    'no_action'
+  };
+  static VoiceAdmissionStatus? parse(Map<String, dynamic> value) {
+    final sequence = value['sequence'];
+    final state = value['state'];
+    if (value['type'] != voiceAdmissionType ||
+        value['schema_v'] != 1 ||
+        sequence is! int ||
+        sequence < 1 ||
+        state is! String ||
+        !states.contains(state)) {
+      return null;
+    }
+    return VoiceAdmissionStatus(sequence, state);
+  }
+
+  String get message => switch (state) {
+        'checking' => '正在确认声音，伙伴会继续播放当前回复。',
+        'accepted' => '声音已确认。',
+        'non_match' => '这次声音未匹配允许列表，没有触发打断或回复。',
+        'inconclusive' => '这次音频不足以判断，请连续说完一句话。',
+        'unavailable' => '声纹服务或授权暂不可用，未接纳本轮语音。请检查设置或重新进入对话。',
+        'no_action' => '声音已匹配，这句话未触发回复。',
+        _ => '请连续说完一句话；声音通过验证后才会打断或回复。',
+      };
+}
+
 const channelProviderIdentityPrefix = 'channel-provider-';
 const sessionRejectedType = 'session_rejected';
 const sessionRejectionConflict = 'conflict';

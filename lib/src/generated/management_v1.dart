@@ -80,6 +80,10 @@ class ManagementV1 {
     String sampleId,
   ) =>
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/enrollments/${Uri.encodeComponent(enrollmentId)}/samples/${Uri.encodeComponent(sampleId)}';
+  static String companionsByCompanionIdVoiceprintsMatchTestPath(
+    String companionId,
+  ) =>
+      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/match-test';
   static String companionsByCompanionIdVoiceprintsPolicyPath(
     String companionId,
   ) =>
@@ -4864,29 +4868,39 @@ class SharedStart {
 class SpeakerExtractionReadiness {
   const SpeakerExtractionReadiness({
     this.admissionReady,
+    this.calibrationDigest,
     required this.extractionReady,
     required this.state,
+    this.validationState,
   });
 
   final bool? admissionReady;
+
+  final String? calibrationDigest;
 
   final bool extractionReady;
 
   final String state;
 
+  final String? validationState;
+
   factory SpeakerExtractionReadiness.fromJson(Map<String, dynamic> value) {
     return SpeakerExtractionReadiness(
       admissionReady: value['admission_ready'] as bool?,
+      calibrationDigest: value['calibration_digest'] as String?,
       extractionReady: value['extraction_ready'] as bool,
       state: value['state'] as String,
+      validationState: value['validation_state'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       if (admissionReady != null) 'admission_ready': admissionReady,
+      if (calibrationDigest != null) 'calibration_digest': calibrationDigest,
       'extraction_ready': extractionReady,
       'state': state,
+      if (validationState != null) 'validation_state': validationState,
     };
   }
 }
@@ -4932,6 +4946,46 @@ class SpeakerProfileView {
       if (recordingAvailable != null) 'recording_available': recordingAvailable,
       'revision': revision,
       if (validationState != null) 'validation_state': validationState,
+    };
+  }
+}
+
+class SpeakerSimilarity {
+  const SpeakerSimilarity({
+    this.displayName,
+    required this.profileId,
+    required this.revision,
+    this.similarity,
+    required this.status,
+  });
+
+  final String? displayName;
+
+  final String profileId;
+
+  final int revision;
+
+  final double? similarity;
+
+  final String status;
+
+  factory SpeakerSimilarity.fromJson(Map<String, dynamic> value) {
+    return SpeakerSimilarity(
+      displayName: value['display_name'] as String?,
+      profileId: value['profile_id'] as String,
+      revision: value['revision'] as int,
+      similarity: (value['similarity'] as num?)?.toDouble(),
+      status: value['status'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (displayName != null) 'display_name': displayName,
+      'profile_id': profileId,
+      'revision': revision,
+      if (similarity != null) 'similarity': similarity,
+      'status': status,
     };
   }
 }
@@ -5319,9 +5373,86 @@ class VoiceAudioRequest {
   }
 }
 
+class VoiceMatchTestResult {
+  const VoiceMatchTestResult({
+    required this.audioMs,
+    required this.companionId,
+    required this.elapsedMs,
+    required this.extractionMs,
+    required this.modelId,
+    required this.policyRevision,
+    required this.preprocessingVersion,
+    required this.scores,
+    this.scoringVersion,
+    this.validationState,
+    required this.weightsHash,
+  });
+
+  final int audioMs;
+
+  final String companionId;
+
+  final double elapsedMs;
+
+  final double extractionMs;
+
+  final String modelId;
+
+  final int policyRevision;
+
+  final String preprocessingVersion;
+
+  final List<SpeakerSimilarity> scores;
+
+  final String? scoringVersion;
+
+  final String? validationState;
+
+  final String weightsHash;
+
+  factory VoiceMatchTestResult.fromJson(Map<String, dynamic> value) {
+    return VoiceMatchTestResult(
+      audioMs: value['audio_ms'] as int,
+      companionId: value['companion_id'] as String,
+      elapsedMs: (value['elapsed_ms'] as num).toDouble(),
+      extractionMs: (value['extraction_ms'] as num).toDouble(),
+      modelId: value['model_id'] as String,
+      policyRevision: value['policy_revision'] as int,
+      preprocessingVersion: value['preprocessing_version'] as String,
+      scores: ((value['scores'] as List<dynamic>)
+          .map(
+            (entry) =>
+                SpeakerSimilarity.fromJson(entry as Map<String, dynamic>),
+          )
+          .toList()),
+      scoringVersion: value['scoring_version'] as String?,
+      validationState: value['validation_state'] as String?,
+      weightsHash: value['weights_hash'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'audio_ms': audioMs,
+      'companion_id': companionId,
+      'elapsed_ms': elapsedMs,
+      'extraction_ms': extractionMs,
+      'model_id': modelId,
+      'policy_revision': policyRevision,
+      'preprocessing_version': preprocessingVersion,
+      'scores': scores.map((entry) => entry.toJson()).toList(),
+      if (scoringVersion != null) 'scoring_version': scoringVersion,
+      if (validationState != null) 'validation_state': validationState,
+      'weights_hash': weightsHash,
+    };
+  }
+}
+
 class VoicePolicyView {
   const VoicePolicyView({
+    this.admissionState,
     this.allowedProfileIds,
+    this.calibrationDigest,
     required this.companionId,
     this.mode,
     this.profiles,
@@ -5329,7 +5460,11 @@ class VoicePolicyView {
     this.revision,
   });
 
+  final String? admissionState;
+
   final List<String>? allowedProfileIds;
+
+  final String? calibrationDigest;
 
   final String companionId;
 
@@ -5343,11 +5478,13 @@ class VoicePolicyView {
 
   factory VoicePolicyView.fromJson(Map<String, dynamic> value) {
     return VoicePolicyView(
+      admissionState: value['admission_state'] as String?,
       allowedProfileIds: value['allowed_profile_ids'] == null
           ? null
           : ((value['allowed_profile_ids'] as List<dynamic>)
                 .map((entry) => entry as String)
                 .toList()),
+      calibrationDigest: value['calibration_digest'] as String?,
       companionId: value['companion_id'] as String,
       mode: value['mode'] as String?,
       profiles: value['profiles'] == null
@@ -5370,7 +5507,9 @@ class VoicePolicyView {
 
   Map<String, dynamic> toJson() {
     return {
+      if (admissionState != null) 'admission_state': admissionState,
       if (allowedProfileIds != null) 'allowed_profile_ids': allowedProfileIds,
+      if (calibrationDigest != null) 'calibration_digest': calibrationDigest,
       'companion_id': companionId,
       if (mode != null) 'mode': mode,
       if (profiles != null)

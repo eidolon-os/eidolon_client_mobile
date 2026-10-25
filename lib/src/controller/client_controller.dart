@@ -240,6 +240,11 @@ class ClientController extends ChangeNotifier {
   /// Was a `bool conversationConfirmed`. See [ConversationStanding] for the two
   /// things that boolean asserted without evidence.
   ConversationStanding conversationStanding = ConversationStanding.asked;
+  VoiceAdmissionStatus? _voiceAdmission;
+  VoiceAdmissionStatus? get voiceAdmission =>
+      _inConversation && conversationStanding != ConversationStanding.farEndGone
+          ? _voiceAdmission
+          : null;
 
   /// The Enrollment the act refers to, when the Authority named one.
   MobileBodyEnrollmentRef? get enrollmentRef => config?.bodyEnrollment;
@@ -496,6 +501,7 @@ class ClientController extends ChangeNotifier {
       transcript.clear();
       _inConversation = true;
       conversationStanding = ConversationStanding.asked;
+      _voiceAdmission = null;
       agentTurn = AgentTurnState.listening;
       await _session.openSession();
       if (_disposed || epoch != _conversationEpoch || !_inConversation) {
@@ -582,6 +588,7 @@ class ClientController extends ChangeNotifier {
     final wasActive = _inConversation;
     _inConversation = false;
     _pttHeld = false;
+    _voiceAdmission = null;
     try {
       await _audioUpdate;
       await _vad.stop();
@@ -739,7 +746,7 @@ class ClientController extends ChangeNotifier {
         await _handleControlCommand(event.payload);
       case sessionControlTopic:
         await _handleSessionControl(event.payload,
-            fromProvider: event.fromProvider);
+            fromProvider: event.fromProvider, fromAgent: event.fromAgent);
       case uiStateTopic:
         _handleUiState(event.payload);
       case transcriptionTopic:
@@ -940,7 +947,7 @@ class ClientController extends ChangeNotifier {
   /// reason was thrown away, so a service failure and a finished conversation
   /// left the same way and said the same nothing.
   Future<void> _handleSessionControl(String payload,
-      {bool fromProvider = false}) async {
+      {bool fromProvider = false, bool fromAgent = false}) async {
     try {
       final root = jsonDecode(payload) as Map<String, dynamic>;
       // A packet about a different conversation is not about this one. The
@@ -955,6 +962,19 @@ class ClientController extends ChangeNotifier {
       if (fromProvider && root['type'] != sessionRejectedType) return;
 
       switch (root['type']) {
+        case voiceAdmissionType:
+          if (!fromAgent ||
+              !conversationStanding.answered ||
+              conversationStanding == ConversationStanding.farEndGone) {
+            return;
+          }
+          final value = VoiceAdmissionStatus.parse(root);
+          if (value == null ||
+              value.sequence <= (_voiceAdmission?.sequence ?? 0)) {
+            return;
+          }
+          _voiceAdmission = value;
+          notifyListeners();
         case sessionRejectedType:
           if (!fromProvider ||
               root['schema_v'] != sessionControlSchemaVersion ||

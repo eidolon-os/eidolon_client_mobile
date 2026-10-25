@@ -28,6 +28,32 @@ class ControlRoom extends TestRoom {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('voice feedback trusts the transport agent kind, not payload claims',
+      () async {
+    final room = ControlRoom();
+    final session = EidolonSession(roomFactory: () => room);
+    final received = <SessionData>[];
+    final sub = session.dataEvents.listen(received.add);
+    await session.connect(config);
+    for (final participant in <RemoteParticipant?>[
+      null,
+      Participant('agent', ParticipantKind.STANDARD),
+      Participant('channel-provider-same-room', ParticipantKind.STANDARD),
+      Participant('actual-agent', ParticipantKind.AGENT),
+    ]) {
+      room.events.emit(DataReceivedEvent(
+        participant: participant,
+        data: utf8.encode('{"type":"voice_admission","fromAgent":true}'),
+        topic: 'eidolon.session_control',
+      ));
+    }
+    await Future<void>.delayed(Duration.zero);
+    expect(
+        received.map((event) => event.fromAgent), [false, false, false, true]);
+    await session.dispose();
+    await sub.cancel();
+  });
+
   test('only the room provider transport identity authenticates its receipt',
       () async {
     final room = ControlRoom();

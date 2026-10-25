@@ -6,12 +6,9 @@ import 'voice_enrollment_recorder.dart';
 import '../../generated/management_v1.dart';
 import '../../management/management_client.dart';
 import 'voice_recording_dialog.dart';
-
-typedef VoiceprintCall = Future<Map<String, dynamic>> Function({
-  String method,
-  String suffix,
-  Map<String, dynamic>? body,
-});
+import 'voiceprint_call.dart';
+import 'voice_match_page.dart';
+export 'voiceprint_call.dart';
 
 class VoiceprintPage extends StatefulWidget {
   const VoiceprintPage(
@@ -173,7 +170,19 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
                 icon: const Icon(Icons.mic),
                 label: const Text('录入新声音')),
             const SizedBox(height: 12),
-            const Text('使用手机录入。识别能力仍在验证中，保存或添加声音不会开启对话限制。'),
+            OutlinedButton.icon(
+                onPressed: _busy ||
+                        allowed.isEmpty ||
+                        p.readiness?.extractionReady != true
+                    ? null
+                    : () => Navigator.of(context).push<void>(MaterialPageRoute(
+                        builder: (_) => VoiceMatchPage(
+                            companionName: widget.companionName,
+                            call: widget.call))),
+                icon: const Icon(Icons.graphic_eq),
+                label: const Text('测试匹配')),
+            if (allowed.isEmpty) const Text('先为此伙伴添加声音，即可测试匹配。'),
+            const Text('使用手机录入。保存或添加声音不会自动开启限制；请在伙伴主页开启。更改允许的声音后，需要重新确认。'),
             if (p.readiness?.extractionReady != true)
               const Text('录入服务正在准备或暂不可用，请稍后刷新。已有录音仍可回放和删除。'),
             if (p.readiness?.extractionReady != true)
@@ -522,7 +531,7 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
                     style: TextStyle(fontSize: 24)),
                 Text('“${_saved!.displayName}”已保存到你的声纹档案。',
                     textAlign: TextAlign.center),
-                const Text('可在管理页回放、删除或明确允许此伙伴使用。识别能力仍在验证中，目前不会限制对话。'),
+                const Text('可在管理页回放、删除或允许此伙伴使用。保存不会自动开启限制；若已开启，更改声音后请回到伙伴主页重新确认。'),
                 if (_saved!.recordingAvailable == true)
                   TextButton.icon(
                     icon: const Icon(Icons.play_arrow),

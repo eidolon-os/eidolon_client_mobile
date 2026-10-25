@@ -750,7 +750,9 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                             : c.mode == ConversationMode.halfDuplex &&
                                     c.agentSpeaking
                                 ? '伙伴正在说话，结束后将恢复聆听。'
-                                : c.mode.description)
+                                : c.voiceAdmission != null
+                                    ? '声纹限制已开启 · ${c.voiceAdmission!.message}'
+                                    : c.mode.description)
                     : c.uiState.supportingText,
             textAlign: TextAlign.center,
             style: const TextStyle(

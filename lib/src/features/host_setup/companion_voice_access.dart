@@ -41,8 +41,9 @@ class _CompanionVoiceAccessState extends State<CompanionVoiceAccess> {
       if (mounted) setState(() => _policy = policy);
     } catch (e) {
       if (mounted) {
-        setState(() => _error =
-            e is ManagementRequestException ? e.message : '无法读取声纹设置，请重试');
+        setState(() => _error = e is ManagementRequestException
+            ? (e.reason ?? e.message)
+            : '无法读取声纹设置，请重试');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -55,6 +56,15 @@ class _CompanionVoiceAccessState extends State<CompanionVoiceAccess> {
             companionName: widget.companionName, call: widget.call)));
     if (mounted) await _load();
   }
+
+  Future<void> _setMode(VoicePolicyView policy, bool enabled) =>
+      _request(() => widget.call(
+          method: 'PUT',
+          suffix: '/policy',
+          body: PolicyUpdate(
+                  expectedRevision: policy.revision ?? 0,
+                  mode: enabled ? 'allowlist' : 'off')
+              .toJson()));
 
   @override
   Widget build(BuildContext context) {
@@ -73,31 +83,35 @@ class _CompanionVoiceAccessState extends State<CompanionVoiceAccess> {
                   Text(widget.hold!)
                 else ...[
                   if (_busy) const LinearProgressIndicator(),
+                  if (policy?.readiness?.validationState == 'controlled_trial')
+                    const Text('受控测试 · 尚未校准，阈值为临时假设。仅用于本轮对话验收，不代表正式识别准确率。'),
                   if (policy != null)
                     SwitchListTile(
                       key: const Key('companion-voiceprint-switch'),
                       contentPadding: EdgeInsets.zero,
                       title: const Text('仅回应已录入的声音'),
-                      subtitle: Text(policy.readiness?.admissionReady != true
-                          ? '识别能力验证中 · 当前对话不受声纹限制'
-                          : policy.mode == 'allowlist'
-                              ? (allowed == 0
-                                  ? '暂无允许的声音，当前不会回应语音'
-                                  : '已开启 · 允许 $allowed 个声音，其他声音不触发对话')
-                              : '未开启 · 对话不受声纹限制'),
-                      value: policy.readiness?.admissionReady == true &&
-                          policy.mode == 'allowlist',
+                      subtitle: Text(policy.mode == 'allowlist'
+                          ? (policy.readiness?.admissionReady != true
+                              ? '限制已开启，但识别服务未就绪；语音暂无法通过验证。可以关闭限制。'
+                              : policy.admissionState != 'ready'
+                                  ? '声音列表或识别版本已变化，请重新确认。确认前不会接纳语音。'
+                                  : '已开启 · 允许 $allowed 个声音。通过验证后才打断和回复；不分离重叠人声。更改后请重新进入对话。')
+                          : policy.readiness?.admissionReady != true
+                              ? '识别能力验证中 · 尚不可开启限制'
+                              : '未开启 · 对话不受声纹限制。更改后请重新进入对话。'),
+                      value: policy.mode == 'allowlist',
                       onChanged: _busy ||
-                              policy.readiness?.admissionReady != true
+                              (policy.mode != 'allowlist' &&
+                                  policy.readiness?.admissionReady != true)
                           ? null
-                          : (value) => _request(() => widget.call(
-                              method: 'PUT',
-                              suffix: '/policy',
-                              body: PolicyUpdate(
-                                      expectedRevision: policy.revision ?? 0,
-                                      mode: value ? 'allowlist' : 'off')
-                                  .toJson())),
+                          : (value) => _setMode(policy, value),
                     ),
+                  if (policy?.mode == 'allowlist' &&
+                      policy?.readiness?.admissionReady == true &&
+                      policy?.admissionState != 'ready')
+                    TextButton(
+                        onPressed: _busy ? null : () => _setMode(policy!, true),
+                        child: const Text('重新确认允许的声音')),
                   if (_error != null) ...[
                     Text(_error!),
                     TextButton(
