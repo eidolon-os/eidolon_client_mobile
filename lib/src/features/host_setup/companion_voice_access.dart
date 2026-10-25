@@ -71,8 +71,7 @@ class _CompanionVoiceAccessState extends State<CompanionVoiceAccess> {
     final policy = _policy;
     final allowed = policy?.allowedProfileIds?.length ?? 0;
     final limits = policy?.readiness?.limits;
-    final overLimit =
-        limits != null && allowed > (limits.maxAllowedSpeakers ?? 0);
+    final overLimit = limits != null && allowed > limits.maxAllowedSpeakers;
     return Card(
         child: Padding(
             padding: const EdgeInsets.all(12),
