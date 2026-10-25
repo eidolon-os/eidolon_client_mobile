@@ -90,6 +90,7 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
   Widget build(BuildContext context) {
     final p = _policy;
     final allowed = p?.allowedProfileIds ?? <String>[];
+    final maxAllowed = p?.readiness?.limits?.maxAllowedSpeakers;
     return Scaffold(
         appBar: AppBar(title: const Text('声纹管理')),
         body: ListView(padding: const EdgeInsets.all(20), children: [
@@ -104,6 +105,8 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
             Text('已保存的声音（${p.profiles?.length ?? 0}）',
                 style: Theme.of(context).textTheme.titleLarge),
             const Text('在这里回放、重录或删除声音；对话开关在伙伴主页。'),
+            if (maxAllowed != null)
+              Text('当前对话最多允许 $maxAllowed 个声音。保存的录音可以保留，未加入允许列表的声音不会获准对话。'),
             if (allowed.isEmpty) Text('尚未为此伙伴添加声音'),
             for (final profile in p.profiles ?? <SpeakerProfileView>[])
               Card(
@@ -140,7 +143,11 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
                                     padding: EdgeInsets.all(8),
                                     child: Text('暂无录音，重新录入后可回放')),
                               TextButton(
-                                  onPressed: _busy
+                                  onPressed: _busy ||
+                                          (!allowed.contains(
+                                                  profile.profileId) &&
+                                              maxAllowed != null &&
+                                              allowed.length >= maxAllowed)
                                       ? null
                                       : () => _change(
                                           allowed.contains(profile.profileId)
@@ -531,7 +538,8 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
                     style: TextStyle(fontSize: 24)),
                 Text('“${_saved!.displayName}”已保存到你的声纹档案。',
                     textAlign: TextAlign.center),
-                const Text('可在管理页回放、删除或允许此伙伴使用。保存不会自动开启限制；若已开启，更改声音后请回到伙伴主页重新确认。'),
+                const Text(
+                    '可在管理页回放、删除或允许此伙伴使用。保存不会自动开启限制；若已开启，更改声音后请回到伙伴主页重新确认。'),
                 if (_saved!.recordingAvailable == true)
                   TextButton.icon(
                     icon: const Icon(Icons.play_arrow),

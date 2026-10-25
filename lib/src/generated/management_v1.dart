@@ -4865,11 +4865,42 @@ class SharedStart {
   }
 }
 
+class SpeakerAdmissionLimits {
+  const SpeakerAdmissionLimits({
+    required this.maxAllowedSpeakers,
+    required this.maxAudioMs,
+    required this.minAudioMs,
+  });
+
+  final int maxAllowedSpeakers;
+
+  final int maxAudioMs;
+
+  final int minAudioMs;
+
+  factory SpeakerAdmissionLimits.fromJson(Map<String, dynamic> value) {
+    return SpeakerAdmissionLimits(
+      maxAllowedSpeakers: value['max_allowed_speakers'] as int,
+      maxAudioMs: value['max_audio_ms'] as int,
+      minAudioMs: value['min_audio_ms'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'max_allowed_speakers': maxAllowedSpeakers,
+      'max_audio_ms': maxAudioMs,
+      'min_audio_ms': minAudioMs,
+    };
+  }
+}
+
 class SpeakerExtractionReadiness {
   const SpeakerExtractionReadiness({
     this.admissionReady,
     this.calibrationDigest,
     required this.extractionReady,
+    this.limits,
     required this.state,
     this.validationState,
   });
@@ -4880,6 +4911,8 @@ class SpeakerExtractionReadiness {
 
   final bool extractionReady;
 
+  final SpeakerAdmissionLimits? limits;
+
   final String state;
 
   final String? validationState;
@@ -4889,6 +4922,11 @@ class SpeakerExtractionReadiness {
       admissionReady: value['admission_ready'] as bool?,
       calibrationDigest: value['calibration_digest'] as String?,
       extractionReady: value['extraction_ready'] as bool,
+      limits: value['limits'] == null
+          ? null
+          : SpeakerAdmissionLimits.fromJson(
+              value['limits'] as Map<String, dynamic>,
+            ),
       state: value['state'] as String,
       validationState: value['validation_state'] as String?,
     );
@@ -4899,6 +4937,7 @@ class SpeakerExtractionReadiness {
       if (admissionReady != null) 'admission_ready': admissionReady,
       if (calibrationDigest != null) 'calibration_digest': calibrationDigest,
       'extraction_ready': extractionReady,
+      if (limits != null) 'limits': limits?.toJson(),
       'state': state,
       if (validationState != null) 'validation_state': validationState,
     };

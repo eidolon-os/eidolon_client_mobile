@@ -70,6 +70,9 @@ class _CompanionVoiceAccessState extends State<CompanionVoiceAccess> {
   Widget build(BuildContext context) {
     final policy = _policy;
     final allowed = policy?.allowedProfileIds?.length ?? 0;
+    final limits = policy?.readiness?.limits;
+    final overLimit =
+        limits != null && allowed > (limits.maxAllowedSpeakers ?? 0);
     return Card(
         child: Padding(
             padding: const EdgeInsets.all(12),
@@ -83,6 +86,12 @@ class _CompanionVoiceAccessState extends State<CompanionVoiceAccess> {
                   Text(widget.hold!)
                 else ...[
                   if (_busy) const LinearProgressIndicator(),
+                  if (limits != null) ...[
+                    Text(
+                        '当前最多 ${limits.maxAllowedSpeakers} 个声音；每句 ${_seconds(limits.minAudioMs)}–${_seconds(limits.maxAudioMs)} 秒。'),
+                    if (overLimit)
+                      Text('已选择 $allowed 个声音，超过当前范围；请在管理声纹中移除多余的允许项。录音不需要删除。'),
+                  ],
                   if (policy?.readiness?.validationState == 'controlled_trial')
                     const Text('受控测试 · 尚未校准，阈值为临时假设。仅用于本轮对话验收，不代表正式识别准确率。'),
                   if (policy != null)
@@ -102,7 +111,9 @@ class _CompanionVoiceAccessState extends State<CompanionVoiceAccess> {
                       value: policy.mode == 'allowlist',
                       onChanged: _busy ||
                               (policy.mode != 'allowlist' &&
-                                  policy.readiness?.admissionReady != true)
+                                  (policy.readiness?.admissionReady != true ||
+                                      overLimit ||
+                                      allowed == 0))
                           ? null
                           : (value) => _setMode(policy, value),
                     ),
@@ -110,7 +121,9 @@ class _CompanionVoiceAccessState extends State<CompanionVoiceAccess> {
                       policy?.readiness?.admissionReady == true &&
                       policy?.admissionState != 'ready')
                     TextButton(
-                        onPressed: _busy ? null : () => _setMode(policy!, true),
+                        onPressed: _busy || overLimit || allowed == 0
+                            ? null
+                            : () => _setMode(policy!, true),
                         child: const Text('重新确认允许的声音')),
                   if (_error != null) ...[
                     Text(_error!),
@@ -131,3 +144,6 @@ class _CompanionVoiceAccessState extends State<CompanionVoiceAccess> {
             )));
   }
 }
+
+String _seconds(int? milliseconds) =>
+    ((milliseconds ?? 0) / 1000).toString().replaceFirst(RegExp(r'\.0$'), '');

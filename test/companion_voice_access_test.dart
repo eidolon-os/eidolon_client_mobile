@@ -3,6 +3,44 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/companion_voice_access.dart';
 
 void main() {
+  testWidgets('published limits are visible and prevent impossible activation',
+      (tester) async {
+    final writes = <Map<String, dynamic>>[];
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: CompanionVoiceAccess(
+      companionName: '测试伙伴',
+      call: ({method = 'GET', suffix = '', body}) async {
+        if (body != null) writes.add(body);
+        return {
+          'companion_id': 'c',
+          'mode': 'off',
+          'revision': 1,
+          'profiles': [],
+          'allowed_profile_ids': ['a', 'b'],
+          'readiness': {
+            'state': 'ready',
+            'extraction_ready': true,
+            'admission_ready': true,
+            'validation_state': 'controlled_trial',
+            'limits': {
+              'max_allowed_speakers': 1,
+              'min_audio_ms': 1500,
+              'max_audio_ms': 30000
+            }
+          }
+        };
+      },
+    ))));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('最多 1 个声音'), findsOneWidget);
+    expect(find.textContaining('1.5–30 秒'), findsOneWidget);
+    expect(find.textContaining('已选择 2 个声音'), findsOneWidget);
+    expect(tester.widget<SwitchListTile>(find.byType(SwitchListTile)).onChanged,
+        isNull);
+    expect(writes, isEmpty);
+  });
+
   testWidgets('changed voices require explicit confirmation of current policy',
       (tester) async {
     final writes = <Map<String, dynamic>>[];

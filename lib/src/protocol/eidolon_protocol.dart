@@ -58,7 +58,8 @@ class VoiceAdmissionStatus {
     'non_match',
     'inconclusive',
     'unavailable',
-    'no_action'
+    'no_action',
+    'audio_too_long'
   };
   static VoiceAdmissionStatus? parse(Map<String, dynamic> value) {
     final sequence = value['sequence'];
@@ -79,6 +80,7 @@ class VoiceAdmissionStatus {
         'accepted' => '声音已确认。',
         'non_match' => '这次声音未匹配允许列表，没有触发打断或回复。',
         'inconclusive' => '这次音频不足以判断，请连续说完一句话。',
+        'audio_too_long' => '这句话超过当前声纹识别的时长范围，请分成较短的完整句子。',
         'unavailable' => '声纹服务或授权暂不可用，未接纳本轮语音。请检查设置或重新进入对话。',
         'no_action' => '声音已匹配，这句话未触发回复。',
         _ => '请连续说完一句话；声音通过验证后才会打断或回复。',
