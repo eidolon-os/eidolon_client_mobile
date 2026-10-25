@@ -171,6 +171,7 @@ const sessionEndReasonField = 'reason';
 /// would be reciting the taxonomy instead of telling a person whether
 /// something broke.
 const sessionEndError = 'error';
+const sessionEndVoicePolicyConfirmationRequired = 'voice_policy_confirmation_required';
 
 /// Server → client: this conversation is over. The reverse direction of
 /// [sessionControlTopic], and the one member of that vocabulary this client

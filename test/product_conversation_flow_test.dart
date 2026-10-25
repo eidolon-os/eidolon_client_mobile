@@ -182,6 +182,10 @@ class _Harness {
   String companion = 'c_a';
   int revision = 3;
   bool unavailable = false;
+  Map<String, dynamic> voicePolicy = {'companion_id': 'c_a', 'mode': 'off'};
+  bool voiceUnavailable = false;
+  final voiceReads = <String>[];
+  final voiceWrites = <Map<String, dynamic>>[];
   bool loseWriteReply = false;
   final requests = <String>[];
   late final session = _Session(events);
@@ -194,6 +198,15 @@ class _Harness {
           buildAdmission: (_) =>
               throw StateError('No enrollment during conversation')),
       management: ConversationManagement(
+          voiceprints: (id) => ({method = 'GET', suffix = '', body}) async {
+            voiceReads.add(id);
+            if (voiceUnavailable) throw StateError('声纹状态暂不可用');
+            if (method == 'PUT') {
+              voiceWrites.add(body!);
+              voicePolicy = {...voicePolicy, 'admission_state': 'ready', 'revision': 3};
+            }
+            return {...voicePolicy, 'companion_id': id};
+          },
           controllerId: 'controller',
           admission: _NoAdmission(),
           roster: ({cursor}) async {
@@ -269,6 +282,70 @@ Future<void> settle() async {
 }
 
 void main() {
+  testWidgets('blocked preparation reuses voice settings and requires an explicit start after confirmation', (tester) async {
+    final h = _Harness();
+    h.voicePolicy = {'mode': 'allowlist', 'revision': 2,
+      'allowed_profile_ids': ['p'], 'profiles': [], 'admission_state': 'unvalidated',
+      'readiness': {'state': 'ready', 'extraction_ready': true, 'admission_ready': true}};
+    await tester.pumpWidget(MaterialApp(home: ProductConversationPage(
+      createFlow: () async => h.flow, hostName: 'Host')));
+    await tester.pumpAndSettle();
+    await h.flow.chooseMode(ConversationMode.fullDuplex);
+    await h.flow.startConversation();
+    await tester.pumpAndSettle();
+    expect(h.session.connections, 0);
+    final settings = find.byKey(const Key('conversation-voice-settings'));
+    await tester.ensureVisible(settings);
+    await tester.tap(settings);
+    await tester.pumpAndSettle();
+    expect(find.text('重新确认允许的声音'), findsOneWidget);
+    expect(h.voiceWrites, isEmpty);
+    await tester.tap(find.text('重新确认允许的声音'));
+    await tester.pumpAndSettle();
+    expect(h.voiceWrites.single, {'mode': 'allowlist', 'expected_revision': 2});
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(h.flow.error, isNull);
+    expect(h.flow.voicePolicyBlocked, isFalse);
+    expect(h.session.connections, 0);
+    await h.flow.startConversation();
+    await tester.pumpAndSettle();
+    expect(h.session.connections, 1);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
+
+  test('stale voice approval blocks opening; renewed authority allows the same selection', () async {
+    final h = _Harness();
+    h.voicePolicy = {'mode': 'allowlist', 'admission_state': 'unvalidated',
+      'readiness': {'state': 'ready', 'extraction_ready': true, 'admission_ready': true}};
+    await h.flow.initialize();
+    await h.flow.chooseMode(ConversationMode.fullDuplex);
+    await h.flow.startConversation();
+    await settle();
+    expect(h.session.connections, 0);
+    expect(h.events, isEmpty);
+    expect(h.flow.error, contains('重新确认'));
+    expect(h.flow.voicePolicyBlocked, isTrue);
+    h.voicePolicy['admission_state'] = 'ready';
+    await h.flow.startConversation();
+    await settle();
+    expect(h.session.connections, 1);
+    expect(h.flow.voicePolicyBlocked, isFalse);
+    expect(h.voiceReads, ['c_a', 'c_a']);
+    h.flow.dispose();
+  });
+  test('unreadable voice policy never becomes unrestricted conversation', () async {
+    final h = _Harness()..voiceUnavailable = true;
+    await h.flow.initialize();
+    await h.flow.chooseMode(ConversationMode.fullDuplex);
+    await h.flow.startConversation();
+    await settle();
+    expect(h.session.connections, 0);
+    expect(h.flow.error, contains('声纹状态'));
+    h.flow.dispose();
+  });
+
   test('local start cannot steal a room join awaiting its acceptance ACK',
       () async {
     final h = _Harness();

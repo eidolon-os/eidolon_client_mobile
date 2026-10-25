@@ -16,6 +16,7 @@ import '../device_setup/device_setup_ports.dart';
 import '../device_setup/enrollment_decision_id.dart';
 import '../device_setup/mobile_body_enrollment_session.dart';
 import 'conversation_provisioner.dart';
+import '../host_setup/voiceprint_call.dart';
 
 /// Management capabilities belong to the Controller half of the App. The
 /// device provisioner and audio session never receive the binding capability.
@@ -24,12 +25,14 @@ class ConversationManagement {
       {required this.controllerId,
       this.loadFace,
       required this.admission,
+      required this.voiceprints,
       required this.roster,
       required this.device,
       required this.assign});
   final String controllerId;
   final CompanionFaceLoader? loadFace;
   final DeviceAdmissionPort admission;
+  final VoiceprintCall Function(String companionId) voiceprints;
   final Future<CompanionRosterView> Function({String? cursor}) roster;
   final Future<MountedDevice?> Function(String deviceId) device;
   final Future<void> Function(
@@ -83,6 +86,9 @@ class ConversationFlow extends ChangeNotifier {
   bool get hasSelection => selectedCompanionId != null && selectedMode != null;
   String? error;
   String? managementError;
+  bool _voicePolicyBlocked = false;
+  bool get voicePolicyBlocked => _voicePolicyBlocked ||
+      client.failure?.kind == ClientErrorKind.voicePolicy;
   bool _working = false;
   bool get busy => _working || _continuing;
   bool _disposed = false;
@@ -241,6 +247,7 @@ class ConversationFlow extends ChangeNotifier {
         _startWhenReady = false;
         if (client.canLeave) await client.leave();
         selectedCompanionId = companionId;
+        _voicePolicyBlocked = false;
       });
 
   Future<void> chooseMode(ConversationMode mode) => _run(() async {
@@ -296,6 +303,8 @@ class ConversationFlow extends ChangeNotifier {
       final companion = selectedCompanionId;
       final mode = selectedMode;
       if (companion == null || mode == null) throw StateError('请选择应答伙伴和对话方式');
+      await _checkVoicePolicy(companion);
+      if (_disposed || _closing) return;
       await _confirmCompanion(companion);
       if (!_disposed && !_closing) await client.join(mode: mode);
     } catch (e) {
@@ -303,6 +312,37 @@ class ConversationFlow extends ChangeNotifier {
     } finally {
       _continuing = false;
       _notify();
+    }
+  }
+
+  Future<void> refreshVoicePolicy() => _run(() async {
+        final companion = selectedCompanionId;
+        if (companion != null) await _checkVoicePolicy(companion);
+      });
+
+  Future<void> _checkVoicePolicy(String companion) async {
+    // Read the existing management projection on every explicit start. This
+    // is preparation, not authority: Channel still checks at its boundary.
+    _voicePolicyBlocked = false;
+    final policy = VoicePolicyView.fromJson(
+        await management.voiceprints(companion)());
+    if (_disposed || _closing) return;
+    if (policy.companionId != companion ||
+        (policy.mode != 'off' && policy.mode != 'allowlist')) {
+      throw StateError('无法确认这位伙伴的声纹状态，请重试');
+    }
+    if (policy.mode == 'allowlist') {
+      _voicePolicyBlocked = true;
+      if (policy.readiness?.admissionReady != true) {
+        throw StateError('声纹识别服务尚未就绪，请检查声纹设置后再开始对话');
+      }
+      if (policy.admissionState != 'ready') {
+        throw StateError('声纹识别规则或允许的声音已变化，请重新确认允许的声音。无需重新录音。');
+      }
+      _voicePolicyBlocked = false;
+    }
+    if (client.failure?.kind == ClientErrorKind.voicePolicy) {
+      client.failure = null;
     }
   }
 

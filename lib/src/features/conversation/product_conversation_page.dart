@@ -12,6 +12,7 @@ import 'package:livekit_client/livekit_client.dart';
 import '../device_setup/mobile_body_enrollment_session.dart';
 import 'channel_refusal.dart';
 import 'conversation_flow.dart';
+import '../host_setup/companion_voice_access.dart';
 import 'conversation_standing.dart';
 import 'mobile_body_standing.dart';
 import 'shared_conversation_preparation_page.dart';
@@ -517,6 +518,13 @@ class _ProductConversationPageState extends State<ProductConversationPage>
             const SizedBox(height: 16),
             _notice(error, error: true)
           ],
+          if (flow.voicePolicyBlocked && !flow.client.canLeave)
+            TextButton.icon(
+              key: const Key('conversation-voice-settings'),
+              onPressed: flow.busy ? null : () => _openVoiceSettings(flow),
+              icon: const Icon(Icons.record_voice_over),
+              label: const Text('查看声纹设置并确认'),
+            ),
           if (flow.client.activationExhausted) ...[
             const SizedBox(height: 16),
             _notice('准备时间比预期长。你可以重新检查，或在右上角诊断中查看主机服务。')
@@ -679,6 +687,19 @@ class _ProductConversationPageState extends State<ProductConversationPage>
                         color: Neon.inkDim, size: 20),
                   ])))),
     ]));
+  }
+
+  Future<void> _openVoiceSettings(ConversationFlow f) async {
+    final companion = f.selectedCompanionId;
+    if (companion == null) return;
+    await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => Scaffold(
+      appBar: AppBar(title: Text('${f.companionName} · 声纹设置')),
+      body: SingleChildScrollView(padding: const EdgeInsets.all(16),
+        child: CompanionVoiceAccess(companionName: f.companionName,
+          call: f.management.voiceprints(companion))),
+    )));
+    if (mounted) await f.refreshVoicePolicy();
+    // Returning refreshes the hold; only an explicit start opens the microphone.
   }
 
   Widget _status(ConversationFlow f) {

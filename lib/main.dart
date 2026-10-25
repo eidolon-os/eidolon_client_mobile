@@ -105,6 +105,11 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
                     return controller.fetchDeviceOnboardingTarget();
                   },
                   management: ConversationManagement(
+                      voiceprints: (id) => ({method = 'GET', suffix = '', body}) async {
+                        await prepareManagement();
+                        return controller.voiceprintRequest(companionId: id,
+                            method: method, suffix: suffix, body: body);
+                      },
                       loadFace: controller.companionFacePicture,
                       controllerId: controller.host.controllerId,
                       admission: HostControllerDeviceAdmission(controller,

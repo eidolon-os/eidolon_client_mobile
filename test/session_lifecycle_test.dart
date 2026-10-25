@@ -143,6 +143,20 @@ void main() {
     built.controller.dispose();
   });
 
+  test('release changed after preflight returns an actionable confirmation error', () async {
+    final built = build();
+    await built.controller.start();
+    await built.controller.join();
+    built.session.emit(packet(sessionEndType,
+        conversationId: built.session.conversationId,
+        reason: 'voice_policy_confirmation_required'));
+    await Future<void>.delayed(Duration.zero);
+    expect(built.controller.failure?.message, contains('重新确认'));
+    expect(built.controller.microphoneEnabled, isFalse);
+    expect(built.controller.canJoin, isTrue);
+    built.controller.dispose();
+  });
+
   test('an ordinary end is not dressed up as a failure', () async {
     // `user_left`, `idle_normal_end`, `proactive_done`, `superseded` are all
     // ways a conversation legitimately finishes. Reporting one as an error is
