@@ -72,6 +72,11 @@ class ManagementV1 {
   static const String devicesPath = '/api/management/v1/devices';
   static const String devicesPresencePath =
       '/api/management/v1/devices/presence';
+  static String devicesByDeviceIdCapabilitiesByOpPath(
+    String deviceId,
+    String op,
+  ) =>
+      '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/capabilities/${Uri.encodeComponent(op)}';
   static String devicesByDeviceIdCompanionPath(String deviceId) =>
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/companion';
   static String devicesByDeviceIdOutputsPath(String deviceId) =>
@@ -1422,6 +1427,95 @@ class Device {
       if (syncedAtMs != null) 'synced_at_ms': syncedAtMs,
       if (traits != null) 'traits': traits,
       'type': type,
+    };
+  }
+}
+
+class DeviceCapabilityRequest {
+  const DeviceCapabilityRequest({
+    required this.capabilityVersion,
+    this.payload,
+    required this.requestId,
+  });
+
+  final int capabilityVersion;
+
+  final Map<String, Object?>? payload;
+
+  final String requestId;
+
+  factory DeviceCapabilityRequest.fromJson(Map<String, dynamic> value) {
+    return DeviceCapabilityRequest(
+      capabilityVersion: value['capability_version'] as int,
+      payload: value['payload'] == null
+          ? null
+          : ((value['payload'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as Object?),
+            )),
+      requestId: value['request_id'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'capability_version': capabilityVersion,
+      if (payload != null) 'payload': payload,
+      'request_id': requestId,
+    };
+  }
+}
+
+class DeviceCapabilityView {
+  const DeviceCapabilityView({
+    required this.capabilityVersion,
+    this.code,
+    required this.completed,
+    required this.deviceId,
+    this.message,
+    required this.op,
+    this.result,
+    required this.status,
+  });
+
+  final int capabilityVersion;
+
+  final String? code;
+
+  final bool completed;
+
+  final String deviceId;
+
+  final String? message;
+
+  final String op;
+
+  final Object? result;
+
+  final String status;
+
+  factory DeviceCapabilityView.fromJson(Map<String, dynamic> value) {
+    return DeviceCapabilityView(
+      capabilityVersion: value['capability_version'] as int,
+      code: value['code'] as String?,
+      completed: value['completed'] as bool,
+      deviceId: value['device_id'] as String,
+      message: value['message'] as String?,
+      op: value['op'] as String,
+      result: value['result'],
+      status: value['status'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'capability_version': capabilityVersion,
+      if (code != null) 'code': code,
+      'completed': completed,
+      'device_id': deviceId,
+      if (message != null) 'message': message,
+      'op': op,
+      if (result != null) 'result': result,
+      'status': status,
     };
   }
 }

@@ -16,3 +16,6 @@ android/local.properties
 .idea/
 *.iml
 .DS_Store
+
+# for oh-my-openagent
+.omo/
