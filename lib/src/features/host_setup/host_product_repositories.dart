@@ -769,6 +769,29 @@ class HostDeviceOutputsRepository {
       );
 }
 
+class HostDeviceCapabilityRepository {
+  const HostDeviceCapabilityRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<DeviceCapabilityView> send({
+    required String deviceId,
+    required String op,
+    required Map<String, Object?> payload,
+    required String requestId,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.setDeviceCapability(
+          baseUri,
+          accessToken: accessToken,
+          deviceId: deviceId,
+          op: op,
+          payload: payload,
+          requestId: requestId,
+        ),
+      );
+}
+
 class HostDeviceAdmissionRepository {
   const HostDeviceAdmissionRepository(this._session);
 

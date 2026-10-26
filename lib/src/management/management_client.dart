@@ -1044,6 +1044,41 @@ class ManagementClient {
     return DeviceView.fromJson(body);
   }
 
+  /// Turn one knob on a device this Host holds.
+  ///
+  /// [op] is the capability the device declared — `volume.set` or
+  /// `display.brightness` — and [payload] is the value it accepts. [requestId]
+  /// is the caller's and must survive a retry: one gesture is one command even
+  /// when the phone sends it twice.
+  ///
+  /// The answer is a terminal receipt, not an acknowledgement. [completed] is
+  /// the field to read rather than comparing [status], because the device's own
+  /// word for success is translated by the Host.
+  Future<DeviceCapabilityView> setDeviceCapability(
+    Uri baseUri, {
+    required String accessToken,
+    required String deviceId,
+    required String op,
+    required Map<String, Object?> payload,
+    int capabilityVersion = 1,
+    required String requestId,
+  }) async {
+    final body = await _send(
+      'POST',
+      baseUri.resolve(
+        ManagementV1.devicesByDeviceIdCapabilitiesByOpPath(deviceId, op),
+      ),
+      accessToken: accessToken,
+      what: '调整这台设备',
+      body: DeviceCapabilityRequest(
+        capabilityVersion: capabilityVersion,
+        payload: payload,
+        requestId: requestId,
+      ).toJson(),
+    );
+    return DeviceCapabilityView.fromJson(body);
+  }
+
   /// Take a device off this Host.
   ///
   /// The answer says which facts are settled rather than a percentage: three

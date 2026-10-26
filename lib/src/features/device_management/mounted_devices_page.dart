@@ -374,6 +374,10 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
           onBindCompanion:
               _hostOffersAssignment ? controller.setDeviceCompanion : null,
           onSetOutputs: controller.setDeviceOutputs,
+          onSetCapability: controller.managementCapabilities != null &&
+                  hostCan(controller.managementCapabilities!, 'device.control')
+              ? controller.setDeviceCapability
+              : null,
         ),
       ),
     );
@@ -677,6 +681,7 @@ class MountedDeviceDetailPage extends StatefulWidget {
     this.onCreateCompanion,
     this.onBindCompanion,
     this.onSetOutputs,
+    this.onSetCapability,
     this.progress,
     this.loadFace,
     this.reload,
@@ -723,6 +728,14 @@ class MountedDeviceDetailPage extends StatefulWidget {
     InputSelection? inputs,
     required int expectedRevision,
   })? onSetOutputs;
+
+  /// Turn one knob on this device: its volume, its backlight.
+  final Future<DeviceCapabilityView> Function({
+    required String deviceId,
+    required String op,
+    required Map<String, Object?> payload,
+    required String requestId,
+  })? onSetCapability;
 
   @override
   State<MountedDeviceDetailPage> createState() =>
@@ -1412,6 +1425,14 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
             // about what the rest of the Host can see.
             '这些是主机确认的挂载与配置。当前连接状态请看设备列表；“已添加”不代表设备在线。',
           ),
+          if (widget.onSetCapability != null) ...[
+            const SizedBox(height: 24),
+            _DeviceKnobs(
+              key: const Key('device-knobs'),
+              onSetCapability: widget.onSetCapability!,
+              deviceId: device.deviceId,
+            ),
+          ],
           const SizedBox(height: 24),
           if (_notice case final notice?) ...[
             Card(
@@ -1738,4 +1759,206 @@ Future<CompanionRosterView> loadDeviceCompanionChoices(
   }
   return CompanionRosterView(
       companions: rows.values.toList(), defaultCompanionId: defaultId);
+}
+
+/// Where the device starts, before anybody has turned it here.
+///
+/// Two facts read from the firmware, not guessed: `audio_codec.h` initialises
+/// `output_volume_` to 70, and `Backlight::RestoreBrightness` falls back to 75.
+/// Neither is a measurement of this device now — it is what the slider shows
+/// until the person moves it, because nothing on this Host reads a setpoint
+/// back. Both firmware defaults also clamp a value of zero or below, so these
+/// sit inside the range the device will accept.
+const _defaultVolume = 70;
+const _defaultBrightness = 75;
+
+/// How long a drag settles before it becomes a command.
+///
+/// A slider reports every position under the thumb, and each is a command the
+/// device would apply. What a person meant is where they let go.
+const _knobSettle = Duration(milliseconds: 250);
+
+/// Volume and backlight, for the device this screen is about.
+///
+/// Sending is debounced and serialised: one gesture is one command, and a
+/// second gesture waits for the first rather than racing it. A refusal is shown
+/// against the control that caused it and does not move the slider back — the
+/// device is the authority on what it accepted, and guessing at its value would
+/// be a second opinion nobody asked for.
+class _DeviceKnobs extends StatefulWidget {
+  const _DeviceKnobs({
+    super.key,
+    required this.onSetCapability,
+    required this.deviceId,
+  });
+
+  final Future<DeviceCapabilityView> Function({
+    required String deviceId,
+    required String op,
+    required Map<String, Object?> payload,
+    required String requestId,
+  }) onSetCapability;
+  final String deviceId;
+
+  @override
+  State<_DeviceKnobs> createState() => _DeviceKnobsState();
+}
+
+class _DeviceKnobsState extends State<_DeviceKnobs> {
+  double _volume = _defaultVolume.toDouble();
+  double _brightness = _defaultBrightness.toDouble();
+  Timer? _volumeTimer;
+  Timer? _brightnessTimer;
+  bool _sending = false;
+  String? _refusal;
+
+  @override
+  void dispose() {
+    _volumeTimer?.cancel();
+    _brightnessTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onVolumeChanged(double value) {
+    setState(() => _volume = value);
+    _volumeTimer?.cancel();
+    _volumeTimer = Timer(_knobSettle, () => _send('volume.set', {'volume': value.round()}));
+  }
+
+  void _onBrightnessChanged(double value) {
+    setState(() => _brightness = value);
+    _brightnessTimer?.cancel();
+    _brightnessTimer =
+        Timer(_knobSettle, () => _send('display.brightness', {'brightness': value.round()}));
+  }
+
+  Future<void> _send(String op, Map<String, Object?> payload) async {
+    if (_sending) {
+      // One command in flight per device; the gesture that arrives meanwhile is
+      // superseded by its own later position, so it is not worth queueing.
+      return;
+    }
+    setState(() {
+      _sending = true;
+      _refusal = null;
+    });
+    try {
+      final receipt = await widget.onSetCapability(
+        deviceId: widget.deviceId,
+        op: op,
+        payload: payload,
+        requestId: '${op.replaceAll('.', '-')}-${DateTime.now().microsecondsSinceEpoch}',
+      );
+      if (!mounted) return;
+      if (!receipt.completed) {
+        final said = receipt.message ?? '';
+        setState(() => _refusal =
+            said.isNotEmpty ? said : '设备没有完成这次调整（${receipt.status}）');
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _refusal = '$error');
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text('音量与屏幕', style: Theme.of(context).textTheme.titleMedium),
+            ),
+            if (_sending)
+              const SizedBox.square(
+                dimension: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            child: Column(
+              children: [
+                _KnobRow(
+                  key: const Key('volume-knob'),
+                  icon: Icons.volume_up,
+                  label: '音量',
+                  value: _volume,
+                  onChanged: _sending ? null : _onVolumeChanged,
+                ),
+                const Divider(height: 24),
+                _KnobRow(
+                  key: const Key('brightness-knob'),
+                  icon: Icons.brightness_6,
+                  label: '屏幕亮度',
+                  value: _brightness,
+                  onChanged: _sending ? null : _onBrightnessChanged,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_refusal case final refusal?) ...[
+          const SizedBox(height: 8),
+          Text(
+            refusal,
+            key: const Key('device-knob-refusal'),
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ],
+        const SizedBox(height: 8),
+        const Text(
+          // Said out loud rather than implied: there is no setpoint read-back,
+          // so this is where the device started, not necessarily where it is.
+          '这两个刻度从设备的默认值开始，不是你上次调到的位置。',
+        ),
+      ],
+    );
+  }
+}
+
+class _KnobRow extends StatelessWidget {
+  const _KnobRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String label;
+  final double value;
+  final ValueChanged<double>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 20),
+            const SizedBox(width: 8),
+            Expanded(child: Text(label)),
+            Text('${value.round()}'),
+          ],
+        ),
+        Slider(
+          value: value,
+          max: 100,
+          divisions: 100,
+          label: '${value.round()}',
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
 }

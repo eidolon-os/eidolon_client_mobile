@@ -133,6 +133,7 @@ class HostProductController extends ChangeNotifier {
     _deviceAdmissionRepository = HostDeviceAdmissionRepository(_session);
     _deviceCompanionRepository = HostDeviceCompanionRepository(_session);
     _deviceOutputsRepository = HostDeviceOutputsRepository(_session);
+    _deviceCapabilityRepository = HostDeviceCapabilityRepository(_session);
     _hostServicesRepository = HostServicesRepository(_session);
     _controllerGrantRepository = HostControllerGrantRepository(_session);
     _companionRepository = HostCompanionRepository(_session);
@@ -157,6 +158,7 @@ class HostProductController extends ChangeNotifier {
   late final HostDeviceAdmissionRepository _deviceAdmissionRepository;
   late final HostDeviceCompanionRepository _deviceCompanionRepository;
   late final HostDeviceOutputsRepository _deviceOutputsRepository;
+  late final HostDeviceCapabilityRepository _deviceCapabilityRepository;
   late final HostServicesRepository _hostServicesRepository;
   late final HostControllerGrantRepository _controllerGrantRepository;
   late final HostCompanionRepository _companionRepository;
@@ -1227,6 +1229,28 @@ class HostProductController extends ChangeNotifier {
       expectedRevision: expectedRevision,
     );
     await refreshDevices();
+  }
+
+  /// Turn one knob on a device this Host holds — its volume, its backlight.
+  ///
+  /// No inventory refresh afterwards: a volume is not a fact about which
+  /// devices exist, so re-reading the inventory would only cost a round trip
+  /// and redraw a screen that did not change.
+  Future<DeviceCapabilityView> setDeviceCapability({
+    required String deviceId,
+    required String op,
+    required Map<String, Object?> payload,
+    required String requestId,
+  }) async {
+    if (_connection == null) {
+      throw const HostControllerAuthorizationException('请先安全连接主机，再调整设备');
+    }
+    return _deviceCapabilityRepository.send(
+      deviceId: deviceId,
+      op: op,
+      payload: payload,
+      requestId: requestId,
+    );
   }
 
   /// Take a device off this Host at the Owner's request.
