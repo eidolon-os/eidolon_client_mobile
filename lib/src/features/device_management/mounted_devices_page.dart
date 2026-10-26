@@ -1857,7 +1857,7 @@ class _DeviceKnobsState extends State<_DeviceKnobs> {
       }
     } catch (error) {
       if (!mounted) return;
-      setState(() => _refusal = '$error');
+      setState(() => _refusal = _knobRefusal(error));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -1961,4 +1961,24 @@ class _KnobRow extends StatelessWidget {
       ],
     );
   }
+}
+
+/// What a refused knob change means, in this app's words.
+///
+/// `CAPABILITY_NOT_DECLARED` is its own answer: the Host holds no declaration
+/// of this action for this device, so it cannot check the value against one.
+/// That is not "someone changed this first" — which is what a bare 409 says,
+/// and which would send a person to re-read a screen that had not moved.
+///
+/// It also cannot say why the declaration is missing. A device that never
+/// declared it and a Host that lost its copy while restarting look the same
+/// from here, so the sentence covers both without guessing.
+String _knobRefusal(Object error) {
+  if (error is ManagementRequestException) {
+    if (error.code == 'CAPABILITY_NOT_DECLARED') {
+      return '这台主机暂时没有这台设备的能力声明，还不能调整它。等设备重新连上后可以再试。';
+    }
+    return refusalText(error, subject: '这次调整');
+  }
+  return '$error';
 }

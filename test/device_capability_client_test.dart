@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  _refusalCases();
+
   test('a knob command travels as one bounded capability request', () async {
     late http.Request seen;
     final client = ManagementClient(httpClient: MockClient((request) async {
@@ -78,5 +80,40 @@ void main() {
 
     expect(receipt.completed, isFalse);
     expect(receipt.message, 'device could not apply that value');
+  });
+}
+
+void _refusalCases() {
+  test('a 409 with no declaration is not reported as someone else editing', () async {
+    final client = ManagementClient(httpClient: MockClient((request) async {
+      return http.Response(
+        jsonEncode({
+          'detail': {
+            'kind': 'conflict',
+            'reason': 'no declaration for volume.set.v1 on device box-3',
+            'code': 'CAPABILITY_NOT_DECLARED',
+            'retryable': false,
+          },
+        }),
+        409,
+      );
+    }));
+
+    Object? caught;
+    try {
+      await client.setDeviceCapability(
+        Uri.parse('https://local.test'),
+        accessToken: 'token',
+        deviceId: 'box-3',
+        op: 'volume.set',
+        payload: {'volume': 40},
+        requestId: 'gesture-3',
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught, isA<ManagementRequestException>());
+    expect((caught! as ManagementRequestException).code, 'CAPABILITY_NOT_DECLARED');
   });
 }
