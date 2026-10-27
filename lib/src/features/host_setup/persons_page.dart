@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../generated/management_v1.dart';
 import '../../management/management_client.dart';
 import 'voiceprint_page.dart';
+import '../../theme/eidolon_theme.dart';
+import '../../theme/neon_components.dart';
 
 /// OS people use the same authenticated management session as other Host data.
 class PersonsPage extends StatefulWidget {
@@ -150,7 +152,7 @@ class _PersonsPageState extends State<PersonsPage> {
         context: context,
         builder: (context) => AlertDialog(
                 title: Text('删除“${p.displayName}”？'),
-                content: const Text('删除用户资料、关联声纹和录入声音。历史对话和记忆不会随之删除。'),
+                content: const Text('删除用户资料、该用户的声纹和录入声音。历史对话和记忆不会随之删除。'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context, false),
@@ -169,55 +171,166 @@ class _PersonsPageState extends State<PersonsPage> {
     });
   }
 
+  void _openVoiceprints(PersonView person) {
+    Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => VoiceprintPage(
+        personName: person.displayName,
+        personId: person.personId,
+        personActive: person.status == 'active',
+        call: widget.voiceprints,
+      ),
+    ));
+  }
+
+  Widget _personCard(PersonView person) => NeonPanel(
+        key: ValueKey('person-${person.personId}'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const GlyphBadge(Icons.person_outline),
+                const SizedBox(width: Neon.s3),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(person.displayName,
+                          style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: Neon.ink)),
+                      const SizedBox(height: Neon.s1),
+                      Text(
+                        person.status == 'active' ? '使用中' : '已停用 · 不参与辅助识别',
+                        style: const TextStyle(
+                            fontSize: 12.5, height: 1.5, color: Neon.inkDim),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  tooltip: '${person.displayName}的更多操作',
+                  enabled: !_busy,
+                  onSelected: (action) {
+                    if (action == 'status') _status(person);
+                    if (action == 'delete') _delete(person);
+                  },
+                  itemBuilder: (_) => [
+                    PopupMenuItem(
+                        value: 'status',
+                        child: Text(person.status == 'active' ? '停用' : '启用')),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(
+                        value: 'delete',
+                        child: Text('删除用户', style: TextStyle(color: Neon.bad))),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: Neon.s4),
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.badge_outlined, color: Neon.cyan),
+              title: const Text('个人资料'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: _busy ? null : () => _edit(person),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.graphic_eq, color: Neon.cyan),
+              title: const Text('声纹管理'),
+              subtitle: const Text('录入、重录与测试'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: _busy ? null : () => _openVoiceprints(person),
+            ),
+          ],
+        ),
+      );
+
   @override
   Widget build(BuildContext context) => Scaffold(
-      appBar: AppBar(title: const Text('用户管理')),
-      body: ListView(padding: const EdgeInsets.all(20), children: [
-        const Text('管理 Eidolon OS 认识的用户。声纹用于辅助识别，不限制与伙伴对话。'),
-        if (_busy) const LinearProgressIndicator(),
-        if (_error != null) Text(_error!),
-        TextButton(onPressed: _busy ? null : _refresh, child: const Text('刷新')),
-        if (_pendingCreate != null)
-          FilledButton(
-              onPressed: _busy ? null : _savePending,
-              child: const Text('重试确认添加用户')),
-        for (final p in _people)
-          Card(
-              child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(p.displayName,
-                            style: Theme.of(context).textTheme.titleLarge),
-                        Text(p.status == 'active' ? '使用中' : '已停用 · 不参与辅助识别'),
-                        Wrap(children: [
-                          TextButton(
-                              onPressed: _busy ? null : () => _edit(p),
-                              child: const Text('个人资料')),
-                          TextButton(
-                              onPressed: _busy
-                                  ? null
-                                  : () => Navigator.of(context).push<void>(
-                                      MaterialPageRoute(
-                                          builder: (_) => VoiceprintPage(
-                                              personName: p.displayName,
-                                              personId: p.personId,
-                                              personActive:
-                                                  p.status == 'active',
-                                              call: widget.voiceprints))),
-                              child: const Text('声纹管理')),
-                          TextButton(
-                              onPressed: _busy ? null : () => _status(p),
-                              child: Text(p.status == 'active' ? '停用' : '启用')),
-                          TextButton(
-                              onPressed: _busy ? null : () => _delete(p),
-                              child: const Text('删除用户')),
-                        ])
-                      ]))),
-        FilledButton.icon(
-            onPressed: _busy || _pendingCreate != null ? null : () => _edit(),
-            icon: const Icon(Icons.person_add_outlined),
-            label: const Text('添加用户')),
-      ]));
+        appBar: AppBar(
+          title: const Text('用户管理'),
+          actions: [
+            IconButton(
+              onPressed: _busy ? null : _refresh,
+              tooltip: '刷新',
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(Neon.s6),
+          children: [
+            const NeonPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SectionHeading(
+                    eyebrow: 'People',
+                    title: '认识这里的每个人',
+                    icon: Icons.people_outline,
+                  ),
+                  SizedBox(height: Neon.s3),
+                  Text('为用户保存个人资料和声纹。无需声纹，也可以与伙伴对话。',
+                      style: TextStyle(
+                          fontSize: 14, height: 1.6, color: Neon.inkDim)),
+                ],
+              ),
+            ),
+            if (_busy) ...[
+              const SizedBox(height: Neon.s4),
+              const LinearProgressIndicator(),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: Neon.s4),
+              Semantics(
+                liveRegion: true,
+                child: NeonPanel(
+                    accent: Neon.bad,
+                    child: Text(_error!,
+                        style: const TextStyle(color: Neon.bad, height: 1.5))),
+              ),
+            ],
+            if (_pendingCreate != null) ...[
+              const SizedBox(height: Neon.s4),
+              OutlinedButton.icon(
+                  onPressed: _busy ? null : _savePending,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('重试确认添加用户')),
+            ],
+            if (!_busy && _error == null && _people.isEmpty) ...[
+              const SizedBox(height: Neon.s6),
+              const Text('还没有用户',
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Neon.ink)),
+              const SizedBox(height: Neon.s2),
+              const Text('从下方添加第一位用户，再按需录入声纹。',
+                  style: TextStyle(height: 1.6, color: Neon.inkDim)),
+            ],
+            for (final person in _people) ...[
+              const SizedBox(height: Neon.s4),
+              _personCard(person),
+            ],
+          ],
+        ),
+        bottomNavigationBar: SafeArea(
+          top: false,
+          minimum:
+              const EdgeInsets.fromLTRB(Neon.s6, Neon.s3, Neon.s6, Neon.s4),
+          child: NeonCta(
+            child: FilledButton.icon(
+              onPressed: _busy || _pendingCreate != null ? null : () => _edit(),
+              icon: const Icon(Icons.person_add_outlined),
+              label: const Text('添加用户'),
+            ),
+          ),
+        ),
+      );
 }

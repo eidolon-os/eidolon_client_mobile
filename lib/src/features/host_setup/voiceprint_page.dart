@@ -98,14 +98,12 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
     final profiles =
         p?.profiles?.where((p) => p.personId == widget.personId).toList() ??
             <SpeakerProfileView>[];
-    final unassigned = p?.profiles?.where((p) => p.personId == null).toList() ??
-        <SpeakerProfileView>[];
     return Scaffold(
         appBar: AppBar(title: const Text('声纹管理')),
         body: ListView(padding: const EdgeInsets.all(20), children: [
           Text(widget.personName,
               style: Theme.of(context).textTheme.headlineSmall),
-          if (!widget.personActive) const Text('此用户已停用。启用后可录入、关联或测试声纹。'),
+          if (!widget.personActive) const Text('此用户已停用。启用后可录入或测试声纹。'),
           if (_busy) const LinearProgressIndicator(),
           if (_error != null) ...[
             Text(_error!),
@@ -115,21 +113,6 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
             Text('已保存的声音（${profiles.length}）',
                 style: Theme.of(context).textTheme.titleLarge),
             const Text('声纹用于辅助识别用户，不限制对话。'),
-            for (final profile in unassigned)
-              ListTile(
-                  title: Text(profile.displayName),
-                  subtitle: const Text('旧声纹，尚未确认属于谁'),
-                  trailing: TextButton(
-                      onPressed: _busy || !widget.personActive
-                          ? null
-                          : () => _change(
-                                  'PUT',
-                                  '/profiles/${Uri.encodeComponent(profile.profileId)}/person',
-                                  {
-                                    'person_id': widget.personId,
-                                    'expected_revision': profile.revision
-                                  }),
-                      child: const Text('关联此用户'))),
             for (final profile in profiles)
               Card(
                   child: Padding(
@@ -139,40 +122,43 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
                           children: [
                             Text(profile.displayName,
                                 style: Theme.of(context).textTheme.titleMedium),
-                            Wrap(children: [
-                              if (profile.recordingAvailable == true)
-                                TextButton.icon(
-                                  onPressed: _busy
-                                      ? null
-                                      : () => showDialog<void>(
-                                            context: context,
-                                            builder: (_) =>
-                                                VoiceRecordingDialog(
-                                              name: profile.displayName,
-                                              load: () => widget.call(
-                                                  suffix:
-                                                      '/profiles/${Uri.encodeComponent(profile.profileId)}/recording'),
-                                            ),
-                                          ),
-                                  icon: const Icon(Icons.play_arrow),
-                                  label: const Text('回放录入声音'),
-                                )
-                              else
-                                const Padding(
-                                    padding: EdgeInsets.all(8),
-                                    child: Text('暂无录音，重新录入后可回放')),
-                              TextButton(
-                                  onPressed: _busy ||
-                                          !widget.personActive ||
-                                          p.readiness?.extractionReady != true
-                                      ? null
-                                      : () => _enroll(profile),
-                                  child: const Text('重新录入')),
-                              TextButton(
-                                  onPressed:
-                                      _busy ? null : () => _delete(profile),
-                                  child: const Text('删除声纹')),
-                            ]),
+                            Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  if (profile.recordingAvailable == true)
+                                    TextButton.icon(
+                                      onPressed: _busy
+                                          ? null
+                                          : () => showDialog<void>(
+                                                context: context,
+                                                builder: (_) =>
+                                                    VoiceRecordingDialog(
+                                                  name: profile.displayName,
+                                                  load: () => widget.call(
+                                                      suffix:
+                                                          '/profiles/${Uri.encodeComponent(profile.profileId)}/recording'),
+                                                ),
+                                              ),
+                                      icon: const Icon(Icons.play_arrow),
+                                      label: const Text('回放录入声音'),
+                                    )
+                                  else
+                                    const Padding(
+                                        padding: EdgeInsets.all(8),
+                                        child: Text('暂无录音，重新录入后可回放')),
+                                  TextButton(
+                                      onPressed: _busy ||
+                                              !widget.personActive ||
+                                              p.readiness?.extractionReady !=
+                                                  true
+                                          ? null
+                                          : () => _enroll(profile),
+                                      child: const Text('重新录入')),
+                                  TextButton(
+                                      onPressed:
+                                          _busy ? null : () => _delete(profile),
+                                      child: const Text('删除声纹')),
+                                ]),
                           ]))),
             FilledButton.icon(
                 onPressed: _busy ||
@@ -196,7 +182,7 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
                             call: widget.call))),
                 icon: const Icon(Icons.graphic_eq),
                 label: const Text('测试匹配')),
-            if (profiles.isEmpty) const Text('先录入或关联此用户的声纹，即可测试匹配。'),
+            if (profiles.isEmpty) const Text('先录入此用户的声纹，即可测试匹配。'),
             const Text('录入成功表示档案已保存，不代表身份识别已经验证。'),
             if (p.readiness?.extractionReady != true)
               const Text('录入服务正在准备或暂不可用，请稍后刷新。已有录音仍可回放和删除。'),

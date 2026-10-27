@@ -170,8 +170,6 @@ class ManagementV1 {
       '/api/management/v1/voiceprints/persons/${Uri.encodeComponent(personId)}/match-test';
   static String voiceprintsProfilesByProfileIdPath(String profileId) =>
       '/api/management/v1/voiceprints/profiles/${Uri.encodeComponent(profileId)}';
-  static String voiceprintsProfilesByProfileIdPersonPath(String profileId) =>
-      '/api/management/v1/voiceprints/profiles/${Uri.encodeComponent(profileId)}/person';
   static String voiceprintsProfilesByProfileIdRecordingPath(String profileId) =>
       '/api/management/v1/voiceprints/profiles/${Uri.encodeComponent(profileId)}/recording';
   static const String voiceprintsReadinessPath =
@@ -5047,7 +5045,7 @@ class SpeakerProfileView {
   const SpeakerProfileView({
     required this.displayName,
     required this.enrollmentId,
-    this.personId,
+    required this.personId,
     required this.profileId,
     this.recordingAvailable,
     required this.revision,
@@ -5058,7 +5056,7 @@ class SpeakerProfileView {
 
   final String enrollmentId;
 
-  final String? personId;
+  final String personId;
 
   final String profileId;
 
@@ -5072,7 +5070,7 @@ class SpeakerProfileView {
     return SpeakerProfileView(
       displayName: value['display_name'] as String,
       enrollmentId: value['enrollment_id'] as String,
-      personId: value['person_id'] as String?,
+      personId: value['person_id'] as String,
       profileId: value['profile_id'] as String,
       recordingAvailable: value['recording_available'] as bool?,
       revision: value['revision'] as int,
@@ -5084,7 +5082,7 @@ class SpeakerProfileView {
     return {
       'display_name': displayName,
       'enrollment_id': enrollmentId,
-      if (personId != null) 'person_id': personId,
+      'person_id': personId,
       'profile_id': profileId,
       if (recordingAvailable != null) 'recording_available': recordingAvailable,
       'revision': revision,
@@ -5588,28 +5586,6 @@ class VoiceMatchTestResult {
       if (validationState != null) 'validation_state': validationState,
       'weights_hash': weightsHash,
     };
-  }
-}
-
-class VoiceprintAssignment {
-  const VoiceprintAssignment({
-    required this.expectedRevision,
-    required this.personId,
-  });
-
-  final int expectedRevision;
-
-  final String personId;
-
-  factory VoiceprintAssignment.fromJson(Map<String, dynamic> value) {
-    return VoiceprintAssignment(
-      expectedRevision: value['expected_revision'] as int,
-      personId: value['person_id'] as String,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {'expected_revision': expectedRevision, 'person_id': personId};
   }
 }
 

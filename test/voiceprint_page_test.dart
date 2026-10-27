@@ -8,7 +8,8 @@ void main() {
     final calls = <String>[];
     await tester.pumpWidget(MaterialApp(
         home: VoiceprintPage(
-      personId: 'person', personName: '小铮',
+      personId: 'person',
+      personName: '小铮',
       call: ({method = 'GET', suffix = '', body}) async {
         calls.add('$method $suffix');
         return {
@@ -21,7 +22,7 @@ void main() {
       },
     )));
     await tester.pumpAndSettle();
-    expect(find.text('先录入或关联此用户的声纹，即可测试匹配。'), findsOneWidget);
+    expect(find.text('先录入此用户的声纹，即可测试匹配。'), findsOneWidget);
     expect(find.byType(SwitchListTile), findsNothing);
     expect(calls, ['GET ']);
   });
@@ -31,7 +32,8 @@ void main() {
       (tester) async {
     await tester.pumpWidget(MaterialApp(
         home: VoiceprintPage(
-      personId: 'person', personName: '小铮',
+      personId: 'person',
+      personName: '小铮',
       call: ({method = 'GET', suffix = '', body}) async {
         throw Exception('offline');
       },
@@ -46,7 +48,8 @@ void main() {
     final calls = <String>[];
     await tester.pumpWidget(MaterialApp(
         home: VoiceprintPage(
-      personId: 'person', personName: '小铮',
+      personId: 'person',
+      personName: '小铮',
       call: ({method = 'GET', suffix = '', body}) async {
         calls.add(suffix);
         if (suffix.endsWith('/recording')) throw Exception('offline');
@@ -56,14 +59,16 @@ void main() {
           'revision': 1,
           'profiles': [
             {
-              'person_id': 'person', 'profile_id': 'new',
+              'person_id': 'person',
+              'profile_id': 'new',
               'display_name': '妈妈',
               'revision': 1,
               'enrollment_id': 'e',
               'recording_available': true
             },
             {
-              'person_id': 'person', 'profile_id': 'old',
+              'person_id': 'person',
+              'profile_id': 'old',
               'display_name': '爸爸',
               'revision': 1,
               'enrollment_id': 'old-e'

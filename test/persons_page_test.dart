@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:eidolon_client_mobile/src/theme/eidolon_theme.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/persons_page.dart';
 
 void main() {
@@ -31,6 +32,8 @@ void main() {
     )));
     await tester.pumpAndSettle();
     expect(find.text('甲'), findsOneWidget);
+    await tester.tap(find.byTooltip('甲的更多操作'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('停用'));
     await tester.pumpAndSettle();
     expect(find.text('已停用 · 不参与辅助识别'), findsOneWidget);
@@ -39,6 +42,54 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('声纹用于辅助识别用户，不限制对话。'), findsOneWidget);
     expect(find.byType(SwitchListTile), findsNothing);
+  });
+
+  testWidgets('narrow phone with large text keeps person actions reachable',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 740));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const name = '一个比较长的用户姓名用于检查手机布局';
+    await tester.pumpWidget(MaterialApp(
+      theme: EidolonTheme.dark(),
+      builder: (context, child) => MediaQuery(
+          data:
+              MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(2)),
+          child: child!),
+      home: PersonsPage(
+        call: ({method = 'GET', suffix = '', body}) async => {
+          'persons': [
+            {
+              'person_id': 'person',
+              'owner_id': 'owner',
+              'display_name': name,
+              'revision': 1,
+              'status': 'active',
+              'profile': <String, dynamic>{},
+            }
+          ]
+        },
+        voiceprints: ({method = 'GET', suffix = '', body}) async =>
+            {'profiles': []},
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('删除用户'), findsNothing);
+    await tester.ensureVisible(find.text('个人资料'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('个人资料'));
+    await tester.pumpAndSettle();
+    expect(find.text('编辑用户资料'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('声纹管理'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('声纹管理'));
+    await tester.pumpAndSettle();
+    expect(find.text('关联此用户'), findsNothing);
+    expect(find.text('先录入此用户的声纹，即可测试匹配。'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('uncertain creation retries the same person id and profile',
