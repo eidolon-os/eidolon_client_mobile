@@ -1,4 +1,3 @@
-import 'persons_page.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -35,6 +34,7 @@ import '../../management/persona_edit_page.dart';
 import '../../generated/management_v1.dart';
 import 'companion_page.dart';
 import 'managed_controllers_page.dart';
+import 'persons_page.dart';
 import 'home_models.dart';
 import '../../management/conversation_history_screen.dart';
 import '../../management/tasks_screen.dart';
@@ -704,6 +704,15 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     await _controller.refreshWorkspace();
   }
 
+  Future<void> _openPersons() => Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => PersonsPage(
+            call: _controller.personRequest,
+            voiceprints: _controller.voiceprintRequest,
+          ),
+        ),
+      );
+
   Future<void> _openControllers() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -825,19 +834,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               textAlign: TextAlign.center,
             ),
           ] else if (connection != null) ...[
-            ListTile(
-              leading: const Icon(Icons.people_outline),
-              title: const Text('用户管理'),
-              subtitle: const Text('管理用户资料与声纹'),
-              onTap: () => Navigator.of(context).push<void>(MaterialPageRoute(
-                builder: (_) => PersonsPage(
-                  call: _controller.personRequest,
-                  voiceprints: _controller.voiceprintRequest,
-                ),
-              )),
-            ),
-
             _ConnectedHostCard(
+              onOpenPersons: _openPersons,
               // Offered only once there is an Owner for the history to belong
               // to. Before that there is nothing this screen could be about.
               // Gated on this Host having an Owner, not on the Workspace setup
@@ -1081,9 +1079,13 @@ class _NavRow extends StatelessWidget {
 }
 
 class _ConnectedHostCard extends StatelessWidget {
-  const _ConnectedHostCard(
-      {required this.onOpenSystem, this.onOpenConstellation});
+  const _ConnectedHostCard({
+    required this.onOpenSystem,
+    required this.onOpenPersons,
+    this.onOpenConstellation,
+  });
   final VoidCallback onOpenSystem;
+  final VoidCallback onOpenPersons;
   // The cockpit needs an Owner; monitoring needs only a management session.
   final VoidCallback? onOpenConstellation;
 
@@ -1111,6 +1113,14 @@ class _ConnectedHostCard extends StatelessWidget {
               onTap: onOpenConstellation,
             ),
           ],
+          const Divider(height: 1, indent: Neon.s2, endIndent: Neon.s2),
+          _NavRow(
+            key: const Key('open-persons'),
+            icon: Icons.people_outline,
+            title: '用户管理',
+            subtitle: '用户资料与声纹',
+            onTap: onOpenPersons,
+          ),
         ]),
       );
 }

@@ -1030,7 +1030,7 @@ void main() {
     expect(find.byKey(const Key('no-companions-row')), findsNothing);
   });
 
-  testWidgets('Owner 就绪后只有两个入口：驾驶舱与主机监控', (tester) async {
+  testWidgets('Owner 就绪后保留驾驶舱与主机监控入口', (tester) async {
     // 2026-08-27：四个变两个。原先这条测试的名字是「不取代运行驾驶舱」，理由是
     // 星图的运行 lane 还没有 producer，用一屏大部分「读不到」的图换掉一屏会应答
     // 的，是把退步装成进展。那个前提已经不成立（§7.9），所以替换发生了，而分法是
