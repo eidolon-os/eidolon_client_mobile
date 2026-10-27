@@ -23,7 +23,6 @@ class _Admission implements DeviceAdmissionPort {
 }
 
 ConversationManagement management() => ConversationManagement(
-            voiceprints: (id) => ({method = 'GET', suffix = '', body}) async => {'companion_id': id, 'mode': 'off'},
     controllerId: 'controller',
     admission: _Admission(),
     roster: ({cursor}) => throw StateError('not requested'),

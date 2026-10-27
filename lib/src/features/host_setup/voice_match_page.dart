@@ -7,15 +7,17 @@ import '../../management/management_client.dart';
 import 'voice_enrollment_recorder.dart';
 import 'voiceprint_call.dart';
 
-/// A temporary measurement against this Companion's current sound list.
+/// A temporary measurement against this Person's current voiceprints.
 /// The recording is never enrolled, persisted or used to change conversation policy.
 class VoiceMatchPage extends StatefulWidget {
   const VoiceMatchPage(
       {super.key,
-      required this.companionName,
+      required this.personName,
+      required this.personId,
       required this.call,
       this.recorderFactory});
-  final String companionName;
+  final String personName;
+  final String personId;
   final VoiceprintCall call;
   final VoiceEnrollmentRecorder Function()? recorderFactory;
   @override
@@ -32,6 +34,7 @@ class _VoiceMatchPageState extends State<VoiceMatchPage>
   bool _recording = false, _busy = false;
   int _generation = 0;
   String? _error;
+  final _profileNames = <String, String>{};
   String _scene = '本人';
   final _results = <({
     String scene,
@@ -110,15 +113,21 @@ class _VoiceMatchPageState extends State<VoiceMatchPage>
     });
     try {
       final beforeRead = _generation;
-      final policy = VoicePolicyView.fromJson(
+      final collection = VoiceprintCollection.fromJson(
           await widget.call().timeout(const Duration(seconds: 10)));
       if (!mounted || beforeRead != _generation) return;
-      if (policy.allowedProfileIds?.isNotEmpty != true) {
-        throw StateError('请返回声纹管理，为此伙伴添加一个已录入的声音');
+      if (collection.profiles?.any((p) => p.personId == widget.personId) !=
+          true) {
+        throw StateError('请返回声纹管理，为此用户录入或关联声纹');
       }
-      if (policy.readiness?.extractionReady != true) {
+      if (collection.readiness?.extractionReady != true) {
         throw StateError('声纹服务尚未准备好，请稍后再试');
       }
+      _profileNames
+        ..clear()
+        ..addEntries((collection.profiles ?? [])
+            .where((p) => p.personId == widget.personId)
+            .map((p) => MapEntry(p.profileId, p.displayName)));
       _recorder ??=
           widget.recorderFactory?.call() ?? LocalVoiceEnrollmentRecorder();
       if (!await _recorder!.hasPermission()) throw StateError('请在系统设置中允许使用麦克风');
@@ -192,7 +201,8 @@ class _VoiceMatchPageState extends State<VoiceMatchPage>
       final result = VoiceMatchTestResult.fromJson(await widget
           .call(
               method: 'POST',
-              suffix: '/match-test',
+              suffix:
+                  '/persons/${Uri.encodeComponent(widget.personId)}/match-test',
               body: VoiceAudioRequest(pcmBase64: base64Encode(pcm)).toJson())
           .timeout(const Duration(seconds: 25)));
       if (!mounted || generation != _generation) return;
@@ -225,9 +235,9 @@ class _VoiceMatchPageState extends State<VoiceMatchPage>
   Widget build(BuildContext context) => Scaffold(
       appBar: AppBar(title: const Text('测试声纹匹配')),
       body: ListView(padding: const EdgeInsets.all(20), children: [
-        Text(widget.companionName,
+        Text(widget.personName,
             style: Theme.of(context).textTheme.headlineSmall),
-        const Text('未校准的相似度测试：分数不是识别准确率，也不代表准入通过。不会改变对话开关。'),
+        const Text('分数不是识别准确率，也不代表身份识别结论。测试结果不会影响对话。'),
         const SizedBox(height: 16),
         const Text('选择本轮声音来源，分别测试更容易比较。'),
         Wrap(spacing: 8, children: [
@@ -294,7 +304,7 @@ class _VoiceMatchPageState extends State<VoiceMatchPage>
                           if (entry.result case final result?) ...[
                             for (final score in result.scores)
                               Text(
-                                  '${score.displayName}: ${score.status == 'scored' ? score.similarity?.toStringAsFixed(3) : '版本不兼容，请重新录入'}'),
+                                  '${_profileNames[score.profileId] ?? widget.personName}: ${score.status == 'scored' ? score.similarity?.toStringAsFixed(3) : '版本不兼容，请重新录入'}'),
                             Text(
                                 '提取 ${result.extractionMs.toStringAsFixed(0)} ms · 主机总耗时 ${result.elapsedMs.toStringAsFixed(0)} ms'),
                             Text('模型：${result.modelId}'),

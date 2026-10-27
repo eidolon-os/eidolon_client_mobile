@@ -53,7 +53,6 @@ enum ClientErrorKind {
   authorization,
   permission,
   liveKit,
-  voicePolicy,
   protocol,
   unknown,
 }

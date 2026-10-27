@@ -51,58 +51,6 @@ class ManagementV1 {
     String taskId,
   ) =>
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks/${Uri.encodeComponent(taskId)}/retry';
-  static String companionsByCompanionIdVoiceprintsPath(String companionId) =>
-      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints';
-  static String companionsByCompanionIdVoiceprintsBindingsByProfileIdPath(
-    String companionId,
-    String profileId,
-  ) =>
-      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/bindings/${Uri.encodeComponent(profileId)}';
-  static String companionsByCompanionIdVoiceprintsEnrollmentsPath(
-    String companionId,
-  ) =>
-      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/enrollments';
-  static String companionsByCompanionIdVoiceprintsEnrollmentsByEnrollmentIdPath(
-    String companionId,
-    String enrollmentId,
-  ) =>
-      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/enrollments/${Uri.encodeComponent(enrollmentId)}';
-  static String
-  companionsByCompanionIdVoiceprintsEnrollmentsByEnrollmentIdCompletePath(
-    String companionId,
-    String enrollmentId,
-  ) =>
-      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/enrollments/${Uri.encodeComponent(enrollmentId)}/complete';
-  static String
-  companionsByCompanionIdVoiceprintsEnrollmentsByEnrollmentIdSamplesBySampleIdPath(
-    String companionId,
-    String enrollmentId,
-    String sampleId,
-  ) =>
-      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/enrollments/${Uri.encodeComponent(enrollmentId)}/samples/${Uri.encodeComponent(sampleId)}';
-  static String companionsByCompanionIdVoiceprintsMatchTestPath(
-    String companionId,
-  ) =>
-      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/match-test';
-  static String companionsByCompanionIdVoiceprintsPolicyPath(
-    String companionId,
-  ) =>
-      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/policy';
-  static String companionsByCompanionIdVoiceprintsProfilesByProfileIdPath(
-    String companionId,
-    String profileId,
-  ) =>
-      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/profiles/${Uri.encodeComponent(profileId)}';
-  static String
-  companionsByCompanionIdVoiceprintsProfilesByProfileIdRecordingPath(
-    String companionId,
-    String profileId,
-  ) =>
-      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/profiles/${Uri.encodeComponent(profileId)}/recording';
-  static String companionsByCompanionIdVoiceprintsReadinessPath(
-    String companionId,
-  ) =>
-      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/voiceprints/readiness';
   static const String contextPath = '/api/management/v1/context';
   static const String controllersPath = '/api/management/v1/controllers';
   static String controllersByControllerIdPath(String controllerId) =>
@@ -159,6 +107,9 @@ class ManagementV1 {
       '/api/management/v1/persona-authoring-template';
   static const String personaPresetsPath = '/api/management/v1/persona-presets';
   static const String personaPreviewPath = '/api/management/v1/persona-preview';
+  static const String personsPath = '/api/management/v1/persons';
+  static String personsByPersonIdPath(String personId) =>
+      '/api/management/v1/persons/${Uri.encodeComponent(personId)}';
   static const String roleGroupsClosePath =
       '/api/management/v1/role-groups/close';
   static const String roleGroupsOpenPath =
@@ -201,6 +152,30 @@ class ManagementV1 {
       '/api/management/v1/smarthome/scenes/${Uri.encodeComponent(sceneId)}';
   static const String smarthomeSnapshotPath =
       '/api/management/v1/smarthome/snapshot';
+  static const String voiceprintsPath = '/api/management/v1/voiceprints';
+  static const String voiceprintsEnrollmentsPath =
+      '/api/management/v1/voiceprints/enrollments';
+  static String voiceprintsEnrollmentsByEnrollmentIdPath(String enrollmentId) =>
+      '/api/management/v1/voiceprints/enrollments/${Uri.encodeComponent(enrollmentId)}';
+  static String voiceprintsEnrollmentsByEnrollmentIdCompletePath(
+    String enrollmentId,
+  ) =>
+      '/api/management/v1/voiceprints/enrollments/${Uri.encodeComponent(enrollmentId)}/complete';
+  static String voiceprintsEnrollmentsByEnrollmentIdSamplesBySampleIdPath(
+    String enrollmentId,
+    String sampleId,
+  ) =>
+      '/api/management/v1/voiceprints/enrollments/${Uri.encodeComponent(enrollmentId)}/samples/${Uri.encodeComponent(sampleId)}';
+  static String voiceprintsPersonsByPersonIdMatchTestPath(String personId) =>
+      '/api/management/v1/voiceprints/persons/${Uri.encodeComponent(personId)}/match-test';
+  static String voiceprintsProfilesByProfileIdPath(String profileId) =>
+      '/api/management/v1/voiceprints/profiles/${Uri.encodeComponent(profileId)}';
+  static String voiceprintsProfilesByProfileIdPersonPath(String profileId) =>
+      '/api/management/v1/voiceprints/profiles/${Uri.encodeComponent(profileId)}/person';
+  static String voiceprintsProfilesByProfileIdRecordingPath(String profileId) =>
+      '/api/management/v1/voiceprints/profiles/${Uri.encodeComponent(profileId)}/recording';
+  static const String voiceprintsReadinessPath =
+      '/api/management/v1/voiceprints/readiness';
 }
 
 class AccountBind {
@@ -1885,6 +1860,7 @@ class EnrollmentCreate {
   const EnrollmentCreate({
     required this.displayName,
     required this.operationId,
+    required this.personId,
     this.profileId,
   });
 
@@ -1892,12 +1868,15 @@ class EnrollmentCreate {
 
   final String operationId;
 
+  final String personId;
+
   final String? profileId;
 
   factory EnrollmentCreate.fromJson(Map<String, dynamic> value) {
     return EnrollmentCreate(
       displayName: value['display_name'] as String,
       operationId: value['operation_id'] as String,
+      personId: value['person_id'] as String,
       profileId: value['profile_id'] as String?,
     );
   }
@@ -1906,6 +1885,7 @@ class EnrollmentCreate {
     return {
       'display_name': displayName,
       'operation_id': operationId,
+      'person_id': personId,
       if (profileId != null) 'profile_id': profileId,
     };
   }
@@ -3763,6 +3743,201 @@ class OwnerNameView {
   }
 }
 
+class PersonCollection {
+  const PersonCollection({this.persons});
+
+  final List<PersonView>? persons;
+
+  factory PersonCollection.fromJson(Map<String, dynamic> value) {
+    return PersonCollection(
+      persons: value['persons'] == null
+          ? null
+          : ((value['persons'] as List<dynamic>)
+                .map(
+                  (entry) => PersonView.fromJson(entry as Map<String, dynamic>),
+                )
+                .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (persons != null)
+        'persons': persons?.map((entry) => entry.toJson()).toList(),
+    };
+  }
+}
+
+class PersonCreate {
+  const PersonCreate({
+    required this.displayName,
+    required this.personId,
+    this.profile,
+  });
+
+  final String displayName;
+
+  final String personId;
+
+  final PersonProfile? profile;
+
+  factory PersonCreate.fromJson(Map<String, dynamic> value) {
+    return PersonCreate(
+      displayName: value['display_name'] as String,
+      personId: value['person_id'] as String,
+      profile: value['profile'] == null
+          ? null
+          : PersonProfile.fromJson(value['profile'] as Map<String, dynamic>),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'display_name': displayName,
+      'person_id': personId,
+      if (profile != null) 'profile': profile?.toJson(),
+    };
+  }
+}
+
+class PersonDeletion {
+  const PersonDeletion({this.deleted});
+
+  final bool? deleted;
+
+  factory PersonDeletion.fromJson(Map<String, dynamic> value) {
+    return PersonDeletion(deleted: value['deleted'] as bool?);
+  }
+
+  Map<String, dynamic> toJson() {
+    return {if (deleted != null) 'deleted': deleted};
+  }
+}
+
+class PersonProfile {
+  const PersonProfile({
+    this.description,
+    this.language,
+    this.preferences,
+    this.preferredName,
+    this.schemaVersion,
+  });
+
+  final String? description;
+
+  final String? language;
+
+  final List<String>? preferences;
+
+  final String? preferredName;
+
+  final int? schemaVersion;
+
+  factory PersonProfile.fromJson(Map<String, dynamic> value) {
+    return PersonProfile(
+      description: value['description'] as String?,
+      language: value['language'] as String?,
+      preferences: value['preferences'] == null
+          ? null
+          : ((value['preferences'] as List<dynamic>)
+                .map((entry) => entry as String)
+                .toList()),
+      preferredName: value['preferred_name'] as String?,
+      schemaVersion: value['schema_version'] as int?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (description != null) 'description': description,
+      if (language != null) 'language': language,
+      if (preferences != null) 'preferences': preferences,
+      if (preferredName != null) 'preferred_name': preferredName,
+      if (schemaVersion != null) 'schema_version': schemaVersion,
+    };
+  }
+}
+
+class PersonUpdate {
+  const PersonUpdate({
+    required this.displayName,
+    required this.expectedRevision,
+    required this.profile,
+    required this.status,
+  });
+
+  final String displayName;
+
+  final int expectedRevision;
+
+  final PersonProfile profile;
+
+  final String status;
+
+  factory PersonUpdate.fromJson(Map<String, dynamic> value) {
+    return PersonUpdate(
+      displayName: value['display_name'] as String,
+      expectedRevision: value['expected_revision'] as int,
+      profile: PersonProfile.fromJson(value['profile'] as Map<String, dynamic>),
+      status: value['status'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'display_name': displayName,
+      'expected_revision': expectedRevision,
+      'profile': profile.toJson(),
+      'status': status,
+    };
+  }
+}
+
+class PersonView {
+  const PersonView({
+    required this.displayName,
+    required this.ownerId,
+    required this.personId,
+    required this.profile,
+    required this.revision,
+    required this.status,
+  });
+
+  final String displayName;
+
+  final String ownerId;
+
+  final String personId;
+
+  final PersonProfile profile;
+
+  final int revision;
+
+  final String status;
+
+  factory PersonView.fromJson(Map<String, dynamic> value) {
+    return PersonView(
+      displayName: value['display_name'] as String,
+      ownerId: value['owner_id'] as String,
+      personId: value['person_id'] as String,
+      profile: PersonProfile.fromJson(value['profile'] as Map<String, dynamic>),
+      revision: value['revision'] as int,
+      status: value['status'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'display_name': displayName,
+      'owner_id': ownerId,
+      'person_id': personId,
+      'profile': profile.toJson(),
+      'revision': revision,
+      'status': status,
+    };
+  }
+}
+
 class PersonaAuthoring {
   const PersonaAuthoring({
     this.archetype,
@@ -4315,25 +4490,6 @@ class PlacementWrite {
   }
 }
 
-class PolicyUpdate {
-  const PolicyUpdate({required this.expectedRevision, required this.mode});
-
-  final int expectedRevision;
-
-  final String mode;
-
-  factory PolicyUpdate.fromJson(Map<String, dynamic> value) {
-    return PolicyUpdate(
-      expectedRevision: value['expected_revision'] as int,
-      mode: value['mode'] as String,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {'expected_revision': expectedRevision, 'mode': mode};
-  }
-}
-
 class ProviderAccount {
   const ProviderAccount({
     required this.accountId,
@@ -4865,82 +5021,25 @@ class SharedStart {
   }
 }
 
-class SpeakerAdmissionLimits {
-  const SpeakerAdmissionLimits({
-    required this.maxAllowedSpeakers,
-    required this.maxAudioMs,
-    required this.minAudioMs,
-  });
-
-  final int maxAllowedSpeakers;
-
-  final int maxAudioMs;
-
-  final int minAudioMs;
-
-  factory SpeakerAdmissionLimits.fromJson(Map<String, dynamic> value) {
-    return SpeakerAdmissionLimits(
-      maxAllowedSpeakers: value['max_allowed_speakers'] as int,
-      maxAudioMs: value['max_audio_ms'] as int,
-      minAudioMs: value['min_audio_ms'] as int,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'max_allowed_speakers': maxAllowedSpeakers,
-      'max_audio_ms': maxAudioMs,
-      'min_audio_ms': minAudioMs,
-    };
-  }
-}
-
 class SpeakerExtractionReadiness {
   const SpeakerExtractionReadiness({
-    this.admissionReady,
-    this.calibrationDigest,
     required this.extractionReady,
-    this.limits,
     required this.state,
-    this.validationState,
   });
-
-  final bool? admissionReady;
-
-  final String? calibrationDigest;
 
   final bool extractionReady;
 
-  final SpeakerAdmissionLimits? limits;
-
   final String state;
-
-  final String? validationState;
 
   factory SpeakerExtractionReadiness.fromJson(Map<String, dynamic> value) {
     return SpeakerExtractionReadiness(
-      admissionReady: value['admission_ready'] as bool?,
-      calibrationDigest: value['calibration_digest'] as String?,
       extractionReady: value['extraction_ready'] as bool,
-      limits: value['limits'] == null
-          ? null
-          : SpeakerAdmissionLimits.fromJson(
-              value['limits'] as Map<String, dynamic>,
-            ),
       state: value['state'] as String,
-      validationState: value['validation_state'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      if (admissionReady != null) 'admission_ready': admissionReady,
-      if (calibrationDigest != null) 'calibration_digest': calibrationDigest,
-      'extraction_ready': extractionReady,
-      if (limits != null) 'limits': limits?.toJson(),
-      'state': state,
-      if (validationState != null) 'validation_state': validationState,
-    };
+    return {'extraction_ready': extractionReady, 'state': state};
   }
 }
 
@@ -4948,6 +5047,7 @@ class SpeakerProfileView {
   const SpeakerProfileView({
     required this.displayName,
     required this.enrollmentId,
+    this.personId,
     required this.profileId,
     this.recordingAvailable,
     required this.revision,
@@ -4957,6 +5057,8 @@ class SpeakerProfileView {
   final String displayName;
 
   final String enrollmentId;
+
+  final String? personId;
 
   final String profileId;
 
@@ -4970,6 +5072,7 @@ class SpeakerProfileView {
     return SpeakerProfileView(
       displayName: value['display_name'] as String,
       enrollmentId: value['enrollment_id'] as String,
+      personId: value['person_id'] as String?,
       profileId: value['profile_id'] as String,
       recordingAvailable: value['recording_available'] as bool?,
       revision: value['revision'] as int,
@@ -4981,6 +5084,7 @@ class SpeakerProfileView {
     return {
       'display_name': displayName,
       'enrollment_id': enrollmentId,
+      if (personId != null) 'person_id': personId,
       'profile_id': profileId,
       if (recordingAvailable != null) 'recording_available': recordingAvailable,
       'revision': revision,
@@ -5415,11 +5519,11 @@ class VoiceAudioRequest {
 class VoiceMatchTestResult {
   const VoiceMatchTestResult({
     required this.audioMs,
-    required this.companionId,
     required this.elapsedMs,
     required this.extractionMs,
     required this.modelId,
-    required this.policyRevision,
+    required this.personId,
+    required this.personRevision,
     required this.preprocessingVersion,
     required this.scores,
     this.scoringVersion,
@@ -5429,15 +5533,15 @@ class VoiceMatchTestResult {
 
   final int audioMs;
 
-  final String companionId;
-
   final double elapsedMs;
 
   final double extractionMs;
 
   final String modelId;
 
-  final int policyRevision;
+  final String personId;
+
+  final int personRevision;
 
   final String preprocessingVersion;
 
@@ -5452,11 +5556,11 @@ class VoiceMatchTestResult {
   factory VoiceMatchTestResult.fromJson(Map<String, dynamic> value) {
     return VoiceMatchTestResult(
       audioMs: value['audio_ms'] as int,
-      companionId: value['companion_id'] as String,
       elapsedMs: (value['elapsed_ms'] as num).toDouble(),
       extractionMs: (value['extraction_ms'] as num).toDouble(),
       modelId: value['model_id'] as String,
-      policyRevision: value['policy_revision'] as int,
+      personId: value['person_id'] as String,
+      personRevision: value['person_revision'] as int,
       preprocessingVersion: value['preprocessing_version'] as String,
       scores: ((value['scores'] as List<dynamic>)
           .map(
@@ -5473,11 +5577,11 @@ class VoiceMatchTestResult {
   Map<String, dynamic> toJson() {
     return {
       'audio_ms': audioMs,
-      'companion_id': companionId,
       'elapsed_ms': elapsedMs,
       'extraction_ms': extractionMs,
       'model_id': modelId,
-      'policy_revision': policyRevision,
+      'person_id': personId,
+      'person_revision': personRevision,
       'preprocessing_version': preprocessingVersion,
       'scores': scores.map((entry) => entry.toJson()).toList(),
       if (scoringVersion != null) 'scoring_version': scoringVersion,
@@ -5487,45 +5591,37 @@ class VoiceMatchTestResult {
   }
 }
 
-class VoicePolicyView {
-  const VoicePolicyView({
-    this.admissionState,
-    this.allowedProfileIds,
-    this.calibrationDigest,
-    required this.companionId,
-    this.mode,
-    this.profiles,
-    this.readiness,
-    this.revision,
+class VoiceprintAssignment {
+  const VoiceprintAssignment({
+    required this.expectedRevision,
+    required this.personId,
   });
 
-  final String? admissionState;
+  final int expectedRevision;
 
-  final List<String>? allowedProfileIds;
+  final String personId;
 
-  final String? calibrationDigest;
+  factory VoiceprintAssignment.fromJson(Map<String, dynamic> value) {
+    return VoiceprintAssignment(
+      expectedRevision: value['expected_revision'] as int,
+      personId: value['person_id'] as String,
+    );
+  }
 
-  final String companionId;
+  Map<String, dynamic> toJson() {
+    return {'expected_revision': expectedRevision, 'person_id': personId};
+  }
+}
 
-  final String? mode;
+class VoiceprintCollection {
+  const VoiceprintCollection({this.profiles, this.readiness});
 
   final List<SpeakerProfileView>? profiles;
 
   final SpeakerExtractionReadiness? readiness;
 
-  final int? revision;
-
-  factory VoicePolicyView.fromJson(Map<String, dynamic> value) {
-    return VoicePolicyView(
-      admissionState: value['admission_state'] as String?,
-      allowedProfileIds: value['allowed_profile_ids'] == null
-          ? null
-          : ((value['allowed_profile_ids'] as List<dynamic>)
-                .map((entry) => entry as String)
-                .toList()),
-      calibrationDigest: value['calibration_digest'] as String?,
-      companionId: value['companion_id'] as String,
-      mode: value['mode'] as String?,
+  factory VoiceprintCollection.fromJson(Map<String, dynamic> value) {
+    return VoiceprintCollection(
       profiles: value['profiles'] == null
           ? null
           : ((value['profiles'] as List<dynamic>)
@@ -5540,21 +5636,14 @@ class VoicePolicyView {
           : SpeakerExtractionReadiness.fromJson(
               value['readiness'] as Map<String, dynamic>,
             ),
-      revision: value['revision'] as int?,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      if (admissionState != null) 'admission_state': admissionState,
-      if (allowedProfileIds != null) 'allowed_profile_ids': allowedProfileIds,
-      if (calibrationDigest != null) 'calibration_digest': calibrationDigest,
-      'companion_id': companionId,
-      if (mode != null) 'mode': mode,
       if (profiles != null)
         'profiles': profiles?.map((entry) => entry.toJson()).toList(),
       if (readiness != null) 'readiness': readiness?.toJson(),
-      if (revision != null) 'revision': revision,
     };
   }
 }

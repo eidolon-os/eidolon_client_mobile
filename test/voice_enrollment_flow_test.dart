@@ -44,7 +44,7 @@ void main() {
       var completionAttempts = 0;
       var saved = false;
       final profile = {
-        'profile_id': 'p',
+        'person_id': 'person', 'profile_id': 'p',
         'display_name': '我',
         'revision': 1,
         'enrollment_id': 'e',
@@ -52,7 +52,7 @@ void main() {
       };
       final calls = <String>[];
       await tester.pumpWidget(MaterialApp(
-          home: VoiceEnrollmentPage(
+          home: VoiceEnrollmentPage(personId: 'person',
         recorderFactory: () => recorder,
         call: ({method = 'GET', suffix = '', body}) async {
           if (suffix == '/readiness') {
@@ -69,7 +69,7 @@ void main() {
           }
           if (suffix.endsWith('/complete')) {
             return {
-              'profile_id': 'p',
+              'person_id': 'person', 'profile_id': 'p',
               'display_name': '我',
               'revision': 1,
               'enrollment_id': 'e',
@@ -78,7 +78,7 @@ void main() {
           }
           if (suffix.isEmpty) {
             return {
-              'companion_id': 'c',
+              'person_id': 'person',
               'profiles': [profile],
               'allowed_profile_ids': []
             };
@@ -86,7 +86,7 @@ void main() {
           if (method == 'PUT') accepted++;
           return {
             'enrollment_id': 'e',
-            'profile_id': 'p',
+            'person_id': 'person', 'profile_id': 'p',
             'state': saved ? 'ready' : 'collecting',
             'accepted_samples': accepted,
             'expires_at': 9999999999.0
@@ -138,7 +138,7 @@ void main() {
                   child: const Text('打开录入'),
                   onPressed: () =>
                       Navigator.of(context).push<void>(MaterialPageRoute(
-                          builder: (_) => VoiceEnrollmentPage(
+                          builder: (_) => VoiceEnrollmentPage(personId: 'person',
                                 recorderFactory: () => recorder,
                                 call: (
                                     {method = 'GET', suffix = '', body}) async {
@@ -152,7 +152,7 @@ void main() {
                                   calls.add(method);
                                   return {
                                     'enrollment_id': 'e',
-                                    'profile_id': 'p',
+                                    'person_id': 'person', 'profile_id': 'p',
                                     'state': 'collecting',
                                     'accepted_samples': method == 'PUT' ? 1 : 0,
                                     'expires_at': 9999999999.0
@@ -196,7 +196,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(800, 1400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(
-        home: VoiceEnrollmentPage(
+        home: VoiceEnrollmentPage(personId: 'person',
       recorderFactory: () => recorder,
       call: ({method = 'GET', suffix = '', body}) async =>
           suffix == '/readiness'
@@ -207,7 +207,7 @@ void main() {
                 }
               : {
                   'enrollment_id': 'e',
-                  'profile_id': 'p',
+                  'person_id': 'person', 'profile_id': 'p',
                   'state': 'collecting',
                   'accepted_samples': 0,
                   'expires_at': 9999999999.0
@@ -231,7 +231,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(800, 1400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(
-        home: VoiceEnrollmentPage(
+        home: VoiceEnrollmentPage(personId: 'person',
       recorderFactory: () => recorder,
       call: ({method = 'GET', suffix = '', body}) async {
         if (suffix == '/readiness') {
@@ -243,7 +243,7 @@ void main() {
         }
         return {
           'enrollment_id': 'e',
-          'profile_id': 'p',
+          'person_id': 'person', 'profile_id': 'p',
           'state': 'collecting',
           'accepted_samples': 0,
           'expires_at': 9999999999.0
@@ -294,7 +294,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(800, 1400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(
-        home: VoiceEnrollmentPage(
+        home: VoiceEnrollmentPage(personId: 'person',
       recorderFactory: () => recorder,
       call: ({method = 'GET', suffix = '', body}) async {
         if (suffix == '/readiness') {
@@ -307,7 +307,7 @@ void main() {
         writes.add(method);
         return {
           'enrollment_id': 'e',
-          'profile_id': 'p',
+          'person_id': 'person', 'profile_id': 'p',
           'state': 'collecting',
           'accepted_samples': 0,
           'expires_at': 9999999999.0

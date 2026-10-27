@@ -485,7 +485,6 @@ void main() {
         hostName: '工作室',
         bootstrap: () async => deviceOnboardingTargetFixture(),
         management: ConversationManagement(
-            voiceprints: (id) => ({method = 'GET', suffix = '', body}) async => {'companion_id': id, 'mode': 'off'},
             controllerId: 'controller',
             admission: admission,
             roster: ({cursor}) => throw StateError('not called'),

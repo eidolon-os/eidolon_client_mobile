@@ -12,15 +12,21 @@ export 'voiceprint_call.dart';
 
 class VoiceprintPage extends StatefulWidget {
   const VoiceprintPage(
-      {super.key, required this.companionName, required this.call});
-  final String companionName;
+      {super.key,
+      required this.personName,
+      required this.personId,
+      this.personActive = true,
+      required this.call});
+  final String personName;
+  final String personId;
+  final bool personActive;
   final VoiceprintCall call;
   @override
   State<VoiceprintPage> createState() => _VoiceprintPageState();
 }
 
 class _VoiceprintPageState extends State<VoiceprintPage> {
-  VoicePolicyView? _policy;
+  VoiceprintCollection? _collection;
   String? _error;
   bool _busy = false;
   @override
@@ -30,8 +36,8 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
   }
 
   Future<void> _load() => _act(() async {
-        final p = VoicePolicyView.fromJson(await widget.call());
-        if (mounted) setState(() => _policy = p);
+        final p = VoiceprintCollection.fromJson(await widget.call());
+        if (mounted) setState(() => _collection = p);
       });
 
   Future<void> _act(Future<void> Function() action) async {
@@ -55,14 +61,14 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
           [Map<String, dynamic>? body]) =>
       _act(() async {
         await widget.call(method: method, suffix: suffix, body: body);
-        final p = VoicePolicyView.fromJson(await widget.call());
-        if (mounted) setState(() => _policy = p);
+        final p = VoiceprintCollection.fromJson(await widget.call());
+        if (mounted) setState(() => _collection = p);
       });
 
   Future<void> _enroll([SpeakerProfileView? profile]) async {
     await Navigator.of(context).push<void>(MaterialPageRoute(
-        builder: (_) =>
-            VoiceEnrollmentPage(call: widget.call, profile: profile)));
+        builder: (_) => VoiceEnrollmentPage(
+            call: widget.call, personId: widget.personId, profile: profile)));
     if (mounted) await _load();
   }
 
@@ -71,7 +77,7 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
         context: context,
         builder: (context) => AlertDialog(
                 title: Text('删除“${profile.displayName}”的声纹？'),
-                content: const Text('此主机所有伙伴都会移除此声音。只想从当前伙伴移除，请使用“移除”。'),
+                content: const Text('将删除此声纹、录入声音与相关证据，用户资料仍保留。'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context, false),
@@ -88,27 +94,43 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
 
   @override
   Widget build(BuildContext context) {
-    final p = _policy;
-    final allowed = p?.allowedProfileIds ?? <String>[];
-    final maxAllowed = p?.readiness?.limits?.maxAllowedSpeakers;
+    final p = _collection;
+    final profiles =
+        p?.profiles?.where((p) => p.personId == widget.personId).toList() ??
+            <SpeakerProfileView>[];
+    final unassigned = p?.profiles?.where((p) => p.personId == null).toList() ??
+        <SpeakerProfileView>[];
     return Scaffold(
         appBar: AppBar(title: const Text('声纹管理')),
         body: ListView(padding: const EdgeInsets.all(20), children: [
-          Text(widget.companionName,
+          Text(widget.personName,
               style: Theme.of(context).textTheme.headlineSmall),
+          if (!widget.personActive) const Text('此用户已停用。启用后可录入、关联或测试声纹。'),
           if (_busy) const LinearProgressIndicator(),
           if (_error != null) ...[
             Text(_error!),
             TextButton(onPressed: _busy ? null : _load, child: const Text('重试'))
           ],
           if (p != null) ...[
-            Text('已保存的声音（${p.profiles?.length ?? 0}）',
+            Text('已保存的声音（${profiles.length}）',
                 style: Theme.of(context).textTheme.titleLarge),
-            const Text('在这里回放、重录或删除声音；对话开关在伙伴主页。'),
-            if (maxAllowed != null)
-              Text('当前对话最多允许 $maxAllowed 个声音。保存的录音可以保留，未加入允许列表的声音不会获准对话。'),
-            if (allowed.isEmpty) Text('尚未为此伙伴添加声音'),
-            for (final profile in p.profiles ?? <SpeakerProfileView>[])
+            const Text('声纹用于辅助识别用户，不限制对话。'),
+            for (final profile in unassigned)
+              ListTile(
+                  title: Text(profile.displayName),
+                  subtitle: const Text('旧声纹，尚未确认属于谁'),
+                  trailing: TextButton(
+                      onPressed: _busy || !widget.personActive
+                          ? null
+                          : () => _change(
+                                  'PUT',
+                                  '/profiles/${Uri.encodeComponent(profile.profileId)}/person',
+                                  {
+                                    'person_id': widget.personId,
+                                    'expected_revision': profile.revision
+                                  }),
+                      child: const Text('关联此用户'))),
+            for (final profile in profiles)
               Card(
                   child: Padding(
                       padding: const EdgeInsets.all(12),
@@ -117,9 +139,6 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
                           children: [
                             Text(profile.displayName,
                                 style: Theme.of(context).textTheme.titleMedium),
-                            Text(allowed.contains(profile.profileId)
-                                ? '已加入此伙伴的声音列表'
-                                : '已保存，尚未加入此伙伴的声音列表'),
                             Wrap(children: [
                               if (profile.recordingAvailable == true)
                                 TextButton.icon(
@@ -144,22 +163,7 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
                                     child: Text('暂无录音，重新录入后可回放')),
                               TextButton(
                                   onPressed: _busy ||
-                                          (!allowed.contains(
-                                                  profile.profileId) &&
-                                              maxAllowed != null &&
-                                              allowed.length >= maxAllowed)
-                                      ? null
-                                      : () => _change(
-                                          allowed.contains(profile.profileId)
-                                              ? 'DELETE'
-                                              : 'PUT',
-                                          '/bindings/${Uri.encodeComponent(profile.profileId)}'),
-                                  child: Text(
-                                      allowed.contains(profile.profileId)
-                                          ? '移除'
-                                          : '允许')),
-                              TextButton(
-                                  onPressed: _busy ||
+                                          !widget.personActive ||
                                           p.readiness?.extractionReady != true
                                       ? null
                                       : () => _enroll(profile),
@@ -171,7 +175,9 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
                             ]),
                           ]))),
             FilledButton.icon(
-                onPressed: _busy || p.readiness?.extractionReady != true
+                onPressed: _busy ||
+                        !widget.personActive ||
+                        p.readiness?.extractionReady != true
                     ? null
                     : () => _enroll(),
                 icon: const Icon(Icons.mic),
@@ -179,17 +185,19 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
             const SizedBox(height: 12),
             OutlinedButton.icon(
                 onPressed: _busy ||
-                        allowed.isEmpty ||
+                        !widget.personActive ||
+                        profiles.isEmpty ||
                         p.readiness?.extractionReady != true
                     ? null
                     : () => Navigator.of(context).push<void>(MaterialPageRoute(
                         builder: (_) => VoiceMatchPage(
-                            companionName: widget.companionName,
+                            personName: widget.personName,
+                            personId: widget.personId,
                             call: widget.call))),
                 icon: const Icon(Icons.graphic_eq),
                 label: const Text('测试匹配')),
-            if (allowed.isEmpty) const Text('先为此伙伴添加声音，即可测试匹配。'),
-            const Text('使用手机录入。保存或添加声音不会自动开启限制；请在伙伴主页开启。更改允许的声音后，需要重新确认。'),
+            if (profiles.isEmpty) const Text('先录入或关联此用户的声纹，即可测试匹配。'),
+            const Text('录入成功表示档案已保存，不代表身份识别已经验证。'),
             if (p.readiness?.extractionReady != true)
               const Text('录入服务正在准备或暂不可用，请稍后刷新。已有录音仍可回放和删除。'),
             if (p.readiness?.extractionReady != true)
@@ -202,9 +210,14 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
 
 class VoiceEnrollmentPage extends StatefulWidget {
   const VoiceEnrollmentPage(
-      {super.key, required this.call, this.profile, this.recorderFactory});
+      {super.key,
+      required this.call,
+      required this.personId,
+      this.profile,
+      this.recorderFactory});
   final VoiceEnrollmentRecorder Function()? recorderFactory;
   final VoiceprintCall call;
+  final String personId;
   final SpeakerProfileView? profile;
   @override
   State<VoiceEnrollmentPage> createState() => _VoiceEnrollmentPageState();
@@ -348,6 +361,7 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
           method: 'POST',
           suffix: '/enrollments',
           body: EnrollmentCreate(
+                  personId: widget.personId,
                   operationId: _operation,
                   displayName: _creationName!,
                   profileId: widget.profile?.profileId)
@@ -437,7 +451,7 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
         final status = EnrollmentView.fromJson(
             await widget.call(suffix: '/enrollments/${e.enrollmentId}'));
         if (status.state == 'ready') {
-          final view = VoicePolicyView.fromJson(await widget.call());
+          final view = VoiceprintCollection.fromJson(await widget.call());
           final saved = view.profiles
               ?.where((p) => p.enrollmentId == e.enrollmentId)
               .firstOrNull;
@@ -538,8 +552,7 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
                     style: TextStyle(fontSize: 24)),
                 Text('“${_saved!.displayName}”已保存到你的声纹档案。',
                     textAlign: TextAlign.center),
-                const Text(
-                    '可在管理页回放、删除或允许此伙伴使用。保存不会自动开启限制；若已开启，更改声音后请回到伙伴主页重新确认。'),
+                const Text('可在用户管理中回放、重录或删除。声纹不限制对话。'),
                 if (_saved!.recordingAvailable == true)
                   TextButton.icon(
                     icon: const Icon(Icons.play_arrow),

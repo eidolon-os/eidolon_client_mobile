@@ -240,11 +240,6 @@ class ClientController extends ChangeNotifier {
   /// Was a `bool conversationConfirmed`. See [ConversationStanding] for the two
   /// things that boolean asserted without evidence.
   ConversationStanding conversationStanding = ConversationStanding.asked;
-  VoiceAdmissionStatus? _voiceAdmission;
-  VoiceAdmissionStatus? get voiceAdmission =>
-      _inConversation && conversationStanding != ConversationStanding.farEndGone
-          ? _voiceAdmission
-          : null;
 
   /// The Enrollment the act refers to, when the Authority named one.
   MobileBodyEnrollmentRef? get enrollmentRef => config?.bodyEnrollment;
@@ -501,7 +496,6 @@ class ClientController extends ChangeNotifier {
       transcript.clear();
       _inConversation = true;
       conversationStanding = ConversationStanding.asked;
-      _voiceAdmission = null;
       agentTurn = AgentTurnState.listening;
       await _session.openSession();
       if (_disposed || epoch != _conversationEpoch || !_inConversation) {
@@ -588,7 +582,6 @@ class ClientController extends ChangeNotifier {
     final wasActive = _inConversation;
     _inConversation = false;
     _pttHeld = false;
-    _voiceAdmission = null;
     try {
       await _audioUpdate;
       await _vad.stop();
@@ -962,19 +955,6 @@ class ClientController extends ChangeNotifier {
       if (fromProvider && root['type'] != sessionRejectedType) return;
 
       switch (root['type']) {
-        case voiceAdmissionType:
-          if (!fromAgent ||
-              !conversationStanding.answered ||
-              conversationStanding == ConversationStanding.farEndGone) {
-            return;
-          }
-          final value = VoiceAdmissionStatus.parse(root);
-          if (value == null ||
-              value.sequence <= (_voiceAdmission?.sequence ?? 0)) {
-            return;
-          }
-          _voiceAdmission = value;
-          notifyListeners();
         case sessionRejectedType:
           if (!fromProvider ||
               root['schema_v'] != sessionControlSchemaVersion ||
@@ -1001,16 +981,7 @@ class ClientController extends ChangeNotifier {
           notifyListeners();
         case sessionEndType:
           await _finishRoomJoin('failed', 'ROOM_JOIN_ENDED');
-          final reason = root[sessionEndReasonField];
-          if (reason == sessionEndVoicePolicyConfirmationRequired) {
-            failure = const ClientFailure(
-              kind: ClientErrorKind.voicePolicy,
-              retryable: false,
-              title: '需要重新确认声纹',
-              message: '声纹识别规则已更新，请在声纹设置中重新确认允许的声音，再开始对话。无需重新录音。',
-              technicalDetails: 'session_end reason=$sessionEndVoicePolicyConfirmationRequired',
-            );
-          } else if (reason == sessionEndError) {
+          if (root[sessionEndReasonField] == sessionEndError) {
             // The one end a person has to be told about: the service stopped
             // serving. Leaving quietly here is how a phone goes back to
             // standby with nothing said about why the conversation stopped.

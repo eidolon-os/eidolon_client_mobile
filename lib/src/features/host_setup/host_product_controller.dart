@@ -162,9 +162,14 @@ class HostProductController extends ChangeNotifier {
   late final HostActivityRepository _activityRepository;
   late final HostManagementRepository _managementRepository;
 
-  Future<Map<String, dynamic>> voiceprintRequest({required String companionId,
+  Future<Map<String, dynamic>> voiceprintRequest({
     String method = 'GET', String suffix = '', Map<String, dynamic>? body}) =>
-      _managementRepository.voiceprintRequest(companionId: companionId,
+      _managementRepository.voiceprintRequest(
+        method: method, suffix: suffix, body: body);
+
+  Future<Map<String, dynamic>> personRequest({
+    String method = 'GET', String suffix = '', Map<String, dynamic>? body}) =>
+      _managementRepository.personRequest(
         method: method, suffix: suffix, body: body);
 
   Future<Registry> smartHomeRegistry() => _managementRepository.smartHomeRegistry();

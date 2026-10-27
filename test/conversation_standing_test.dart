@@ -85,41 +85,6 @@ void main() {
     return built;
   }
 
-  test(
-      'voice admission feedback is agent/session scoped, ordered, and clears on leave',
-      () async {
-    final built = await inConversation();
-    final c = built.controller;
-    final session = built.session;
-    String feedback(int sequence, String state, {String? conversation}) =>
-        jsonEncode({
-          'schema_v': 1,
-          'type': voiceAdmissionType,
-          'conversation_id': conversation ?? session.conversationId,
-          'sequence': sequence,
-          'state': state
-        });
-    session.emit(sessionControlTopic, feedback(1, 'checking'));
-    await settle();
-    expect(c.voiceAdmission,
-        isNull); // client/provider claims cannot create this fact
-    session.emit(sessionControlTopic, feedback(1, 'checking'), fromAgent: true);
-    await settle();
-    expect(c.voiceAdmission?.state, 'checking');
-    session.emit(sessionControlTopic, feedback(2, 'non_match'),
-        fromAgent: true);
-    session.emit(sessionControlTopic, feedback(1, 'accepted'), fromAgent: true);
-    session.emit(
-        sessionControlTopic, feedback(3, 'accepted', conversation: 'other'),
-        fromAgent: true);
-    session.emit(sessionControlTopic, feedback(3, 'unknown'), fromAgent: true);
-    await settle();
-    expect(c.voiceAdmission?.state, 'non_match');
-    expect(c.voiceAdmission?.message, contains('没有触发打断'));
-    await c.leave();
-    expect(c.voiceAdmission, isNull);
-    c.dispose();
-  });
 
   group('serving is not the same fact as hearing', () {
     test('session_started confirms serving and nothing more', () async {

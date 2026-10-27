@@ -11,8 +11,8 @@ import 'voice_enrollment_flow_test.dart' show FakeRecorder;
 
 void main() {
   final policy = <String, dynamic>{
-    'companion_id': 'c',
-    'allowed_profile_ids': ['p'],
+    'person_id': 'person',
+    'profiles': [{'person_id':'person','profile_id':'p','display_name':'我','revision':1,'enrollment_id':'e'}],
     'readiness': {
       'state': 'ready',
       'extraction_ready': true,
@@ -20,8 +20,8 @@ void main() {
     }
   };
   final result = <String, dynamic>{
-    'companion_id': 'c',
-    'policy_revision': 1,
+    'person_id': 'person',
+    'person_revision': 1,
     'audio_ms': 4000,
     'extraction_ms': 80,
     'elapsed_ms': 120,
@@ -31,9 +31,9 @@ void main() {
     'validation_state': 'unvalidated',
     'scores': [
       {
-        'profile_id': 'p',
+        'person_id': 'person', 'profile_id': 'p',
         'revision': 1,
-        'display_name': '我的声音',
+        'display_name': '',
         'status': 'scored',
         'similarity': 0.72
       }
@@ -47,7 +47,7 @@ void main() {
     final posts = <String>[];
     await tester.pumpWidget(MaterialApp(
         home: VoiceMatchPage(
-            companionName: '伙伴',
+            personId: 'person', personName: '伙伴',
             recorderFactory: () => recorder,
             call: ({method = 'GET', suffix = '', body}) async {
               if (method == 'GET') return policy;
@@ -62,8 +62,8 @@ void main() {
     await tester.tap(find.text('结束并测试'));
     await tester.runAsync(() => Future<void>.delayed(Duration.zero));
     await tester.pumpAndSettle();
-    expect(posts, ['/match-test']);
-    expect(find.text('我的声音: 0.720'), findsOneWidget);
+    expect(posts, ['/persons/person/match-test']);
+    expect(find.text('我: 0.720'), findsOneWidget);
     expect(find.textContaining('提取 80 ms'), findsOneWidget);
     expect(find.textContaining('分数不是识别准确率'), findsOneWidget);
   });
@@ -82,7 +82,7 @@ void main() {
       var posts = 0;
       await tester.pumpWidget(MaterialApp(
           home: VoiceMatchPage(
-              companionName: '伙伴',
+              personId: 'person', personName: '伙伴',
               recorderFactory: () => recorder,
               call: ({method = 'GET', suffix = '', body}) async {
                 if (method == 'POST') {
@@ -132,9 +132,9 @@ void main() {
     final transport = MockClient((request) async {
       expect(request.headers['Authorization'], 'Bearer controller');
       if (request.method == 'GET') {
-        return http.Response(jsonEncode(policy), 200);
+        return http.Response(jsonEncode(policy), 200, headers: {'content-type': 'application/json; charset=utf-8'});
       }
-      expect(request.url.path, endsWith('/voiceprints/match-test'));
+      expect(request.url.path, endsWith('/voiceprints/persons/person/match-test'));
       posts++;
       return posts == 1
           ? http.Response(
@@ -155,12 +155,12 @@ void main() {
     final recorder = FakeRecorder();
     await tester.pumpWidget(MaterialApp(
         home: VoiceMatchPage(
-      companionName: '伙伴',
+      personId: 'person', personName: '伙伴',
       recorderFactory: () => recorder,
       call: ({method = 'GET', suffix = '', body}) => client.voiceprintRequest(
           Uri.parse('https://host/'),
           accessToken: 'controller',
-          companionId: 'c',
+
           method: method,
           suffix: suffix,
           body: body),
@@ -185,7 +185,7 @@ void main() {
       expect(find.text('仅电视 · 4.0 秒录音'), findsOneWidget);
     }
     expect(posts, 2);
-    expect(find.text('我的声音: 0.720'), findsOneWidget);
+    expect(find.text('我: 0.720'), findsOneWidget);
   });
 
   testWidgets('leaving during permission does not start capture',
@@ -194,7 +194,7 @@ void main() {
     final recorder = FakeRecorder(permission: () => permission.future);
     await tester.pumpWidget(MaterialApp(
         home: VoiceMatchPage(
-            companionName: '伙伴',
+            personId: 'person', personName: '伙伴',
             recorderFactory: () => recorder,
             call: ({method = 'GET', suffix = '', body}) async => policy)));
     await tester.tap(find.text('开始试说'));

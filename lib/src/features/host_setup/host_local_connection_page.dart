@@ -1,3 +1,4 @@
+import 'persons_page.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -415,12 +416,6 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               onOpenMemory: () => _openCompanionMemory(current),
               onOpenTasks: () => _openTasks(current),
               onOpenConversations: () => _openConversations(current),
-              voiceprintCall: ({method = 'GET', suffix = '', body}) =>
-                  _controller.voiceprintRequest(
-                      companionId: current.companionId,
-                      method: method,
-                      suffix: suffix,
-                      body: body),
               face: _controller.faceFor(current.companionId),
               onChangeFace: () => _changeCompanionFace(current),
               onClearFace: _controller.faceFor(current.companionId) == null
@@ -830,6 +825,18 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               textAlign: TextAlign.center,
             ),
           ] else if (connection != null) ...[
+            ListTile(
+              leading: const Icon(Icons.people_outline),
+              title: const Text('用户管理'),
+              subtitle: const Text('管理用户资料与声纹'),
+              onTap: () => Navigator.of(context).push<void>(MaterialPageRoute(
+                builder: (_) => PersonsPage(
+                  call: _controller.personRequest,
+                  voiceprints: _controller.voiceprintRequest,
+                ),
+              )),
+            ),
+
             _ConnectedHostCard(
               // Offered only once there is an Owner for the history to belong
               // to. Before that there is nothing this screen could be about.

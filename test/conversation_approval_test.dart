@@ -136,7 +136,6 @@ class _Harness {
         platform: platform,
         provisioner: _Provisioner(enrollment),
         management: ConversationManagement(
-            voiceprints: (id) => ({method = 'GET', suffix = '', body}) async => {'companion_id': id, 'mode': 'off'},
             controllerId: 'controller',
             admission: admission,
             roster: ({cursor}) async => CompanionRosterView.fromJson({
