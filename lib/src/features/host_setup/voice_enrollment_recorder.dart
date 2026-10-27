@@ -19,9 +19,12 @@ class LocalVoiceEnrollmentRecorder implements VoiceEnrollmentRecorder {
         encoder: AudioEncoder.pcm16bits,
         sampleRate: 16000,
         numChannels: 1,
-        autoGain: false,
-        echoCancel: false,
-        noiseSuppress: false,
+        // Enroll with speech processing enabled, as in conversation capture.
+        // Native recorder effects and WebRTC processing remain different paths;
+        // real-call matching must validate the resulting template.
+        autoGain: true,
+        echoCancel: true,
+        noiseSuppress: true,
       ));
   @override
   Future<void> stop() async {
