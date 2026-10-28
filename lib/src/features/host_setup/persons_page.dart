@@ -564,15 +564,15 @@ class _PersonsPageState extends State<PersonsPage> {
   }
 
   String _memoryStatus(PersonView person) {
-    if (person.maturity == 'candidate') return '候选身份 · 暂不开放个人记忆召回';
+    if (person.maturity == 'candidate') return '候选身份 · 暂定数据按独立许可保存和读取';
     final state = _memoryStates[person.personId]?['state'];
     if (state == null) return '状态暂不可用，请刷新';
     if (person.status != 'active') return '用户已停用 · 记忆不可用';
     return state == 'active'
-        ? '已开启 · 识别到此用户时使用'
+        ? '已允许 · 本轮确认身份且记忆可用时使用'
         : state == 'unbound'
             ? '尚未开启'
-            : '已暂停 · 原有记忆保留';
+            : '未启用 · 原有数据保留';
   }
 
   Future<void> _openVoiceprints(PersonView person) async {

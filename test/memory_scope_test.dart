@@ -14,7 +14,7 @@ void main() {
   test('memory display requires current session and fresh explicit binding',
       () {
     expect(MemoryScopeView.parse(payload, sessionId: 's', now: 101)?.label,
-        '当前人物的个人记忆已启用');
+        '本轮允许查询当前人物的个人记忆');
     expect(
         MemoryScopeView.parse(payload, sessionId: 'other', now: 101), isNull);
     expect(MemoryScopeView.parse(payload, sessionId: 's', now: 111), isNull);
