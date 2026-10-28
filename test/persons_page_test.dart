@@ -43,17 +43,98 @@ void main() {
           {'profiles': []},
     )));
     await tester.pumpAndSettle();
-    for (final action in ['启用个人记忆', '暂停个人记忆', '恢复个人记忆']) {
-      await tester.ensureVisible(find.text('个人记忆'));
-      await tester.tap(find.text('个人记忆'));
+    expect(find.text('未录入'), findsOneWidget);
+    expect(find.text('尚未开启'), findsOneWidget);
+    for (var i = 0; i < 3; i++) {
+      final toggle = find.byKey(const ValueKey('memory-p'));
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
       await tester.pumpAndSettle();
-      await tester.tap(find.text(action));
-      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(tester.widget<Switch>(toggle).value, i != 1);
     }
     expect(calls, contains('PUT /p/memory-realm'));
     expect(calls, contains('POST /p/memory-realm/suspend?expected_revision=1'));
     expect(calls, contains('POST /p/memory-realm/restore?expected_revision=2'));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'failed toggle retains authority state and voice status is visible',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: PersonsPage(
+      call: ({method = 'GET', suffix = '', body}) async {
+        if (method == 'POST') throw StateError('offline');
+        if (suffix.endsWith('/memory-state'))
+          return {
+            'state': 'active',
+            'person_revision': 1,
+            'person_status': 'active'
+          };
+        return {
+          'persons': [
+            {
+              'person_id': 'p',
+              'owner_id': 'owner',
+              'display_name': '甲',
+              'revision': 1,
+              'status': 'active',
+              'profile': <String, dynamic>{}
+            }
+          ]
+        };
+      },
+      voiceprints: ({method = 'GET', suffix = '', body}) async => {
+        'profiles': [
+          {
+            'person_id': 'p',
+            'profile_id': 'v',
+            'enrollment_id': 'e',
+            'display_name': '甲',
+            'revision': 1
+          }
+        ]
+      },
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('已录入 1 份声音'), findsOneWidget);
+    final toggle = find.byKey(const ValueKey('memory-p'));
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(tester.widget<Switch>(toggle).value, isTrue);
+    expect(find.text('操作未确认，请刷新或重试'), findsOneWidget);
+  });
+
+  testWidgets(
+      'unavailable memory status disables switch instead of assuming off',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: PersonsPage(
+      call: ({method = 'GET', suffix = '', body}) async {
+        if (suffix.endsWith('/memory-state')) throw StateError('offline');
+        return {
+          'persons': [
+            {
+              'person_id': 'p',
+              'owner_id': 'owner',
+              'display_name': '甲',
+              'revision': 1,
+              'status': 'active',
+              'profile': <String, dynamic>{}
+            }
+          ]
+        };
+      },
+      voiceprints: ({method = 'GET', suffix = '', body}) async =>
+          {'profiles': []},
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('状态暂不可用，请刷新'), findsOneWidget);
+    expect(
+        tester.widget<Switch>(find.byKey(const ValueKey('memory-p'))).onChanged,
+        isNull);
   });
 
   testWidgets('OS person can be managed and open voiceprints without Companion',
