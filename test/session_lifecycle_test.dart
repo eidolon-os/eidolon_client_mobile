@@ -58,6 +58,34 @@ void main() {
         if (reason != null) sessionEndReasonField: reason,
       });
 
+  test('speaker feedback requires the agent and clears on unknown and disconnect', () async {
+    final built = build();
+    await built.controller.start();
+    await built.controller.join();
+    final now = DateTime.now().millisecondsSinceEpoch / 1000;
+    final observation = <String, Object?>{
+      'schema_version': 1, 'conversation_id': built.session.conversationId,
+      'turn_id': 'first', 'issued_at': now, 'expires_at': now + 10,
+      'status': 'identified', 'reason': 'voice_match',
+      'confidence': 'controlled_trial', 'display_name': '甲',
+    };
+    built.session.emitSpeaker(observation, fromAgent: false);
+    await Future<void>.delayed(Duration.zero);
+    expect(built.controller.speakerObservation, isNull);
+    built.session.emitSpeaker(observation, fromAgent: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(built.controller.speakerObservation!.displayName, '甲');
+    built.session.emitSpeaker({...observation, 'turn_id': 'second',
+      'issued_at': now + .01, 'expires_at': now + 10.01,
+      'status': 'unknown', 'confidence': 'none', 'reason': 'no_match'}, fromAgent: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(built.controller.speakerObservation!.displayName, isNull);
+    expect(built.controller.speakerObservation!.status, 'unknown');
+    await built.controller.leave();
+    expect(built.controller.speakerObservation, isNull);
+    built.controller.dispose();
+  });
+
   test('listening disabled still starts a conversation without microphone permission or VAD', () async {
     final session = _LifecycleSession()..allowMicrophone = false;
     final vad = _NoCaptureVad();
@@ -179,6 +207,9 @@ class _LifecycleSession extends EidolonSession {
   /// test is against a realistic value rather than a placeholder.
   @override
   String? get conversationId => 'mobile-0123abcd-4567ef89-00000001';
+
+  void emitSpeaker(Map<String, Object?> payload, {required bool fromAgent}) =>
+      _data.add(SessionData('eidolon.speaker_observation', jsonEncode(payload), fromAgent: fromAgent));
 
   void emit(String payload) =>
       _data.add(SessionData(sessionControlTopic, payload));

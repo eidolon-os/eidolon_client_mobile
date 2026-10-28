@@ -4,6 +4,58 @@ import 'package:eidolon_client_mobile/src/theme/eidolon_theme.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/persons_page.dart';
 
 void main() {
+  testWidgets('personal memory management preserves authority revision',
+      (tester) async {
+    var memoryState = 'unbound';
+    var revision = 1;
+    final calls = <String>[];
+    await tester.pumpWidget(MaterialApp(
+        home: PersonsPage(
+      call: ({method = 'GET', suffix = '', body}) async {
+        calls.add('$method $suffix');
+        if (suffix.endsWith('/memory-state')) {
+          return {
+            'state': memoryState,
+            'person_status': 'active',
+            'person_revision': revision
+          };
+        }
+        if (method == 'PUT' && suffix.endsWith('/memory-realm'))
+          memoryState = 'active';
+        if (method == 'POST') {
+          memoryState = suffix.contains('/suspend') ? 'inactive' : 'active';
+          revision++;
+        }
+        return {
+          'persons': [
+            {
+              'person_id': 'p',
+              'owner_id': 'owner',
+              'display_name': '甲',
+              'revision': revision,
+              'status': 'active',
+              'profile': <String, dynamic>{}
+            }
+          ]
+        };
+      },
+      voiceprints: ({method = 'GET', suffix = '', body}) async =>
+          {'profiles': []},
+    )));
+    await tester.pumpAndSettle();
+    for (final action in ['启用个人记忆', '暂停个人记忆', '恢复个人记忆']) {
+      await tester.ensureVisible(find.text('个人记忆'));
+      await tester.tap(find.text('个人记忆'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(action));
+      await tester.pumpAndSettle();
+    }
+    expect(calls, contains('PUT /p/memory-realm'));
+    expect(calls, contains('POST /p/memory-realm/suspend?expected_revision=1'));
+    expect(calls, contains('POST /p/memory-realm/restore?expected_revision=2'));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('OS person can be managed and open voiceprints without Companion',
       (tester) async {
     final requests = <String>[];

@@ -14,6 +14,8 @@ import '../features/conversation/mobile_body_standing.dart';
 import '../features/device_setup/mobile_body_enrollment_session.dart';
 import '../features/device_setup/mobile_body_manifest.dart';
 import '../models/client_ui_state.dart';
+import '../models/speaker_observation.dart';
+import '../models/memory_scope.dart';
 import '../models/hub_models.dart';
 import '../platform/platform_bridge.dart';
 import '../protocol/eidolon_protocol.dart';
@@ -76,6 +78,12 @@ class ClientController extends ChangeNotifier {
   /// nothing could perform would be worse than the silence it replaced.
   final MobileBodyEnrollmentSession? _enrollment;
   final Duration _conversationConfirmationTimeout;
+  MemoryScopeView? memoryScope;
+  Timer? _memoryScopeExpiryTimer;
+  int _memoryScopeSequence = 0;
+  String? _memoryScopeSourceSession;
+  SpeakerObservationView? speakerObservation;
+  Timer? _speakerExpiryTimer;
   Timer? _confirmationTimer;
   Timer? _expiryTimer;
   final Set<String> _checkedExpiries = {};
@@ -353,6 +361,10 @@ class ClientController extends ChangeNotifier {
     if (_disposed) return false;
     config = next;
     if (next.status != HubConfigStatus.active && _session.isConnected) {
+      speakerObservation = null;
+      memoryScope = null;
+      _memoryScopeExpiryTimer?.cancel();
+      _speakerExpiryTimer?.cancel();
       _inConversation = false;
       _confirmationTimer?.cancel();
       _audioStateTimer?.cancel();
@@ -555,6 +567,10 @@ class ClientController extends ChangeNotifier {
       try {
         await _session.closeSession();
       } catch (_) {}
+      speakerObservation = null;
+      memoryScope = null;
+      _memoryScopeExpiryTimer?.cancel();
+      _speakerExpiryTimer?.cancel();
       _inConversation = false;
       await _session.disconnect();
       voiceConnection = ChannelConnectionState.disconnected;
@@ -580,6 +596,10 @@ class ClientController extends ChangeNotifier {
     _activationTimer?.cancel();
     _audioStateTimer?.cancel();
     final wasActive = _inConversation;
+    speakerObservation = null;
+    memoryScope = null;
+    _speakerExpiryTimer?.cancel();
+    _memoryScopeExpiryTimer?.cancel();
     _inConversation = false;
     _pttHeld = false;
     try {
@@ -687,6 +707,13 @@ class ClientController extends ChangeNotifier {
   }
 
   void _onSessionState(SessionState event) {
+    if (event.state == 'disconnected' || event.state == 'reconnecting') {
+      speakerObservation = null;
+      memoryScope = null;
+      _memoryScopeExpiryTimer?.cancel();
+      _speakerExpiryTimer?.cancel();
+    }
+
     if (event.state == 'microphone_denied') {
       _userMuted = true;
       _pttHeld = false;
@@ -713,6 +740,10 @@ class ClientController extends ChangeNotifier {
       if (_inConversation) {
         ++_conversationEpoch;
         _confirmationTimer?.cancel();
+        speakerObservation = null;
+        memoryScope = null;
+        _memoryScopeExpiryTimer?.cancel();
+        _speakerExpiryTimer?.cancel();
         _inConversation = false;
         voiceConnection = ChannelConnectionState.disconnected;
         _audioStateTimer?.cancel();
@@ -734,6 +765,64 @@ class ClientController extends ChangeNotifier {
   void onAppResumed() => notifyListeners();
 
   Future<void> _onSessionData(SessionData event) async {
+    if (event.topic == 'eidolon.memory_scope') {
+      if (!event.fromAgent || !_inConversation) return;
+      try {
+        final view = MemoryScopeView.parse(
+            jsonDecode(event.payload) as Map<String, dynamic>,
+            sessionId: _session.conversationId,
+            now: DateTime.now().millisecondsSinceEpoch / 1000);
+        if (view == null) return;
+        if (_memoryScopeSourceSession != _session.conversationId) {
+          _memoryScopeSourceSession = _session.conversationId;
+          _memoryScopeSequence = 0;
+        }
+        if (view.sequence <= _memoryScopeSequence) return;
+        _memoryScopeSequence = view.sequence;
+        memoryScope = view;
+        _memoryScopeExpiryTimer?.cancel();
+        _memoryScopeExpiryTimer = Timer(
+            Duration(
+                milliseconds: (view.expiresAt * 1000 -
+                        DateTime.now().millisecondsSinceEpoch)
+                    .ceil()
+                    .clamp(0, 10000)), () {
+          memoryScope = null;
+          notifyListeners();
+        });
+        notifyListeners();
+      } catch (_) {
+        /* Display feedback never controls audio or authorization. */
+      }
+      return;
+    }
+
+    if (event.topic == 'eidolon.speaker_observation') {
+      if (!event.fromAgent || !_inConversation) return;
+      try {
+        final view = SpeakerObservationView.parse(
+            jsonDecode(event.payload) as Map<String, dynamic>,
+            conversationId: _session.conversationId,
+            now: DateTime.now().millisecondsSinceEpoch / 1000);
+        if (view == null ||
+            (speakerObservation?.issuedAt ?? 0) >= view.issuedAt) {
+          return;
+        }
+        speakerObservation = view;
+        _speakerExpiryTimer?.cancel();
+        _speakerExpiryTimer = Timer(
+            Duration(
+                milliseconds: (view.expiresAt * 1000 -
+                        DateTime.now().millisecondsSinceEpoch)
+                    .ceil()
+                    .clamp(0, 10000)), () {
+          speakerObservation = null;
+          if (!_disposed) notifyListeners();
+        });
+        notifyListeners();
+      } catch (_) {/* Advisory messages never affect audio. */}
+      return;
+    }
     switch (event.topic) {
       case controlTopic:
         await _handleControlCommand(event.payload);
@@ -1398,6 +1487,8 @@ class ClientController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _speakerExpiryTimer?.cancel();
+    _memoryScopeExpiryTimer?.cancel();
     _disposed = true;
     _pendingRoomJoin = null;
     ++_conversationEpoch;

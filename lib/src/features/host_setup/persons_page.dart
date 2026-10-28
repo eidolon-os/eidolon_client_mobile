@@ -171,6 +171,56 @@ class _PersonsPageState extends State<PersonsPage> {
     });
   }
 
+  Future<void> _memory(PersonView person) async {
+    Map<String, dynamic>? state;
+    final path = '/${Uri.encodeComponent(person.personId)}';
+    await _act(() async {
+      state = await widget.call(suffix: '$path/memory-state');
+    });
+    if (!mounted || state == null) return;
+    final value = state!;
+    final status = value['state'] as String;
+    final active = value['person_status'] == 'active';
+    final label = status == 'active'
+        ? '暂停个人记忆'
+        : status == 'unbound'
+            ? '启用个人记忆'
+            : '恢复个人记忆';
+    final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+              title: Text('${person.displayName}的个人记忆'),
+              content: Text(
+                  '${status == 'active' ? '已启用' : status == 'unbound' ? '尚未启用' : '已暂停'}。'
+                  '个人记忆由家庭管理员管理，只有当前发言获得有效身份确认时才会使用。'
+                  '未识别、识别不确定或识别超时时，对话继续，但不读取或写入个人记忆。'
+                  '暂停会保留原有记忆；恢复后继续使用原有记忆。'
+                  '${active ? '' : '请先启用该用户，再启用或恢复记忆。'}'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('关闭')),
+                if (active || status == 'active')
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: Text(label)),
+              ],
+            ));
+    if (confirm != true || !mounted) return;
+    await _act(() async {
+      if (status == 'unbound') {
+        await widget.call(method: 'PUT', suffix: '$path/memory-realm');
+      } else {
+        final action = status == 'active' ? 'suspend' : 'restore';
+        await widget.call(
+            method: 'POST',
+            suffix:
+                '$path/memory-realm/$action?expected_revision=${value['person_revision']}');
+      }
+      await _load();
+    });
+  }
+
   void _openVoiceprints(PersonView person) {
     Navigator.of(context).push<void>(MaterialPageRoute(
       builder: (_) => VoiceprintPage(
@@ -246,6 +296,15 @@ class _PersonsPageState extends State<PersonsPage> {
               subtitle: const Text('录入、重录与测试'),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: _busy ? null : () => _openVoiceprints(person),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.psychology_outlined, color: Neon.cyan),
+              title: const Text('个人记忆'),
+              subtitle: const Text('查看状态、启用或暂停'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: _busy ? null : () => _memory(person),
             ),
           ],
         ),

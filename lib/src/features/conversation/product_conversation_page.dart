@@ -463,45 +463,68 @@ class _ProductConversationPageState extends State<ProductConversationPage>
               child: ListTile(
                 key: const Key('prepare-shared-conversation'),
                 leading: const Icon(Icons.groups_2_outlined, color: Neon.cyan),
-                title: Text(widget.deviceConversation == null ? '一起聊' : '跨设备对话'),
+                title:
+                    Text(widget.deviceConversation == null ? '一起聊' : '跨设备对话'),
                 subtitle: Text(flow.client.canLeave
                     ? '结束当前对话后，可准备多人搭配'
-                    : widget.deviceConversation == null ? '选择参与设备 · 检查共享连接' : '选择输入、播放设备和回答的伙伴'),
+                    : widget.deviceConversation == null
+                        ? '选择参与设备 · 检查共享连接'
+                        : '选择输入、播放设备和回答的伙伴'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 enabled:
                     !flow.client.canLeave && !flow.busy && !flow.client.isBusy,
                 onTap: () => Navigator.of(context).push<void>(MaterialPageRoute(
                   builder: (_) => widget.deviceConversation != null
-                    ? DeviceConversationPage(command: widget.deviceConversation!, load: () async {
-                        final inventory = await widget.loadGroupDevices!();
-                        return (devices: inventory.devices,
-                          localDeviceId: flow.client.identity?.deviceInstanceId,
-                          coverage: inventory.coverage);
-                      }) : SharedConversationPreparationPage(
-                    loadFace: flow.management.loadFace,
-                    changeSession: widget.changeSharedSession,
-                    load: () async {
-                      final inventory = await widget.loadGroupDevices!();
-                      return (
-                        devices: inventory.devices,
-                        localDeviceId: flow.client.identity?.deviceInstanceId,
-                        coverage: inventory.coverage,
-                      );
-                    },
-                  ),
+                      ? DeviceConversationPage(
+                          command: widget.deviceConversation!,
+                          load: () async {
+                            final inventory = await widget.loadGroupDevices!();
+                            return (
+                              devices: inventory.devices,
+                              localDeviceId:
+                                  flow.client.identity?.deviceInstanceId,
+                              coverage: inventory.coverage
+                            );
+                          })
+                      : SharedConversationPreparationPage(
+                          loadFace: flow.management.loadFace,
+                          changeSession: widget.changeSharedSession,
+                          load: () async {
+                            final inventory = await widget.loadGroupDevices!();
+                            return (
+                              devices: inventory.devices,
+                              localDeviceId:
+                                  flow.client.identity?.deviceInstanceId,
+                              coverage: inventory.coverage,
+                            );
+                          },
+                        ),
                 )),
               ),
             ),
-            if (widget.roleGroup != null) ListTile(
-              key: const Key('open-role-group'), leading: const Icon(Icons.groups),
-              title: const Text('IP 角色团队'), subtitle: const Text('一个 PTT 输入 · 按对话内容决定谁回应'),
-              enabled: !flow.client.canLeave && !flow.busy && !flow.client.isBusy,
-              onTap: () => Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
-                RoleGroupPage(controller: widget.roleGroup!, load: () async {
-                  final inventory = await widget.loadGroupDevices!();
-                  return (devices: inventory.devices, localDeviceId: flow.client.identity?.deviceInstanceId,
-                    coverage: inventory.coverage);
-                })))),
+            if (widget.roleGroup != null)
+              ListTile(
+                  key: const Key('open-role-group'),
+                  leading: const Icon(Icons.groups),
+                  title: const Text('IP 角色团队'),
+                  subtitle: const Text('一个 PTT 输入 · 按对话内容决定谁回应'),
+                  enabled: !flow.client.canLeave &&
+                      !flow.busy &&
+                      !flow.client.isBusy,
+                  onTap: () =>
+                      Navigator.of(context).push<void>(MaterialPageRoute(
+                          builder: (_) => RoleGroupPage(
+                              controller: widget.roleGroup!,
+                              load: () async {
+                                final inventory =
+                                    await widget.loadGroupDevices!();
+                                return (
+                                  devices: inventory.devices,
+                                  localDeviceId:
+                                      flow.client.identity?.deviceInstanceId,
+                                  coverage: inventory.coverage
+                                );
+                              })))),
             const SizedBox(height: 18),
           ],
           _partner(flow),
@@ -713,6 +736,15 @@ class _ProductConversationPageState extends State<ProductConversationPage>
         border: Border.all(color: Neon.hair),
       ),
       child: Column(children: [
+        if (active) ...[
+          Text(c.speakerObservation?.label ?? '人物身份尚未确认',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Neon.inkDim, fontSize: 13)),
+          Text(c.memoryScope?.label ?? '个人记忆归属待确认',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Neon.inkDim, fontSize: 12)),
+          const SizedBox(height: Neon.s3),
+        ],
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Container(
             width: 7,
