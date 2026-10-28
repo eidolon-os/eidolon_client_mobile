@@ -40,4 +40,39 @@ void main() {
     expect(value!.displayName, isNull);
     expect(value.label, '未识别到已录入用户');
   });
+  test('sequence accepts late evidence and rejects replay after display expiry',
+      () {
+    final cursor = SpeakerObservationCursor();
+    SpeakerObservationView view(int sequence, double issued) =>
+        SpeakerObservationView.parse({
+          ...packet,
+          'sequence': sequence,
+          'issued_at': issued,
+          'expires_at': issued + 10
+        }, conversationId: 's', now: 102)!;
+    expect(cursor.accept(view(1, 101), sessionId: 's'), isTrue);
+    expect(cursor.accept(view(2, 100), sessionId: 's'), isTrue);
+    expect(cursor.accept(view(2, 100), sessionId: 's'), isFalse);
+    expect(cursor.accept(view(1, 101), sessionId: 's'), isFalse);
+    expect(
+        cursor.accept(
+            SpeakerObservationView.parse(packet,
+                conversationId: 's', now: 102)!,
+            sessionId: 's'),
+        isFalse);
+    expect(cursor.accept(view(1, 101), sessionId: 'new-session'), isTrue);
+  });
+  test('invalid sequence is rejected and pending is not a dependency failure',
+      () {
+    for (final sequence in [0, -1, 1.5, '2']) {
+      expect(
+          SpeakerObservationView.parse({...packet, 'sequence': sequence},
+              conversationId: 's', now: 101),
+          isNull);
+    }
+    final pending = SpeakerObservationView.parse(
+        {...packet, 'status': 'unavailable', 'reason': 'recognition_pending'},
+        conversationId: 's', now: 101)!;
+    expect(pending.label, '本句身份尚未确认，对话可以继续');
+  });
 }

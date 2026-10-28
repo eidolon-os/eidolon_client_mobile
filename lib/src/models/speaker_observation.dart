@@ -6,8 +6,10 @@ class SpeakerObservationView {
       required this.reason,
       required this.issuedAt,
       required this.expiresAt,
-      this.displayName});
+      this.displayName,
+      this.sequence});
   final String turnId, status, reason;
+  final int? sequence;
   final String? displayName;
   final double issuedAt, expiresAt;
 
@@ -18,6 +20,8 @@ class SpeakerObservationView {
         value['schema_version'] != 1) {
       return null;
     }
+    final sequence = value['sequence'];
+    if (sequence != null && (sequence is! int || sequence < 1)) return null;
     final status = value['status'];
     final turn = value['turn_id'];
     final issued = value['issued_at'];
@@ -45,6 +49,7 @@ class SpeakerObservationView {
     }
     return SpeakerObservationView(
         turnId: turn,
+        sequence: sequence as int?,
         status: status as String,
         reason: value['reason'] as String,
         issuedAt: issued.toDouble(),
@@ -57,6 +62,33 @@ class SpeakerObservationView {
         'unknown' => '未识别到已录入用户',
         'uncertain' =>
           reason == 'no_enrolled_voices' ? '尚未录入用户声音' : '本句暂时无法确认身份',
-        _ => '声音识别暂不可用，对话可以继续',
+        _ => reason == 'recognition_pending'
+            ? '本句身份尚未确认，对话可以继续'
+            : '声音识别暂不可用，对话可以继续',
       };
+}
+
+/// Session high-water mark survives display expiry, so old packets cannot
+/// restore a name after the label has disappeared. Legacy senders use time.
+class SpeakerObservationCursor {
+  String? _session;
+  int? _sequence;
+  double _issuedAt = -1;
+
+  bool accept(SpeakerObservationView value, {required String sessionId}) {
+    if (_session != sessionId) {
+      _session = sessionId;
+      _sequence = null;
+      _issuedAt = -1;
+    }
+    final sequence = value.sequence;
+    if (sequence != null) {
+      if (_sequence != null && sequence <= _sequence!) return false;
+      _sequence = sequence;
+    } else {
+      if (_sequence != null || value.issuedAt <= _issuedAt) return false;
+    }
+    if (value.issuedAt > _issuedAt) _issuedAt = value.issuedAt;
+    return true;
+  }
 }

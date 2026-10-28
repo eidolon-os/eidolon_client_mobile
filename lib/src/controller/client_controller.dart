@@ -83,6 +83,7 @@ class ClientController extends ChangeNotifier {
   int _memoryScopeSequence = 0;
   String? _memoryScopeSourceSession;
   SpeakerObservationView? speakerObservation;
+  final _speakerObservationCursor = SpeakerObservationCursor();
   Timer? _speakerExpiryTimer;
   Timer? _confirmationTimer;
   Timer? _expiryTimer;
@@ -805,7 +806,8 @@ class ClientController extends ChangeNotifier {
             conversationId: _session.conversationId,
             now: DateTime.now().millisecondsSinceEpoch / 1000);
         if (view == null ||
-            (speakerObservation?.issuedAt ?? 0) >= view.issuedAt) {
+            !_speakerObservationCursor.accept(view,
+                sessionId: _session.conversationId!)) {
           return;
         }
         speakerObservation = view;
