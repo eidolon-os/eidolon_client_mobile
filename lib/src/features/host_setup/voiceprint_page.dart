@@ -122,6 +122,9 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
                           children: [
                             Text(profile.displayName,
                                 style: Theme.of(context).textTheme.titleMedium),
+                            Text(profile.origin == 'observation'
+                                ? '来源：对话观察'
+                                : '来源：主动录入'),
                             Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
@@ -140,7 +143,10 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
                                                 ),
                                               ),
                                       icon: const Icon(Icons.play_arrow),
-                                      label: const Text('回放录入声音'),
+                                      label: Text(
+                                          profile.origin == 'observation'
+                                              ? '回放证据声音'
+                                              : '回放录入声音'),
                                     )
                                   else
                                     const Padding(

@@ -5351,17 +5351,21 @@ class SpeakerExtractionReadiness {
 class SpeakerProfileView {
   const SpeakerProfileView({
     required this.displayName,
-    required this.enrollmentId,
+    this.enrollmentId,
+    this.origin,
     required this.personId,
     required this.profileId,
     this.recordingAvailable,
     required this.revision,
+    this.sourceObservationId,
     this.validationState,
   });
 
   final String displayName;
 
-  final String enrollmentId;
+  final String? enrollmentId;
+
+  final String? origin;
 
   final String personId;
 
@@ -5371,16 +5375,20 @@ class SpeakerProfileView {
 
   final int revision;
 
+  final String? sourceObservationId;
+
   final String? validationState;
 
   factory SpeakerProfileView.fromJson(Map<String, dynamic> value) {
     return SpeakerProfileView(
       displayName: value['display_name'] as String,
-      enrollmentId: value['enrollment_id'] as String,
+      enrollmentId: value['enrollment_id'] as String?,
+      origin: value['origin'] as String?,
       personId: value['person_id'] as String,
       profileId: value['profile_id'] as String,
       recordingAvailable: value['recording_available'] as bool?,
       revision: value['revision'] as int,
+      sourceObservationId: value['source_observation_id'] as String?,
       validationState: value['validation_state'] as String?,
     );
   }
@@ -5388,11 +5396,14 @@ class SpeakerProfileView {
   Map<String, dynamic> toJson() {
     return {
       'display_name': displayName,
-      'enrollment_id': enrollmentId,
+      if (enrollmentId != null) 'enrollment_id': enrollmentId,
+      if (origin != null) 'origin': origin,
       'person_id': personId,
       'profile_id': profileId,
       if (recordingAvailable != null) 'recording_available': recordingAvailable,
       'revision': revision,
+      if (sourceObservationId != null)
+        'source_observation_id': sourceObservationId,
       if (validationState != null) 'validation_state': validationState,
     };
   }

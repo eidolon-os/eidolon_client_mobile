@@ -3,6 +3,31 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/voiceprint_page.dart';
 
 void main() {
+  testWidgets('observation profile is shown without a fabricated enrollment',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: VoiceprintPage(
+      personId: 'p',
+      personName: '匿名',
+      call: ({method = 'GET', suffix = '', body}) async => {
+        'profiles': [
+          {
+            'profile_id': 'v',
+            'person_id': 'p',
+            'display_name': '匿名',
+            'revision': 1,
+            'origin': 'observation',
+            'source_observation_id': 'o',
+            'recording_available': true,
+          }
+        ]
+      },
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('来源：对话观察'), findsOneWidget);
+    expect(find.text('回放证据声音'), findsOneWidget);
+    expect(find.text('回放录入声音'), findsNothing);
+  });
   testWidgets('one saved voice offers replacement rather than another profile',
       (tester) async {
     await tester.pumpWidget(MaterialApp(
