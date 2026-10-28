@@ -42,9 +42,7 @@ void main() {
     final signing = golden['document'] as Map;
     final ref = Map<String, Object?>.from(signing['device_ref'] as Map);
     final manifest = <String, Object?>{
-      'manifest_id': 'vector',
-      'revision': 2,
-      'digest': signing['manifest_digest'],
+      ...Map<String, Object?>.from(signing['manifest_ref'] as Map),
       'document': <String, Object?>{}
     };
     final client = DeviceControlClient(
@@ -55,6 +53,7 @@ void main() {
           expect(body['device_signature'], golden['signature']);
           expect(body['public_key_spki'], golden['public_key_spki']);
           expect(body['manifest'], manifest);
+          expect(body['contract_version'], '1.1');
           return http.Response(
               jsonEncode({
                 'contract': 'eidolon.device-foundation.manifest-acceptance',

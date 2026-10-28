@@ -1,5 +1,5 @@
 {
-  "sdk_commit": "79facac79366d19173a7f621b3a1fc4ff458fc1a",
+  "sdk_commit": "ff8a730c93ab1ad0ff7bdb8c9c5e99f0330eae28",
   "files": [
     {
       "source": "contracts/device_foundation/v1/generated/dart/device_foundation_v1.dart",
@@ -99,7 +99,7 @@
     {
       "source": "contracts/device_foundation/v1/golden/device-control-manifest-assertion-proof.json",
       "target": "test/fixtures/device_foundation/device-control-manifest-assertion-proof.json",
-      "sha256": "29e31d28b3ccbe5cbc077f7804f0c24cc62ff30fd30f56774e2baebfe1e54fd5"
+      "sha256": "6ce206c815a3c2a32d45fb708ec4d5aaa542dcd6b32650a3ef92a6ea26b7ae53"
     }
   ]
 }

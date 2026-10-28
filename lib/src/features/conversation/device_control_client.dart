@@ -442,7 +442,7 @@ class DeviceControlClient {
   }
 
   /// Standard Device Foundation assertion; the device signs its own document
-  /// digest. This neither approves a Claim nor assigns a Companion.
+  /// reference (id, revision and digest). This neither approves a Claim nor assigns a Companion.
   Future<void> assertManifest({
     required Map<String, Object?> deviceRef,
     required Map<String, Object?> manifest,
@@ -453,7 +453,10 @@ class DeviceControlClient {
     final nonce = _nonce();
     final signature = await sign(canonicalJsonEncode({
       'device_ref': deviceRef,
-      'manifest_digest': manifest['digest'],
+      'manifest_ref': {
+        for (final key in ['manifest_id', 'revision', 'digest'])
+          key: manifest[key],
+      },
       'nonce': nonce,
       'operation_type': operation,
     }));
@@ -466,7 +469,7 @@ class DeviceControlClient {
           },
           body: jsonEncode({
             'contract': 'eidolon.device-foundation.manifest-assertion',
-            'contract_version': '1.0',
+            'contract_version': '1.1',
             'device_ref': deviceRef,
             'manifest': manifest,
             'nonce': nonce,
