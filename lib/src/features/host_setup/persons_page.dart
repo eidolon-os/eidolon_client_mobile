@@ -7,6 +7,10 @@ import 'person_face_page.dart';
 import '../../theme/eidolon_theme.dart';
 import '../../theme/neon_components.dart';
 
+String personManagementName(PersonView p) => p.identityState == 'missing'
+    ? '保留记忆 · ${p.personId.length > 6 ? p.personId.substring(0, 6) : p.personId}'
+    : p.displayName;
+
 /// OS people use the same authenticated management session as other Host data.
 class PersonsPage extends StatefulWidget {
   const PersonsPage(
@@ -204,15 +208,11 @@ class _PersonsPageState extends State<PersonsPage> {
     }
   }
 
-  String _archiveName(PersonView p) => p.identityState == 'missing'
-      ? '保留记忆 · ${p.personId.length > 6 ? p.personId.substring(0, 6) : p.personId}'
-      : p.displayName;
-
   Future<void> _archiveDetails(PersonView p) async {
     await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
-              title: Text(_archiveName(p)),
+              title: Text(personManagementName(p)),
               content: SingleChildScrollView(
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,7 +252,7 @@ class _PersonsPageState extends State<PersonsPage> {
         child:
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       ListTile(
-          title: Text(_archiveName(p)),
+          title: Text(personManagementName(p)),
           subtitle: Text(pending
               ? '永久删除未完成 · 请重试'
               : p.identityState == 'missing'
@@ -287,7 +287,7 @@ class _PersonsPageState extends State<PersonsPage> {
     final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-                title: Text('永久删除${_archiveName(p)}？'),
+                title: Text('永久删除${personManagementName(p)}？'),
                 content: const Text(
                     '将永久移除这份人物档案、声纹、人脸资料、个人记忆及待处理记忆任务。完成后不再显示，无法恢复。其他用户和默认记忆不受影响；已有历史对话和独立备份不会随之删除。'),
                 actions: [

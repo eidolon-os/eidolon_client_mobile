@@ -722,7 +722,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                 MaterialPageRoute(
                     builder: (_) => _memoryLibrary(
                         personId: person.personId,
-                        personName: person.displayName))),
+                        personName: personManagementName(person)))),
             call: _controller.personRequest,
             voiceprints: _controller.voiceprintRequest,
           ),
