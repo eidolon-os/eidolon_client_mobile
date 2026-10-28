@@ -48,6 +48,7 @@ void main() {
     for (var i = 0; i < 3; i++) {
       final toggle = find.byKey(const ValueKey('memory-p'));
       await tester.ensureVisible(toggle);
+      await tester.pumpAndSettle();
       await tester.tap(toggle);
       await tester.pumpAndSettle();
       expect(find.byType(AlertDialog), findsNothing);
@@ -98,9 +99,10 @@ void main() {
       },
     )));
     await tester.pumpAndSettle();
-    expect(find.text('已录入 1 份声音'), findsOneWidget);
+    expect(find.text('已录入'), findsOneWidget);
     final toggle = find.byKey(const ValueKey('memory-p'));
     await tester.ensureVisible(toggle);
+    await tester.pumpAndSettle();
     await tester.tap(toggle);
     await tester.pumpAndSettle();
     expect(tester.widget<Switch>(toggle).value, isTrue);
@@ -131,7 +133,7 @@ void main() {
           {'profiles': []},
     )));
     await tester.pumpAndSettle();
-    expect(find.text('状态暂不可用，请刷新'), findsOneWidget);
+    expect(find.text('状态暂不可用，请刷新'), findsWidgets);
     expect(
         tester.widget<Switch>(find.byKey(const ValueKey('memory-p'))).onChanged,
         isNull);

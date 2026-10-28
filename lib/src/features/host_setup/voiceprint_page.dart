@@ -110,7 +110,7 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
             TextButton(onPressed: _busy ? null : _load, child: const Text('重试'))
           ],
           if (p != null) ...[
-            Text('已保存的声音（${profiles.length}）',
+            Text(profiles.isEmpty ? '尚未录入声纹' : '当前声纹档案',
                 style: Theme.of(context).textTheme.titleLarge),
             const Text('声纹用于辅助识别用户，不限制对话。'),
             for (final profile in profiles)
@@ -160,14 +160,15 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
                                       child: const Text('删除声纹')),
                                 ]),
                           ]))),
-            FilledButton.icon(
-                onPressed: _busy ||
-                        !widget.personActive ||
-                        p.readiness?.extractionReady != true
-                    ? null
-                    : () => _enroll(),
-                icon: const Icon(Icons.mic),
-                label: const Text('录入新声音')),
+            if (profiles.isEmpty)
+              FilledButton.icon(
+                  onPressed: _busy ||
+                          !widget.personActive ||
+                          p.readiness?.extractionReady != true
+                      ? null
+                      : () => _enroll(),
+                  icon: const Icon(Icons.mic),
+                  label: const Text('录入声纹')),
             const SizedBox(height: 12),
             OutlinedButton.icon(
                 onPressed: _busy ||

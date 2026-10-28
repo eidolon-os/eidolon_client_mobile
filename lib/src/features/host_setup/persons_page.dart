@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../generated/management_v1.dart';
 import '../../management/management_client.dart';
 import 'voiceprint_page.dart';
+import 'person_face_page.dart';
 import '../../theme/eidolon_theme.dart';
 import '../../theme/neon_components.dart';
 
@@ -20,6 +21,7 @@ class _PersonsPageState extends State<PersonsPage> {
   bool _busy = false;
   Map<String, Map<String, dynamic>> _memoryStates = {};
   Map<String, int>? _voiceCounts;
+  Map<String, bool> _faceStates = {};
   String? _error;
   PersonCreate? _pendingCreate;
   @override
@@ -49,8 +51,21 @@ class _PersonsPageState extends State<PersonsPage> {
     final result = PersonCollection.fromJson(await widget.call());
     final people = result.persons ?? [];
     final memory = <String, Map<String, dynamic>>{};
+    final faces = <String, bool>{};
     Map<String, int>? voices;
     await Future.wait([
+      for (final person in people)
+        () async {
+          try {
+            final state = await widget.call(
+                suffix:
+                    '/${Uri.encodeComponent(person.personId)}/face-profile');
+            if (state['has_image'] is bool)
+              faces[person.personId] = state['has_image'] as bool;
+          } catch (_) {
+            /* Show unknown; photo failures do not hide the people. */
+          }
+        }(),
       for (final person in people)
         () async {
           try {
@@ -82,6 +97,7 @@ class _PersonsPageState extends State<PersonsPage> {
         _people = people;
         _memoryStates = memory;
         _voiceCounts = voices;
+        _faceStates = faces;
       });
   }
 
@@ -189,7 +205,7 @@ class _PersonsPageState extends State<PersonsPage> {
         context: context,
         builder: (context) => AlertDialog(
                 title: Text('删除“${p.displayName}”？'),
-                content: const Text('删除用户资料、该用户的声纹和录入声音。历史对话和记忆不会随之删除。'),
+                content: const Text('删除用户资料、声纹、录入声音和人脸照片。历史对话和记忆不会随之删除。'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context, false),
@@ -232,9 +248,7 @@ class _PersonsPageState extends State<PersonsPage> {
     if (_voiceCounts == null) return '状态暂不可用，请刷新';
     final count = _voiceCounts![person.personId] ?? 0;
     if (count == 0) return '未录入';
-    return person.status == 'active'
-        ? '已录入 $count 份声音'
-        : '已录入 $count 份声音 · 用户已停用';
+    return person.status == 'active' ? '已录入' : '已录入 · 用户已停用';
   }
 
   String _memoryStatus(PersonView person) {
@@ -257,6 +271,17 @@ class _PersonsPageState extends State<PersonsPage> {
         call: widget.voiceprints,
       ),
     ));
+    if (mounted) await _refresh();
+  }
+
+  Future<void> _openFace(PersonView person) async {
+    final path = '/${Uri.encodeComponent(person.personId)}/face-profile';
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+        builder: (_) => PersonFacePage(
+            name: person.displayName,
+            active: person.status == 'active',
+            call: ({method = 'GET', suffix = '', body}) => widget.call(
+                method: method, suffix: '$path$suffix', body: body))));
     if (mounted) await _refresh();
   }
 
@@ -324,6 +349,19 @@ class _PersonsPageState extends State<PersonsPage> {
               subtitle: Text(_voiceStatus(person)),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: _busy ? null : () => _openVoiceprints(person),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.face_outlined, color: Neon.cyan),
+              title: const Text('人脸档案'),
+              subtitle: Text(!_faceStates.containsKey(person.personId)
+                  ? '状态暂不可用，请刷新'
+                  : _faceStates[person.personId]!
+                      ? '照片已保存 · 识别尚未启用'
+                      : '未添加照片 · 识别尚未启用'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: _busy ? null : () => _openFace(person),
             ),
             const Divider(height: 1),
             ListTile(

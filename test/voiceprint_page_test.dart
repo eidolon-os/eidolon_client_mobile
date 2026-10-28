@@ -3,6 +3,29 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/voiceprint_page.dart';
 
 void main() {
+  testWidgets('one saved voice offers replacement rather than another profile',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: VoiceprintPage(
+            personId: 'p',
+            personName: '甲',
+            call: ({method = 'GET', suffix = '', body}) async => {
+                  'profiles': [
+                    {
+                      'profile_id': 'v',
+                      'person_id': 'p',
+                      'display_name': '甲',
+                      'enrollment_id': 'e',
+                      'revision': 1
+                    }
+                  ]
+                })));
+    await tester.pumpAndSettle();
+    expect(find.text('当前声纹档案'), findsOneWidget);
+    expect(find.text('重新录入'), findsOneWidget);
+    expect(find.text('录入声纹'), findsNothing);
+    expect(find.text('录入新声音'), findsNothing);
+  });
   testWidgets('saved policy is not misrepresented as effective admission',
       (tester) async {
     final calls = <String>[];
