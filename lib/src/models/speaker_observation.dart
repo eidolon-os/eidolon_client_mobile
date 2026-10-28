@@ -20,6 +20,15 @@ class SpeakerObservationView {
         value['schema_version'] != 1) {
       return null;
     }
+    // A visible-person result must never occupy the speaker label.
+    if ((value['subject_role'] ?? 'speaker') != 'speaker') return null;
+    final modalities = value['modalities'];
+    if (modalities != null &&
+        (modalities is! List ||
+            modalities.length != 1 ||
+            modalities.first != 'voice')) {
+      return null;
+    }
     final sequence = value['sequence'];
     if (sequence != null && (sequence is! int || sequence < 1)) return null;
     final status = value['status'];

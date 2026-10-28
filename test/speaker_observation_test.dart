@@ -75,4 +75,27 @@ void main() {
         conversationId: 's', now: 101)!;
     expect(pending.label, '本句身份尚未确认，对话可以继续');
   });
+  test(
+      'visible people and unsupported associations cannot become speaker labels',
+      () {
+    for (final fields in [
+      {
+        'subject_role': 'visible_person',
+        'modalities': ['face']
+      },
+      {
+        'subject_role': 'speaker',
+        'modalities': ['face']
+      },
+      {
+        'subject_role': 'speaker',
+        'modalities': ['voice', 'face']
+      },
+    ]) {
+      expect(
+          SpeakerObservationView.parse({...packet, ...fields},
+              conversationId: 's', now: 101),
+          isNull);
+    }
+  });
 }
