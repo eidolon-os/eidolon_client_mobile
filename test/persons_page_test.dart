@@ -171,7 +171,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('停用'));
     await tester.pumpAndSettle();
-    expect(find.text('已停用 · 不参与辅助识别'), findsOneWidget);
+    expect(find.textContaining('已停用 · 不参与辅助识别'), findsOneWidget);
     expect(requests, contains('PUT /person'));
     await tester.tap(find.text('声纹管理'));
     await tester.pumpAndSettle();

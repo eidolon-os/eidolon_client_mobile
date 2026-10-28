@@ -129,6 +129,8 @@ class ManagementV1 {
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/memory-state';
   static String personsByPersonIdPermanentDeletePath(String personId) =>
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/permanent-delete';
+  static String personsByPersonIdRecognitionRetirePath(String personId) =>
+      '/api/management/v1/persons/${Uri.encodeComponent(personId)}/recognition/retire';
   static String personsByPersonIdRestorePath(String personId) =>
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/restore';
   static const String roleGroupsClosePath =
@@ -3804,11 +3806,17 @@ class PersonCollection {
 class PersonCreate {
   const PersonCreate({
     required this.displayName,
+    this.isNamed,
+    this.maturity,
     required this.personId,
     this.profile,
   });
 
   final String displayName;
+
+  final bool? isNamed;
+
+  final String? maturity;
 
   final String personId;
 
@@ -3817,6 +3825,8 @@ class PersonCreate {
   factory PersonCreate.fromJson(Map<String, dynamic> value) {
     return PersonCreate(
       displayName: value['display_name'] as String,
+      isNamed: value['is_named'] as bool?,
+      maturity: value['maturity'] as String?,
       personId: value['person_id'] as String,
       profile: value['profile'] == null
           ? null
@@ -3827,6 +3837,8 @@ class PersonCreate {
   Map<String, dynamic> toJson() {
     return {
       'display_name': displayName,
+      if (isNamed != null) 'is_named': isNamed,
+      if (maturity != null) 'maturity': maturity,
       'person_id': personId,
       if (profile != null) 'profile': profile?.toJson(),
     };
@@ -4035,6 +4047,7 @@ class PersonUpdate {
   const PersonUpdate({
     required this.displayName,
     required this.expectedRevision,
+    this.isNamed,
     required this.profile,
     required this.status,
   });
@@ -4042,6 +4055,8 @@ class PersonUpdate {
   final String displayName;
 
   final int expectedRevision;
+
+  final bool? isNamed;
 
   final PersonProfile profile;
 
@@ -4051,6 +4066,7 @@ class PersonUpdate {
     return PersonUpdate(
       displayName: value['display_name'] as String,
       expectedRevision: value['expected_revision'] as int,
+      isNamed: value['is_named'] as bool?,
       profile: PersonProfile.fromJson(value['profile'] as Map<String, dynamic>),
       status: value['status'] as String,
     );
@@ -4060,6 +4076,7 @@ class PersonUpdate {
     return {
       'display_name': displayName,
       'expected_revision': expectedRevision,
+      if (isNamed != null) 'is_named': isNamed,
       'profile': profile.toJson(),
       'status': status,
     };
@@ -4072,9 +4089,12 @@ class PersonView {
     this.deletionState,
     required this.displayName,
     this.identityState,
+    this.isNamed,
+    this.maturity,
     required this.ownerId,
     required this.personId,
     required this.profile,
+    this.recognitionState,
     required this.revision,
     required this.status,
   });
@@ -4087,11 +4107,17 @@ class PersonView {
 
   final String? identityState;
 
+  final bool? isNamed;
+
+  final String? maturity;
+
   final String ownerId;
 
   final String personId;
 
   final PersonProfile profile;
+
+  final String? recognitionState;
 
   final int revision;
 
@@ -4103,9 +4129,12 @@ class PersonView {
       deletionState: value['deletion_state'] as String?,
       displayName: value['display_name'] as String,
       identityState: value['identity_state'] as String?,
+      isNamed: value['is_named'] as bool?,
+      maturity: value['maturity'] as String?,
       ownerId: value['owner_id'] as String,
       personId: value['person_id'] as String,
       profile: PersonProfile.fromJson(value['profile'] as Map<String, dynamic>),
+      recognitionState: value['recognition_state'] as String?,
       revision: value['revision'] as int,
       status: value['status'] as String,
     );
@@ -4117,9 +4146,12 @@ class PersonView {
       if (deletionState != null) 'deletion_state': deletionState,
       'display_name': displayName,
       if (identityState != null) 'identity_state': identityState,
+      if (isNamed != null) 'is_named': isNamed,
+      if (maturity != null) 'maturity': maturity,
       'owner_id': ownerId,
       'person_id': personId,
       'profile': profile.toJson(),
+      if (recognitionState != null) 'recognition_state': recognitionState,
       'revision': revision,
       'status': status,
     };

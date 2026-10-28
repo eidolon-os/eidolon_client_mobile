@@ -81,8 +81,9 @@ class _PersonsPageState extends State<PersonsPage> {
             final state = await widget.call(
                 suffix:
                     '/${Uri.encodeComponent(person.personId)}/face-profile');
-            if (state['has_image'] is bool)
+            if (state['has_image'] is bool) {
               faces[person.personId] = state['has_image'] as bool;
+            }
           } catch (_) {
             /* Show unknown; photo failures do not hide the people. */
           }
@@ -113,13 +114,14 @@ class _PersonsPageState extends State<PersonsPage> {
         }
       }(),
     ]);
-    if (mounted)
+    if (mounted) {
       setState(() {
         _people = people;
         _memoryStates = memory;
         _voiceCounts = voices;
         _faceStates = faces;
       });
+    }
   }
 
   Future<void> _refresh() => _act(_load);
@@ -132,50 +134,61 @@ class _PersonsPageState extends State<PersonsPage> {
 
   Future<void> _edit([PersonView? person]) async {
     var name = person?.displayName ?? '';
+    var isNamed = person?.isNamed ?? true;
     var preferred = person?.profile.preferredName ?? '';
     var language = person?.profile.language ?? '';
     var description = person?.profile.description ?? '';
     final save = await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
-                title: Text(person == null ? '添加用户' : '编辑用户资料'),
-                content: SingleChildScrollView(
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  TextFormField(
-                      initialValue: name,
-                      onChanged: (value) => name = value,
-                      maxLength: 128,
-                      decoration: const InputDecoration(labelText: '姓名或名称')),
-                  TextFormField(
-                      initialValue: preferred,
-                      onChanged: (value) => preferred = value,
-                      maxLength: 128,
-                      decoration: const InputDecoration(labelText: '希望怎样称呼你')),
-                  TextFormField(
-                      initialValue: language,
-                      onChanged: (value) => language = value,
-                      maxLength: 64,
-                      decoration: const InputDecoration(labelText: '语言')),
-                  TextFormField(
-                      initialValue: description,
-                      onChanged: (value) => description = value,
-                      maxLength: 2000,
-                      maxLines: 3,
-                      decoration:
-                          const InputDecoration(labelText: '个人描述（自行填写）')),
-                ])),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('取消')),
-                  FilledButton(
-                      onPressed: () {
-                        if (name.trim().isNotEmpty) {
-                          Navigator.pop(context, true);
-                        }
-                      },
-                      child: const Text('保存'))
-                ]));
+        builder: (context) => StatefulBuilder(
+            builder: (context, updateDialog) => AlertDialog(
+                    title: Text(person == null ? '添加用户' : '编辑用户资料'),
+                    content: SingleChildScrollView(
+                        child:
+                            Column(mainAxisSize: MainAxisSize.min, children: [
+                      TextFormField(
+                          initialValue: name,
+                          onChanged: (value) => name = value,
+                          maxLength: 128,
+                          decoration:
+                              const InputDecoration(labelText: '姓名或名称')),
+                      CheckboxListTile(
+                          title: const Text('已命名'),
+                          subtitle: const Text('命名不会改变身份确认阶段'),
+                          value: isNamed,
+                          onChanged: (value) =>
+                              updateDialog(() => isNamed = value ?? false)),
+                      TextFormField(
+                          initialValue: preferred,
+                          onChanged: (value) => preferred = value,
+                          maxLength: 128,
+                          decoration:
+                              const InputDecoration(labelText: '希望怎样称呼你')),
+                      TextFormField(
+                          initialValue: language,
+                          onChanged: (value) => language = value,
+                          maxLength: 64,
+                          decoration: const InputDecoration(labelText: '语言')),
+                      TextFormField(
+                          initialValue: description,
+                          onChanged: (value) => description = value,
+                          maxLength: 2000,
+                          maxLines: 3,
+                          decoration:
+                              const InputDecoration(labelText: '个人描述（自行填写）')),
+                    ])),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('取消')),
+                      FilledButton(
+                          onPressed: () {
+                            if (name.trim().isNotEmpty) {
+                              Navigator.pop(context, true);
+                            }
+                          },
+                          child: const Text('保存'))
+                    ])));
     final displayName = name.trim();
     final profile = PersonProfile(
         preferredName: preferred.trim(),
@@ -190,7 +203,10 @@ class _PersonsPageState extends State<PersonsPage> {
               16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'))
           .join();
       _pendingCreate = PersonCreate(
-          personId: id, displayName: displayName, profile: profile);
+          personId: id,
+          displayName: displayName,
+          profile: profile,
+          isNamed: isNamed);
       await _savePending();
     } else {
       await _act(() async {
@@ -199,6 +215,7 @@ class _PersonsPageState extends State<PersonsPage> {
             suffix: '/${Uri.encodeComponent(person.personId)}',
             body: PersonUpdate(
                     displayName: displayName,
+                    isNamed: isNamed,
                     expectedRevision: person.revision,
                     profile: profile,
                     status: person.status)
@@ -324,6 +341,35 @@ class _PersonsPageState extends State<PersonsPage> {
         await _load();
       });
 
+  Future<void> _retire(PersonView p) async {
+    final yes = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+              title: const Text('退出自动匹配？'),
+              content:
+                  const Text('停止自动匹配这个候选。人物资料、声纹、录音和已有数据保留；改名或启用用户不会自动恢复匹配。'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('取消')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('退出匹配'))
+              ],
+            ));
+    if (yes != true || !mounted) return;
+    await _act(() async {
+      try {
+        await widget.call(
+            method: 'POST',
+            suffix:
+                '/${Uri.encodeComponent(p.personId)}/recognition/retire?expected_revision=${p.revision}');
+      } finally {
+        await _load();
+      }
+    });
+  }
+
   Future<void> _archive(PersonView p) async {
     final yes = await showDialog<bool>(
         context: context,
@@ -370,6 +416,7 @@ class _PersonsPageState extends State<PersonsPage> {
       });
 
   String _voiceStatus(PersonView person) {
+    if (person.recognitionState == 'retained') return '已退出自动匹配 · 识别资料保留';
     if (_voiceCounts == null) return '状态暂不可用，请刷新';
     final count = _voiceCounts![person.personId] ?? 0;
     if (count == 0) return '未录入';
@@ -377,6 +424,7 @@ class _PersonsPageState extends State<PersonsPage> {
   }
 
   String _memoryStatus(PersonView person) {
+    if (person.maturity == 'candidate') return '候选身份 · 暂不开放个人记忆召回';
     final state = _memoryStates[person.personId]?['state'];
     if (state == null) return '状态暂不可用，请刷新';
     if (person.status != 'active') return '用户已停用 · 记忆不可用';
@@ -431,7 +479,7 @@ class _PersonsPageState extends State<PersonsPage> {
                               color: Neon.ink)),
                       const SizedBox(height: Neon.s1),
                       Text(
-                        person.status == 'active' ? '使用中' : '已停用 · 不参与辅助识别',
+                        '${person.maturity == 'candidate' ? '候选' : '正式'} · ${person.isNamed == false ? '匿名' : '已命名'} · ${person.recognitionState == 'retained' ? '已退出匹配池' : person.status == 'active' ? '使用中' : '已停用 · 不参与辅助识别'}',
                         style: const TextStyle(
                             fontSize: 12.5, height: 1.5, color: Neon.inkDim),
                       ),
@@ -443,9 +491,14 @@ class _PersonsPageState extends State<PersonsPage> {
                   enabled: !_busy,
                   onSelected: (action) {
                     if (action == 'status') _status(person);
+                    if (action == 'retire') _retire(person);
                     if (action == 'archive') _archive(person);
                   },
                   itemBuilder: (_) => [
+                    if (person.maturity == 'candidate' &&
+                        person.recognitionState != 'retained')
+                      const PopupMenuItem(
+                          value: 'retire', child: Text('退出匹配池（保留数据）')),
                     PopupMenuItem(
                         value: 'status',
                         child: Text(person.status == 'active' ? '停用' : '启用')),
@@ -498,6 +551,7 @@ class _PersonsPageState extends State<PersonsPage> {
                 key: ValueKey('memory-${person.personId}'),
                 value: _memoryStates[person.personId]?['state'] == 'active',
                 onChanged: _busy ||
+                        person.maturity == 'candidate' ||
                         person.status != 'active' ||
                         !_memoryStates.containsKey(person.personId)
                     ? null
