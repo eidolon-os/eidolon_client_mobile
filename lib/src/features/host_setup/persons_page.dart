@@ -64,7 +64,7 @@ class _PersonsPageState extends State<PersonsPage> {
               [];
       _archiveError = null;
     } catch (_) {
-      _archiveError = '已删除用户暂时无法读取';
+      _archiveError = '归档记录暂时无法读取';
     }
 
     final memory = <String, Map<String, dynamic>>{};
@@ -204,20 +204,99 @@ class _PersonsPageState extends State<PersonsPage> {
     }
   }
 
-  Future<void> _eraseMemory(PersonView p) async {
+  String _archiveName(PersonView p) => p.identityState == 'missing'
+      ? '保留记忆 · ${p.personId.length > 6 ? p.personId.substring(0, 6) : p.personId}'
+      : p.displayName;
+
+  Future<void> _archiveDetails(PersonView p) async {
+    await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+              title: Text(_archiveName(p)),
+              content: SingleChildScrollView(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                    if (p.identityState == 'missing')
+                      const Text('原姓名和人物资料已被旧版本删除，不能据此确认身份。这里保留的是该身份原有的私人记忆。')
+                    else ...[
+                      Text(
+                          '称呼：${(p.profile.preferredName ?? "").isEmpty ? '未填写' : p.profile.preferredName}'),
+                      Text(
+                          '语言：${(p.profile.language ?? "").isEmpty ? '未填写' : p.profile.language}'),
+                      Text(
+                          '人物说明：${(p.profile.description ?? "").isEmpty ? '未填写' : p.profile.description}'),
+                      Text(
+                          '偏好：${(p.profile.preferences ?? []).isEmpty ? '未填写' : (p.profile.preferences ?? []).join('、')}'),
+                    ],
+                    Text(
+                        '归档时间：${p.archivedAt == null ? '旧记录未保存' : DateTime.tryParse(p.archivedAt!)?.toLocal().toString() ?? '未知'}'),
+                    Text(p.deletionState == 'pending'
+                        ? '永久删除尚未完成，人物和记忆访问保持关闭。请返回列表重试删除。'
+                        : '个人记忆已停用。可通过“查看记忆”浏览概况、内容及导出。'),
+                    if (p.identityState != 'missing')
+                      const Text('归档时已移除声纹、录音和人脸资料。恢复不会自动启用用户或个人记忆。'),
+                  ])),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('关闭'))
+              ],
+            ));
+  }
+
+  Widget _archiveCard(PersonView p) {
+    final pending = p.deletionState == 'pending';
+    return Card(
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      ListTile(
+          title: Text(_archiveName(p)),
+          subtitle: Text(pending
+              ? '永久删除未完成 · 请重试'
+              : p.identityState == 'missing'
+                  ? '身份资料缺失 · 点击查看说明'
+                  : '资料和记忆保留 · 点击查看详情'),
+          onTap: () => _archiveDetails(p)),
+      Wrap(alignment: WrapAlignment.end, children: [
+        if (widget.openMemory != null && !pending)
+          TextButton(
+              onPressed: _busy ? null : () => widget.openMemory!(p),
+              child: const Text('查看记忆')),
+        if (p.identityState != 'missing' && !pending)
+          TextButton(
+              onPressed: _busy
+                  ? null
+                  : () => _act(() async {
+                        await widget.call(
+                            method: 'POST',
+                            suffix:
+                                '/${Uri.encodeComponent(p.personId)}/restore?expected_revision=${p.revision}');
+                        await _load();
+                      }),
+              child: const Text('恢复归档')),
+        TextButton(
+            onPressed: _busy ? null : () => _permanentDelete(p),
+            child: Text(pending ? '重试永久删除' : '永久删除')),
+      ]),
+    ]));
+  }
+
+  Future<void> _permanentDelete(PersonView p) async {
     final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-                title: Text('清空${p.displayName}的个人记忆？'),
+                title: Text('永久删除${_archiveName(p)}？'),
                 content: const Text(
-                    '会永久清除该人物当前保存的个人记忆及待处理记忆任务。不会影响其他人物、默认记忆或历史对话，也不会删除以前的备份。此操作不能撤销。'),
+                    '将永久移除这份人物档案、声纹、人脸资料、个人记忆及待处理记忆任务。完成后不再显示，无法恢复。其他用户和默认记忆不受影响；已有历史对话和独立备份不会随之删除。'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context, false),
                       child: const Text('取消')),
                   FilledButton(
                       onPressed: () => Navigator.pop(context, true),
-                      child: const Text('清空个人记忆'))
+                      child: const Text('永久删除'))
                 ]));
     if (confirmed != true || !mounted) return;
     await _act(() async {
@@ -225,7 +304,7 @@ class _PersonsPageState extends State<PersonsPage> {
         await widget.call(
             method: 'POST',
             suffix:
-                '/${Uri.encodeComponent(p.personId)}/memory-purge?expected_revision=${p.revision}');
+                '/${Uri.encodeComponent(p.personId)}/permanent-delete?expected_revision=${p.revision}');
       } finally {
         await _load();
       }
@@ -245,27 +324,27 @@ class _PersonsPageState extends State<PersonsPage> {
         await _load();
       });
 
-  Future<void> _delete(PersonView p) async {
+  Future<void> _archive(PersonView p) async {
     final yes = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-                title: Text('删除“${p.displayName}”？'),
+                title: Text('归档“${p.displayName}”？'),
                 content: const Text(
-                    '删除用户资料、声纹、录入声音和人脸照片。历史对话和记忆保留，可在已删除用户中管理；恢复后仍保持停用，声纹需要重新录入。'),
+                    '将用户从正常列表移到归档，停止识别和个人记忆使用。姓名、资料和记忆保留；声纹、录入声音和人脸照片会移除。可以恢复归档，但恢复后仍停用，需重新录入识别档案。'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context, false),
                       child: const Text('取消')),
                   FilledButton(
                       onPressed: () => Navigator.pop(context, true),
-                      child: const Text('删除'))
+                      child: const Text('归档'))
                 ]));
     if (yes != true || !mounted) return;
     await _act(() async {
       await widget.call(
-          method: 'DELETE',
+          method: 'POST',
           suffix:
-              '/${Uri.encodeComponent(p.personId)}?expected_revision=${p.revision}');
+              '/${Uri.encodeComponent(p.personId)}/archive?expected_revision=${p.revision}');
       await _load();
     });
   }
@@ -364,7 +443,7 @@ class _PersonsPageState extends State<PersonsPage> {
                   enabled: !_busy,
                   onSelected: (action) {
                     if (action == 'status') _status(person);
-                    if (action == 'delete') _delete(person);
+                    if (action == 'archive') _archive(person);
                   },
                   itemBuilder: (_) => [
                     PopupMenuItem(
@@ -372,8 +451,8 @@ class _PersonsPageState extends State<PersonsPage> {
                         child: Text(person.status == 'active' ? '停用' : '启用')),
                     const PopupMenuDivider(),
                     const PopupMenuItem(
-                        value: 'delete',
-                        child: Text('删除用户', style: TextStyle(color: Neon.bad))),
+                        value: 'archive',
+                        child: Text('归档用户', style: TextStyle(color: Neon.bad))),
                   ],
                 ),
               ],
@@ -493,36 +572,24 @@ class _PersonsPageState extends State<PersonsPage> {
                     onTap: () => widget.openMemory!(person)),
             ],
             if (_archiveError != null) Text(_archiveError!),
-            if (_archived.isNotEmpty) const Text('已删除用户'),
-            for (final person in _archived)
-              Card(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                    ListTile(
-                      title: Text(person.displayName),
-                      subtitle: const Text('记忆保留 · 对话访问已停用'),
-                      onTap: widget.openMemory == null
-                          ? null
-                          : () => widget.openMemory!(person),
-                    ),
-                    Wrap(alignment: WrapAlignment.end, children: [
-                      TextButton(
-                          onPressed: _busy ? null : () => _eraseMemory(person),
-                          child: const Text('清空记忆')),
-                      TextButton(
-                          child: const Text('恢复用户'),
-                          onPressed: _busy
-                              ? null
-                              : () => _act(() async {
-                                    await widget.call(
-                                        method: 'POST',
-                                        suffix:
-                                            '/${Uri.encodeComponent(person.personId)}/restore?expected_revision=${person.revision}');
-                                    await _load();
-                                  }))
-                    ]),
-                  ])),
+            if (_archived.any((p) => p.identityState != 'missing'))
+              const SectionHeading(
+                  eyebrow: 'Archive',
+                  title: '已归档用户',
+                  icon: Icons.archive_outlined),
+            for (final person
+                in _archived.where((p) => p.identityState != 'missing'))
+              _archiveCard(person),
+            if (_archived.any((p) => p.identityState == 'missing')) ...[
+              const SectionHeading(
+                  eyebrow: 'Retained memory',
+                  title: '身份资料缺失的保留记忆',
+                  icon: Icons.help_outline),
+              const Text('旧版本删除了人物资料，只留下私人记忆。无法确认原用户身份；可查看内容或永久删除，不能直接恢复成用户。'),
+            ],
+            for (final person
+                in _archived.where((p) => p.identityState == 'missing'))
+              _archiveCard(person),
           ],
         ),
         bottomNavigationBar: SafeArea(

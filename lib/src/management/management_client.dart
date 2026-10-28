@@ -1654,7 +1654,7 @@ class ManagementClient {
           accessToken: accessToken,
           what: '管理用户',
           body: body,
-          requestTimeout: Uri.parse(suffix).path.endsWith('/memory-purge')
+          requestTimeout: Uri.parse(suffix).path.endsWith('/permanent-delete')
               ? const Duration(seconds: 90)
               : const Duration(seconds: 15));
 

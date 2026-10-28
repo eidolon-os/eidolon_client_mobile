@@ -112,12 +112,12 @@ class ManagementV1 {
       '/api/management/v1/persons/archived';
   static String personsByPersonIdPath(String personId) =>
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}';
+  static String personsByPersonIdArchivePath(String personId) =>
+      '/api/management/v1/persons/${Uri.encodeComponent(personId)}/archive';
   static String personsByPersonIdFaceProfilePath(String personId) =>
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/face-profile';
   static String personsByPersonIdFaceProfileImagePath(String personId) =>
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/face-profile/image';
-  static String personsByPersonIdMemoryPurgePath(String personId) =>
-      '/api/management/v1/persons/${Uri.encodeComponent(personId)}/memory-purge';
   static String personsByPersonIdMemoryRealmPath(String personId) =>
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/memory-realm';
   static String personsByPersonIdMemoryRealmByActionPath(
@@ -127,6 +127,8 @@ class ManagementV1 {
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/memory-realm/${Uri.encodeComponent(action)}';
   static String personsByPersonIdMemoryStatePath(String personId) =>
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/memory-state';
+  static String personsByPersonIdPermanentDeletePath(String personId) =>
+      '/api/management/v1/persons/${Uri.encodeComponent(personId)}/permanent-delete';
   static String personsByPersonIdRestorePath(String personId) =>
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/restore';
   static const String roleGroupsClosePath =
@@ -3760,6 +3762,20 @@ class OwnerNameView {
   }
 }
 
+class PersonArchival {
+  const PersonArchival({this.archived});
+
+  final bool? archived;
+
+  factory PersonArchival.fromJson(Map<String, dynamic> value) {
+    return PersonArchival(archived: value['archived'] as bool?);
+  }
+
+  Map<String, dynamic> toJson() {
+    return {if (archived != null) 'archived': archived};
+  }
+}
+
 class PersonCollection {
   const PersonCollection({this.persons});
 
@@ -3814,20 +3830,6 @@ class PersonCreate {
       'person_id': personId,
       if (profile != null) 'profile': profile?.toJson(),
     };
-  }
-}
-
-class PersonDeletion {
-  const PersonDeletion({this.deleted});
-
-  final bool? deleted;
-
-  factory PersonDeletion.fromJson(Map<String, dynamic> value) {
-    return PersonDeletion(deleted: value['deleted'] as bool?);
-  }
-
-  Map<String, dynamic> toJson() {
-    return {if (deleted != null) 'deleted': deleted};
   }
 }
 
@@ -4066,7 +4068,10 @@ class PersonUpdate {
 
 class PersonView {
   const PersonView({
+    this.archivedAt,
+    this.deletionState,
     required this.displayName,
+    this.identityState,
     required this.ownerId,
     required this.personId,
     required this.profile,
@@ -4074,7 +4079,13 @@ class PersonView {
     required this.status,
   });
 
+  final String? archivedAt;
+
+  final String? deletionState;
+
   final String displayName;
+
+  final String? identityState;
 
   final String ownerId;
 
@@ -4088,7 +4099,10 @@ class PersonView {
 
   factory PersonView.fromJson(Map<String, dynamic> value) {
     return PersonView(
+      archivedAt: value['archived_at'] as String?,
+      deletionState: value['deletion_state'] as String?,
       displayName: value['display_name'] as String,
+      identityState: value['identity_state'] as String?,
       ownerId: value['owner_id'] as String,
       personId: value['person_id'] as String,
       profile: PersonProfile.fromJson(value['profile'] as Map<String, dynamic>),
@@ -4099,7 +4113,10 @@ class PersonView {
 
   Map<String, dynamic> toJson() {
     return {
+      if (archivedAt != null) 'archived_at': archivedAt,
+      if (deletionState != null) 'deletion_state': deletionState,
       'display_name': displayName,
+      if (identityState != null) 'identity_state': identityState,
       'owner_id': ownerId,
       'person_id': personId,
       'profile': profile.toJson(),
