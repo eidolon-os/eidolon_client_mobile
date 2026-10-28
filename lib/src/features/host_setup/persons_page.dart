@@ -395,6 +395,76 @@ class _PersonsPageState extends State<PersonsPage> {
     });
   }
 
+  Future<void> _memoryDefaults() async {
+    PersonMemoryDefaultsState? loaded;
+    await _act(() async {
+      loaded = PersonMemoryDefaultsState.fromJson(
+          await widget.call(suffix: '/memory-policy'));
+    });
+    if (!mounted || loaded == null) return;
+    final state = loaded!;
+    var save = state.policy.candidate?.saveAllowed ?? false;
+    var recall = state.policy.candidate?.sessionRecallAllowed ?? false;
+    var prepare = state.policy.prepareOnPromotion ?? false;
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: const Text('自动记忆策略'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('候选许可仅影响之后新建的候选，不更改已有用户。要停止已有用户的记忆，请单独暂停。'),
+              SwitchListTile(
+                key: const ValueKey('defaults-save'),
+                title: const Text('新候选允许保存暂定内容'),
+                value: save,
+                onChanged: (value) => update(() => save = value),
+              ),
+              SwitchListTile(
+                key: const ValueKey('defaults-recall'),
+                title: const Text('新候选允许同会话读取'),
+                subtitle: const Text('每轮仍须再次确认是同一人，不开放跨会话读取'),
+                value: recall,
+                onChanged: (value) => update(() => recall = value),
+              ),
+              SwitchListTile(
+                key: const ValueKey('defaults-prepare'),
+                title: const Text('晋升后自动准备个人记忆'),
+                subtitle: const Text('适用于新策略下创建的候选；不会恢复人工暂停，也不会确认旧暂定内容'),
+                value: prepare,
+                onChanged: (value) => update(() => prepare = value),
+              ),
+              const Text('准备仍需后台完成。关闭自动准备只影响后续晋升，已启用的个人记忆不会因此关闭。'),
+            ]),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('保存策略')),
+          ],
+        ),
+      ),
+    );
+    if (accepted != true || !mounted) return;
+    await _act(() async {
+      try {
+        await widget.call(
+            method: 'PUT',
+            suffix: '/memory-policy?expected_revision=${state.ownerRevision}',
+            body: PersonMemoryDefaults(
+              candidate: ProvisionalMemoryPolicy(
+                  saveAllowed: save, sessionRecallAllowed: recall),
+              prepareOnPromotion: prepare,
+            ).toJson());
+      } finally {
+        await _load();
+      }
+    });
+  }
+
   Future<void> _provisionalPolicy(PersonView person) async {
     final path =
         '/${Uri.encodeComponent(person.personId)}/provisional-memory/policy';
@@ -641,6 +711,11 @@ class _PersonsPageState extends State<PersonsPage> {
           title: const Text('用户管理'),
           actions: [
             IconButton(
+              onPressed: _busy ? null : _memoryDefaults,
+              tooltip: '自动记忆策略',
+              icon: const Icon(Icons.tune),
+            ),
+            IconButton(
               onPressed: _busy ? null : _refresh,
               tooltip: '刷新',
               icon: const Icon(Icons.refresh),
@@ -660,7 +735,8 @@ class _PersonsPageState extends State<PersonsPage> {
                     icon: Icons.people_outline,
                   ),
                   SizedBox(height: Neon.s3),
-                  Text('新用户默认开启个人记忆，可随时暂停。声纹确认身份后才使用该用户的记忆；未识别时仍可正常对话。',
+                  Text(
+                      '手动创建的用户默认开启个人记忆，可随时暂停。自动发现的候选使用自动记忆策略；每轮确认身份后才使用对应记忆，未识别时仍可正常对话。',
                       style: TextStyle(
                           fontSize: 14, height: 1.6, color: Neon.inkDim)),
                 ],

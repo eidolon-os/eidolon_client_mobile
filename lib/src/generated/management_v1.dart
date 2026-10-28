@@ -110,6 +110,8 @@ class ManagementV1 {
   static const String personsPath = '/api/management/v1/persons';
   static const String personsArchivedPath =
       '/api/management/v1/persons/archived';
+  static const String personsMemoryPolicyPath =
+      '/api/management/v1/persons/memory-policy';
   static String personsByPersonIdPath(String personId) =>
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}';
   static String personsByPersonIdArchivePath(String personId) =>
@@ -3963,6 +3965,65 @@ class PersonFaceUpdate {
 
   Map<String, dynamic> toJson() {
     return {'expected_revision': expectedRevision, 'image_base64': imageBase64};
+  }
+}
+
+class PersonMemoryDefaults {
+  const PersonMemoryDefaults({this.candidate, this.prepareOnPromotion});
+
+  final ProvisionalMemoryPolicy? candidate;
+
+  final bool? prepareOnPromotion;
+
+  factory PersonMemoryDefaults.fromJson(Map<String, dynamic> value) {
+    return PersonMemoryDefaults(
+      candidate: value['candidate'] == null
+          ? null
+          : ProvisionalMemoryPolicy.fromJson(
+              value['candidate'] as Map<String, dynamic>,
+            ),
+      prepareOnPromotion: value['prepare_on_promotion'] as bool?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (candidate != null) 'candidate': candidate?.toJson(),
+      if (prepareOnPromotion != null)
+        'prepare_on_promotion': prepareOnPromotion,
+    };
+  }
+}
+
+class PersonMemoryDefaultsState {
+  const PersonMemoryDefaultsState({
+    required this.ownerId,
+    required this.ownerRevision,
+    required this.policy,
+  });
+
+  final String ownerId;
+
+  final int ownerRevision;
+
+  final PersonMemoryDefaults policy;
+
+  factory PersonMemoryDefaultsState.fromJson(Map<String, dynamic> value) {
+    return PersonMemoryDefaultsState(
+      ownerId: value['owner_id'] as String,
+      ownerRevision: value['owner_revision'] as int,
+      policy: PersonMemoryDefaults.fromJson(
+        value['policy'] as Map<String, dynamic>,
+      ),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'owner_id': ownerId,
+      'owner_revision': ownerRevision,
+      'policy': policy.toJson(),
+    };
   }
 }
 
