@@ -43,16 +43,16 @@ class CockpitLane<T> {
     this.observedAt,
     this.latencyMs,
     this.truncated = false,
-  }) : state = LaneState.ok,
-       detail = '';
+  })  : state = LaneState.ok,
+        detail = '';
 
   /// A lane that could not be read. [value] is the caller's chosen empty — an
   /// empty list, or null — and [detail] is why.
   const CockpitLane.missing(this.value, this.detail)
-    : state = LaneState.unavailable,
-      observedAt = null,
-      latencyMs = null,
-      truncated = false;
+      : state = LaneState.unavailable,
+        observedAt = null,
+        latencyMs = null,
+        truncated = false;
 
   final LaneState state;
   final T value;
@@ -71,13 +71,13 @@ class CockpitLane<T> {
 }
 
 LaneState laneStateFromWire(Object? value) => switch (value) {
-  'ok' => LaneState.ok,
-  'degraded' => LaneState.degraded,
-  'unavailable' => LaneState.unavailable,
-  // An unknown state is not assumed healthy. The contract's whole point is
-  // that this screen never guesses in the optimistic direction.
-  _ => LaneState.unavailable,
-};
+      'ok' => LaneState.ok,
+      'degraded' => LaneState.degraded,
+      'unavailable' => LaneState.unavailable,
+      // An unknown state is not assumed healthy. The contract's whole point is
+      // that this screen never guesses in the optimistic direction.
+      _ => LaneState.unavailable,
+    };
 
 /// The tones every runtime fact collapses to. Anything richer invites a screen
 /// where "quiet" and "could not tell" look the same.
@@ -86,38 +86,38 @@ enum CockpitTone { ok, live, warn, bad, idle, off }
 enum StreamState { connecting, live, degraded }
 
 String streamLabel(StreamState state) => switch (state) {
-  StreamState.connecting => 'SYNC',
-  StreamState.live => 'ONLINE',
-  StreamState.degraded => 'UNSTABLE',
-};
+      StreamState.connecting => 'SYNC',
+      StreamState.live => 'ONLINE',
+      StreamState.degraded => 'UNSTABLE',
+    };
 
 CockpitTone streamTone(StreamState state) => switch (state) {
-  StreamState.connecting => CockpitTone.idle,
-  StreamState.live => CockpitTone.ok,
-  StreamState.degraded => CockpitTone.bad,
-};
+      StreamState.connecting => CockpitTone.idle,
+      StreamState.live => CockpitTone.ok,
+      StreamState.degraded => CockpitTone.bad,
+    };
 
 /// Which of a companion's three asset moons a fact belongs to.
 enum MoonKind { body, mem, act }
 
 String moonLabel(MoonKind kind) => switch (kind) {
-  MoonKind.body => '身体',
-  MoonKind.mem => '记忆',
-  MoonKind.act => '活动',
-};
+      MoonKind.body => '身体',
+      MoonKind.mem => '记忆',
+      MoonKind.act => '活动',
+    };
 
 String moonGlyph(MoonKind kind) => switch (kind) {
-  MoonKind.body => '⬡',
-  MoonKind.mem => '◈',
-  MoonKind.act => '⚡',
-};
+      MoonKind.body => '⬡',
+      MoonKind.mem => '◈',
+      MoonKind.act => '⚡',
+    };
 
 /// One hue per asset kind, matching the console's moon accents.
 CockpitColorRole moonAccent(MoonKind kind) => switch (kind) {
-  MoonKind.body => CockpitColorRole.cyan,
-  MoonKind.mem => CockpitColorRole.yellow,
-  MoonKind.act => CockpitColorRole.magenta,
-};
+      MoonKind.body => CockpitColorRole.cyan,
+      MoonKind.mem => CockpitColorRole.yellow,
+      MoonKind.act => CockpitColorRole.magenta,
+    };
 
 enum CockpitColorRole { cyan, yellow, magenta }
 
@@ -440,6 +440,8 @@ class CockpitMemory {
   const CockpitMemory({
     this.realmsTotal = 0,
     this.activeRealmId = '',
+    this.defaultRealmId = '',
+    this.personalRealmIds = const [],
     this.audienceScope = '',
     this.dataReadable = false,
     this.materializationState = 'unavailable',
@@ -452,6 +454,8 @@ class CockpitMemory {
 
   final int realmsTotal;
   final String activeRealmId;
+  final String defaultRealmId;
+  final List<String> personalRealmIds;
   final String audienceScope;
   final bool dataReadable;
   final String materializationState;
@@ -545,16 +549,16 @@ class CockpitSnapshot {
   /// Lanes that could not be read at all, by name. Said out loud on screen
   /// rather than folded into a healthy-looking whole.
   List<String> get unreadableLanes => <String>[
-    if (!ownerLane.readable) '主人',
-    if (!companionsLane.readable) '伙伴',
-    if (!devicesLane.readable) '身体',
-    if (!activitiesLane.readable) '活动',
-    if (!turnsLane.readable) '对话轮次',
-    if (!jobsLane.readable) '后台任务',
-    if (!memoryLane.readable) '记忆',
-    if (!servicesLane.readable) '底座',
-    if (!eventsLane.readable) '事件',
-  ];
+        if (!ownerLane.readable) '主人',
+        if (!companionsLane.readable) '伙伴',
+        if (!devicesLane.readable) '身体',
+        if (!activitiesLane.readable) '活动',
+        if (!turnsLane.readable) '对话轮次',
+        if (!jobsLane.readable) '后台任务',
+        if (!memoryLane.readable) '记忆',
+        if (!servicesLane.readable) '底座',
+        if (!eventsLane.readable) '事件',
+      ];
 
   /// Bodies nobody has claimed yet. They belong to the frame, not to a planet.
   List<CockpitDevice> get unboundDevices => devices
@@ -677,28 +681,28 @@ CockpitTone statusTone(String? status) {
 }
 
 String activityKindLabel(String kind) => switch (kind) {
-  'voice_turn' => '对话',
-  'guard_event' => '守护',
-  'device_command' => '指令',
-  'device_event' => '设备',
-  'background_job' => '任务',
-  _ => '活动',
-};
+      'voice_turn' => '对话',
+      'guard_event' => '守护',
+      'device_command' => '指令',
+      'device_event' => '设备',
+      'background_job' => '任务',
+      _ => '活动',
+    };
 
 String activityStatusLabel(String status) => switch (status.toLowerCase()) {
-  'running' || 'active' => '进行中',
-  'pending' => '等待中',
-  'queued' => '排队中',
-  'generating' => '生成中',
-  'speaking' => '播报中',
-  'completed' || 'succeeded' || 'success' => '已完成',
-  'interrupted' => '已打断',
-  'rejected' || 'denied' => '已拒绝',
-  'timeout' => '已超时',
-  'failed' || 'error' => '失败',
-  'orphaned' => '已中断',
-  _ => status.isEmpty ? '未知' : status,
-};
+      'running' || 'active' => '进行中',
+      'pending' => '等待中',
+      'queued' => '排队中',
+      'generating' => '生成中',
+      'speaking' => '播报中',
+      'completed' || 'succeeded' || 'success' => '已完成',
+      'interrupted' => '已打断',
+      'rejected' || 'denied' => '已拒绝',
+      'timeout' => '已超时',
+      'failed' || 'error' => '失败',
+      'orphaned' => '已中断',
+      _ => status.isEmpty ? '未知' : status,
+    };
 
 // There is deliberately no `deviceTypeLabel` here any more.
 //
@@ -742,12 +746,12 @@ CockpitTone devicePresenceTone(CockpitDevice device) {
 /// to an Owner: on its way out, already put away, being destroyed. A generic
 /// status-to-tone mapping collapses all three into one idle grey.
 CockpitTone companionLifecycleTone(String state) => switch (state) {
-  lifecycleActive => CockpitTone.ok,
-  // In transition, and the Owner may still want to stop it.
-  lifecycleRetiring || lifecycleDeleting => CockpitTone.warn,
-  lifecycleArchived => CockpitTone.off,
-  _ => CockpitTone.idle,
-};
+      lifecycleActive => CockpitTone.ok,
+      // In transition, and the Owner may still want to stop it.
+      lifecycleRetiring || lifecycleDeleting => CockpitTone.warn,
+      lifecycleArchived => CockpitTone.off,
+      _ => CockpitTone.idle,
+    };
 
 String genomeStateLabel(String genomeId) => genomeId.isEmpty ? '未绑定' : '已绑定';
 
@@ -758,8 +762,8 @@ String genomeStateLabel(String genomeId) => genomeId.isEmpty ? '未绑定' : '�
 String memoryRealmStateLabel(String? realmId) => realmId == null
     ? '未知'
     : realmId.isEmpty
-    ? '未开通'
-    : '已配置';
+        ? '未开通'
+        : '已配置';
 
 String formatLatency(int? ms) {
   if (ms == null) return '—';

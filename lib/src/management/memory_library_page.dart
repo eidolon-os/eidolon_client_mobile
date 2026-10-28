@@ -15,6 +15,7 @@ class MemoryLibraryPage extends StatelessWidget {
   const MemoryLibraryPage({
     super.key,
     required this.library,
+    this.title = "默认记忆",
     this.onOpenRoom,
     this.onForget,
     this.onOpenToday,
@@ -28,6 +29,7 @@ class MemoryLibraryPage extends StatelessWidget {
     this.refreshError,
   });
 
+  final String title;
   final MemoryLibraryView library;
   final void Function(MemoryWingView wing, MemoryRoomView room)? onOpenRoom;
   final VoidCallback? onForget;
@@ -131,7 +133,7 @@ class MemoryLibraryPage extends StatelessWidget {
 
     return Scaffold(
       key: const Key('memory-library-page'),
-      appBar: AppBar(title: const Text('你的记忆')),
+      appBar: AppBar(title: Text(title)),
       body: onRefresh == null
           ? content
           : RefreshIndicator(
@@ -204,9 +206,7 @@ class _MemoryOverview extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         key: const Key('memory-library-scope'),
-                        name == null
-                            ? '你的每个伙伴记下的，都在这里'
-                            : '你们共享的，加上只告诉$name的',
+                        name == null ? '你的每个伙伴记下的，都在这里' : '你们共享的，加上只告诉$name的',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -230,7 +230,8 @@ class _MemoryOverview extends StatelessWidget {
                   child: DropdownButton<String?>(
                     key: const Key('memory-companion-selector'),
                     value: companions.any(
-                      (companion) => companion.companionId == selectedCompanionId,
+                      (companion) =>
+                          companion.companionId == selectedCompanionId,
                     )
                         ? selectedCompanionId
                         : null,

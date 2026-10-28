@@ -24,6 +24,7 @@ class MemoryLibraryScreen extends StatefulWidget {
   const MemoryLibraryScreen({
     super.key,
     required this.load,
+    this.title = "默认记忆",
     this.initialCompanionId,
     this.loadForCompanion,
     this.loadGraph,
@@ -37,6 +38,7 @@ class MemoryLibraryScreen extends StatefulWidget {
     this.searchRecollections,
   });
 
+  final String title;
   final Future<MemoryLibraryView> Function() load;
 
   /// The perspective named by the route that opened this screen.
@@ -59,7 +61,7 @@ class MemoryLibraryScreen extends StatefulWidget {
 
   final Future<ForgetProposalView> Function(String target)? previewForget;
   final Future<ForgetResultView> Function(String confirmationToken)?
-  confirmForget;
+      confirmForget;
   final Future<ForgetProgressView> Function(String requestId)? forgetProgress;
 
   /// Reads a window of recent entries. Null hides the way in rather than
@@ -82,7 +84,7 @@ class MemoryLibraryScreen extends StatefulWidget {
   /// own. Search belongs here as a way to explore the same library, even
   /// though the answer keeps its own focused screen.
   final Future<RecollectionsView> Function(String? companionId, String query)?
-  searchRecollections;
+      searchRecollections;
 
   @override
   State<MemoryLibraryScreen> createState() => _MemoryLibraryScreenState();
@@ -117,9 +119,8 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     try {
       // Asked for together: a library drawn before the Host said what it can do
       // would either hide an action it allows or offer one it does not.
-      final context = widget.loadContext == null
-          ? null
-          : await widget.loadContext!();
+      final context =
+          widget.loadContext == null ? null : await widget.loadContext!();
       var companions = const <CompanionSummaryView>[];
       if (widget.loadCompanions != null) {
         try {
@@ -290,6 +291,7 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     final library = _library;
     if (library != null) {
       return MemoryLibraryPage(
+        title: widget.title,
         library: library,
         onOpenRoom: widget.loadCopy == null ? null : _openRoom,
         onForget: _canForget ? _openForget : null,
@@ -307,7 +309,7 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     }
     return Scaffold(
       key: const Key('memory-library-screen'),
-      appBar: AppBar(title: const Text('你的记忆')),
+      appBar: AppBar(title: Text(widget.title)),
       body: Center(
         child: _busy
             ? const CircularProgressIndicator(

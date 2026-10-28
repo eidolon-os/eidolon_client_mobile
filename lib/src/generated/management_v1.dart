@@ -108,8 +108,27 @@ class ManagementV1 {
   static const String personaPresetsPath = '/api/management/v1/persona-presets';
   static const String personaPreviewPath = '/api/management/v1/persona-preview';
   static const String personsPath = '/api/management/v1/persons';
+  static const String personsArchivedPath =
+      '/api/management/v1/persons/archived';
   static String personsByPersonIdPath(String personId) =>
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}';
+  static String personsByPersonIdFaceProfilePath(String personId) =>
+      '/api/management/v1/persons/${Uri.encodeComponent(personId)}/face-profile';
+  static String personsByPersonIdFaceProfileImagePath(String personId) =>
+      '/api/management/v1/persons/${Uri.encodeComponent(personId)}/face-profile/image';
+  static String personsByPersonIdMemoryPurgePath(String personId) =>
+      '/api/management/v1/persons/${Uri.encodeComponent(personId)}/memory-purge';
+  static String personsByPersonIdMemoryRealmPath(String personId) =>
+      '/api/management/v1/persons/${Uri.encodeComponent(personId)}/memory-realm';
+  static String personsByPersonIdMemoryRealmByActionPath(
+    String personId,
+    String action,
+  ) =>
+      '/api/management/v1/persons/${Uri.encodeComponent(personId)}/memory-realm/${Uri.encodeComponent(action)}';
+  static String personsByPersonIdMemoryStatePath(String personId) =>
+      '/api/management/v1/persons/${Uri.encodeComponent(personId)}/memory-state';
+  static String personsByPersonIdRestorePath(String personId) =>
+      '/api/management/v1/persons/${Uri.encodeComponent(personId)}/restore';
   static const String roleGroupsClosePath =
       '/api/management/v1/role-groups/close';
   static const String roleGroupsOpenPath =
@@ -3812,6 +3831,160 @@ class PersonDeletion {
   }
 }
 
+class PersonFaceImage {
+  const PersonFaceImage({
+    this.contentType,
+    this.imageBase64,
+    required this.revision,
+  });
+
+  final String? contentType;
+
+  final String? imageBase64;
+
+  final int revision;
+
+  factory PersonFaceImage.fromJson(Map<String, dynamic> value) {
+    return PersonFaceImage(
+      contentType: value['content_type'] as String?,
+      imageBase64: value['image_base64'] as String?,
+      revision: value['revision'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contentType != null) 'content_type': contentType,
+      if (imageBase64 != null) 'image_base64': imageBase64,
+      'revision': revision,
+    };
+  }
+}
+
+class PersonFaceState {
+  const PersonFaceState({
+    this.contentType,
+    this.featureSchemaVersion,
+    required this.hasImage,
+    this.modelId,
+    required this.personId,
+    this.preprocessingVersion,
+    this.recognitionState,
+    required this.revision,
+    this.schemaVersion,
+    this.sha256,
+  });
+
+  final String? contentType;
+
+  final int? featureSchemaVersion;
+
+  final bool hasImage;
+
+  final String? modelId;
+
+  final String personId;
+
+  final String? preprocessingVersion;
+
+  final String? recognitionState;
+
+  final int revision;
+
+  final int? schemaVersion;
+
+  final String? sha256;
+
+  factory PersonFaceState.fromJson(Map<String, dynamic> value) {
+    return PersonFaceState(
+      contentType: value['content_type'] as String?,
+      featureSchemaVersion: value['feature_schema_version'] as int?,
+      hasImage: value['has_image'] as bool,
+      modelId: value['model_id'] as String?,
+      personId: value['person_id'] as String,
+      preprocessingVersion: value['preprocessing_version'] as String?,
+      recognitionState: value['recognition_state'] as String?,
+      revision: value['revision'] as int,
+      schemaVersion: value['schema_version'] as int?,
+      sha256: value['sha256'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (contentType != null) 'content_type': contentType,
+      if (featureSchemaVersion != null)
+        'feature_schema_version': featureSchemaVersion,
+      'has_image': hasImage,
+      if (modelId != null) 'model_id': modelId,
+      'person_id': personId,
+      if (preprocessingVersion != null)
+        'preprocessing_version': preprocessingVersion,
+      if (recognitionState != null) 'recognition_state': recognitionState,
+      'revision': revision,
+      if (schemaVersion != null) 'schema_version': schemaVersion,
+      if (sha256 != null) 'sha256': sha256,
+    };
+  }
+}
+
+class PersonFaceUpdate {
+  const PersonFaceUpdate({
+    required this.expectedRevision,
+    required this.imageBase64,
+  });
+
+  final int expectedRevision;
+
+  final String imageBase64;
+
+  factory PersonFaceUpdate.fromJson(Map<String, dynamic> value) {
+    return PersonFaceUpdate(
+      expectedRevision: value['expected_revision'] as int,
+      imageBase64: value['image_base64'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'expected_revision': expectedRevision, 'image_base64': imageBase64};
+  }
+}
+
+class PersonMemoryPurgeView {
+  const PersonMemoryPurgeView({
+    required this.personId,
+    required this.realmId,
+    required this.revision,
+    required this.state,
+  });
+
+  final String personId;
+
+  final String realmId;
+
+  final int revision;
+
+  final String state;
+
+  factory PersonMemoryPurgeView.fromJson(Map<String, dynamic> value) {
+    return PersonMemoryPurgeView(
+      personId: value['person_id'] as String,
+      realmId: value['realm_id'] as String,
+      revision: value['revision'] as int,
+      state: value['state'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'person_id': personId,
+      'realm_id': realmId,
+      'revision': revision,
+      'state': state,
+    };
+  }
+}
+
 class PersonProfile {
   const PersonProfile({
     this.description,
@@ -4446,6 +4619,91 @@ class PersonaTraitState {
       if (lastChangedAt != null) 'last_changed_at': lastChangedAt,
       if (source != null) 'source': source,
       if (value != null) 'value': value,
+    };
+  }
+}
+
+class PersonalMemoryRealmSnapshot {
+  const PersonalMemoryRealmSnapshot({
+    required this.ownerId,
+    required this.personId,
+    required this.personRevision,
+    required this.realmId,
+    required this.status,
+  });
+
+  final String ownerId;
+
+  final String personId;
+
+  final int personRevision;
+
+  final String realmId;
+
+  final String status;
+
+  factory PersonalMemoryRealmSnapshot.fromJson(Map<String, dynamic> value) {
+    return PersonalMemoryRealmSnapshot(
+      ownerId: value['owner_id'] as String,
+      personId: value['person_id'] as String,
+      personRevision: value['person_revision'] as int,
+      realmId: value['realm_id'] as String,
+      status: value['status'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'owner_id': ownerId,
+      'person_id': personId,
+      'person_revision': personRevision,
+      'realm_id': realmId,
+      'status': status,
+    };
+  }
+}
+
+class PersonalMemoryState {
+  const PersonalMemoryState({
+    required this.ownerId,
+    required this.personId,
+    required this.personRevision,
+    required this.personStatus,
+    this.realmId,
+    required this.state,
+  });
+
+  final String ownerId;
+
+  final String personId;
+
+  final int personRevision;
+
+  final String personStatus;
+
+  final String? realmId;
+
+  final String state;
+
+  factory PersonalMemoryState.fromJson(Map<String, dynamic> value) {
+    return PersonalMemoryState(
+      ownerId: value['owner_id'] as String,
+      personId: value['person_id'] as String,
+      personRevision: value['person_revision'] as int,
+      personStatus: value['person_status'] as String,
+      realmId: value['realm_id'] as String?,
+      state: value['state'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'owner_id': ownerId,
+      'person_id': personId,
+      'person_revision': personRevision,
+      'person_status': personStatus,
+      if (realmId != null) 'realm_id': realmId,
+      'state': state,
     };
   }
 }

@@ -540,31 +540,42 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
     return context == null ? null : capabilityHold(context, capability);
   }
 
-  MemoryLibraryScreen _memoryLibrary({String? initialCompanionId}) =>
+  MemoryLibraryScreen _memoryLibrary(
+          {String? initialCompanionId, String? personId, String? personName}) =>
       MemoryLibraryScreen(
+        title: personName == null ? '默认记忆' : '$personName 的记忆',
         initialCompanionId: initialCompanionId,
-        load: _controller.memoryLibrary,
-        loadForCompanion: (companionId) =>
-            _controller.memoryLibrary(companionId: companionId),
+        load: () => _controller.memoryLibrary(personId: personId),
+        loadForCompanion: (companionId) => _controller.memoryLibrary(
+            personId: personId, companionId: companionId),
         loadGraph: (companionId, {String? cursor, required bool history}) =>
             _controller.memoryGraph(
-                companionId: companionId, cursor: cursor, history: history),
+                personId: personId,
+                companionId: companionId,
+                cursor: cursor,
+                history: history),
         loadContext: _controller.managementContext,
-        previewForget: (target) => _controller.previewForget(target: target),
-        confirmForget: (token) =>
-            _controller.confirmForget(confirmationToken: token),
+        previewForget: (target) =>
+            _controller.previewForget(personId: personId, target: target),
+        confirmForget: (token) => _controller.confirmForget(
+            personId: personId, confirmationToken: token),
         forgetProgress: (requestId) =>
-            _controller.forgetStatus(requestId: requestId),
+            _controller.forgetStatus(personId: personId, requestId: requestId),
         loadDay: (since, companionId, cursor) => _controller.memoryEntries(
+          personId: personId,
           since: since,
           companionId: companionId,
           cursor: cursor,
         ),
-        loadCopy: (companionId, {String? wing, String? room}) => _controller
-            .memoryCopy(companionId: companionId, wing: wing, room: room),
+        loadCopy: (companionId, {String? wing, String? room}) =>
+            _controller.memoryCopy(
+                personId: personId,
+                companionId: companionId,
+                wing: wing,
+                room: room),
         loadCompanions: () async => (await _controller.roster()).companions,
-        searchRecollections: (companionId, query) =>
-            _controller.recollections(companionId: companionId, query: query),
+        searchRecollections: (companionId, query) => _controller.recollections(
+            personId: personId, companionId: companionId, query: query),
       );
 
   Future<void> _openMemoryLibrary() => Navigator.of(
@@ -707,6 +718,11 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   Future<void> _openPersons() => Navigator.of(context).push<void>(
         MaterialPageRoute(
           builder: (_) => PersonsPage(
+            openMemory: (person) => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                    builder: (_) => _memoryLibrary(
+                        personId: person.personId,
+                        personName: person.displayName))),
             call: _controller.personRequest,
             voiceprints: _controller.voiceprintRequest,
           ),

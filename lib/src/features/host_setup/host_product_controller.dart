@@ -162,26 +162,34 @@ class HostProductController extends ChangeNotifier {
   late final HostActivityRepository _activityRepository;
   late final HostManagementRepository _managementRepository;
 
-  Future<Map<String, dynamic>> voiceprintRequest({
-    String method = 'GET', String suffix = '', Map<String, dynamic>? body}) =>
+  Future<Map<String, dynamic>> voiceprintRequest(
+          {String method = 'GET',
+          String suffix = '',
+          Map<String, dynamic>? body}) =>
       _managementRepository.voiceprintRequest(
-        method: method, suffix: suffix, body: body);
+          method: method, suffix: suffix, body: body);
 
-  Future<Map<String, dynamic>> personRequest({
-    String method = 'GET', String suffix = '', Map<String, dynamic>? body}) =>
+  Future<Map<String, dynamic>> personRequest(
+          {String method = 'GET',
+          String suffix = '',
+          Map<String, dynamic>? body}) =>
       _managementRepository.personRequest(
-        method: method, suffix: suffix, body: body);
+          method: method, suffix: suffix, body: body);
 
-  Future<Registry> smartHomeRegistry() => _managementRepository.smartHomeRegistry();
-  Future<ProviderList> smartHomeProviders() => _managementRepository.smartHomeProviders();
-  Future<AccountList> smartHomeAccounts() => _managementRepository.smartHomeAccounts();
+  Future<Registry> smartHomeRegistry() =>
+      _managementRepository.smartHomeRegistry();
+  Future<ProviderList> smartHomeProviders() =>
+      _managementRepository.smartHomeProviders();
+  Future<AccountList> smartHomeAccounts() =>
+      _managementRepository.smartHomeAccounts();
   Future<ProviderAccount> smartHomeBind(AccountBind request) =>
       _managementRepository.smartHomeBind(request);
   Future<SyncReport> smartHomeSync(String accountId) =>
       _managementRepository.smartHomeSync(accountId);
   Future<AccountRemoved> smartHomeUnbind(String accountId) =>
       _managementRepository.smartHomeUnbind(accountId);
-  Future<HomeSnapshotView> smartHomeSnapshot() => _managementRepository.smartHomeSnapshot();
+  Future<HomeSnapshotView> smartHomeSnapshot() =>
+      _managementRepository.smartHomeSnapshot();
 
   Future<Registry> smartHomeWrite({
     required String method,
@@ -207,20 +215,30 @@ class HostProductController extends ChangeNotifier {
   String? get powerOffOutcome => _powerOffOutcome;
 
   late final RoleGroupController roleGroup = RoleGroupController(
-    (action, id, selection) => _session.executeManagement((client, uri, token) =>
-      client.roleGroup(uri, accessToken: token, action: action, sessionId: id, selection: selection)));
+      (action, id, selection) => _session.executeManagement(
+          (client, uri, token) => client.roleGroup(uri,
+              accessToken: token,
+              action: action,
+              sessionId: id,
+              selection: selection)));
 
-  Future<DeviceConversationStatus> deviceConversation(String action, String sessionId,
-      ConversationStart? selection) => _session.executeManagement((client, uri, token) =>
-        client.deviceConversation(uri, accessToken: token, action: action,
-          sessionId: sessionId, selection: selection));
-
-  Future<void> changeSharedSession(String sessionId,
-      List<String>? deviceIds, String? inputDeviceId) =>
+  Future<DeviceConversationStatus> deviceConversation(
+          String action, String sessionId, ConversationStart? selection) =>
       _session.executeManagement((client, uri, token) =>
-        client.changeSharedSession(uri, accessToken: token,
-          sessionId: sessionId, deviceIds: deviceIds,
-          inputDeviceId: inputDeviceId));
+          client.deviceConversation(uri,
+              accessToken: token,
+              action: action,
+              sessionId: sessionId,
+              selection: selection));
+
+  Future<void> changeSharedSession(
+          String sessionId, List<String>? deviceIds, String? inputDeviceId) =>
+      _session.executeManagement((client, uri, token) =>
+          client.changeSharedSession(uri,
+              accessToken: token,
+              sessionId: sessionId,
+              deviceIds: deviceIds,
+              inputDeviceId: inputDeviceId));
 
   Future<HostPowerStatusWire> hostPower() => _session.executeManagement(
       (client, uri, token) => client.fetchHostPower(uri, accessToken: token));
@@ -551,7 +569,10 @@ class HostProductController extends ChangeNotifier {
 
   Future<void> refreshDevicePresence() async {
     final inventory = _devices;
-    if (_presenceBusy || _presenceUnsupported || _disposed || inventory == null) {
+    if (_presenceBusy ||
+        _presenceUnsupported ||
+        _disposed ||
+        inventory == null) {
       return;
     }
     _presenceBusy = true;
@@ -741,10 +762,12 @@ class HostProductController extends ChangeNotifier {
   /// would show it again beside the next question.
   /// [companionId] null asks about the Owner's own memory — every audience.
   Future<RecollectionsView> recollections({
+    String? personId,
     String? companionId,
     required String query,
   }) =>
       _managementRepository.recollections(
+        personId: personId,
         query: query,
         companionId: companionId,
       );
@@ -872,22 +895,32 @@ class HostProductController extends ChangeNotifier {
       );
 
   /// What is remembered, by category.
-  Future<MemoryLibraryView> memoryLibrary({String? companionId}) =>
-      _managementRepository.memoryLibrary(companionId: companionId);
+  Future<MemoryLibraryView> memoryLibrary(
+          {String? personId, String? companionId}) =>
+      _managementRepository.memoryLibrary(
+          personId: personId, companionId: companionId);
 
   Future<MemoryGraphView> memoryGraph(
-          {String? companionId, String? cursor, bool history = false}) =>
+          {String? personId,
+          String? companionId,
+          String? cursor,
+          bool history = false}) =>
       _managementRepository.memoryGraph(
-          companionId: companionId, cursor: cursor, history: history);
+          personId: personId,
+          companionId: companionId,
+          cursor: cursor,
+          history: history);
 
   /// What it wrote down since [since].
   Future<MemoryDayView> memoryEntries({
+    String? personId,
     required DateTime since,
     int? limit,
     String? companionId,
     String? cursor,
   }) =>
       _managementRepository.memoryEntries(
+        personId: personId,
         since: since,
         limit: limit,
         companionId: companionId,
@@ -896,21 +929,29 @@ class HostProductController extends ChangeNotifier {
 
   /// A copy of everything remembered that this Owner can see.
   Future<MemoryCopyView> memoryCopy(
-          {String? companionId, String? wing, String? room}) =>
+          {String? personId,
+          String? companionId,
+          String? wing,
+          String? room}) =>
       _managementRepository.memoryCopy(
-          companionId: companionId, wing: wing, room: room);
+          personId: personId, companionId: companionId, wing: wing, room: room);
 
   /// What forgetting [target] would remove. Nothing changes.
-  Future<ForgetProposalView> previewForget({required String target}) =>
-      _managementRepository.previewForget(target: target);
+  Future<ForgetProposalView> previewForget(
+          {String? personId, required String target}) =>
+      _managementRepository.previewForget(personId: personId, target: target);
 
   /// Forget exactly what a preview showed.
-  Future<ForgetResultView> confirmForget({required String confirmationToken}) =>
-      _managementRepository.confirmForget(confirmationToken: confirmationToken);
+  Future<ForgetResultView> confirmForget(
+          {String? personId, required String confirmationToken}) =>
+      _managementRepository.confirmForget(
+          personId: personId, confirmationToken: confirmationToken);
 
   /// Where a confirmed forget has got to.
-  Future<ForgetProgressView> forgetStatus({required String requestId}) =>
-      _managementRepository.forgetStatus(requestId: requestId);
+  Future<ForgetProgressView> forgetStatus(
+          {String? personId, required String requestId}) =>
+      _managementRepository.forgetStatus(
+          personId: personId, requestId: requestId);
 
   /// What this Host says it can do at all, for the authenticated Owner.
   Future<ManagementContextView> managementContext() =>

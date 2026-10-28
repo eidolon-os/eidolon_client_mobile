@@ -153,17 +153,27 @@ class HostManagementRepository {
 
   final HostProductSession _session;
 
-  Future<Map<String, dynamic>> voiceprintRequest({
-    String method = 'GET', String suffix = '', Map<String, dynamic>? body}) =>
-      _session.executeManagement((client, baseUri, accessToken) => client.voiceprintRequest(
-        baseUri, accessToken: accessToken,
-        method: method, suffix: suffix, body: body));
+  Future<Map<String, dynamic>> voiceprintRequest(
+          {String method = 'GET',
+          String suffix = '',
+          Map<String, dynamic>? body}) =>
+      _session.executeManagement((client, baseUri, accessToken) =>
+          client.voiceprintRequest(baseUri,
+              accessToken: accessToken,
+              method: method,
+              suffix: suffix,
+              body: body));
 
-  Future<Map<String, dynamic>> personRequest({
-    String method = 'GET', String suffix = '', Map<String, dynamic>? body}) =>
-      _session.executeManagement((client, baseUri, accessToken) => client.personRequest(
-        baseUri, accessToken: accessToken,
-        method: method, suffix: suffix, body: body));
+  Future<Map<String, dynamic>> personRequest(
+          {String method = 'GET',
+          String suffix = '',
+          Map<String, dynamic>? body}) =>
+      _session.executeManagement((client, baseUri, accessToken) =>
+          client.personRequest(baseUri,
+              accessToken: accessToken,
+              method: method,
+              suffix: suffix,
+              body: body));
 
   Future<Registry> smartHomeRegistry() => _session.executeManagement(
         (client, baseUri, accessToken) =>
@@ -180,19 +190,22 @@ class HostManagementRepository {
             client.smartHomeAccounts(baseUri, accessToken: accessToken),
       );
 
-  Future<ProviderAccount> smartHomeBind(AccountBind request) => _session.executeManagement(
-        (client, baseUri, accessToken) =>
-            client.smartHomeBind(baseUri, accessToken: accessToken, request: request),
+  Future<ProviderAccount> smartHomeBind(AccountBind request) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.smartHomeBind(baseUri,
+            accessToken: accessToken, request: request),
       );
 
-  Future<SyncReport> smartHomeSync(String accountId) => _session.executeManagement(
-        (client, baseUri, accessToken) =>
-            client.smartHomeSync(baseUri, accessToken: accessToken, accountId: accountId),
+  Future<SyncReport> smartHomeSync(String accountId) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.smartHomeSync(baseUri,
+            accessToken: accessToken, accountId: accountId),
       );
 
-  Future<AccountRemoved> smartHomeUnbind(String accountId) => _session.executeManagement(
-        (client, baseUri, accessToken) =>
-            client.smartHomeUnbind(baseUri, accessToken: accessToken, accountId: accountId),
+  Future<AccountRemoved> smartHomeUnbind(String accountId) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.smartHomeUnbind(baseUri,
+            accessToken: accessToken, accountId: accountId),
       );
 
   Future<HomeSnapshotView> smartHomeSnapshot() => _session.executeManagement(
@@ -296,21 +309,27 @@ class HostManagementRepository {
       );
 
   /// What is remembered, by category. [companionId] selects an audience.
-  Future<MemoryLibraryView> memoryLibrary({String? companionId}) =>
+  Future<MemoryLibraryView> memoryLibrary(
+          {String? personId, String? companionId}) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.fetchMemoryLibrary(
           baseUri,
           accessToken: accessToken,
+          personId: personId,
           companionId: companionId,
         ),
       );
 
   Future<MemoryGraphView> memoryGraph(
-          {String? companionId, String? cursor, bool history = false}) =>
+          {String? personId,
+          String? companionId,
+          String? cursor,
+          bool history = false}) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.fetchMemoryGraph(
           baseUri,
           accessToken: accessToken,
+          personId: personId,
           companionId: companionId,
           cursor: cursor,
           history: history,
@@ -320,6 +339,7 @@ class HostManagementRepository {
   /// What it wrote down since [since], a page at a time. [cursor] is the
   /// previous page's `nextCursor`, passed back unread.
   Future<MemoryDayView> memoryEntries({
+    String? personId,
     required DateTime since,
     int? limit,
     String? companionId,
@@ -329,6 +349,7 @@ class HostManagementRepository {
         (client, baseUri, accessToken) => client.fetchMemoryEntries(
           baseUri,
           accessToken: accessToken,
+          personId: personId,
           since: since,
           limit: limit,
           companionId: companionId,
@@ -426,6 +447,7 @@ class HostManagementRepository {
   /// What it remembers about [query]. A sentence and a time, nothing about how
   /// it was found.
   Future<RecollectionsView> recollections({
+    String? personId,
     required String query,
     int limit = 10,
     String? companionId,
@@ -434,6 +456,7 @@ class HostManagementRepository {
         (client, baseUri, accessToken) => client.fetchRecollections(
           baseUri,
           accessToken: accessToken,
+          personId: personId,
           query: query,
           limit: limit,
           companionId: companionId,
@@ -442,11 +465,15 @@ class HostManagementRepository {
 
   /// A copy of the whole visible memory. [companionId] selects an audience.
   Future<MemoryCopyView> memoryCopy(
-          {String? companionId, String? wing, String? room}) =>
+          {String? personId,
+          String? companionId,
+          String? wing,
+          String? room}) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.fetchMemoryCopy(
           baseUri,
           accessToken: accessToken,
+          personId: personId,
           companionId: companionId,
           wing: wing,
           room: room,
@@ -454,31 +481,37 @@ class HostManagementRepository {
       );
 
   /// What forgetting [target] would remove. Nothing changes.
-  Future<ForgetProposalView> previewForget({required String target}) =>
+  Future<ForgetProposalView> previewForget(
+          {String? personId, required String target}) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.previewForget(
           baseUri,
           accessToken: accessToken,
+          personId: personId,
           target: target,
         ),
       );
 
   /// Forget exactly what a preview showed. The token is passed back unread.
-  Future<ForgetResultView> confirmForget({required String confirmationToken}) =>
+  Future<ForgetResultView> confirmForget(
+          {String? personId, required String confirmationToken}) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.confirmForget(
           baseUri,
           accessToken: accessToken,
+          personId: personId,
           confirmationToken: confirmationToken,
         ),
       );
 
   /// Where a confirmed forget has got to.
-  Future<ForgetProgressView> forgetStatus({required String requestId}) =>
+  Future<ForgetProgressView> forgetStatus(
+          {String? personId, required String requestId}) =>
       _session.executeManagement(
         (client, baseUri, accessToken) => client.forgetStatus(
           baseUri,
           accessToken: accessToken,
+          personId: personId,
           requestId: requestId,
         ),
       );

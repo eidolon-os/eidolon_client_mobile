@@ -215,7 +215,8 @@ class ManagementClient {
   final bool _ownsHttpClient;
   final Duration timeout;
 
-  Future<Registry> smartHomeRegistry(Uri baseUri, {required String accessToken}) async =>
+  Future<Registry> smartHomeRegistry(Uri baseUri,
+          {required String accessToken}) async =>
       Registry.fromJson(await _get(
         baseUri.resolve(ManagementV1.smarthomeRegistryPath),
         accessToken: accessToken,
@@ -224,14 +225,16 @@ class ManagementClient {
 
   // --- Provider accounts: an ecosystem bound through the Host, devices imported from it ---
 
-  Future<ProviderList> smartHomeProviders(Uri baseUri, {required String accessToken}) async =>
+  Future<ProviderList> smartHomeProviders(Uri baseUri,
+          {required String accessToken}) async =>
       ProviderList.fromJson(await _get(
         baseUri.resolve(ManagementV1.smarthomeProvidersPath),
         accessToken: accessToken,
         what: '读取可连接的家居平台',
       ));
 
-  Future<AccountList> smartHomeAccounts(Uri baseUri, {required String accessToken}) async =>
+  Future<AccountList> smartHomeAccounts(Uri baseUri,
+          {required String accessToken}) async =>
       AccountList.fromJson(await _get(
         baseUri.resolve(ManagementV1.smarthomeAccountsPath),
         accessToken: accessToken,
@@ -259,7 +262,8 @@ class ManagementClient {
   }) async =>
       SyncReport.fromJson(await _send(
         'POST',
-        baseUri.resolve(ManagementV1.smarthomeAccountsByAccountIdSyncPath(accountId)),
+        baseUri.resolve(
+            ManagementV1.smarthomeAccountsByAccountIdSyncPath(accountId)),
         accessToken: accessToken,
         what: '同步家居设备',
         requestTimeout: const Duration(seconds: 60),
@@ -272,12 +276,14 @@ class ManagementClient {
   }) async =>
       AccountRemoved.fromJson(await _send(
         'POST',
-        baseUri.resolve(ManagementV1.smarthomeAccountsByAccountIdUnbindPath(accountId)),
+        baseUri.resolve(
+            ManagementV1.smarthomeAccountsByAccountIdUnbindPath(accountId)),
         accessToken: accessToken,
         what: '断开家居平台',
       ));
 
-  Future<HomeSnapshotView> smartHomeSnapshot(Uri baseUri, {required String accessToken}) async =>
+  Future<HomeSnapshotView> smartHomeSnapshot(Uri baseUri,
+          {required String accessToken}) async =>
       HomeSnapshotView.fromJson(await _get(
         baseUri.resolve(ManagementV1.smarthomeSnapshotPath),
         accessToken: accessToken,
@@ -293,10 +299,10 @@ class ManagementClient {
     int? expectedRevision,
   }) async {
     final endpoint = baseUri.resolve(path).replace(
-      queryParameters: expectedRevision == null
-          ? null
-          : {'expected_revision': '$expectedRevision'},
-    );
+          queryParameters: expectedRevision == null
+              ? null
+              : {'expected_revision': '$expectedRevision'},
+        );
     return Registry.fromJson(await _send(
       method,
       endpoint,
@@ -633,8 +639,11 @@ class ManagementClient {
     return HomeView.fromJson(body);
   }
 
-  Future<RoleGroupStatus> roleGroup(Uri baseUri, {
-    required String accessToken, required String action, required String sessionId,
+  Future<RoleGroupStatus> roleGroup(
+    Uri baseUri, {
+    required String accessToken,
+    required String action,
+    required String sessionId,
     RoleGroupStart? selection,
   }) async {
     final path = switch (action) {
@@ -643,19 +652,27 @@ class ManagementClient {
       'close' => ManagementV1.roleGroupsClosePath,
       _ => throw ArgumentError.value(action),
     };
-    final body = await _send('POST', baseUri.resolve(path), accessToken: accessToken,
-      what: '更新 IP 角色团队', body: action == 'open' ? selection!.toJson()
-        : SharedClose(sessionId: sessionId).toJson());
+    final body = await _send('POST', baseUri.resolve(path),
+        accessToken: accessToken,
+        what: '更新 IP 角色团队',
+        body: action == 'open'
+            ? selection!.toJson()
+            : SharedClose(sessionId: sessionId).toJson());
     final result = RoleGroupStatus.fromJson(body);
-    if (result.sessionId != sessionId || result.scenario != 'ip_role_group' ||
-        !{'preparing', 'ready', 'closing', 'closed', 'failed'}.contains(result.state)) {
+    if (result.sessionId != sessionId ||
+        result.scenario != 'ip_role_group' ||
+        !{'preparing', 'ready', 'closing', 'closed', 'failed'}
+            .contains(result.state)) {
       throw ManagementRequestException('团队返回了不匹配的结果');
     }
     return result;
   }
 
-  Future<DeviceConversationStatus> deviceConversation(Uri baseUri, {
-    required String accessToken, required String action, required String sessionId,
+  Future<DeviceConversationStatus> deviceConversation(
+    Uri baseUri, {
+    required String accessToken,
+    required String action,
+    required String sessionId,
     ConversationStart? selection,
   }) async {
     final path = switch (action) {
@@ -664,34 +681,44 @@ class ManagementClient {
       'close' => ManagementV1.deviceConversationsClosePath,
       _ => throw ArgumentError.value(action),
     };
-    final body = await _send('POST', baseUri.resolve(path), accessToken: accessToken,
-      what: '更新跨设备对话', body: action == 'open' ? selection!.toJson()
-        : SharedClose(sessionId: sessionId).toJson());
+    final body = await _send('POST', baseUri.resolve(path),
+        accessToken: accessToken,
+        what: '更新跨设备对话',
+        body: action == 'open'
+            ? selection!.toJson()
+            : SharedClose(sessionId: sessionId).toJson());
     final result = DeviceConversationStatus.fromJson(body);
     if (result.sessionId != sessionId ||
-        !{'preparing', 'ready', 'closing', 'closed', 'failed'}.contains(result.state)) {
+        !{'preparing', 'ready', 'closing', 'closed', 'failed'}
+            .contains(result.state)) {
       throw ManagementRequestException('跨设备对话返回了不匹配的结果');
     }
     return result;
   }
 
-  Future<void> changeSharedSession(Uri baseUri, {
+  Future<void> changeSharedSession(
+    Uri baseUri, {
     required String accessToken,
     required String sessionId,
     List<String>? deviceIds,
     String? inputDeviceId,
   }) async {
     final opening = deviceIds != null;
-    final result = await _send('POST',
-      baseUri.resolve(opening
-          ? ManagementV1.sharedSessionsOpenPath
-          : ManagementV1.sharedSessionsClosePath),
-      accessToken: accessToken, what: opening ? '邀请设备' : '结束共享连接',
-      requestTimeout: const Duration(seconds: 45),
-      body: opening
-          ? SharedStart(deviceIds: deviceIds,
-              inputDeviceId: inputDeviceId!, sessionId: sessionId).toJson()
-          : SharedClose(sessionId: sessionId).toJson());
+    final result = await _send(
+        'POST',
+        baseUri.resolve(opening
+            ? ManagementV1.sharedSessionsOpenPath
+            : ManagementV1.sharedSessionsClosePath),
+        accessToken: accessToken,
+        what: opening ? '邀请设备' : '结束共享连接',
+        requestTimeout: const Duration(seconds: 45),
+        body: opening
+            ? SharedStart(
+                    deviceIds: deviceIds,
+                    inputDeviceId: inputDeviceId!,
+                    sessionId: sessionId)
+                .toJson()
+            : SharedClose(sessionId: sessionId).toJson());
     if (result['session_id'] != sessionId ||
         result['state'] != (opening ? 'transport_ready' : 'closed')) {
       throw ManagementRequestException('共享连接返回了不匹配的结果');
@@ -1206,21 +1233,31 @@ class ManagementClient {
   /// shared layer and never guesses a Companion.
   Future<MemoryLibraryView> fetchMemoryLibrary(
     Uri baseUri, {
+    String? personId,
     required String accessToken,
     String? companionId,
   }) async {
     var endpoint = baseUri.resolve(ManagementV1.memoryLibraryPath);
     if (companionId != null) {
       endpoint = endpoint.replace(
-        queryParameters: {'companion_id': companionId},
+        queryParameters: {
+          if (personId != null) 'person_id': personId,
+          'companion_id': companionId
+        },
       );
     }
+    if (personId != null)
+      endpoint = endpoint.replace(queryParameters: {
+        ...endpoint.queryParameters,
+        'person_id': personId
+      });
     final body = await _get(endpoint, accessToken: accessToken, what: '读取记忆库');
     return MemoryLibraryView.fromJson(body);
   }
 
   Future<MemoryGraphView> fetchMemoryGraph(
     Uri baseUri, {
+    String? personId,
     required String accessToken,
     String? companionId,
     String? cursor,
@@ -1228,10 +1265,16 @@ class ManagementClient {
   }) async {
     var endpoint = baseUri.resolve(ManagementV1.memoryGraphPath);
     endpoint = endpoint.replace(queryParameters: {
+      if (personId != null) 'person_id': personId,
       if (companionId != null) 'companion_id': companionId,
       if (cursor != null) 'cursor': cursor,
       'history': '$history',
     });
+    if (personId != null)
+      endpoint = endpoint.replace(queryParameters: {
+        ...endpoint.queryParameters,
+        'person_id': personId
+      });
     final body = await _get(
       endpoint,
       accessToken: accessToken,
@@ -1247,6 +1290,7 @@ class ManagementClient {
   /// offset so the Host compares instants rather than guessing a timezone.
   Future<MemoryDayView> fetchMemoryEntries(
     Uri baseUri, {
+    String? personId,
     required String accessToken,
     required DateTime since,
     int? limit,
@@ -1256,6 +1300,7 @@ class ManagementClient {
     final body = await _get(
       baseUri.resolve(ManagementV1.memoryEntriesPath).replace(
         queryParameters: {
+          if (personId != null) 'person_id': personId,
           // Local time with its offset, not UTC: "today" is the person's day,
           // and the offset is what lets the Host place the instant without
           // knowing where they are.
@@ -1455,6 +1500,7 @@ class ManagementClient {
   /// how it found something rather than what it remembers.
   Future<RecollectionsView> fetchRecollections(
     Uri baseUri, {
+    String? personId,
     required String accessToken,
     required String query,
     int limit = 10,
@@ -1463,6 +1509,7 @@ class ManagementClient {
     final body = await _get(
       baseUri.resolve(ManagementV1.memoryRecollectionsPath).replace(
         queryParameters: {
+          if (personId != null) 'person_id': personId,
           'q': query,
           'limit': '$limit',
           if (companionId != null) 'companion_id': companionId,
@@ -1484,6 +1531,7 @@ class ManagementClient {
   /// same reason: a copy must not be able to see what recall cannot.
   Future<MemoryCopyView> fetchMemoryCopy(
     Uri baseUri, {
+    String? personId,
     required String accessToken,
     String? companionId,
     String? wing,
@@ -1492,6 +1540,7 @@ class ManagementClient {
     final endpoint = baseUri.resolve(ManagementV1.memoryExportPath);
     final body = await _get(
       endpoint.replace(queryParameters: {
+        if (personId != null) 'person_id': personId,
         if (companionId != null) 'companion_id': companionId,
         if (wing != null) 'wing': wing,
         if (room != null) 'room': room,
@@ -1513,12 +1562,14 @@ class ManagementClient {
   /// so there is no reversible option to offer.
   Future<ForgetProposalView> previewForget(
     Uri baseUri, {
+    String? personId,
     required String accessToken,
     required String target,
   }) async {
     final body = await _send(
       'POST',
-      baseUri.resolve(ManagementV1.memoryForgetPreviewPath),
+      baseUri.resolve(ManagementV1.memoryForgetPreviewPath).replace(
+          queryParameters: {if (personId != null) 'person_id': personId}),
       accessToken: accessToken,
       what: '查看会忘掉什么',
       body: {'target': target},
@@ -1533,12 +1584,14 @@ class ManagementClient {
   /// person actually looked at.
   Future<ForgetResultView> confirmForget(
     Uri baseUri, {
+    String? personId,
     required String accessToken,
     required String confirmationToken,
   }) async {
     final body = await _send(
       'POST',
-      baseUri.resolve(ManagementV1.memoryForgetConfirmPath),
+      baseUri.resolve(ManagementV1.memoryForgetConfirmPath).replace(
+          queryParameters: {if (personId != null) 'person_id': personId}),
       accessToken: accessToken,
       what: '忘掉它',
       body: {'confirmation_token': confirmationToken},
@@ -1553,12 +1606,16 @@ class ManagementClient {
   /// instead of saying 「正在生效」 with nothing behind it.
   Future<ForgetProgressView> forgetStatus(
     Uri baseUri, {
+    String? personId,
     required String accessToken,
     required String requestId,
   }) async {
     final body = await _get(
       baseUri.resolve(ManagementV1.memoryForgetStatusPath).replace(
-        queryParameters: {'request_id': requestId},
+        queryParameters: {
+          if (personId != null) 'person_id': personId,
+          'request_id': requestId
+        },
       ),
       accessToken: accessToken,
       what: '查看忘掉的进度',
@@ -1580,10 +1637,7 @@ class ManagementClient {
     String suffix = '',
     Map<String, dynamic>? body,
   }) =>
-      _send(
-          method,
-          baseUri.resolve(
-              '${ManagementV1.voiceprintsPath}$suffix'),
+      _send(method, baseUri.resolve('${ManagementV1.voiceprintsPath}$suffix'),
           accessToken: accessToken,
           what: '管理声纹',
           body: body,
@@ -1596,14 +1650,13 @@ class ManagementClient {
     String suffix = '',
     Map<String, dynamic>? body,
   }) =>
-      _send(
-          method,
-          baseUri.resolve(
-              '${ManagementV1.personsPath}$suffix'),
+      _send(method, baseUri.resolve('${ManagementV1.personsPath}$suffix'),
           accessToken: accessToken,
           what: '管理用户',
           body: body,
-          requestTimeout: const Duration(seconds: 15));
+          requestTimeout: Uri.parse(suffix).path.endsWith('/memory-purge')
+              ? const Duration(seconds: 90)
+              : const Duration(seconds: 15));
 
   /// One place that talks to the Host, whatever the verb.
   ///
@@ -1621,13 +1674,14 @@ class ManagementClient {
     final http.Response response;
     try {
       final request = BoundedHttpRequest(method, endpoint,
-        timeout: requestTimeout ?? timeout)
+          timeout: requestTimeout ?? timeout)
         ..headers['Authorization'] = 'Bearer $accessToken';
       if (body != null) {
         request.headers['Content-Type'] = 'application/json; charset=utf-8';
         request.body = jsonEncode(body);
       }
-      response = await _httpClient.send(request)
+      response = await _httpClient
+          .send(request)
           .then(http.Response.fromStream)
           .timeout(request.timeout);
     } on TimeoutException {

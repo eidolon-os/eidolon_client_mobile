@@ -9,7 +9,12 @@ import '../../theme/neon_components.dart';
 
 /// OS people use the same authenticated management session as other Host data.
 class PersonsPage extends StatefulWidget {
-  const PersonsPage({super.key, required this.call, required this.voiceprints});
+  const PersonsPage(
+      {super.key,
+      required this.call,
+      required this.voiceprints,
+      this.openMemory});
+  final Future<void> Function(PersonView person)? openMemory;
   final VoiceprintCall call;
   final VoiceprintCall voiceprints;
   @override
@@ -18,6 +23,8 @@ class PersonsPage extends StatefulWidget {
 
 class _PersonsPageState extends State<PersonsPage> {
   List<PersonView> _people = [];
+  List<PersonView> _archived = [];
+  String? _archiveError;
   bool _busy = false;
   Map<String, Map<String, dynamic>> _memoryStates = {};
   Map<String, int>? _voiceCounts;
@@ -50,6 +57,16 @@ class _PersonsPageState extends State<PersonsPage> {
   Future<void> _load() async {
     final result = PersonCollection.fromJson(await widget.call());
     final people = result.persons ?? [];
+    try {
+      _archived =
+          PersonCollection.fromJson(await widget.call(suffix: '/archived'))
+                  .persons ??
+              [];
+      _archiveError = null;
+    } catch (_) {
+      _archiveError = '已删除用户暂时无法读取';
+    }
+
     final memory = <String, Map<String, dynamic>>{};
     final faces = <String, bool>{};
     Map<String, int>? voices;
@@ -187,6 +204,34 @@ class _PersonsPageState extends State<PersonsPage> {
     }
   }
 
+  Future<void> _eraseMemory(PersonView p) async {
+    final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+                title: Text('清空${p.displayName}的个人记忆？'),
+                content: const Text(
+                    '会永久清除该人物当前保存的个人记忆及待处理记忆任务。不会影响其他人物、默认记忆或历史对话，也不会删除以前的备份。此操作不能撤销。'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('取消')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('清空个人记忆'))
+                ]));
+    if (confirmed != true || !mounted) return;
+    await _act(() async {
+      try {
+        await widget.call(
+            method: 'POST',
+            suffix:
+                '/${Uri.encodeComponent(p.personId)}/memory-purge?expected_revision=${p.revision}');
+      } finally {
+        await _load();
+      }
+    });
+  }
+
   Future<void> _status(PersonView p) => _act(() async {
         await widget.call(
             method: 'PUT',
@@ -205,7 +250,8 @@ class _PersonsPageState extends State<PersonsPage> {
         context: context,
         builder: (context) => AlertDialog(
                 title: Text('删除“${p.displayName}”？'),
-                content: const Text('删除用户资料、声纹、录入声音和人脸照片。历史对话和记忆不会随之删除。'),
+                content: const Text(
+                    '删除用户资料、声纹、录入声音和人脸照片。历史对话和记忆保留，可在已删除用户中管理；恢复后仍保持停用，声纹需要重新录入。'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context, false),
@@ -418,16 +464,6 @@ class _PersonsPageState extends State<PersonsPage> {
               const SizedBox(height: Neon.s4),
               const LinearProgressIndicator(),
             ],
-            if (_error != null) ...[
-              const SizedBox(height: Neon.s4),
-              Semantics(
-                liveRegion: true,
-                child: NeonPanel(
-                    accent: Neon.bad,
-                    child: Text(_error!,
-                        style: const TextStyle(color: Neon.bad, height: 1.5))),
-              ),
-            ],
             if (_pendingCreate != null) ...[
               const SizedBox(height: Neon.s4),
               OutlinedButton.icon(
@@ -449,20 +485,70 @@ class _PersonsPageState extends State<PersonsPage> {
             for (final person in _people) ...[
               const SizedBox(height: Neon.s4),
               _personCard(person),
+              if (widget.openMemory != null)
+                ListTile(
+                    leading: const Icon(Icons.history),
+                    title: Text('管理${person.displayName}的记忆'),
+                    subtitle: const Text('查看、导出或遗忘；暂停时仍可管理'),
+                    onTap: () => widget.openMemory!(person)),
             ],
+            if (_archiveError != null) Text(_archiveError!),
+            if (_archived.isNotEmpty) const Text('已删除用户'),
+            for (final person in _archived)
+              Card(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                    ListTile(
+                      title: Text(person.displayName),
+                      subtitle: const Text('记忆保留 · 对话访问已停用'),
+                      onTap: widget.openMemory == null
+                          ? null
+                          : () => widget.openMemory!(person),
+                    ),
+                    Wrap(alignment: WrapAlignment.end, children: [
+                      TextButton(
+                          onPressed: _busy ? null : () => _eraseMemory(person),
+                          child: const Text('清空记忆')),
+                      TextButton(
+                          child: const Text('恢复用户'),
+                          onPressed: _busy
+                              ? null
+                              : () => _act(() async {
+                                    await widget.call(
+                                        method: 'POST',
+                                        suffix:
+                                            '/${Uri.encodeComponent(person.personId)}/restore?expected_revision=${person.revision}');
+                                    await _load();
+                                  }))
+                    ]),
+                  ])),
           ],
         ),
         bottomNavigationBar: SafeArea(
           top: false,
           minimum:
               const EdgeInsets.fromLTRB(Neon.s6, Neon.s3, Neon.s6, Neon.s4),
-          child: NeonCta(
-            child: FilledButton.icon(
-              onPressed: _busy || _pendingCreate != null ? null : () => _edit(),
-              icon: const Icon(Icons.person_add_outlined),
-              label: const Text('添加用户'),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (_error != null) ...[
+              const SizedBox(height: Neon.s4),
+              Semantics(
+                liveRegion: true,
+                child: NeonPanel(
+                    accent: Neon.bad,
+                    child: Text(_error!,
+                        style: const TextStyle(color: Neon.bad, height: 1.5))),
+              ),
+            ],
+            NeonCta(
+              child: FilledButton.icon(
+                onPressed:
+                    _busy || _pendingCreate != null ? null : () => _edit(),
+                icon: const Icon(Icons.person_add_outlined),
+                label: const Text('添加用户'),
+              ),
             ),
-          ),
+          ]),
         ),
       );
 }

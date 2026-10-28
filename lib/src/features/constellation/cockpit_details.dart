@@ -24,56 +24,59 @@ Future<void> showCockpitSheet(
   Widget? child,
   Widget Function(ScrollController controller)? scrollingChild,
   Color accent = Cockpit.cyan,
-}) => showModalBottomSheet<void>(
-  context: context,
-  backgroundColor: Colors.transparent,
-  barrierColor: Colors.black.withValues(alpha: 0.55),
-  isScrollControlled: true,
-  builder: (context) => DraggableScrollableSheet(
-    initialChildSize: 0.55,
-    minChildSize: 0.3,
-    maxChildSize: 0.92,
-    expand: false,
-    builder: (context, controller) => DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFF07030F).withValues(alpha: 0.97),
-        border: Border(top: BorderSide(color: accent.withValues(alpha: 0.5))),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 46,
-            height: 3,
-            margin: const EdgeInsets.symmetric(vertical: 9),
-            color: Cockpit.inkDim.withValues(alpha: 0.5),
+}) =>
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.55),
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.55,
+        minChildSize: 0.3,
+        maxChildSize: 0.92,
+        expand: false,
+        builder: (context, controller) => DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xFF07030F).withValues(alpha: 0.97),
+            border:
+                Border(top: BorderSide(color: accent.withValues(alpha: 0.5))),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(child: Text(title, style: Cockpit.sans(size: 18))),
-                Text(
-                  kicker,
-                  style: Cockpit.mono(size: 9, color: accent, tracking: 0.1),
+          child: Column(
+            children: [
+              Container(
+                width: 46,
+                height: 3,
+                margin: const EdgeInsets.symmetric(vertical: 9),
+                color: Cockpit.inkDim.withValues(alpha: 0.5),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(child: Text(title, style: Cockpit.sans(size: 18))),
+                    Text(
+                      kicker,
+                      style:
+                          Cockpit.mono(size: 9, color: accent, tracking: 0.1),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              Expanded(
+                child: scrollingChild != null
+                    ? scrollingChild(controller)
+                    : ListView(
+                        controller: controller,
+                        padding: const EdgeInsets.fromLTRB(14, 0, 14, 28),
+                        children: [child ?? const SizedBox.shrink()],
+                      ),
+              ),
+            ],
           ),
-          Expanded(
-            child: scrollingChild != null
-                ? scrollingChild(controller)
-                : ListView(
-                    controller: controller,
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 28),
-                    children: [child ?? const SizedBox.shrink()],
-                  ),
-          ),
-        ],
+        ),
       ),
-    ),
-  ),
-);
+    );
 
 /// A label / value table. The one shape every detail sheet is built from, so a
 /// reader learns to read it once.
@@ -85,53 +88,55 @@ class FactTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      if (title case final heading?) ...[
-        Text(
-          heading,
-          style: Cockpit.mono(size: 9.5, color: Cockpit.inkDim, tracking: 0.1),
-        ),
-        const SizedBox(height: 7),
-      ],
-      Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(color: Cockpit.hair),
-            bottom: BorderSide(color: Cockpit.hair),
-          ),
-        ),
-        child: Column(
-          children: [
-            for (final row in rows)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 92,
-                      child: Text(
-                        row.$1,
-                        style: Cockpit.mono(size: 9.5, color: Cockpit.inkDim),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        row.$2,
-                        textAlign: TextAlign.right,
-                        style: Cockpit.mono(size: 10.5, height: 1.4),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (title case final heading?) ...[
+            Text(
+              heading,
+              style:
+                  Cockpit.mono(size: 9.5, color: Cockpit.inkDim, tracking: 0.1),
+            ),
+            const SizedBox(height: 7),
           ],
-        ),
-      ),
-    ],
-  );
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(color: Cockpit.hair),
+                bottom: BorderSide(color: Cockpit.hair),
+              ),
+            ),
+            child: Column(
+              children: [
+                for (final row in rows)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 92,
+                          child: Text(
+                            row.$1,
+                            style:
+                                Cockpit.mono(size: 9.5, color: Cockpit.inkDim),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            row.$2,
+                            textAlign: TextAlign.right,
+                            style: Cockpit.mono(size: 10.5, height: 1.4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      );
 }
 
 class SheetNote extends StatelessWidget {
@@ -146,17 +151,17 @@ class SheetNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 12),
-    child: Text(
-      text,
-      style: Cockpit.mono(
-        size: 9.5,
-        weight: FontWeight.w600,
-        color: toneColor(tone),
-        height: 1.65,
-      ),
-    ),
-  );
+        padding: const EdgeInsets.only(top: 12),
+        child: Text(
+          text,
+          style: Cockpit.mono(
+            size: 9.5,
+            weight: FontWeight.w600,
+            color: toneColor(tone),
+            height: 1.65,
+          ),
+        ),
+      );
 }
 
 Widget ownerSheetBody(CockpitSnapshot snapshot) {
@@ -184,6 +189,17 @@ Widget ownerSheetBody(CockpitSnapshot snapshot) {
           ('身体', '${devices.length} 台 · $online 在线'),
           ('待认领', '${snapshot.unboundDevices.length} 台'),
           ('记忆空间', '${snapshot.memory.realmsTotal} 个'),
+          ('默认记忆', snapshot.memory.defaultRealmId.isEmpty ? '未确认' : '已设置'),
+          ('个人记忆空间', '${snapshot.memory.personalRealmIds.length} 个'),
+          (
+            '最近一轮使用',
+            snapshot.memory.activeRealmId.isEmpty
+                ? '无个人记忆使用证据'
+                : snapshot.memory.activeRealmId ==
+                        snapshot.memory.defaultRealmId
+                    ? '默认记忆'
+                    : '个人记忆'
+          ),
           (
             '记忆状态',
             snapshot.memory.materializationState == 'ready'
@@ -209,8 +225,7 @@ Widget ownerSheetBody(CockpitSnapshot snapshot) {
         ],
       ),
       const SheetNote(
-        text:
-            '这一屏不说伙伴是否在线：这套系统没有为伙伴发布过任何心跳，'
+        text: '这一屏不说伙伴是否在线：这套系统没有为伙伴发布过任何心跳，'
             '一个没人喂的绿点比没有绿点更糟。身体的在场是身体的，已按台标注。',
       ),
     ],
@@ -218,45 +233,46 @@ Widget ownerSheetBody(CockpitSnapshot snapshot) {
 }
 
 Widget serviceSheetBody(CockpitService service) => Column(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  children: [
-    Text(
-      service.role,
-      style: Cockpit.sans(
-        size: 12.5,
-        weight: FontWeight.w500,
-        color: Cockpit.ink,
-        height: 1.6,
-      ),
-    ),
-    const SizedBox(height: 14),
-    FactTable(
-      rows: <(String, String)>[
-        ('代码', service.code),
-        ('接入方式', service.mode),
-        (
-          '层次',
-          switch (service.tier) {
-            ServiceTier.service => '子项目服务',
-            ServiceTier.middleware => '共享基础设施',
-            ServiceTier.external => '外挂扩展',
-          },
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          service.role,
+          style: Cockpit.sans(
+            size: 12.5,
+            weight: FontWeight.w500,
+            color: Cockpit.ink,
+            height: 1.6,
+          ),
         ),
-        ('状态', service.stateLabel),
-        ('延迟', formatLatency(service.latencyMs)),
-        ('细节', service.detail.isEmpty ? '—' : service.detail),
+        const SizedBox(height: 14),
+        FactTable(
+          rows: <(String, String)>[
+            ('代码', service.code),
+            ('接入方式', service.mode),
+            (
+              '层次',
+              switch (service.tier) {
+                ServiceTier.service => '子项目服务',
+                ServiceTier.middleware => '共享基础设施',
+                ServiceTier.external => '外挂扩展',
+              },
+            ),
+            ('状态', service.stateLabel),
+            ('延迟', formatLatency(service.latencyMs)),
+            ('细节', service.detail.isEmpty ? '—' : service.detail),
+          ],
+        ),
+        if (!service.checked)
+          const SheetNote(
+              text: '没有人探测过它。这不是「正常」，是「不知道」。', tone: CockpitTone.warn)
+        else if (!service.online)
+          SheetNote(
+            text:
+                '它没有回应。${service.tier == ServiceTier.external ? '这是外挂扩展，核心链路不依赖它。' : '依赖它的链路会降级。'}',
+            tone: CockpitTone.bad,
+          ),
       ],
-    ),
-    if (!service.checked)
-      const SheetNote(text: '没有人探测过它。这不是「正常」，是「不知道」。', tone: CockpitTone.warn)
-    else if (!service.online)
-      SheetNote(
-        text:
-            '它没有回应。${service.tier == ServiceTier.external ? '这是外挂扩展，核心链路不依赖它。' : '依赖它的链路会降级。'}',
-        tone: CockpitTone.bad,
-      ),
-  ],
-);
+    );
 
 /// One activity, opened.
 ///
@@ -467,64 +483,64 @@ Widget deviceSheetBody(CockpitDevice device, {String companionName = ''}) =>
     );
 
 Widget companionSheetBody(CompanionUnit unit) => Column(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  children: [
-    Text(
-      '虚拟伙伴（agent），归属于这台主机的主人。它拥有自己的身体、记忆与活动。',
-      style: Cockpit.sans(
-        size: 12.5,
-        weight: FontWeight.w500,
-        color: Cockpit.ink,
-        height: 1.6,
-      ),
-    ),
-    const SizedBox(height: 14),
-    FactTable(
-      title: '身份',
-      rows: <(String, String)>[
-        ('名字', unit.name),
-        ('角色', unit.isDefault ? '默认' : unit.companion.kind),
-        ('生命周期', companionLifecycleLabel(unit.companion.status)),
-        ('基因 genome', genomeStateLabel(unit.genome)),
-        ('记忆空间', memoryRealmStateLabel(unit.realm)),
-      ],
-    ),
-    const SizedBox(height: 12),
-    FactTable(
-      title: '身体',
-      rows: <(String, String)>[
-        if (unit.devices.isEmpty)
-          ('—', '尚未绑定')
-        else
-          for (final device in unit.devices)
-            (deviceShortName(device), devicePresenceLabel(device)),
-      ],
-    ),
-    const SizedBox(height: 12),
-    FactTable(
-      title: '活动',
-      rows: <(String, String)>[
-        if (unit.activities.isEmpty)
-          ('—', '没有记录')
-        else
-          for (final activity in unit.activities.take(6))
-            (
-              activityKindLabel(activity.kind),
-              activityStatusLabel(activity.status),
-            ),
-      ],
-    ),
-    if (unit.jobs.isNotEmpty) ...[
-      const SizedBox(height: 12),
-      FactTable(
-        title: '后台任务',
-        rows: <(String, String)>[
-          for (final job in unit.jobs) (job.kind, job.status),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '虚拟伙伴（agent），归属于这台主机的主人。它拥有自己的身体、记忆与活动。',
+          style: Cockpit.sans(
+            size: 12.5,
+            weight: FontWeight.w500,
+            color: Cockpit.ink,
+            height: 1.6,
+          ),
+        ),
+        const SizedBox(height: 14),
+        FactTable(
+          title: '身份',
+          rows: <(String, String)>[
+            ('名字', unit.name),
+            ('角色', unit.isDefault ? '默认' : unit.companion.kind),
+            ('生命周期', companionLifecycleLabel(unit.companion.status)),
+            ('基因 genome', genomeStateLabel(unit.genome)),
+            ('记忆空间', memoryRealmStateLabel(unit.realm)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        FactTable(
+          title: '身体',
+          rows: <(String, String)>[
+            if (unit.devices.isEmpty)
+              ('—', '尚未绑定')
+            else
+              for (final device in unit.devices)
+                (deviceShortName(device), devicePresenceLabel(device)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        FactTable(
+          title: '活动',
+          rows: <(String, String)>[
+            if (unit.activities.isEmpty)
+              ('—', '没有记录')
+            else
+              for (final activity in unit.activities.take(6))
+                (
+                  activityKindLabel(activity.kind),
+                  activityStatusLabel(activity.status),
+                ),
+          ],
+        ),
+        if (unit.jobs.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          FactTable(
+            title: '后台任务',
+            rows: <(String, String)>[
+              for (final job in unit.jobs) (job.kind, job.status),
+            ],
+          ),
         ],
-      ),
-    ],
-  ],
-);
+      ],
+    );
 
 /// Where a turn's time went.
 ///
