@@ -129,6 +129,8 @@ class ManagementV1 {
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/memory-state';
   static String personsByPersonIdPermanentDeletePath(String personId) =>
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/permanent-delete';
+  static String personsByPersonIdProvisionalMemoryPolicyPath(String personId) =>
+      '/api/management/v1/persons/${Uri.encodeComponent(personId)}/provisional-memory/policy';
   static String personsByPersonIdRecognitionRetirePath(String personId) =>
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/recognition/retire';
   static String personsByPersonIdRestorePath(String personId) =>
@@ -4868,6 +4870,71 @@ class ProviderList {
 
   Map<String, dynamic> toJson() {
     return {'providers': providers.map((entry) => entry.toJson()).toList()};
+  }
+}
+
+class ProvisionalMemoryPolicy {
+  const ProvisionalMemoryPolicy({this.saveAllowed, this.sessionRecallAllowed});
+
+  final bool? saveAllowed;
+
+  final bool? sessionRecallAllowed;
+
+  factory ProvisionalMemoryPolicy.fromJson(Map<String, dynamic> value) {
+    return ProvisionalMemoryPolicy(
+      saveAllowed: value['save_allowed'] as bool?,
+      sessionRecallAllowed: value['session_recall_allowed'] as bool?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (saveAllowed != null) 'save_allowed': saveAllowed,
+      if (sessionRecallAllowed != null)
+        'session_recall_allowed': sessionRecallAllowed,
+    };
+  }
+}
+
+class ProvisionalMemoryPolicyState {
+  const ProvisionalMemoryPolicyState({
+    required this.ownerId,
+    required this.personId,
+    required this.personRevision,
+    required this.policy,
+    required this.realmId,
+  });
+
+  final String ownerId;
+
+  final String personId;
+
+  final int personRevision;
+
+  final ProvisionalMemoryPolicy policy;
+
+  final String realmId;
+
+  factory ProvisionalMemoryPolicyState.fromJson(Map<String, dynamic> value) {
+    return ProvisionalMemoryPolicyState(
+      ownerId: value['owner_id'] as String,
+      personId: value['person_id'] as String,
+      personRevision: value['person_revision'] as int,
+      policy: ProvisionalMemoryPolicy.fromJson(
+        value['policy'] as Map<String, dynamic>,
+      ),
+      realmId: value['realm_id'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'owner_id': ownerId,
+      'person_id': personId,
+      'person_revision': personRevision,
+      'policy': policy.toJson(),
+      'realm_id': realmId,
+    };
   }
 }
 

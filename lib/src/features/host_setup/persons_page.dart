@@ -395,6 +395,76 @@ class _PersonsPageState extends State<PersonsPage> {
     });
   }
 
+  Future<void> _provisionalPolicy(PersonView person) async {
+    final path =
+        '/${Uri.encodeComponent(person.personId)}/provisional-memory/policy';
+    ProvisionalMemoryPolicyState? loaded;
+    await _act(() async {
+      final result = ProvisionalMemoryPolicyState.fromJson(
+          await widget.call(suffix: path));
+      if (result.personId != person.personId ||
+          result.ownerId != person.ownerId) {
+        throw StateError('Policy identity mismatch');
+      }
+      loaded = result;
+    });
+    if (!mounted || loaded == null) return;
+    final state = loaded!;
+    var save = state.policy.saveAllowed ?? false;
+    var recall = state.policy.sessionRecallAllowed ?? false;
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+          builder: (context, update) => AlertDialog(
+                title: Text('${person.displayName}的暂定数据许可'),
+                content: SingleChildScrollView(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Text(
+                      '保存和读取分别控制。读取仅限同一会话再次确认是此人时；身份晋升不会自动确认旧内容。设置许可不代表数据已经保存或可读取。'),
+                  SwitchListTile(
+                    key: const ValueKey('provisional-save'),
+                    title: const Text('允许保存暂定内容'),
+                    subtitle: const Text('关闭后停止新增保存，保留已有数据'),
+                    value: save,
+                    onChanged: person.status == 'active' || save
+                        ? (value) => update(() => save = value)
+                        : null,
+                  ),
+                  SwitchListTile(
+                    key: const ValueKey('provisional-recall'),
+                    title: const Text('允许同会话读取'),
+                    subtitle: const Text('不开放跨会话个人记忆'),
+                    value: recall,
+                    onChanged: person.status == 'active' || recall
+                        ? (value) => update(() => recall = value)
+                        : null,
+                  ),
+                ])),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('取消')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('保存许可')),
+                ],
+              )),
+    );
+    if (accepted != true || !mounted) return;
+    await _act(() async {
+      try {
+        await widget.call(
+            method: 'PUT',
+            suffix: '$path?expected_revision=${state.personRevision}',
+            body: ProvisionalMemoryPolicy(
+                    saveAllowed: save, sessionRecallAllowed: recall)
+                .toJson());
+      } finally {
+        await _load();
+      }
+    });
+  }
+
   Future<void> _setMemory(PersonView person, bool enabled) => _act(() async {
         final state = _memoryStates[person.personId];
         if (state == null || person.status != 'active') return;
@@ -491,10 +561,13 @@ class _PersonsPageState extends State<PersonsPage> {
                   enabled: !_busy,
                   onSelected: (action) {
                     if (action == 'status') _status(person);
+                    if (action == 'provisional') _provisionalPolicy(person);
                     if (action == 'retire') _retire(person);
                     if (action == 'archive') _archive(person);
                   },
                   itemBuilder: (_) => [
+                    const PopupMenuItem(
+                        value: 'provisional', child: Text('暂定数据许可')),
                     if (person.maturity == 'candidate' &&
                         person.recognitionState != 'retained')
                       const PopupMenuItem(
