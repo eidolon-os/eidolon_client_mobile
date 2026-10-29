@@ -118,6 +118,7 @@ class MainActivity : FlutterActivity() {
                 "requestBluetoothPermissions" -> requestBluetoothPermissions(result)
                 "requestDeviceProvisioningPermission" ->
                     requestDeviceProvisioningPermission(result)
+                "currentProvisioningWifiSsid" -> result.success(deviceProvisioning.currentWifiSsid())
                 "discoverProvisionableDevices" -> {
                     if (!hasDeviceProvisioningPermission()) {
                         result.error(

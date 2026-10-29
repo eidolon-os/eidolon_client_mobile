@@ -93,11 +93,8 @@ class DeviceProvisioningManager(
          * on. An empty list from a stale cache is not "there is nothing
          * there"; it is "nobody looked".
          */
-        private const val FRESH_SCAN_MILLIS = 30_000L
         private const val SCAN_TIMEOUT_MILLIS = 15_000L
 
-        /** How long to wait for the phone to actually be on the device's network. */
-        private const val JOIN_TIMEOUT_MILLIS = 60_000
         private const val TERMINAL_TIMEOUT_MILLIS = 30_000L
         private const val TERMINAL_POLL_MILLIS = 500L
     }
@@ -150,6 +147,13 @@ class DeviceProvisioningManager(
      * nothing" apart from "the phone would not look". They arrive as the same
      * empty list, and only the first of them means what the screen would say.
      */
+    @Suppress("DEPRECATION")
+    fun currentWifiSsid(): String? = try {
+        wifi.connectionInfo?.ssid?.trim('"')?.takeIf {
+            it.isNotBlank() && it != WifiManager.UNKNOWN_SSID && !it.startsWith(AP_PREFIX)
+        }
+    } catch (_: SecurityException) { null }
+
     fun discover(result: MethodChannel.Result) {
         val pending = PendingResult(result)
         if (!wifi.isWifiEnabled) {
@@ -171,11 +175,15 @@ class DeviceProvisioningManager(
             }
         }
 
-        val timeout = Runnable { finishScan(pending) }
+        val requestedAt = SystemClock.elapsedRealtime()
+        val timeout = Runnable { finishScan(pending, requestedAt, false) }
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
+                val updated = intent?.getBooleanExtra(WifiManager.EXTRA_RESULTS_UPDATED, false) == true
+                Log.i(TAG, "Scan broadcast updated=$updated")
+                if (!updated) return
                 mainHandler.removeCallbacks(timeout)
-                finishScan(pending)
+                finishScan(pending, requestedAt, true)
             }
         }
         synchronized(lock) { scanReceiver = receiver }
@@ -191,7 +199,12 @@ class DeviceProvisioningManager(
             context.applicationContext.registerReceiver(receiver, filter)
         }
 
-        val started = wifi.startScan()
+        val started = try {
+            wifi.startScan()
+        } catch (error: SecurityException) {
+            finishScan(pending, requestedAt, false)
+            return
+        }
         Log.i(TAG, "Asked for a Wi-Fi scan; the platform said $started")
         // Even a refused request is followed here rather than answered now: the
         // system may still publish results, and what is already cached may be
@@ -199,7 +212,7 @@ class DeviceProvisioningManager(
         mainHandler.postDelayed(timeout, SCAN_TIMEOUT_MILLIS)
     }
 
-    private fun finishScan(pending: PendingResult) {
+    private fun finishScan(pending: PendingResult, requestedAt: Long, updated: Boolean) {
         if (pending.isAnswered) return
         synchronized(lock) {
             scanReceiver?.let {
@@ -221,7 +234,12 @@ class DeviceProvisioningManager(
             return
         }
         val freshest = results.minOfOrNull { ageMillis(it) }
-        val candidates = results
+        // Android may throttle repeat scans. Recent observations remain useful,
+        // but callers must know when they are cached.
+        val freshResults = results.filter {
+            isUsableDiscoveryObservation(it.timestamp / 1000, SystemClock.elapsedRealtime())
+        }
+        val candidates = freshResults
             .filter { it.ssidText().startsWith(AP_PREFIX) }
             .map { point ->
                 buildMap {
@@ -229,6 +247,7 @@ class DeviceProvisioningManager(
                     put("displayName", point.ssidText())
                     put("transportKind", TRANSPORT_KIND)
                     put("signalStrength", point.level)
+                    put("cached", !updated || point.timestamp / 1000 < requestedAt)
                     // The access point's own address, when the platform shows
                     // it. Naming it on both visits is what lets Android treat
                     // the second one as already allowed (see joinDeviceNetwork).
@@ -238,11 +257,9 @@ class DeviceProvisioningManager(
         Log.i(
             TAG,
             "Scan carried ${results.size} network(s), freshest ${freshest}ms old, " +
-                "${candidates.size} of them offering setup",
+                "${candidates.size} fresh setup candidates; updated=$updated",
         )
-        if (candidates.isEmpty() &&
-            (freshest == null || freshest > FRESH_SCAN_MILLIS)
-        ) {
+        if (freshResults.isEmpty() && (!updated || results.isNotEmpty())) {
             // Nothing was found, and nothing was looked at either. Saying "no
             // devices" here would send a person to check a device that is
             // sitting right there, waiting, in setup mode.
@@ -323,13 +340,9 @@ class DeviceProvisioningManager(
     private fun joinDeviceNetwork(transportId: String, accessPoint: String?) {
         val pending = synchronized(lock) { connectResult } ?: return
         val specifier = WifiNetworkSpecifier.Builder().setSsid(transportId)
-        // Setting a device up visits its access point twice, with the Host
-        // asked for the device's standing in between. Android asks the person
-        // to allow every such request — unless it names one exact access point
-        // (SSID and BSSID) that this app was already allowed to join, which
-        // the second visit then is. Without the address the person is asked
-        // again right after typing the Wi-Fi password, on some phones on a
-        // full-screen page that looks like the system's Wi-Fi settings.
+        // Approval belongs to this app and this exact AP, not a board type.
+        // Android may reuse previous consent for SSID+BSSID. A different AP
+        // can require its own system dialog; never infer consent in app state.
         accessPoint?.let { address ->
             try {
                 specifier.setBssid(MacAddress.fromString(address))
@@ -382,7 +395,11 @@ class DeviceProvisioningManager(
         }
         synchronized(lock) { networkCallback = callback }
         try {
-            connectivity.requestNetwork(request, callback, JOIN_TIMEOUT_MILLIS)
+            // Android owns the user-consent phase and reports rejection/failure via
+            // onUnavailable. An app timer must not invalidate a still-visible
+            // consent dialog. Session I/O is bounded after onAvailable; close()
+            // unregisters this request when the user leaves the setup flow.
+            connectivity.requestNetwork(request, callback)
         } catch (error: SecurityException) {
             Log.e(TAG, "Android refused the local-only network request", error)
             failConnection(
@@ -986,3 +1003,7 @@ class DeviceProvisioningManager(
         else -> "unknown"
     }
 }
+
+/** Bound cache reuse by age, not by whether Android accepted a repeat scan. */
+internal fun isUsableDiscoveryObservation(observedAt: Long, now: Long): Boolean =
+    now - observedAt in 0..30_000L

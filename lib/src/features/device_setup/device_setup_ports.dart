@@ -113,3 +113,8 @@ class InMemoryDeviceSetupCheckpointStore implements DeviceSetupCheckpointStore {
     _values[checkpoint.setupId] = checkpoint;
   }
 }
+
+/// Optional phone-network hint, captured before joining the device hotspot.
+abstract interface class PhoneWifiSource {
+  Future<String?> currentWifiSsid();
+}

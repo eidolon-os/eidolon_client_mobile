@@ -25,6 +25,56 @@ import 'support/admission_fixtures.dart';
 /// then failed. So the session must be closed before the Host is asked, and
 /// re-opened afterwards to hand over what the Host said.
 void main() {
+  testWidgets(
+      'refused rescan preserves the last device with an explicit warning',
+      (tester) async {
+    final transport = _Transport();
+    await tester.pumpWidget(MaterialApp(
+        home: DeviceSetupPage(
+      transport: transport,
+      admission: _Admission(transport),
+      checkpoints: InMemoryDeviceSetupCheckpointStore(),
+      loadTarget: () async => deviceOnboardingTargetFixture(),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查找设备'));
+    await tester.pumpAndSettle();
+    expect(find.text('Eidolon Body 1'), findsOneWidget);
+    transport.discoveryFailure = const DeviceProvisioningTransportException(
+        'device_scan_stale', '扫描未刷新');
+    await tester.tap(find.text('重新查找'));
+    await tester.pumpAndSettle();
+    expect(find.text('Eidolon Body 1'), findsOneWidget);
+    expect(find.textContaining('以下为上次发现的设备'), findsOneWidget);
+    expect(find.text('扫描未刷新'), findsOneWidget);
+  });
+
+  testWidgets(
+      'phone Wi-Fi shortcut selects the captured network without submitting',
+      (tester) async {
+    final transport = _Transport()..requiresVoucher = false;
+    await tester.pumpWidget(MaterialApp(
+        home: DeviceSetupPage(
+      transport: transport,
+      admission: _Admission(transport),
+      checkpoints: InMemoryDeviceSetupCheckpointStore(),
+      loadTarget: () async => deviceOnboardingTargetFixture(),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查找设备'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('use-phone-wifi')));
+    await tester.pumpAndSettle();
+    expect(
+        tester
+            .widget<ListTile>(find.byKey(const Key('network-owner-wifi')))
+            .selected,
+        isTrue);
+    expect(transport.sessions.single.writes, 0);
+  });
+
   testWidgets('failed authority query never opens a device setup session',
       (tester) async {
     final transport = _Transport();
@@ -1051,7 +1101,10 @@ class _Admission implements DeviceAdmissionPort {
   }
 }
 
-class _Transport implements DeviceProvisioningTransport {
+class _Transport implements DeviceProvisioningTransport, PhoneWifiSource {
+  @override
+  Future<String?> currentWifiSsid() async => "owner-wifi";
+  Object? discoveryFailure;
   Object? configureFailure;
   Object? preparationFailure;
   Object? scanFailure;
@@ -1068,14 +1121,17 @@ class _Transport implements DeviceProvisioningTransport {
   Future<bool> requestPermission() async => true;
 
   @override
-  Future<List<DeviceProvisioningCandidate>> discover() async => const [
-        DeviceProvisioningCandidate(
-          transportId: 'eidolon-52f354',
-          displayName: 'Eidolon Body 1',
-          transportKind: 'softap',
-          trust: SetupDescriptorTrustV1.manufacturerBound,
-        ),
-      ];
+  Future<List<DeviceProvisioningCandidate>> discover() async {
+    if (discoveryFailure != null) throw discoveryFailure!;
+    return const [
+      DeviceProvisioningCandidate(
+        transportId: 'eidolon-52f354',
+        displayName: 'Eidolon Body 1',
+        transportKind: 'softap',
+        trust: SetupDescriptorTrustV1.manufacturerBound,
+      ),
+    ];
+  }
 
   @override
   Future<DeviceProvisioningSession> open(

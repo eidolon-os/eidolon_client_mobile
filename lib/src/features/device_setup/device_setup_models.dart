@@ -60,14 +60,17 @@ class DeviceProvisioningCandidate {
     required this.transportKind,
     required this.trust,
     this.signalStrength,
+    this.cached = false,
     this.accessPoint,
   });
 
   final String transportId;
   final String displayName;
+
   final String transportKind;
   final SetupDescriptorTrustV1 trust;
   final int? signalStrength;
+  final bool cached;
 
   /// The hardware address of the access point this candidate was seen on, as
   /// a lower-case `aa:bb:cc:dd:ee:ff`, or null when the platform withheld it.

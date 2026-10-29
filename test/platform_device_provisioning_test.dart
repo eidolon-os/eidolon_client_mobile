@@ -29,6 +29,38 @@ void main() {
     messenger.setMockMethodCallHandler(channel, null);
   });
 
+  test('discovery presentation never changes transport identity for any device',
+      () async {
+    const names = [
+      'eidolon-alpha-aabbcc',
+      'eidolon-beta-112233',
+      'eidolon-445566'
+    ];
+    const addresses = [
+      '12:34:56:78:90:01',
+      '12:34:56:78:90:02',
+      '12:34:56:78:90:03'
+    ];
+    messenger.setMockMethodCallHandler(
+        channel,
+        (call) async => [
+              for (var i = 0; i < names.length; i++)
+                {
+                  'transportId': names[i],
+                  'displayName': names[i],
+                  'transportKind': 'softap',
+                  'accessPoint': addresses[i],
+                  'cached': true,
+                }
+            ]);
+    final found = await PlatformDeviceProvisioning(channel: channel).discover();
+    expect(found.map((c) => c.transportId), names);
+    expect(found.map((c) => c.accessPoint), addresses);
+    expect(found.map((c) => c.displayName),
+        ['alpha · AABBCC', 'beta · 112233', 'Eidolon 设备 · 445566']);
+    expect(found.every((c) => c.cached), isTrue);
+  });
+
   String descriptorJson({
     String contractVersion = '1',
     String trust = 'development-tofu',
@@ -883,7 +915,8 @@ void main() {
     });
   });
 
-  test('discovery keeps the access point address so the second visit can name it',
+  test(
+      'discovery keeps the access point address so the second visit can name it',
       () async {
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'discoverProvisionableDevices') {

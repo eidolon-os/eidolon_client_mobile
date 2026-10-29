@@ -16,7 +16,8 @@ import 'device_setup_ports.dart';
 /// not to the contract: a device class that speaks something else is another
 /// adapter beside this one, and nothing above has to learn about it.
 ///
-class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
+class PlatformDeviceProvisioning
+    implements DeviceProvisioningTransport, PhoneWifiSource {
   PlatformDeviceProvisioning({
     MethodChannel? channel,
     DateTime Function()? clock,
@@ -26,6 +27,17 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
 
   final MethodChannel _channel;
   final DateTime Function() _clock;
+
+  @override
+  Future<String?> currentWifiSsid() async {
+    try {
+      return await _channel.invokeMethod<String>('currentProvisioningWifiSsid');
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
 
   void _requireAndroid() {
     if (defaultTargetPlatform != TargetPlatform.android) {
@@ -53,7 +65,8 @@ class PlatformDeviceProvisioning implements DeviceProvisioningTransport {
       'DEVICE_SCAN_STALE' => '手机刚才没能重新扫描一次,所以还不知道附近有什么。稍等几秒再试一次。',
       'DEVICE_SCAN_BUSY' => '正在扫描,请稍候。',
       'WIFI_PERMISSION_DENIED' => '设置设备需要「附近设备」权限。',
-      'DEVICE_UNREACHABLE' => '连不上这台设备。请确认设备仍在网络设置模式，再重新连接。',
+      'DEVICE_UNREACHABLE' =>
+        '未建立设备热点连接，尚未发送 Wi-Fi 密码。请在系统提示中允许连接，并确认设备仍在网络设置模式，然后重试。',
       'DEVICE_SESSION_FAILED' => _withDetail('已连接设备热点，但建立安全会话失败', error),
       'DEVICE_DISCONNECTED' => '设备中断了这次设置。请再试一次。',
       // The detail is kept. This one sentence has stood in front of three
@@ -442,18 +455,20 @@ DeviceProvisioningCandidate _candidateFromPlatform(
   }
   return DeviceProvisioningCandidate(
     transportId: transportId,
-    displayName: displayName,
+    displayName: provisioningDiscoveryLabel(displayName),
     transportKind: transportKind,
     // Nothing discoverable proves a manufacturer-bound identity: only the
     // descriptor read over an authenticated session can, and the coordinator
     // refuses a session whose trust changed between the two.
     trust: SetupDescriptorTrustV1.developmentTofu,
     signalStrength: signalStrength is int ? signalStrength : null,
+    cached: value['cached'] == true,
     // Optional and never required: without it the visit still works, the
     // platform just asks the person again on the way back.
-    accessPoint: accessPoint is String && _accessPointPattern.hasMatch(accessPoint)
-        ? accessPoint.toLowerCase()
-        : null,
+    accessPoint:
+        accessPoint is String && _accessPointPattern.hasMatch(accessPoint)
+            ? accessPoint.toLowerCase()
+            : null,
   );
 }
 
@@ -523,4 +538,12 @@ DeviceProvisioningDescriptor _parseDescriptor(String raw,
         ? null
         : now.add(Duration(seconds: expiresIn.seconds)),
   );
+}
+
+/// Decode the SoftAP discovery label at the platform boundary. Never identity proof.
+String provisioningDiscoveryLabel(String advertisedName) {
+  final match = RegExp(r'^eidolon-(?:(.+)-)?([0-9a-fA-F]{6})$')
+      .firstMatch(advertisedName);
+  if (match == null) return advertisedName;
+  return '${match.group(1) ?? "Eidolon 设备"} · ${match.group(2)!.toUpperCase()}';
 }

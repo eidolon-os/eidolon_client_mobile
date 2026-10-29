@@ -120,6 +120,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   final _random = Random.secure();
 
   String? _scanWarning;
+  String? _phoneWifiSsid;
+  String? _discoveryWarning;
   String? _completedDeviceId;
   _Step _step = _Step.introduction;
   List<DeviceProvisioningCandidate> _candidates = const [];
@@ -253,6 +255,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   Future<void> _discover() => _run(() async {
         setState(() {
           _progress = '正在寻找可以设置的设备';
+          _discoveryWarning =
+              _candidates.isEmpty ? null : '本次刷新尚未完成，以下为上次发现的设备。';
           // A fresh search forgets the device the previous one prepared;
           // the one chosen next is read again in full.
           _candidate = null;
@@ -264,6 +268,9 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         if (!await widget.transport.requestPermission()) {
           throw Exception('设置设备需要「附近设备」权限。');
         }
+        if (widget.transport case final PhoneWifiSource source) {
+          _phoneWifiSsid = await source.currentWifiSsid();
+        }
         // The Host is read while this phone is still on the Host's network.
         // Opening a session moves the phone onto the device's own access point,
         // where the Host is not reachable at all — asking for it there failed
@@ -273,12 +280,19 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         await _readRevokedClaims(_target!);
         final found = await widget.transport.discover();
         if (found.isEmpty) {
+          setState(() {
+            _candidates = const [];
+            _discoveryWarning = null;
+          });
           throw Exception(
             '附近没有等待设置的设备。请在设备上打开网络设置,然后重试。',
           );
         }
         setState(() {
           _candidates = found;
+          _discoveryWarning = found.any((c) => c.cached)
+              ? '手机暂未提供完整的新扫描，以下包含最近 30 秒内发现的设备。'
+              : null;
           _step = _Step.choosingDevice;
           _progress = null;
         });
@@ -706,8 +720,15 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
                     _step == _Step.working)) ...[
               const SizedBox(height: 16),
               Text('如系统要求连接设备，请选择“${_candidate!.transportId}”并允许连接。'
-                  '若进入 WLAN 页面，连接该热点后返回此处，设置会自动继续。'
+                  '这是手机对这台设备的连接授权，不是在选择家庭 Wi-Fi。'
+                  '请在系统授权页面允许连接，完成后返回 App。'
                   '设备热点暂时无法上网是正常现象。'),
+              if (_step == _Step.choosingDevice)
+                TextButton(
+                  key: const Key('cancel-device-connection'),
+                  onPressed: () => widget.transport.close(),
+                  child: const Text('取消连接'),
+                ),
             ],
             if (_progress != null) ...[
               const SizedBox(height: 20),
@@ -779,6 +800,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('选择设备', style: Theme.of(context).textTheme.titleLarge),
+          const Text('这是最近一次查找的结果。设备刚进入设置模式时，请重新查找。'),
+          if (_discoveryWarning != null) Text(_discoveryWarning!),
           const SizedBox(height: 12),
           for (final candidate in _candidates)
             Card(
@@ -869,6 +892,21 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('选择家庭 Wi-Fi', style: Theme.of(context).textTheme.titleLarge),
+          if (_phoneWifiSsid case final ssid?) ...[
+            OutlinedButton.icon(
+              key: const Key('use-phone-wifi'),
+              icon: const Icon(Icons.wifi),
+              label: Text('使用手机配网前的 Wi-Fi：$ssid'),
+              onPressed: _busy
+                  ? null
+                  : () => setState(() {
+                        _network =
+                            _networks.where((n) => n.ssid == ssid).firstOrNull;
+                        _hiddenSsid.text = _network == null ? ssid : '';
+                      }),
+            ),
+            const Text('首次仍需输入 Wi-Fi 密码；请选择设备支持的网络。'),
+          ],
           if (widget.knownDevices[_descriptor?.deviceId] case final name?)
             Text('已识别原设备：$name。此次更新网络，不会重复添加。')
           else if (_descriptor?.requiresVoucher ?? false)
