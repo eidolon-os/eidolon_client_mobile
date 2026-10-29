@@ -51,7 +51,9 @@ class _PersonsPageState extends State<PersonsPage> {
     } catch (e) {
       if (mounted) {
         setState(() => _error =
-            e is ManagementRequestException ? e.message : '操作未确认，请刷新或重试');
+            e is ManagementRequestException
+                ? refusalText(e, subject: '用户管理')
+                : '操作未确认，请刷新或重试');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
