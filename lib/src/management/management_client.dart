@@ -1090,7 +1090,7 @@ class ManagementClient {
     final body = await _send(
       'GET',
       baseUri.resolve(
-        '${ManagementV1.devicesByDeviceIdCapabilitiesByOpPath(deviceId, op)}?requestId=$requestId',
+        '${ManagementV1.devicesByDeviceIdCapabilitiesByOpPath(deviceId, op)}?request_id=$requestId',
       ),
       accessToken: accessToken,
       what: '读取这台设备的$op',
