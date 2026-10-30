@@ -236,6 +236,10 @@ class SilentPlayer implements VoiceRecordingPlayer {
   final _done = StreamController<void>.broadcast();
   final played = <Uint8List>[];
 
+  /// What a platform player does with a file it cannot open: it says so on its
+  /// event stream after play() has returned.
+  void failToOpen() => _done.addError(Exception('Failed to set source'));
+
   @override
   Stream<void> get completed => _done.stream;
   @override
@@ -284,8 +288,13 @@ class ScriptedRecorder implements ReferenceRecorder {
 }
 
 class GivenFile implements AudioFilePicker {
-  GivenFile(this.file);
-  final PickedAudio? file;
+  GivenFile(String name, Uint8List bytes)
+      : file = PickedAudio(name, bytes.length, () async => bytes);
+  final PickedAudio file;
+  bool read = false;
   @override
-  Future<PickedAudio?> pick() async => file;
+  Future<PickedAudio?> pick() async => PickedAudio(file.name, file.size, () {
+        read = true;
+        return file.read();
+      });
 }

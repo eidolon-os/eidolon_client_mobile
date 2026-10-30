@@ -16,15 +16,16 @@ class VoiceAudition extends ChangeNotifier {
       VoiceRecordingPlayer? player})
       : _load = load,
         _player = player ?? LocalVoiceRecordingPlayer() {
-    _completed = _player.completed.listen((_) {
-      _playing = null;
-      notifyListeners();
-    });
+    // A player reports a file it cannot open here, not from play(): without
+    // this the error would go unhandled and the ▶ would stay a ■.
+    _completed = _player.completed
+        .listen((_) => _finish(), onError: (Object _) => _finish(failed: true));
   }
 
   final Future<Uint8List> Function(String key) _load;
   final VoiceRecordingPlayer _player;
   late final StreamSubscription<void> _completed;
+  final _failures = StreamController<String>.broadcast();
   String? _loading, _playing;
   int _turn = 0;
   bool _disposed = false;
@@ -32,8 +33,11 @@ class VoiceAudition extends ChangeNotifier {
   String? get loading => _loading;
   String? get playing => _playing;
 
-  /// Play [key], or stop it if it is what is playing. Throws when the Host
-  /// could not give the sample; the caller decides how to say so.
+  /// The voice that could not be heard, whether the Host could not make the
+  /// sample or the phone could not play it.
+  Stream<String> get failures => _failures.stream;
+
+  /// Play [key], or stop it if it is what is playing.
   Future<void> toggle(String key, {Uint8List? wav}) async {
     if (_disposed) return;
     final turn = ++_turn;
@@ -52,11 +56,19 @@ class VoiceAudition extends ChangeNotifier {
       await _player.playWav(audio);
     } catch (_) {
       if (!_disposed && turn == _turn) {
-        _loading = _playing = null;
-        notifyListeners();
+        _loading = null;
+        _playing = key;
+        _finish(failed: true);
       }
-      rethrow;
     }
+  }
+
+  void _finish({bool failed = false}) {
+    if (_disposed) return;
+    final key = _playing;
+    _playing = null;
+    notifyListeners();
+    if (failed && key != null) _failures.add(key);
   }
 
   Future<void> stop() async {
@@ -71,13 +83,15 @@ class VoiceAudition extends ChangeNotifier {
     _disposed = true;
     _turn++;
     unawaited(_completed.cancel());
+    unawaited(_failures.close());
     unawaited(_player.dispose());
     super.dispose();
   }
 }
 
-/// ▶ for one voice: a spinner while the Host makes the sample, ■ while it plays.
-class AuditionButton extends StatelessWidget {
+/// ▶ for one voice: a spinner while the Host makes the sample, ■ while it
+/// plays, and a word when it could not be heard.
+class AuditionButton extends StatefulWidget {
   const AuditionButton(
       {super.key, required this.audition, required this.voiceKey, this.wav});
 
@@ -88,30 +102,59 @@ class AuditionButton extends StatelessWidget {
   final Uint8List? wav;
 
   @override
+  State<AuditionButton> createState() => _AuditionButtonState();
+}
+
+class _AuditionButtonState extends State<AuditionButton> {
+  StreamSubscription<String>? _failures;
+
+  @override
+  void initState() {
+    super.initState();
+    _listen();
+  }
+
+  @override
+  void didUpdateWidget(AuditionButton old) {
+    super.didUpdateWidget(old);
+    if (old.audition != widget.audition) _listen();
+  }
+
+  void _listen() {
+    unawaited(_failures?.cancel());
+    _failures = widget.audition.failures.listen((key) {
+      if (key != widget.voiceKey || !mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('暂时听不了这个声音，请稍后再试')));
+    });
+  }
+
+  @override
+  void dispose() {
+    unawaited(_failures?.cancel());
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: audition,
+        listenable: widget.audition,
         builder: (context, _) {
-          if (audition.loading == voiceKey) {
+          final audition = widget.audition;
+          if (audition.loading == widget.voiceKey) {
             return const SizedBox.square(
                 dimension: 48,
                 child: Padding(
                     padding: EdgeInsets.all(14),
                     child: CircularProgressIndicator(strokeWidth: 2)));
           }
-          final playing = audition.playing == voiceKey;
+          final playing = audition.playing == widget.voiceKey;
           return IconButton(
-            key: Key('audition-$voiceKey'),
+            key: Key('audition-${widget.voiceKey}'),
             tooltip: playing ? '停止' : '试听',
             icon: Icon(playing
                 ? Icons.stop_circle_outlined
                 : Icons.play_circle_outline),
-            onPressed: () =>
-                audition.toggle(voiceKey, wav: wav).catchError((Object _) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('暂时听不了这个声音，请稍后再试')));
-              }
-            }),
+            onPressed: () => audition.toggle(widget.voiceKey, wav: widget.wav),
           );
         },
       );

@@ -207,16 +207,25 @@ class _VoiceClonePageState extends State<VoiceClonePage>
         .pick()
         .catchError((Object _) => null);
     if (picked == null || !mounted) return;
-    if (picked.bytes.length > _maxBytes) {
+    if (picked.size > _maxBytes) {
       setState(() => _failure = referenceProblem('too_large'));
       return;
     }
     setState(() {
       _busy = true;
       _spoken = false;
-      _file = picked.bytes;
     });
-    await _measure(picked.bytes);
+    try {
+      final file = _file = await picked.read();
+      await _measure(file);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _failure = referenceProblem('unreadable');
+        });
+      }
+    }
   }
 
   // ------------------------------------------------------------------- check

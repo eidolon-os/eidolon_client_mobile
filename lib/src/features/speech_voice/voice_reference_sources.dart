@@ -46,10 +46,13 @@ class MicrophoneReferenceRecorder implements ReferenceRecorder {
   Future<void> dispose() => _recorder.dispose();
 }
 
+/// A chosen file, measured before it is read: a file far too large is refused
+/// without being loaded into memory.
 class PickedAudio {
-  const PickedAudio(this.name, this.bytes);
+  const PickedAudio(this.name, this.size, this.read);
   final String name;
-  final Uint8List bytes;
+  final int size;
+  final Future<Uint8List> Function() read;
 }
 
 abstract interface class AudioFilePicker {
@@ -66,9 +69,10 @@ class SystemAudioFilePicker implements AudioFilePicker {
 
   @override
   Future<PickedAudio?> pick() async {
-    final file = await FilePicker.pickFile(
-        type: FileType.custom, allowedExtensions: extensions);
+    final picked = await FilePicker.platform
+        .pickFiles(type: FileType.custom, allowedExtensions: extensions);
+    final file = picked?.files.singleOrNull;
     if (file == null) return null;
-    return PickedAudio(file.name, await file.readAsBytes());
+    return PickedAudio(file.name, file.size, file.xFile.readAsBytes);
   }
 }

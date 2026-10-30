@@ -53,7 +53,10 @@ internal fun buildPinnedHttpsClient(
 }
 
 internal const val PINNED_HTTPS_PROTOCOL_VERSION = 1
-internal const val PINNED_HTTPS_MAX_BODY_BYTES = 1024 * 1024
+// The largest unary exchange is a voice reference: an audio file of up to
+// 10 MiB going up, its checked window coming back as base64. Mirrors the Dart
+// bound in PlatformPinnedHttpClient.
+internal const val PINNED_HTTPS_MAX_BODY_BYTES = 12 * 1024 * 1024
 
 private val HTTP_METHOD_TOKEN = Regex("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 private val FORBIDDEN_LOCAL_METHODS = setOf("CONNECT", "TRACE")

@@ -41,7 +41,8 @@ void main() {
     await _open(tester, FakeSpeechVoices());
 
     expect(find.text('下次对话会用'), findsOneWidget);
-    expect(find.text('系统声音 · 主机默认 · 龙安洋'), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const Key('voice-head-line'))).data,
+        '主机默认');
     // Not choosing is following the Host, and the list says so.
     expect(
         find.descendant(
@@ -152,6 +153,21 @@ void main() {
     expect(player.played, hasLength(1));
   });
 
+  testWidgets('a sample the phone cannot play is said, and the ▶ comes back',
+      (tester) async {
+    final player = await _open(tester, FakeSpeechVoices());
+
+    await tester.tap(find.byKey(const Key('audition-c.huan')));
+    await tester.pump();
+    expect(find.byIcon(Icons.stop_circle_outlined), findsOneWidget);
+    player.failToOpen();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('暂时听不了这个声音，请稍后再试'), findsOneWidget);
+    expect(find.byIcon(Icons.stop_circle_outlined), findsNothing);
+  });
+
   testWidgets('my voices: what each is, who uses it, and choosing one',
       (tester) async {
     final voices = FakeSpeechVoices(mine: [
@@ -169,9 +185,20 @@ void main() {
     // A draft is the design screen's business, not the library's.
     expect(find.byKey(const Key('owner-voice-d1')), findsNothing);
 
+    voices.mine = [
+      ownerVoiceView('v1'),
+      ownerVoiceView('v2',
+          name: '妈妈的声音',
+          method: 'clone',
+          status: 'preparing',
+          usedBy: ['companion-a']),
+    ];
     await tester.tap(find.text('妈妈的声音'));
     await tester.pumpAndSettle();
     expect(voices.chosen, [('o.v2', 1)]);
+    // Who uses which voice moved with the choice, and the list says so.
+    expect(find.text('文字设计 · 可用'), findsOneWidget);
+    expect(find.text('录音复刻 · 正在准备 · 1 个伙伴在用'), findsOneWidget);
   });
 
   testWidgets('an empty library explains both ways to make a voice',

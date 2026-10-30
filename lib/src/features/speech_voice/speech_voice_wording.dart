@@ -2,8 +2,50 @@ import '../../generated/management_v1.dart';
 import '../../management/management_client.dart';
 import '../host_setup/failure_sentences.dart';
 
+/// The Host's voice is standing in: nothing chosen, or what was chosen
+/// cannot be used here right now.
+const _standIns = {
+  'unset',
+  'host_fixed_voice',
+  'invalid_record',
+  'no_equivalent',
+  'owner_voice_pending',
+  'owner_voice_rejected',
+  'owner_voice_unavailable',
+  'authority_unavailable',
+  'catalog_unavailable',
+};
+
+/// Where the voice in use comes from.
+String voiceSource(CompanionSpeechVoiceView view) {
+  final reason = view.effective?.reason;
+  if (reason == 'owner_voice') return '我的声音';
+  if (_standIns.contains(reason)) return '主机默认';
+  return '系统声音';
+}
+
+/// Why the voice in use is not simply the one chosen (§5.2, §17.8), or null
+/// when it is.
+String? voiceCaveat(CompanionSpeechVoiceView view,
+    {SpeechVoiceCatalogView? catalog}) {
+  final chosen = view.selectedName ?? '选的声音';
+  return switch (view.effective?.reason) {
+    'host_fixed_voice' => catalog?.notSelectableReason == 'single_voice'
+        ? '这台主机目前只有一个可用的声音'
+        : '这台主机暂不支持更换声音',
+    'invalid_record' => '声音设置无法读取，正在用主机默认',
+    'mapped' => '相近声音',
+    'no_equivalent' => '这台主机没有相近的声音，正在用主机默认',
+    'owner_voice_pending' => '「$chosen」正在准备，暂用主机默认',
+    'owner_voice_rejected' => '「$chosen」没能生成，正在用主机默认',
+    'owner_voice_unavailable' => '「$chosen」在这台主机上暂时不能用，正在用主机默认',
+    'authority_unavailable' || 'catalog_unavailable' => '暂时确认不了，先用主机默认',
+    _ => null,
+  };
+}
+
 /// The sentence under 「声音」: which voice it will speak in next time, and why
-/// when that is not simply the one chosen (§5.2, §17.8).
+/// when that is not simply the one chosen.
 ///
 /// Built from the Host's own answer, so the phone and the voice worker never
 /// tell two stories. Null when the Host could not confirm right now.
@@ -11,40 +53,14 @@ String? voiceLine(CompanionSpeechVoiceView view,
     {SpeechVoiceCatalogView? catalog}) {
   final effective = view.effective;
   if (effective == null) return null;
-  final chosen = view.selectedName ?? effective.displayName;
-  switch (effective.reason) {
-    case 'unset':
-      return '主机默认 · ${effective.displayName}';
-    case 'host_fixed_voice':
-      return catalog?.notSelectableReason == 'single_voice'
-          ? '这台主机目前只有一个可用的声音'
-          : '这台主机暂不支持更换声音';
-    case 'invalid_record':
-      return '声音设置无法读取，正在用主机默认';
-    case 'mapped':
-      return '相近声音 · ${effective.displayName}';
-    case 'no_equivalent':
-      return '这台主机没有相近的声音，正在用主机默认';
-    case 'owner_voice':
-      return '我的声音 · ${effective.displayName}';
-    case 'owner_voice_pending':
-      return '「$chosen」正在准备，暂用主机默认';
-    case 'owner_voice_rejected':
-      return '「$chosen」没能生成，正在用主机默认';
-    case 'owner_voice_unavailable':
-      return '「$chosen」在这台主机上暂时不能用，正在用主机默认';
-    case 'authority_unavailable':
-    case 'catalog_unavailable':
-      return '暂时确认不了，先用主机默认 · ${effective.displayName}';
-  }
-  // selected, same_voice_other_model, selected_unverified, and any reason a
-  // newer Host names: the voice it will use is the honest answer.
-  return effective.displayName;
+  final name = effective.displayName;
+  if (effective.reason == 'mapped') return '相近声音 · $name';
+  return voiceCaveat(view, catalog: catalog) ??
+      switch (voiceSource(view)) {
+        '系统声音' => name,
+        final source => '$source · $name',
+      };
 }
-
-/// Where the voice in use comes from, for the tag on the page head.
-String voiceSource(CompanionSpeechVoiceView view) =>
-    view.effective?.reason == 'owner_voice' ? '我的声音' : '系统声音';
 
 /// Which shelf a Host voice sits on.
 String voiceShelf(VoiceOptionView voice) {

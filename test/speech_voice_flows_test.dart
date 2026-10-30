@@ -266,9 +266,7 @@ void main() {
             windowMs: 20000,
             audioBase64: 'UklGRg==');
       await _push(
-          tester,
-          _clone(voices,
-              file: GivenFile(PickedAudio('妈妈.m4a', Uint8List(1000)))));
+          tester, _clone(voices, file: GivenFile('妈妈.m4a', Uint8List(1000))));
       await tester.tap(find.text('家人或朋友'));
       await _consent(tester, who: '妈妈');
       await _reach(tester, find.byKey(const Key('voice-clone-file')));
@@ -292,17 +290,15 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('a file too large is refused here, before it is sent',
+    testWidgets('a file too large is refused here, before it is even read',
         (tester) async {
       final voices = FakeSpeechVoices();
-      await _push(
-          tester,
-          _clone(voices,
-              file: GivenFile(
-                  PickedAudio('big.wav', Uint8List(10 * 1024 * 1024 + 1)))));
+      final picker = GivenFile('big.wav', Uint8List(10 * 1024 * 1024 + 1));
+      await _push(tester, _clone(voices, file: picker));
       await _consent(tester);
       await _reach(tester, find.byKey(const Key('voice-clone-file')));
 
+      expect(picker.read, isFalse);
       expect(voices.checks, isEmpty);
       expect(find.text('文件太大，请选择 10 MB 以内的文件'), findsOneWidget);
     });
@@ -317,9 +313,7 @@ void main() {
             windowStartMs: 0,
             windowMs: 12000);
       await _push(
-          tester,
-          _clone(voices,
-              file: GivenFile(PickedAudio('a.wav', Uint8List(1000)))));
+          tester, _clone(voices, file: GivenFile('a.wav', Uint8List(1000))));
       await _consent(tester);
       await _reach(tester, find.byKey(const Key('voice-clone-file')));
 
@@ -335,9 +329,7 @@ void main() {
         ownerVoiceView('k1', method: 'clone', status: 'ready', name: '我的声音'),
       ]);
       final popped = await _push(
-          tester,
-          _clone(voices,
-              file: GivenFile(PickedAudio('a.wav', Uint8List(1000)))));
+          tester, _clone(voices, file: GivenFile('a.wav', Uint8List(1000))));
       await _consent(tester);
       await _reach(tester, find.byKey(const Key('voice-clone-file')));
       await _reach(tester, find.byKey(const Key('voice-clone-submit')),
@@ -358,9 +350,7 @@ void main() {
       voices.reviews.add(ownerVoiceView('k1',
           method: 'clone', status: 'rejected', statusDetail: '录音里有多个人在说话'));
       await _push(
-          tester,
-          _clone(voices,
-              file: GivenFile(PickedAudio('a.wav', Uint8List(1000)))));
+          tester, _clone(voices, file: GivenFile('a.wav', Uint8List(1000))));
       await _consent(tester);
       await _reach(tester, find.byKey(const Key('voice-clone-file')));
       await _reach(tester, find.byKey(const Key('voice-clone-submit')),

@@ -89,7 +89,10 @@ class PlatformPinnedHttpClient extends http.BaseClient {
             channel ?? const MethodChannel('live.eidolon.mobile/platform');
 
   static const _protocolVersion = 1;
-  static const _maxBodyBytes = 1024 * 1024;
+  /// The largest unary exchange is a voice reference: an audio file of up to
+  /// 10 MiB going up, its checked window coming back as base64. The native
+  /// side holds the same bound (`PINNED_HTTPS_MAX_BODY_BYTES`).
+  static const _maxBodyBytes = 12 * 1024 * 1024;
 
   final String? tlsSpkiFingerprint;
   final String? ownerRootCertificate;

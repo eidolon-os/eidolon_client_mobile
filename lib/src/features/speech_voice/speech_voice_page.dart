@@ -87,9 +87,7 @@ class _SpeechVoicePageState extends State<SpeechVoicePage> {
       setState(() {
         _current = current;
         _catalog = results.$1;
-        _mine = (results.$2 ?? _mine)
-            .where((voice) => voice.state == 'active')
-            .toList(growable: false);
+        _mine = _library(results.$2 ?? _mine);
       });
     } catch (error) {
       if (mounted) setState(() => _failure = voiceFailure(error));
@@ -117,6 +115,7 @@ class _SpeechVoicePageState extends State<SpeechVoicePage> {
       if (!mounted) return;
       setState(() => _current = chosen);
       _say('下次和${widget.companionName}对话时生效');
+      unawaited(_rereadMine());
     } on ManagementRequestException catch (error) {
       if (error.someoneElseChangedIt) {
         await _load();
@@ -130,6 +129,20 @@ class _SpeechVoicePageState extends State<SpeechVoicePage> {
       if (mounted) setState(() => _saving = false);
     }
   }
+
+  /// Which Eidolons use each of my voices changes with every choice.
+  Future<void> _rereadMine() async {
+    try {
+      final mine = await widget.voices.ownerVoices();
+      if (mounted) setState(() => _mine = _library(mine));
+    } catch (_) {
+      // The list stays as it was; opening the page again reads it afresh.
+    }
+  }
+
+  /// Drafts belong to the design screen, not to the library.
+  static List<OwnerVoiceView> _library(List<OwnerVoiceView> voices) =>
+      voices.where((voice) => voice.state == 'active').toList(growable: false);
 
   Future<void> _create() async {
     final catalog = _catalog;
@@ -423,7 +436,9 @@ class _Head extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final effective = current.effective;
-    final line = voiceLine(current, catalog: catalog);
+    // The name is the title; this says where it comes from, or why it is
+    // not the one chosen.
+    final line = voiceCaveat(current, catalog: catalog) ?? voiceSource(current);
     return Card(
       key: const Key('voice-head'),
       child: Padding(
@@ -438,8 +453,7 @@ class _Head extends StatelessWidget {
               Text(effective?.displayName ?? '暂时确认不了',
                   style: Theme.of(context).textTheme.titleLarge),
               if (effective != null)
-                Text(
-                    '${voiceSource(current)}${line == null ? '' : ' · $line'}'),
+                Text(line, key: const Key('voice-head-line')),
             ]),
           ),
           if (effective?.voiceKey case final key?)
