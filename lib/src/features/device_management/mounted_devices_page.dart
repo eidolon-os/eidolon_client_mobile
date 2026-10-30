@@ -378,6 +378,7 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
                   hostCan(controller.managementCapabilities!, 'device.control')
               ? controller.setDeviceCapability
               : null,
+          controller: controller,
         ),
       ),
     );
@@ -642,6 +643,7 @@ class _MountedDeviceCard extends StatelessWidget {
   }
 }
 
+
 class DeviceConnectionStatus extends StatelessWidget {
   const DeviceConnectionStatus({super.key, required this.device, this.lease});
 
@@ -687,6 +689,7 @@ class MountedDeviceDetailPage extends StatefulWidget {
     this.reload,
     this.onChangeNetwork,
     this.sessionControls,
+    this.controller,
   });
 
   final MountedDevice device;
@@ -736,6 +739,8 @@ class MountedDeviceDetailPage extends StatefulWidget {
     required Map<String, Object?> payload,
     required String requestId,
   })? onSetCapability;
+
+  final HostProductController? controller;
 
   @override
   State<MountedDeviceDetailPage> createState() =>
@@ -1431,6 +1436,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
               key: const Key('device-knobs'),
               onSetCapability: widget.onSetCapability!,
               deviceId: device.deviceId,
+              controller: widget.controller,
             ),
           ],
           const SizedBox(height: 24),
@@ -1790,6 +1796,7 @@ class _DeviceKnobs extends StatefulWidget {
     super.key,
     required this.onSetCapability,
     required this.deviceId,
+    this.controller,
   });
 
   final Future<DeviceCapabilityView> Function({
@@ -1799,6 +1806,7 @@ class _DeviceKnobs extends StatefulWidget {
     required String requestId,
   }) onSetCapability;
   final String deviceId;
+  final HostProductController? controller;
 
   @override
   State<_DeviceKnobs> createState() => _DeviceKnobsState();
@@ -1811,6 +1819,52 @@ class _DeviceKnobsState extends State<_DeviceKnobs> {
   Timer? _brightnessTimer;
   bool _sending = false;
   String? _refusal;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCapabilityValues();
+  }
+
+  Future<void> _loadCapabilityValues() async {
+    final controller = widget.controller;
+    if (controller == null) return;
+    try {
+      // Read volume
+      final volumeResp = await controller.getDeviceCapability(
+        deviceId: widget.deviceId,
+        op: 'volume.get',
+        requestId: 'volume-get-${DateTime.now().microsecondsSinceEpoch}',
+      );
+      if (mounted && volumeResp.completed) {
+        final resultMap = volumeResp.result;
+        if (resultMap is Map && resultMap.containsKey('volume')) {
+          final volume = resultMap['volume'];
+          if (volume is num) {
+            setState(() => _volume = volume.toDouble());
+          }
+        }
+      }
+
+      // Read brightness
+      final brightnessResp = await controller.getDeviceCapability(
+        deviceId: widget.deviceId,
+        op: 'display.brightness.get',
+        requestId: 'brightness-get-${DateTime.now().microsecondsSinceEpoch}',
+      );
+      if (mounted && brightnessResp.completed) {
+        final resultMap = brightnessResp.result;
+        if (resultMap is Map && resultMap.containsKey('brightness')) {
+          final brightness = resultMap['brightness'];
+          if (brightness is num) {
+            setState(() => _brightness = brightness.toDouble());
+          }
+        }
+      }
+    } catch (e) {
+      // Silently ignore read errors; use defaults
+    }
+  }
 
   @override
   void dispose() {
