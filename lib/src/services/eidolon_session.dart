@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:livekit_client/livekit_client.dart';
 
+import 'conversation_audio_capture.dart';
 import '../avatar/avatar_stage.dart';
 import '../models/hub_models.dart';
 import '../models/conversation_mode.dart';
@@ -23,7 +24,7 @@ class EidolonSession {
         roomOptions: const RoomOptions(
           adaptiveStream: true,
           dynacast: true,
-          defaultAudioCaptureOptions: _capture,
+          defaultAudioCaptureOptions: conversationAudioCapture,
         ),
       );
   Room? _room;
@@ -94,15 +95,6 @@ class EidolonSession {
     final participant = _room?.localParticipant;
     return participant == null || _mayPublishMicrophone(participant);
   }
-
-  static const _capture = AudioCaptureOptions(
-    echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true,
-    voiceIsolation: true,
-    typingNoiseDetection: true,
-    stopAudioCaptureOnMute: false,
-  );
 
   Future<void> connect(RoomConfig config) async {
     final generation = ++_connectGeneration;

@@ -337,7 +337,7 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
       await _checkReadiness();
       if (!mounted || !_ready) return;
       _recorder ??=
-          widget.recorderFactory?.call() ?? LocalVoiceEnrollmentRecorder();
+          widget.recorderFactory?.call() ?? LiveKitVoiceEnrollmentRecorder(widget.call);
       if (!await _recorder!.hasPermission()) {
         throw StateError('请在系统设置中允许使用麦克风');
       }
@@ -412,10 +412,10 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
       _busy = true;
     });
     try {
-      await _recorder!.stop();
+      final finalPcm = await _recorder!.stop();
       await _subscription?.cancel();
       _subscription = null;
-      _pending = _audio.takeBytes();
+      _pending = finalPcm ?? _audio.takeBytes();
       if (_pending!.length < 32000 * 3) {
         _pending = null;
         if (mounted) setState(() => _error = '请说完整句子，至少录制 3 秒');

@@ -194,6 +194,12 @@ class ManagementV1 {
   static String voicePreviewByKeyAudioPath(String key) =>
       '/api/management/v1/voice-preview/${Uri.encodeComponent(key)}/audio';
   static const String voiceprintsPath = '/api/management/v1/voiceprints';
+  static const String voiceprintsCapturesPath =
+      '/api/management/v1/voiceprints/captures';
+  static String voiceprintsCapturesByCaptureIdPath(String captureId) =>
+      '/api/management/v1/voiceprints/captures/${Uri.encodeComponent(captureId)}';
+  static String voiceprintsCapturesByCaptureIdFinishPath(String captureId) =>
+      '/api/management/v1/voiceprints/captures/${Uri.encodeComponent(captureId)}/finish';
   static const String voiceprintsEnrollmentsPath =
       '/api/management/v1/voiceprints/enrollments';
   static String voiceprintsEnrollmentsByEnrollmentIdPath(String enrollmentId) =>
@@ -6243,6 +6249,34 @@ class VoiceAudioRequest {
 
   Map<String, dynamic> toJson() {
     return {'pcm_base64': pcmBase64};
+  }
+}
+
+class VoiceCaptureSession {
+  const VoiceCaptureSession({
+    required this.captureId,
+    required this.serverUrls,
+    required this.token,
+  });
+
+  final String captureId;
+
+  final List<String> serverUrls;
+
+  final String token;
+
+  factory VoiceCaptureSession.fromJson(Map<String, dynamic> value) {
+    return VoiceCaptureSession(
+      captureId: value['capture_id'] as String,
+      serverUrls: ((value['server_urls'] as List<dynamic>)
+          .map((entry) => entry as String)
+          .toList()),
+      token: value['token'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'capture_id': captureId, 'server_urls': serverUrls, 'token': token};
   }
 }
 

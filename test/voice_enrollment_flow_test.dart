@@ -6,7 +6,8 @@ import 'package:eidolon_client_mobile/src/features/host_setup/voiceprint_page.da
 import 'package:eidolon_client_mobile/src/features/host_setup/voice_enrollment_recorder.dart';
 
 class FakeRecorder implements VoiceEnrollmentRecorder {
-  FakeRecorder({this.permission});
+  FakeRecorder({this.permission, this.finalPcm});
+  final Uint8List? finalPcm;
   final Future<bool> Function()? permission;
   final audio = StreamController<Uint8List>.broadcast();
   int starts = 0, stops = 0, cancels = 0;
@@ -20,8 +21,9 @@ class FakeRecorder implements VoiceEnrollmentRecorder {
   }
 
   @override
-  Future<void> stop() async {
+  Future<Uint8List?> stop() async {
     stops++;
+    return finalPcm;
   }
 
   @override
@@ -39,7 +41,7 @@ void main() {
         (tester) async {
       await tester.binding.setSurfaceSize(const Size(800, 1400));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      final recorder = FakeRecorder();
+      final recorder = FakeRecorder(finalPcm: savedBeforeFailure ? Uint8List(128000) : null);
       var accepted = 0;
       var completionAttempts = 0;
       var saved = false;
@@ -99,7 +101,7 @@ void main() {
       for (var step = 0; step < 4; step++) {
         await tester.tap(find.byKey(const Key('voice-enrollment-record')));
         await tester.pumpAndSettle();
-        recorder.audio.add(Uint8List(128000));
+        if (!savedBeforeFailure) recorder.audio.add(Uint8List(128000));
         await tester.pump();
         await tester.tap(find.byKey(const Key('voice-enrollment-record')));
         // Stream cancellation may finish in Dart's real async zone.

@@ -129,7 +129,7 @@ class _VoiceMatchPageState extends State<VoiceMatchPage>
             .where((p) => p.personId == widget.personId)
             .map((p) => MapEntry(p.profileId, p.displayName)));
       _recorder ??=
-          widget.recorderFactory?.call() ?? LocalVoiceEnrollmentRecorder();
+          widget.recorderFactory?.call() ?? LiveKitVoiceEnrollmentRecorder(widget.call);
       if (!await _recorder!.hasPermission()) throw StateError('请在系统设置中允许使用麦克风');
       if (!mounted) return;
       final lifecycle = WidgetsBinding.instance.lifecycleState;
@@ -191,11 +191,11 @@ class _VoiceMatchPageState extends State<VoiceMatchPage>
       _busy = true;
     });
     try {
-      await _recorder!.stop();
+      final finalPcm = await _recorder!.stop();
       await _subscription?.cancel();
       _subscription = null;
       if (!mounted || generation != _generation) return;
-      final pcm = _audio.takeBytes();
+      final pcm = finalPcm ?? _audio.takeBytes();
       audioMs = pcm.length ~/ 32;
       if (pcm.length < 32000 * 3) throw StateError('录音不足 3 秒，请说完一句话后再结束');
       final result = VoiceMatchTestResult.fromJson(await widget
