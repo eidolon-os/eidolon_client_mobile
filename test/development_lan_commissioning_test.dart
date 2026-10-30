@@ -378,7 +378,7 @@ void main() {
       expect(failure.message, contains('本网段探测'));
       expect(failure.message, contains('192.168.3.0/24'));
       // The Owner-side way back in is invisible on the phone unless it is said.
-      expect(failure.message, contains('eidolon-ops controller-reset'));
+      expect(failure.message, contains('使用主机提供的 Setup 码获得管理授权'));
     });
 
     test('an answer on another contract is not a missing Host', () async {
@@ -486,7 +486,7 @@ void main() {
     });
   });
 
-  test('a Host that refuses this phone points at the operator recovery',
+  test('a Host that refuses this phone points at a fresh Setup grant',
       () async {
     final service = DevelopmentLanCommissioning(
       discovery: _Discovery(_announced(['192.168.1.25'])),
@@ -506,7 +506,7 @@ void main() {
             .having(
               (error) => error.message,
               'message',
-              contains('eidolon-ops controller-reset'),
+              contains('使用主机提供的 Setup 码获得管理授权'),
             ),
       ),
     );
@@ -542,6 +542,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('本网段探测'), findsOneWidget);
-    expect(find.textContaining('eidolon-ops controller-reset'), findsOneWidget);
+    expect(find.textContaining('使用主机提供的 Setup 码获得管理授权'), findsOneWidget);
   });
 }
