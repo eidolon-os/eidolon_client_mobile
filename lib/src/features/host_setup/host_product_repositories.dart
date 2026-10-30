@@ -790,6 +790,21 @@ class HostDeviceCapabilityRepository {
           requestId: requestId,
         ),
       );
+
+  Future<DeviceCapabilityView> read({
+    required String deviceId,
+    required String op,
+    required String requestId,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.getDeviceCapability(
+          baseUri,
+          accessToken: accessToken,
+          deviceId: deviceId,
+          op: op,
+          requestId: requestId,
+        ),
+      );
 }
 
 class HostDeviceAdmissionRepository {

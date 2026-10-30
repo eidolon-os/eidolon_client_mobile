@@ -1253,6 +1253,21 @@ class HostProductController extends ChangeNotifier {
     );
   }
 
+  Future<DeviceCapabilityView> getDeviceCapability({
+    required String deviceId,
+    required String op,
+    required String requestId,
+  }) async {
+    if (_connection == null) {
+      throw const HostControllerAuthorizationException('请先安全连接主机，再读取设备');
+    }
+    return _deviceCapabilityRepository.read(
+      deviceId: deviceId,
+      op: op,
+      requestId: requestId,
+    );
+  }
+
   /// Take a device off this Host at the Owner's request.
   ///
   /// A device the Host still holds cannot enroll again, so this is also the

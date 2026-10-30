@@ -1079,6 +1079,25 @@ class ManagementClient {
     return DeviceCapabilityView.fromJson(body);
   }
 
+  /// Read a device capability value (e.g., current volume, brightness).
+  Future<DeviceCapabilityView> getDeviceCapability(
+    Uri baseUri, {
+    required String accessToken,
+    required String deviceId,
+    required String op,
+    required String requestId,
+  }) async {
+    final body = await _send(
+      'GET',
+      baseUri.resolve(
+        '${ManagementV1.devicesByDeviceIdCapabilitiesByOpPath(deviceId, op)}?requestId=$requestId',
+      ),
+      accessToken: accessToken,
+      what: '读取这台设备的$op',
+    );
+    return DeviceCapabilityView.fromJson(body);
+  }
+
   /// Take a device off this Host.
   ///
   /// The answer says which facts are settled rather than a percentage: three
