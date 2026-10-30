@@ -814,6 +814,15 @@ class HostDeviceCapabilityRepository {
           deviceId: deviceId,
         ),
       );
+
+  Stream<Map<String, Object?>> streamState({required String deviceId}) =>
+      _session.streamManagement(
+        (client, baseUri, accessToken) => client.streamDeviceState(
+          baseUri,
+          accessToken: accessToken,
+          deviceId: deviceId,
+        ),
+      );
 }
 
 class HostDeviceAdmissionRepository {

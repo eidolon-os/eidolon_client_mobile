@@ -1813,13 +1813,18 @@ class _DeviceKnobs extends StatefulWidget {
 }
 
 class _DeviceKnobsState extends State<_DeviceKnobs> {
-  static const _stateRefresh = Duration(seconds: 5);
+  /// How long to wait before reopening a stream the Host ended.
+  ///
+  /// A closed stream means the connection went away, not that the device stopped
+  /// changing, so the subscription is renewed rather than abandoned.
+  static const _streamRetry = Duration(seconds: 3);
 
   double _volume = _defaultVolume.toDouble();
   double _brightness = _defaultBrightness.toDouble();
   Timer? _volumeTimer;
   Timer? _brightnessTimer;
-  Timer? _stateTimer;
+  StreamSubscription<Map<String, Object?>>? _stateSubscription;
+  Timer? _streamRetryTimer;
   bool _sending = false;
   String? _refusal;
 
@@ -1827,34 +1832,52 @@ class _DeviceKnobsState extends State<_DeviceKnobs> {
   void initState() {
     super.initState();
     _loadCapabilityValues();
-    _stateTimer = Timer.periodic(_stateRefresh, (_) => _pollDeviceState());
+    _listenForDeviceState();
   }
 
-  /// Follow changes the device made on its own while this page stays open.
+  /// Follow changes the device makes on its own, as they happen.
   ///
-  /// Only values the device actually reported are applied, and never while a
-  /// set of ours is still in flight: overwriting a slider mid-gesture with a
-  /// value read a moment earlier would undo the drag the user is making.
-  Future<void> _pollDeviceState() async {
+  /// A slider is not overwritten while the user is dragging it or while a set of
+  /// ours is in flight: that would replace the position under their finger with
+  /// a value from a moment earlier.
+  void _listenForDeviceState() {
     final controller = widget.controller;
-    if (controller == null || _sending || !mounted) return;
+    if (controller == null) return;
+    _stateSubscription?.cancel();
     try {
-      final state = await controller.getDeviceState(deviceId: widget.deviceId);
-      if (!mounted || _sending) return;
-      final values = state.values;
-      if (values == null) return;
-      final volume = values['volume'];
-      final brightness = values['brightness'];
-      setState(() {
-        if (volume != null && _volumeTimer?.isActive != true) {
-          _volume = volume.toDouble();
-        }
-        if (brightness != null && _brightnessTimer?.isActive != true) {
-          _brightness = brightness.toDouble();
-        }
-      });
+      _stateSubscription = controller
+          .streamDeviceState(deviceId: widget.deviceId)
+          .listen(
+            _applyReportedState,
+            onError: (_) => _scheduleReconnect(),
+            onDone: _scheduleReconnect,
+            cancelOnError: true,
+          );
     } catch (_) {
+      _scheduleReconnect();
     }
+  }
+
+  void _scheduleReconnect() {
+    if (!mounted) return;
+    _streamRetryTimer?.cancel();
+    _streamRetryTimer = Timer(_streamRetry, () {
+      if (mounted) _listenForDeviceState();
+    });
+  }
+
+  void _applyReportedState(Map<String, Object?> change) {
+    if (!mounted || _sending) return;
+    final key = change['key'];
+    final value = change['value'];
+    if (value is! num) return;
+    setState(() {
+      if (key == 'volume' && _volumeTimer?.isActive != true) {
+        _volume = value.toDouble();
+      } else if (key == 'brightness' && _brightnessTimer?.isActive != true) {
+        _brightness = value.toDouble();
+      }
+    });
   }
 
   Future<void> _loadCapabilityValues() async {
@@ -1901,7 +1924,8 @@ class _DeviceKnobsState extends State<_DeviceKnobs> {
   void dispose() {
     _volumeTimer?.cancel();
     _brightnessTimer?.cancel();
-    _stateTimer?.cancel();
+    _streamRetryTimer?.cancel();
+    _stateSubscription?.cancel();
     super.dispose();
   }
 

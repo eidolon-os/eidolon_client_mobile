@@ -85,6 +85,8 @@ class ManagementV1 {
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/removal';
   static String devicesByDeviceIdStatePath(String deviceId) =>
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/state';
+  static String devicesByDeviceIdStateStreamPath(String deviceId) =>
+      '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/state/stream';
   static const String homePath = '/api/management/v1/home';
   static const String hostMonitorPath = '/api/management/v1/host/monitor';
   static const String hostPowerPath = '/api/management/v1/host/power';

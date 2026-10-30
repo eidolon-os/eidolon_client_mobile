@@ -215,6 +215,13 @@ class ManagementClient {
   final bool _ownsHttpClient;
   final Duration timeout;
 
+  /// How long a state stream may take to start before the attempt is abandoned.
+  ///
+  /// Longer than a unary call because it must survive the Host's own stack:
+  /// Admin reaches the Provider over a stream that is deliberately unbounded,
+  /// and a Host rebuilding that path is not a failure to answer.
+  static const _streamConnectTimeout = Duration(seconds: 30);
+
   Future<Registry> smartHomeRegistry(Uri baseUri,
           {required String accessToken}) async =>
       Registry.fromJson(await _get(
@@ -1115,6 +1122,64 @@ class ManagementClient {
       what: '读取这台设备的当前状态',
     );
     return DeviceStateView.fromJson(body);
+  }
+
+  /// Follow this device's own state changes as they happen.
+  ///
+  /// Yields one map per change (`{"key": ..., "value": ...}`) and completes when
+  /// the Host ends the stream. The caller owns reconnecting: a dropped stream is
+  /// a network fact, not a statement that the device stopped changing.
+  Stream<Map<String, Object?>> streamDeviceState(
+    Uri baseUri, {
+    required String accessToken,
+    required String deviceId,
+  }) async* {
+    final endpoint = baseUri.resolve(
+      ManagementV1.devicesByDeviceIdStateStreamPath(deviceId),
+    );
+    // A stream outlives any per-request budget: the caller keeps it open for as
+    // long as the page is up, so its budget is a connection deadline rather
+    // than the eight seconds a unary call may take.
+    final request = BoundedHttpRequest('GET', endpoint, timeout: _streamConnectTimeout)
+      ..headers['Authorization'] = 'Bearer $accessToken'
+      ..headers['Accept'] = 'text/event-stream';
+
+    final http.StreamedResponse response;
+    try {
+      response = await _httpClient.send(request).timeout(_streamConnectTimeout);
+    } on TimeoutException {
+      throw const ManagementRequestException('连接设备状态流超时');
+    } catch (_) {
+      throw const ManagementRequestException('设备状态流失败：连不上主机');
+    }
+    if (response.statusCode != 200) {
+      throw ManagementRequestException(
+        '设备状态流被拒绝（HTTP ${response.statusCode}）',
+      );
+    }
+
+    var pending = '';
+    await for (final chunk in response.stream.transform(utf8.decoder)) {
+      pending += chunk;
+      while (true) {
+        final split = pending.indexOf('\n\n');
+        if (split < 0) break;
+        final frame = pending.substring(0, split);
+        pending = pending.substring(split + 2);
+        for (final line in frame.split('\n')) {
+          if (!line.startsWith('data:')) continue;
+          final raw = line.substring(5).trim();
+          if (raw.isEmpty || raw == '{}') continue;
+          try {
+            final decoded = jsonDecode(raw);
+            if (decoded is Map<String, dynamic>) yield decoded;
+          } on FormatException {
+            // One unreadable frame is not a reason to end a stream that is
+            // otherwise delivering: the next change will be a fresh frame.
+          }
+        }
+      }
+    }
   }
 
   /// Take a device off this Host.

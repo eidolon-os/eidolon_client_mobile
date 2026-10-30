@@ -1279,6 +1279,14 @@ class HostProductController extends ChangeNotifier {
     return _deviceCapabilityRepository.readState(deviceId: deviceId);
   }
 
+  /// Follow this device's own state changes instead of asking for them again.
+  Stream<Map<String, Object?>> streamDeviceState({required String deviceId}) {
+    if (_connection == null) {
+      throw const HostControllerAuthorizationException('请先安全连接主机，再读取设备');
+    }
+    return _deviceCapabilityRepository.streamState(deviceId: deviceId);
+  }
+
   /// Take a device off this Host at the Owner's request.
   ///
   /// A device the Host still holds cannot enroll again, so this is also the

@@ -495,6 +495,29 @@ class HostProductSession {
     }
   }
 
+  /// Open a long-lived management stream with the current credentials.
+  ///
+  /// Separate from `executeManagement` because a stream is not one answer: the
+  /// 401 retry there would have to re-subscribe mid-consumption. A caller that
+  /// sees the stream end is expected to open it again, which is the same thing
+  /// done deliberately rather than invisibly.
+  Stream<T> streamManagement<T>(
+    Stream<T> Function(ManagementClient client, Uri baseUri, String accessToken) open,
+  ) async* {
+    _ensureOpen();
+    if (_locationStale) await _relocate();
+    final endpoint = _endpoint;
+    final session = _controllerSession;
+    if (endpoint == null || session == null) {
+      throw const HostControllerAuthorizationException('请先安全连接主机');
+    }
+    yield* open(
+      _newManagementClient(),
+      LocalApiClient.parseBaseUri(endpoint.baseUrl),
+      session.accessToken,
+    );
+  }
+
   /// Power operations use the current authenticated route exactly once.
   /// A lost response may mean the OS has already started shutting down.
   Future<T> executeManagementOnce<T>(ManagementOperation<T> operation) async {
