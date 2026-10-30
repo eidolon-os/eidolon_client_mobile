@@ -83,6 +83,8 @@ class ManagementV1 {
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/outputs';
   static String devicesByDeviceIdRemovalPath(String deviceId) =>
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/removal';
+  static String devicesByDeviceIdStatePath(String deviceId) =>
+      '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/state';
   static const String homePath = '/api/management/v1/home';
   static const String hostMonitorPath = '/api/management/v1/host/monitor';
   static const String hostPowerPath = '/api/management/v1/host/power';
@@ -1900,6 +1902,29 @@ class DeviceSessionStart {
       'session_id': sessionId,
       'target_companion_id': targetCompanionId,
     };
+  }
+}
+
+class DeviceStateView {
+  const DeviceStateView({required this.deviceId, this.values});
+
+  final String deviceId;
+
+  final Map<String, int>? values;
+
+  factory DeviceStateView.fromJson(Map<String, dynamic> value) {
+    return DeviceStateView(
+      deviceId: value['device_id'] as String,
+      values: value['values'] == null
+          ? null
+          : ((value['values'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as int),
+            )),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'device_id': deviceId, if (values != null) 'values': values};
   }
 }
 

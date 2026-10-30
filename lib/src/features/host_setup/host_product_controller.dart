@@ -1268,6 +1268,17 @@ class HostProductController extends ChangeNotifier {
     );
   }
 
+  /// What this device last reported changing on its own.
+  ///
+  /// Absent keys are values nothing has observed; a control showing them must
+  /// fall back to reading the capability rather than assuming zero.
+  Future<DeviceStateView> getDeviceState({required String deviceId}) async {
+    if (_connection == null) {
+      throw const HostControllerAuthorizationException('请先安全连接主机，再读取设备');
+    }
+    return _deviceCapabilityRepository.readState(deviceId: deviceId);
+  }
+
   /// Take a device off this Host at the Owner's request.
   ///
   /// A device the Host still holds cannot enroll again, so this is also the

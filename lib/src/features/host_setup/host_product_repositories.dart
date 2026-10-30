@@ -805,6 +805,15 @@ class HostDeviceCapabilityRepository {
           requestId: requestId,
         ),
       );
+
+  Future<DeviceStateView> readState({required String deviceId}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.getDeviceState(
+          baseUri,
+          accessToken: accessToken,
+          deviceId: deviceId,
+        ),
+      );
 }
 
 class HostDeviceAdmissionRepository {

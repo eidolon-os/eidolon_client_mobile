@@ -1098,6 +1098,25 @@ class ManagementClient {
     return DeviceCapabilityView.fromJson(body);
   }
 
+  /// What this device last reported changing on its own.
+  ///
+  /// Only observed values appear, so an empty map means the device has said
+  /// nothing since the Host started — not that everything is zero. A caller
+  /// that needs a trustworthy starting point still reads the capability.
+  Future<DeviceStateView> getDeviceState(
+    Uri baseUri, {
+    required String accessToken,
+    required String deviceId,
+  }) async {
+    final body = await _send(
+      'GET',
+      baseUri.resolve(ManagementV1.devicesByDeviceIdStatePath(deviceId)),
+      accessToken: accessToken,
+      what: '读取这台设备的当前状态',
+    );
+    return DeviceStateView.fromJson(body);
+  }
+
   /// Take a device off this Host.
   ///
   /// The answer says which facts are settled rather than a percentage: three
