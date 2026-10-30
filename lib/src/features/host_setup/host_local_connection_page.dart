@@ -1,3 +1,4 @@
+import '../teams/team_navigation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -176,6 +177,9 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
       _controller.conversationTargetCompanionId = null;
     }
   }
+
+  Future<void> _openTeams() =>
+      openTeamManagement(context, _controller, _openDevices);
 
   Future<void> _openSettings() async {
     final save = widget.onHostSaved;
@@ -850,6 +854,12 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               textAlign: TextAlign.center,
             ),
           ] else if (connection != null) ...[
+            ListTile(
+                leading: const Icon(Icons.groups_outlined),
+                title: const Text('团队管理'),
+                subtitle: const Text('保存伙伴组合与设备安排'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _openTeams),
             _ConnectedHostCard(
               onOpenPersons: _openPersons,
               // Offered only once there is an Owner for the history to belong

@@ -137,12 +137,6 @@ class ManagementV1 {
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/recognition/retire';
   static String personsByPersonIdRestorePath(String personId) =>
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/restore';
-  static const String roleGroupsClosePath =
-      '/api/management/v1/role-groups/close';
-  static const String roleGroupsOpenPath =
-      '/api/management/v1/role-groups/open';
-  static const String roleGroupsStatusPath =
-      '/api/management/v1/role-groups/status';
   static const String sessionTracesPath = '/api/management/v1/session-traces';
   static String sessionTracesBySessionIdPath(String sessionId) =>
       '/api/management/v1/session-traces/${Uri.encodeComponent(sessionId)}';
@@ -179,6 +173,26 @@ class ManagementV1 {
       '/api/management/v1/smarthome/scenes/${Uri.encodeComponent(sceneId)}';
   static const String smarthomeSnapshotPath =
       '/api/management/v1/smarthome/snapshot';
+  static const String teamsPath = '/api/management/v1/teams';
+  static String teamsByTeamIdPath(String teamId) =>
+      '/api/management/v1/teams/${Uri.encodeComponent(teamId)}';
+  static String teamsByTeamIdConflictsPath(String teamId) =>
+      '/api/management/v1/teams/${Uri.encodeComponent(teamId)}/conflicts';
+  static String teamsByTeamIdRunsPath(String teamId) =>
+      '/api/management/v1/teams/${Uri.encodeComponent(teamId)}/runs';
+  static String teamsByTeamIdRunsBySessionIdPath(
+    String teamId,
+    String sessionId,
+  ) =>
+      '/api/management/v1/teams/${Uri.encodeComponent(teamId)}/runs/${Uri.encodeComponent(sessionId)}';
+  static String teamsByTeamIdRunsBySessionIdClosePath(
+    String teamId,
+    String sessionId,
+  ) =>
+      '/api/management/v1/teams/${Uri.encodeComponent(teamId)}/runs/${Uri.encodeComponent(sessionId)}/close';
+  static const String voicePreviewPath = '/api/management/v1/voice-preview';
+  static String voicePreviewByKeyAudioPath(String key) =>
+      '/api/management/v1/voice-preview/${Uri.encodeComponent(key)}/audio';
   static const String voiceprintsPath = '/api/management/v1/voiceprints';
   static const String voiceprintsEnrollmentsPath =
       '/api/management/v1/voiceprints/enrollments';
@@ -5210,85 +5224,12 @@ class RevokedSessionsView {
   }
 }
 
-class RoleGroupAssignment {
-  const RoleGroupAssignment({required this.outputDeviceId, required this.role});
-
-  final String outputDeviceId;
-
-  final SceneRole role;
-
-  factory RoleGroupAssignment.fromJson(Map<String, dynamic> value) {
-    return RoleGroupAssignment(
-      outputDeviceId: value['output_device_id'] as String,
-      role: SceneRole.fromJson(value['role'] as Map<String, dynamic>),
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {'output_device_id': outputDeviceId, 'role': role.toJson()};
-  }
-}
-
-class RoleGroupStart {
-  const RoleGroupStart({
-    this.goal,
-    required this.inputDeviceId,
-    required this.outputDeviceIds,
-    this.replyBudget,
-    this.roles,
-    required this.sessionId,
-  });
-
-  final String? goal;
-
-  final String inputDeviceId;
-
-  final List<String> outputDeviceIds;
-
-  final int? replyBudget;
-
-  final List<RoleGroupAssignment>? roles;
-
-  final String sessionId;
-
-  factory RoleGroupStart.fromJson(Map<String, dynamic> value) {
-    return RoleGroupStart(
-      goal: value['goal'] as String?,
-      inputDeviceId: value['input_device_id'] as String,
-      outputDeviceIds: ((value['output_device_ids'] as List<dynamic>)
-          .map((entry) => entry as String)
-          .toList()),
-      replyBudget: value['reply_budget'] as int?,
-      roles: value['roles'] == null
-          ? null
-          : ((value['roles'] as List<dynamic>)
-                .map(
-                  (entry) => RoleGroupAssignment.fromJson(
-                    entry as Map<String, dynamic>,
-                  ),
-                )
-                .toList()),
-      sessionId: value['session_id'] as String,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      if (goal != null) 'goal': goal,
-      'input_device_id': inputDeviceId,
-      'output_device_ids': outputDeviceIds,
-      if (replyBudget != null) 'reply_budget': replyBudget,
-      if (roles != null)
-        'roles': roles?.map((entry) => entry.toJson()).toList(),
-      'session_id': sessionId,
-    };
-  }
-}
-
 class RoleGroupStatus {
   const RoleGroupStatus({
     required this.completionBasis,
     this.error,
+    this.roundEpoch,
+    this.roundError,
     required this.scenario,
     required this.sessionId,
     required this.state,
@@ -5297,6 +5238,10 @@ class RoleGroupStatus {
   final String completionBasis;
 
   final String? error;
+
+  final int? roundEpoch;
+
+  final String? roundError;
 
   final String scenario;
 
@@ -5308,6 +5253,8 @@ class RoleGroupStatus {
     return RoleGroupStatus(
       completionBasis: value['completion_basis'] as String,
       error: value['error'] as String?,
+      roundEpoch: value['round_epoch'] as int?,
+      roundError: value['round_error'] as String?,
       scenario: value['scenario'] as String,
       sessionId: value['session_id'] as String,
       state: value['state'] as String,
@@ -5318,6 +5265,8 @@ class RoleGroupStatus {
     return {
       'completion_basis': completionBasis,
       if (error != null) 'error': error,
+      if (roundEpoch != null) 'round_epoch': roundEpoch,
+      if (roundError != null) 'round_error': roundError,
       'scenario': scenario,
       'session_id': sessionId,
       'state': state,
@@ -5780,6 +5729,343 @@ class TaskView {
   }
 }
 
+class TeamConfiguration {
+  const TeamConfiguration({
+    this.goal,
+    required this.inputDeviceId,
+    required this.members,
+    required this.name,
+    this.replyBudget,
+  });
+
+  final String? goal;
+
+  final String inputDeviceId;
+
+  final List<TeamMember> members;
+
+  final String name;
+
+  final int? replyBudget;
+
+  factory TeamConfiguration.fromJson(Map<String, dynamic> value) {
+    return TeamConfiguration(
+      goal: value['goal'] as String?,
+      inputDeviceId: value['input_device_id'] as String,
+      members: ((value['members'] as List<dynamic>)
+          .map((entry) => TeamMember.fromJson(entry as Map<String, dynamic>))
+          .toList()),
+      name: value['name'] as String,
+      replyBudget: value['reply_budget'] as int?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (goal != null) 'goal': goal,
+      'input_device_id': inputDeviceId,
+      'members': members.map((entry) => entry.toJson()).toList(),
+      'name': name,
+      if (replyBudget != null) 'reply_budget': replyBudget,
+    };
+  }
+}
+
+class TeamConflict {
+  const TeamConflict({
+    this.companionIds,
+    this.deviceIds,
+    required this.name,
+    required this.revision,
+    required this.sessionId,
+    required this.teamId,
+  });
+
+  final List<String>? companionIds;
+
+  final List<String>? deviceIds;
+
+  final String name;
+
+  final int revision;
+
+  final String sessionId;
+
+  final String teamId;
+
+  factory TeamConflict.fromJson(Map<String, dynamic> value) {
+    return TeamConflict(
+      companionIds: value['companion_ids'] == null
+          ? null
+          : ((value['companion_ids'] as List<dynamic>)
+                .map((entry) => entry as String)
+                .toList()),
+      deviceIds: value['device_ids'] == null
+          ? null
+          : ((value['device_ids'] as List<dynamic>)
+                .map((entry) => entry as String)
+                .toList()),
+      name: value['name'] as String,
+      revision: value['revision'] as int,
+      sessionId: value['session_id'] as String,
+      teamId: value['team_id'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (companionIds != null) 'companion_ids': companionIds,
+      if (deviceIds != null) 'device_ids': deviceIds,
+      'name': name,
+      'revision': revision,
+      'session_id': sessionId,
+      'team_id': teamId,
+    };
+  }
+}
+
+class TeamConflicts {
+  const TeamConflicts({this.conflicts, this.unresolvedRuns});
+
+  final List<TeamConflict>? conflicts;
+
+  final int? unresolvedRuns;
+
+  factory TeamConflicts.fromJson(Map<String, dynamic> value) {
+    return TeamConflicts(
+      conflicts: value['conflicts'] == null
+          ? null
+          : ((value['conflicts'] as List<dynamic>)
+                .map(
+                  (entry) =>
+                      TeamConflict.fromJson(entry as Map<String, dynamic>),
+                )
+                .toList()),
+      unresolvedRuns: value['unresolved_runs'] as int?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (conflicts != null)
+        'conflicts': conflicts?.map((entry) => entry.toJson()).toList(),
+      if (unresolvedRuns != null) 'unresolved_runs': unresolvedRuns,
+    };
+  }
+}
+
+class TeamDeleted {
+  const TeamDeleted({required this.teamId});
+
+  final String teamId;
+
+  factory TeamDeleted.fromJson(Map<String, dynamic> value) {
+    return TeamDeleted(teamId: value['team_id'] as String);
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'team_id': teamId};
+  }
+}
+
+class TeamMember {
+  const TeamMember({
+    required this.companionId,
+    required this.outputDeviceId,
+    this.role,
+  });
+
+  final String companionId;
+
+  final String outputDeviceId;
+
+  final SceneRole? role;
+
+  factory TeamMember.fromJson(Map<String, dynamic> value) {
+    return TeamMember(
+      companionId: value['companion_id'] as String,
+      outputDeviceId: value['output_device_id'] as String,
+      role: value['role'] == null
+          ? null
+          : SceneRole.fromJson(value['role'] as Map<String, dynamic>),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'companion_id': companionId,
+      'output_device_id': outputDeviceId,
+      if (role != null) 'role': role?.toJson(),
+    };
+  }
+}
+
+class TeamPage {
+  const TeamPage({this.nextCursor, required this.teams});
+
+  final String? nextCursor;
+
+  final List<TeamRevision> teams;
+
+  factory TeamPage.fromJson(Map<String, dynamic> value) {
+    return TeamPage(
+      nextCursor: value['next_cursor'] as String?,
+      teams: ((value['teams'] as List<dynamic>)
+          .map((entry) => TeamRevision.fromJson(entry as Map<String, dynamic>))
+          .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (nextCursor != null) 'next_cursor': nextCursor,
+      'teams': teams.map((entry) => entry.toJson()).toList(),
+    };
+  }
+}
+
+class TeamRevision {
+  const TeamRevision({
+    required this.configuration,
+    required this.revision,
+    required this.teamId,
+  });
+
+  final TeamConfiguration configuration;
+
+  final int revision;
+
+  final String teamId;
+
+  factory TeamRevision.fromJson(Map<String, dynamic> value) {
+    return TeamRevision(
+      configuration: TeamConfiguration.fromJson(
+        value['configuration'] as Map<String, dynamic>,
+      ),
+      revision: value['revision'] as int,
+      teamId: value['team_id'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'configuration': configuration.toJson(),
+      'revision': revision,
+      'team_id': teamId,
+    };
+  }
+}
+
+class TeamStartRecord {
+  const TeamStartRecord({
+    required this.closed,
+    required this.revision,
+    required this.sessionId,
+    required this.teamId,
+  });
+
+  final bool closed;
+
+  final int revision;
+
+  final String sessionId;
+
+  final String teamId;
+
+  factory TeamStartRecord.fromJson(Map<String, dynamic> value) {
+    return TeamStartRecord(
+      closed: value['closed'] as bool,
+      revision: value['revision'] as int,
+      sessionId: value['session_id'] as String,
+      teamId: value['team_id'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'closed': closed,
+      'revision': revision,
+      'session_id': sessionId,
+      'team_id': teamId,
+    };
+  }
+}
+
+class TeamStartRequest {
+  const TeamStartRequest({
+    required this.expectedRevision,
+    required this.sessionId,
+  });
+
+  final int expectedRevision;
+
+  final String sessionId;
+
+  factory TeamStartRequest.fromJson(Map<String, dynamic> value) {
+    return TeamStartRequest(
+      expectedRevision: value['expected_revision'] as int,
+      sessionId: value['session_id'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'expected_revision': expectedRevision, 'session_id': sessionId};
+  }
+}
+
+class TeamStarts {
+  const TeamStarts({this.nextCursor, required this.starts});
+
+  final String? nextCursor;
+
+  final List<TeamStartRecord> starts;
+
+  factory TeamStarts.fromJson(Map<String, dynamic> value) {
+    return TeamStarts(
+      nextCursor: value['next_cursor'] as String?,
+      starts: ((value['starts'] as List<dynamic>)
+          .map(
+            (entry) => TeamStartRecord.fromJson(entry as Map<String, dynamic>),
+          )
+          .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (nextCursor != null) 'next_cursor': nextCursor,
+      'starts': starts.map((entry) => entry.toJson()).toList(),
+    };
+  }
+}
+
+class TeamWrite {
+  const TeamWrite({
+    required this.configuration,
+    required this.expectedRevision,
+  });
+
+  final TeamConfiguration configuration;
+
+  final int expectedRevision;
+
+  factory TeamWrite.fromJson(Map<String, dynamic> value) {
+    return TeamWrite(
+      configuration: TeamConfiguration.fromJson(
+        value['configuration'] as Map<String, dynamic>,
+      ),
+      expectedRevision: value['expected_revision'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'configuration': configuration.toJson(),
+      'expected_revision': expectedRevision,
+    };
+  }
+}
+
 class TranscriptTurnView {
   const TranscriptTurnView({
     this.finishedAt,
@@ -6031,6 +6317,63 @@ class VoiceMatchTestResult {
       if (scoringVersion != null) 'scoring_version': scoringVersion,
       if (validationState != null) 'validation_state': validationState,
       'weights_hash': weightsHash,
+    };
+  }
+}
+
+class VoicePreviewRequest {
+  const VoicePreviewRequest({this.regenerate, required this.requestId});
+
+  final bool? regenerate;
+
+  final String requestId;
+
+  factory VoicePreviewRequest.fromJson(Map<String, dynamic> value) {
+    return VoicePreviewRequest(
+      regenerate: value['regenerate'] as bool?,
+      requestId: value['request_id'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (regenerate != null) 'regenerate': regenerate,
+      'request_id': requestId,
+    };
+  }
+}
+
+class VoicePreviewStatus {
+  const VoicePreviewStatus({
+    required this.audioAvailable,
+    required this.key,
+    required this.state,
+    required this.voice,
+  });
+
+  final bool audioAvailable;
+
+  final String key;
+
+  final String state;
+
+  final String voice;
+
+  factory VoicePreviewStatus.fromJson(Map<String, dynamic> value) {
+    return VoicePreviewStatus(
+      audioAvailable: value['audio_available'] as bool,
+      key: value['key'] as String,
+      state: value['state'] as String,
+      voice: value['voice'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'audio_available': audioAvailable,
+      'key': key,
+      'state': state,
+      'voice': voice,
     };
   }
 }

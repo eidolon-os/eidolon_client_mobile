@@ -639,31 +639,100 @@ class ManagementClient {
     return HomeView.fromJson(body);
   }
 
-  Future<RoleGroupStatus> roleGroup(
-    Uri baseUri, {
-    required String accessToken,
-    required String action,
-    required String sessionId,
-    RoleGroupStart? selection,
-  }) async {
+  Future<TeamPage> fetchTeams(Uri baseUri,
+      {required String accessToken, String? after}) async {
+    final uri = baseUri.resolve(ManagementV1.teamsPath).replace(
+        queryParameters: {if (after != null) 'after': after});
+    return TeamPage.fromJson(await _send('GET', uri,
+        accessToken: accessToken, what: '读取团队'));
+  }
+
+  Future<VoicePreviewStatus> requestVoicePreview(Uri baseUri,
+      {required String accessToken, required VoicePreviewRequest request}) async =>
+      VoicePreviewStatus.fromJson(await _send('POST', baseUri.resolve(ManagementV1.voicePreviewPath),
+        accessToken: accessToken, what: '生成声音试听', body: request.toJson()));
+
+  Future<Uint8List> fetchVoicePreviewAudio(Uri baseUri,
+      {required String accessToken, required String key}) async {
+    final result = VoiceAudioRequest.fromJson(await _send('GET',
+      baseUri.resolve(ManagementV1.voicePreviewByKeyAudioPath(key)),
+      accessToken: accessToken, what: '读取声音试听'));
+    final bytes = base64Decode(result.pcmBase64);
+    if (bytes.length.isOdd || bytes.length < 48000 || bytes.length > 960000) {
+      throw const FormatException('Invalid preview audio');
+    }
+    return bytes;
+  }
+
+  Future<TeamRevision> fetchTeam(Uri baseUri,
+      {required String accessToken, required String teamId}) async {
+    final result = TeamRevision.fromJson(await _send('GET',
+        baseUri.resolve(ManagementV1.teamsByTeamIdPath(teamId)),
+        accessToken: accessToken, what: '读取团队配置'));
+    if (result.teamId != teamId || result.revision < 1) {
+      throw const ManagementRequestException('团队返回了不匹配的配置');
+    }
+    return result;
+  }
+
+  Future<TeamRevision> saveTeam(Uri baseUri,
+      {required String accessToken, required String teamId,
+       required int expectedRevision, required TeamConfiguration configuration}) async {
+    final result = TeamRevision.fromJson(await _send('PUT',
+        baseUri.resolve(ManagementV1.teamsByTeamIdPath(teamId)),
+        accessToken: accessToken, what: '保存团队',
+        body: TeamWrite(expectedRevision: expectedRevision,
+            configuration: configuration).toJson()));
+    if (result.teamId != teamId || result.revision != expectedRevision + 1) {
+      throw const ManagementRequestException('无法确认团队保存结果，请刷新确认');
+    }
+    return result;
+  }
+
+  Future<void> deleteTeam(Uri baseUri,
+      {required String accessToken, required String teamId,
+       required int expectedRevision}) async {
+    final result = TeamDeleted.fromJson(await _send('DELETE',
+        baseUri.resolve(ManagementV1.teamsByTeamIdPath(teamId)).replace(
+            queryParameters: {'expected_revision': '$expectedRevision'}),
+        accessToken: accessToken, what: '删除团队'));
+    if (result.teamId != teamId) {
+      throw const ManagementRequestException('无法确认团队删除结果，请刷新确认');
+    }
+  }
+
+  Future<TeamConflicts> fetchTeamConflicts(Uri baseUri,
+      {required String accessToken, required String teamId}) async =>
+      TeamConflicts.fromJson(await _send('GET',
+          baseUri.resolve(ManagementV1.teamsByTeamIdConflictsPath(teamId)),
+          accessToken: accessToken, what: '查询团队占用'));
+
+  Future<TeamStarts> fetchTeamRuns(Uri baseUri,
+      {required String accessToken, required String teamId,
+       bool includeClosed = false, String? after, int limit = 50}) async =>
+      TeamStarts.fromJson(await _send('GET',
+          baseUri.resolve(ManagementV1.teamsByTeamIdRunsPath(teamId)).replace(
+              queryParameters: includeClosed || after != null
+                  ? {'include_closed': '$includeClosed', 'limit': '$limit',
+                     if (after != null) 'after': after}
+                  : null),
+          accessToken: accessToken, what: '确认团队聊天'));
+
+  Future<RoleGroupStatus> savedTeamRun(Uri baseUri,
+      {required String accessToken, required String teamId, required int revision,
+       required String sessionId, required String action}) async {
     final path = switch (action) {
-      'open' => ManagementV1.roleGroupsOpenPath,
-      'status' => ManagementV1.roleGroupsStatusPath,
-      'close' => ManagementV1.roleGroupsClosePath,
+      'open' => ManagementV1.teamsByTeamIdRunsPath(teamId),
+      'status' => ManagementV1.teamsByTeamIdRunsBySessionIdPath(teamId, sessionId),
+      'close' => ManagementV1.teamsByTeamIdRunsBySessionIdClosePath(teamId, sessionId),
       _ => throw ArgumentError.value(action),
     };
-    final body = await _send('POST', baseUri.resolve(path),
-        accessToken: accessToken,
-        what: '更新 IP 角色团队',
-        body: action == 'open'
-            ? selection!.toJson()
-            : SharedClose(sessionId: sessionId).toJson());
-    final result = RoleGroupStatus.fromJson(body);
-    if (result.sessionId != sessionId ||
-        result.scenario != 'ip_role_group' ||
-        !{'preparing', 'ready', 'closing', 'closed', 'failed'}
-            .contains(result.state)) {
-      throw ManagementRequestException('团队返回了不匹配的结果');
+    final result = RoleGroupStatus.fromJson(await _send(action == 'status' ? 'GET' : 'POST',
+      baseUri.resolve(path), accessToken: accessToken, what: '更新团队聊天',
+      body: action == 'open' ? TeamStartRequest(expectedRevision: revision,
+          sessionId: sessionId).toJson() : null));
+    if (result.sessionId != sessionId || result.scenario != 'ip_role_group') {
+      throw const ManagementRequestException('团队返回了不匹配的运行状态');
     }
     return result;
   }

@@ -1,3 +1,5 @@
+import '../voice_preview/voice_preview_repository.dart';
+import '../teams/team_repository.dart';
 import '../conversation/role_group_controller.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -214,13 +216,23 @@ class HostProductController extends ChangeNotifier {
   bool get powerOffBusy => _powerOffBusy;
   String? get powerOffOutcome => _powerOffOutcome;
 
-  late final RoleGroupController roleGroup = RoleGroupController(
-      (action, id, selection) => _session.executeManagement(
-          (client, uri, token) => client.roleGroup(uri,
-              accessToken: token,
-              action: action,
-              sessionId: id,
-              selection: selection)));
+  late final VoicePreviewRepository voicePreview =
+      VoicePreviewRepository(_session);
+  late final TeamRepository teams = TeamRepository(_session);
+
+  final _teamRuns = <String, RoleGroupController>{};
+  RoleGroupController teamRun(String teamId) => _teamRuns.putIfAbsent(
+      teamId,
+      () => RoleGroupController(
+          loadSavedRuns: teams.runs,
+          savedCommand: (action, id, savedId, revision) =>
+              _session.executeManagement((client, uri, token) =>
+                  client.savedTeamRun(uri,
+                      accessToken: token,
+                      teamId: savedId,
+                      revision: revision,
+                      sessionId: id,
+                      action: action))));
 
   Future<DeviceConversationStatus> deviceConversation(
           String action, String sessionId, ConversationStart? selection) =>
@@ -1604,7 +1616,9 @@ class HostProductController extends ChangeNotifier {
 
   @override
   void dispose() {
-    roleGroup.dispose();
+    for (final run in _teamRuns.values) {
+      run.dispose();
+    }
     _disposed = true;
     unawaited(_networkSubscription?.cancel());
     unawaited(_networkChanges.close());

@@ -1,3 +1,4 @@
+import 'src/features/teams/team_navigation.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -85,7 +86,12 @@ class _EidolonMobileAppState extends State<EidolonMobileApp> {
             hostName: controller.host.readableName,
             changeSharedSession: controller.changeSharedSession,
             deviceConversation: controller.deviceConversation,
-            roleGroup: controller.roleGroup,
+            openTeams: (context) => openTeamManagement(
+                context,
+                controller,
+                () => Navigator.of(context).push<void>(MaterialPageRoute(
+                    builder: (_) =>
+                        MountedDevicesPage(controller: controller)))),
             loadGroupDevices: () async {
               await prepareManagement();
               await controller.refreshDevices();
