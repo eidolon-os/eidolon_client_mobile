@@ -407,6 +407,16 @@ void main() {
       expect(find.byKey(const Key('owner-voice-drop-reference')), findsNothing);
     });
 
+    testWidgets('a designed voice offers no recording to delete',
+        (tester) async {
+      await _push(
+          tester,
+          page(FakeSpeechVoices(),
+              ownerVoiceView('v1', method: 'design', hasReference: true)));
+
+      expect(find.byKey(const Key('owner-voice-drop-reference')), findsNothing);
+    });
+
     testWidgets('deleting names who will go back to the Host voice',
         (tester) async {
       final voices = FakeSpeechVoices(mine: [

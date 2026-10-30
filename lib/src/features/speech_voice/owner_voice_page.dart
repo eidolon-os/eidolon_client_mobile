@@ -187,7 +187,9 @@ class _OwnerVoicePageState extends State<OwnerVoicePage> {
                 title: const Text('改名'),
                 onTap: _busy ? null : _rename,
               ),
-              if (voice.hasReference)
+              // A person's recording, kept to remake the voice elsewhere. A
+              // designed voice's passage is the Host's own and is not offered.
+              if (voice.method == 'clone' && voice.hasReference)
                 ListTile(
                   key: const Key('owner-voice-drop-reference'),
                   leading: const Icon(Icons.mic_off_outlined),
