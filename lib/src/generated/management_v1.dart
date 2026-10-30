@@ -34,6 +34,8 @@ class ManagementV1 {
     String companionId,
   ) =>
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/persona-restorations';
+  static String companionsByCompanionIdSpeechVoicePath(String companionId) =>
+      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/speech-voice';
   static String companionsByCompanionIdTasksPath(String companionId) =>
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks';
   static String companionsByCompanionIdTasksByTaskIdPath(
@@ -99,6 +101,15 @@ class ManagementV1 {
   static const String missionControlSnapshotPath =
       '/api/management/v1/mission-control/snapshot';
   static const String ownerPath = '/api/management/v1/owner';
+  static const String ownerVoicesPath = '/api/management/v1/owner-voices';
+  static const String ownerVoicesClonesPath =
+      '/api/management/v1/owner-voices/clones';
+  static const String ownerVoicesDesignsPath =
+      '/api/management/v1/owner-voices/designs';
+  static const String ownerVoicesReferencesCheckPath =
+      '/api/management/v1/owner-voices/references/check';
+  static String ownerVoicesByVoiceAssetIdPath(String voiceAssetId) =>
+      '/api/management/v1/owner-voices/${Uri.encodeComponent(voiceAssetId)}';
   static const String ownerActionsRevokeRuntimeSessionsPath =
       '/api/management/v1/owner/actions/revoke-runtime-sessions';
   static const String ownerDefaultCompanionPath =
@@ -173,6 +184,11 @@ class ManagementV1 {
       '/api/management/v1/smarthome/scenes/${Uri.encodeComponent(sceneId)}';
   static const String smarthomeSnapshotPath =
       '/api/management/v1/smarthome/snapshot';
+  static const String speechVoicesPath = '/api/management/v1/speech-voices';
+  static const String speechVoicesRefreshPath =
+      '/api/management/v1/speech-voices/refresh';
+  static String speechVoicesByVoiceKeyPreviewPath(String voiceKey) =>
+      '/api/management/v1/speech-voices/${Uri.encodeComponent(voiceKey)}/preview';
   static const String teamsPath = '/api/management/v1/teams';
   static String teamsByTeamIdPath(String teamId) =>
       '/api/management/v1/teams/${Uri.encodeComponent(teamId)}';
@@ -190,9 +206,6 @@ class ManagementV1 {
     String sessionId,
   ) =>
       '/api/management/v1/teams/${Uri.encodeComponent(teamId)}/runs/${Uri.encodeComponent(sessionId)}/close';
-  static const String voicePreviewPath = '/api/management/v1/voice-preview';
-  static String voicePreviewByKeyAudioPath(String key) =>
-      '/api/management/v1/voice-preview/${Uri.encodeComponent(key)}/audio';
   static const String voiceprintsPath = '/api/management/v1/voiceprints';
   static const String voiceprintsCapturesPath =
       '/api/management/v1/voiceprints/captures';
@@ -930,6 +943,55 @@ class CompanionRosterView {
       if (defaultCompanionId != null)
         'default_companion_id': defaultCompanionId,
       if (nextCursor != null) 'next_cursor': nextCursor,
+    };
+  }
+}
+
+class CompanionSpeechVoiceView {
+  const CompanionSpeechVoiceView({
+    required this.companionId,
+    this.effective,
+    required this.recordState,
+    required this.revision,
+    this.selectedName,
+    this.selectedVoiceKey,
+  });
+
+  final String companionId;
+
+  final EffectiveVoiceView? effective;
+
+  final String recordState;
+
+  final int revision;
+
+  final String? selectedName;
+
+  final String? selectedVoiceKey;
+
+  factory CompanionSpeechVoiceView.fromJson(Map<String, dynamic> value) {
+    return CompanionSpeechVoiceView(
+      companionId: value['companion_id'] as String,
+      effective: value['effective'] == null
+          ? null
+          : EffectiveVoiceView.fromJson(
+              value['effective'] as Map<String, dynamic>,
+            ),
+      recordState: value['record_state'] as String,
+      revision: value['revision'] as int,
+      selectedName: value['selected_name'] as String?,
+      selectedVoiceKey: value['selected_voice_key'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'companion_id': companionId,
+      if (effective != null) 'effective': effective?.toJson(),
+      'record_state': recordState,
+      'revision': revision,
+      if (selectedName != null) 'selected_name': selectedName,
+      if (selectedVoiceKey != null) 'selected_voice_key': selectedVoiceKey,
     };
   }
 }
@@ -1897,6 +1959,36 @@ class DevicesView {
       if (contractVersion != null) 'contract_version': contractVersion,
       if (coverage != null) 'coverage': coverage,
       'devices': devices.map((entry) => entry.toJson()).toList(),
+    };
+  }
+}
+
+class EffectiveVoiceView {
+  const EffectiveVoiceView({
+    required this.displayName,
+    required this.reason,
+    this.voiceKey,
+  });
+
+  final String displayName;
+
+  final String reason;
+
+  final String? voiceKey;
+
+  factory EffectiveVoiceView.fromJson(Map<String, dynamic> value) {
+    return EffectiveVoiceView(
+      displayName: value['display_name'] as String,
+      reason: value['reason'] as String,
+      voiceKey: value['voice_key'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'display_name': displayName,
+      'reason': reason,
+      if (voiceKey != null) 'voice_key': voiceKey,
     };
   }
 }
@@ -3788,6 +3880,150 @@ class OwnerNameView {
   }
 }
 
+class OwnerVoiceChange {
+  const OwnerVoiceChange({
+    this.dropReference,
+    required this.expectedRevision,
+    this.keep,
+    this.name,
+  });
+
+  final bool? dropReference;
+
+  final int expectedRevision;
+
+  final bool? keep;
+
+  final String? name;
+
+  factory OwnerVoiceChange.fromJson(Map<String, dynamic> value) {
+    return OwnerVoiceChange(
+      dropReference: value['drop_reference'] as bool?,
+      expectedRevision: value['expected_revision'] as int,
+      keep: value['keep'] as bool?,
+      name: value['name'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (dropReference != null) 'drop_reference': dropReference,
+      'expected_revision': expectedRevision,
+      if (keep != null) 'keep': keep,
+      if (name != null) 'name': name,
+    };
+  }
+}
+
+class OwnerVoiceView {
+  const OwnerVoiceView({
+    this.consent,
+    required this.createdAt,
+    this.designPrompt,
+    this.draftExpiresAt,
+    required this.hasReference,
+    required this.method,
+    required this.name,
+    required this.revision,
+    required this.state,
+    required this.status,
+    this.statusDetail,
+    required this.usedBy,
+    required this.voiceAssetId,
+    required this.voiceKey,
+  });
+
+  final VoiceConsentView? consent;
+
+  final String createdAt;
+
+  final String? designPrompt;
+
+  final String? draftExpiresAt;
+
+  final bool hasReference;
+
+  final String method;
+
+  final String name;
+
+  final int revision;
+
+  final String state;
+
+  final String status;
+
+  final String? statusDetail;
+
+  final List<String> usedBy;
+
+  final String voiceAssetId;
+
+  final String voiceKey;
+
+  factory OwnerVoiceView.fromJson(Map<String, dynamic> value) {
+    return OwnerVoiceView(
+      consent: value['consent'] == null
+          ? null
+          : VoiceConsentView.fromJson(value['consent'] as Map<String, dynamic>),
+      createdAt: value['created_at'] as String,
+      designPrompt: value['design_prompt'] as String?,
+      draftExpiresAt: value['draft_expires_at'] as String?,
+      hasReference: value['has_reference'] as bool,
+      method: value['method'] as String,
+      name: value['name'] as String,
+      revision: value['revision'] as int,
+      state: value['state'] as String,
+      status: value['status'] as String,
+      statusDetail: value['status_detail'] as String?,
+      usedBy: ((value['used_by'] as List<dynamic>)
+          .map((entry) => entry as String)
+          .toList()),
+      voiceAssetId: value['voice_asset_id'] as String,
+      voiceKey: value['voice_key'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (consent != null) 'consent': consent?.toJson(),
+      'created_at': createdAt,
+      if (designPrompt != null) 'design_prompt': designPrompt,
+      if (draftExpiresAt != null) 'draft_expires_at': draftExpiresAt,
+      'has_reference': hasReference,
+      'method': method,
+      'name': name,
+      'revision': revision,
+      'state': state,
+      'status': status,
+      if (statusDetail != null) 'status_detail': statusDetail,
+      'used_by': usedBy,
+      'voice_asset_id': voiceAssetId,
+      'voice_key': voiceKey,
+    };
+  }
+}
+
+class OwnerVoicesView {
+  const OwnerVoicesView({required this.voices});
+
+  final List<OwnerVoiceView> voices;
+
+  factory OwnerVoicesView.fromJson(Map<String, dynamic> value) {
+    return OwnerVoicesView(
+      voices: ((value['voices'] as List<dynamic>)
+          .map(
+            (entry) => OwnerVoiceView.fromJson(entry as Map<String, dynamic>),
+          )
+          .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'voices': voices.map((entry) => entry.toJson()).toList()};
+  }
+}
+
 class PersonArchival {
   const PersonArchival({this.archived});
 
@@ -5083,6 +5319,58 @@ class RecollectionsView {
   }
 }
 
+class ReferenceCheckView {
+  const ReferenceCheckView({
+    required this.accepted,
+    this.audioBase64,
+    required this.durationMs,
+    required this.problems,
+    this.speechMs,
+    required this.windowMs,
+    required this.windowStartMs,
+  });
+
+  final bool accepted;
+
+  final String? audioBase64;
+
+  final int durationMs;
+
+  final List<String> problems;
+
+  final int? speechMs;
+
+  final int windowMs;
+
+  final int windowStartMs;
+
+  factory ReferenceCheckView.fromJson(Map<String, dynamic> value) {
+    return ReferenceCheckView(
+      accepted: value['accepted'] as bool,
+      audioBase64: value['audio_base64'] as String?,
+      durationMs: value['duration_ms'] as int,
+      problems: ((value['problems'] as List<dynamic>)
+          .map((entry) => entry as String)
+          .toList()),
+      speechMs: value['speech_ms'] as int?,
+      windowMs: value['window_ms'] as int,
+      windowStartMs: value['window_start_ms'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'accepted': accepted,
+      if (audioBase64 != null) 'audio_base64': audioBase64,
+      'duration_ms': durationMs,
+      'problems': problems,
+      if (speechMs != null) 'speech_ms': speechMs,
+      'window_ms': windowMs,
+      'window_start_ms': windowStartMs,
+    };
+  }
+}
+
 class Refusal {
   const Refusal({this.code, required this.kind, this.reason, this.retryable});
 
@@ -5509,6 +5797,85 @@ class SpeakerSimilarity {
       'revision': revision,
       if (similarity != null) 'similarity': similarity,
       'status': status,
+    };
+  }
+}
+
+class SpeechVoiceCatalogView {
+  const SpeechVoiceCatalogView({
+    required this.catalogRevision,
+    required this.enrollment,
+    required this.hostSelectable,
+    required this.limits,
+    this.notSelectableReason,
+    required this.state,
+    required this.voices,
+  });
+
+  final String catalogRevision;
+
+  final VoiceEnrollmentView enrollment;
+
+  final bool hostSelectable;
+
+  final VoiceLimitsView limits;
+
+  final String? notSelectableReason;
+
+  final String state;
+
+  final List<VoiceOptionView> voices;
+
+  factory SpeechVoiceCatalogView.fromJson(Map<String, dynamic> value) {
+    return SpeechVoiceCatalogView(
+      catalogRevision: value['catalog_revision'] as String,
+      enrollment: VoiceEnrollmentView.fromJson(
+        value['enrollment'] as Map<String, dynamic>,
+      ),
+      hostSelectable: value['host_selectable'] as bool,
+      limits: VoiceLimitsView.fromJson(value['limits'] as Map<String, dynamic>),
+      notSelectableReason: value['not_selectable_reason'] as String?,
+      state: value['state'] as String,
+      voices: ((value['voices'] as List<dynamic>)
+          .map(
+            (entry) => VoiceOptionView.fromJson(entry as Map<String, dynamic>),
+          )
+          .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'catalog_revision': catalogRevision,
+      'enrollment': enrollment.toJson(),
+      'host_selectable': hostSelectable,
+      'limits': limits.toJson(),
+      if (notSelectableReason != null)
+        'not_selectable_reason': notSelectableReason,
+      'state': state,
+      'voices': voices.map((entry) => entry.toJson()).toList(),
+    };
+  }
+}
+
+class SpeechVoiceChoice {
+  const SpeechVoiceChoice({required this.expectedRevision, this.voiceKey});
+
+  final int expectedRevision;
+
+  final String? voiceKey;
+
+  factory SpeechVoiceChoice.fromJson(Map<String, dynamic> value) {
+    return SpeechVoiceChoice(
+      expectedRevision: value['expected_revision'] as int,
+      voiceKey: value['voice_key'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'expected_revision': expectedRevision,
+      if (voiceKey != null) 'voice_key': voiceKey,
     };
   }
 }
@@ -6243,6 +6610,255 @@ class VoiceCaptureSession {
   }
 }
 
+class VoiceCloneBody {
+  const VoiceCloneBody({
+    required this.audioBase64,
+    required this.consent,
+    required this.name,
+    required this.operationId,
+  });
+
+  final String audioBase64;
+
+  final VoiceConsentBody consent;
+
+  final String name;
+
+  final String operationId;
+
+  factory VoiceCloneBody.fromJson(Map<String, dynamic> value) {
+    return VoiceCloneBody(
+      audioBase64: value['audio_base64'] as String,
+      consent: VoiceConsentBody.fromJson(
+        value['consent'] as Map<String, dynamic>,
+      ),
+      name: value['name'] as String,
+      operationId: value['operation_id'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'audio_base64': audioBase64,
+      'consent': consent.toJson(),
+      'name': name,
+      'operation_id': operationId,
+    };
+  }
+}
+
+class VoiceConsentBody {
+  const VoiceConsentBody({
+    this.allowReEnrollment,
+    required this.consentVersion,
+    required this.method,
+    this.statement,
+    required this.subject,
+    this.subjectLabel,
+  });
+
+  final bool? allowReEnrollment;
+
+  final String consentVersion;
+
+  final String method;
+
+  final String? statement;
+
+  final String subject;
+
+  final String? subjectLabel;
+
+  factory VoiceConsentBody.fromJson(Map<String, dynamic> value) {
+    return VoiceConsentBody(
+      allowReEnrollment: value['allow_re_enrollment'] as bool?,
+      consentVersion: value['consent_version'] as String,
+      method: value['method'] as String,
+      statement: value['statement'] as String?,
+      subject: value['subject'] as String,
+      subjectLabel: value['subject_label'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (allowReEnrollment != null) 'allow_re_enrollment': allowReEnrollment,
+      'consent_version': consentVersion,
+      'method': method,
+      if (statement != null) 'statement': statement,
+      'subject': subject,
+      if (subjectLabel != null) 'subject_label': subjectLabel,
+    };
+  }
+}
+
+class VoiceConsentView {
+  const VoiceConsentView({
+    required this.acceptedAt,
+    required this.method,
+    required this.subject,
+    this.subjectLabel,
+  });
+
+  final String acceptedAt;
+
+  final String method;
+
+  final String subject;
+
+  final String? subjectLabel;
+
+  factory VoiceConsentView.fromJson(Map<String, dynamic> value) {
+    return VoiceConsentView(
+      acceptedAt: value['accepted_at'] as String,
+      method: value['method'] as String,
+      subject: value['subject'] as String,
+      subjectLabel: value['subject_label'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'accepted_at': acceptedAt,
+      'method': method,
+      'subject': subject,
+      if (subjectLabel != null) 'subject_label': subjectLabel,
+    };
+  }
+}
+
+class VoiceDesignBody {
+  const VoiceDesignBody({
+    required this.name,
+    required this.operationId,
+    required this.previewText,
+    required this.prompt,
+  });
+
+  final String name;
+
+  final String operationId;
+
+  final String previewText;
+
+  final String prompt;
+
+  factory VoiceDesignBody.fromJson(Map<String, dynamic> value) {
+    return VoiceDesignBody(
+      name: value['name'] as String,
+      operationId: value['operation_id'] as String,
+      previewText: value['preview_text'] as String,
+      prompt: value['prompt'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'operation_id': operationId,
+      'preview_text': previewText,
+      'prompt': prompt,
+    };
+  }
+}
+
+class VoiceEnrollmentView {
+  const VoiceEnrollmentView({
+    required this.clone,
+    required this.design,
+    this.processor,
+  });
+
+  final bool clone;
+
+  final bool design;
+
+  final String? processor;
+
+  factory VoiceEnrollmentView.fromJson(Map<String, dynamic> value) {
+    return VoiceEnrollmentView(
+      clone: value['clone'] as bool,
+      design: value['design'] as bool,
+      processor: value['processor'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'clone': clone,
+      'design': design,
+      if (processor != null) 'processor': processor,
+    };
+  }
+}
+
+class VoiceLimitsView {
+  const VoiceLimitsView({
+    this.drafts,
+    this.ownerVoices,
+    this.previewTextMaxChars,
+    this.previewTextMinChars,
+    this.promptMaxChars,
+    this.recordingMaxMs,
+    this.recordingMinMs,
+    this.uploadMaxBytes,
+    this.uploadMaxMs,
+    this.windowMs,
+  });
+
+  final int? drafts;
+
+  final int? ownerVoices;
+
+  final int? previewTextMaxChars;
+
+  final int? previewTextMinChars;
+
+  final int? promptMaxChars;
+
+  final int? recordingMaxMs;
+
+  final int? recordingMinMs;
+
+  final int? uploadMaxBytes;
+
+  final int? uploadMaxMs;
+
+  final int? windowMs;
+
+  factory VoiceLimitsView.fromJson(Map<String, dynamic> value) {
+    return VoiceLimitsView(
+      drafts: value['drafts'] as int?,
+      ownerVoices: value['owner_voices'] as int?,
+      previewTextMaxChars: value['preview_text_max_chars'] as int?,
+      previewTextMinChars: value['preview_text_min_chars'] as int?,
+      promptMaxChars: value['prompt_max_chars'] as int?,
+      recordingMaxMs: value['recording_max_ms'] as int?,
+      recordingMinMs: value['recording_min_ms'] as int?,
+      uploadMaxBytes: value['upload_max_bytes'] as int?,
+      uploadMaxMs: value['upload_max_ms'] as int?,
+      windowMs: value['window_ms'] as int?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (drafts != null) 'drafts': drafts,
+      if (ownerVoices != null) 'owner_voices': ownerVoices,
+      if (previewTextMaxChars != null)
+        'preview_text_max_chars': previewTextMaxChars,
+      if (previewTextMinChars != null)
+        'preview_text_min_chars': previewTextMinChars,
+      if (promptMaxChars != null) 'prompt_max_chars': promptMaxChars,
+      if (recordingMaxMs != null) 'recording_max_ms': recordingMaxMs,
+      if (recordingMinMs != null) 'recording_min_ms': recordingMinMs,
+      if (uploadMaxBytes != null) 'upload_max_bytes': uploadMaxBytes,
+      if (uploadMaxMs != null) 'upload_max_ms': uploadMaxMs,
+      if (windowMs != null) 'window_ms': windowMs,
+    };
+  }
+}
+
 class VoiceMatchTestResult {
   const VoiceMatchTestResult({
     required this.audioMs,
@@ -6318,59 +6934,59 @@ class VoiceMatchTestResult {
   }
 }
 
-class VoicePreviewRequest {
-  const VoicePreviewRequest({this.regenerate, required this.requestId});
-
-  final bool? regenerate;
-
-  final String requestId;
-
-  factory VoicePreviewRequest.fromJson(Map<String, dynamic> value) {
-    return VoicePreviewRequest(
-      regenerate: value['regenerate'] as bool?,
-      requestId: value['request_id'] as String,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      if (regenerate != null) 'regenerate': regenerate,
-      'request_id': requestId,
-    };
-  }
-}
-
-class VoicePreviewStatus {
-  const VoicePreviewStatus({
-    required this.audioAvailable,
-    required this.key,
-    required this.state,
-    required this.voice,
+class VoiceOptionView {
+  const VoiceOptionView({
+    required this.ageBand,
+    required this.displayName,
+    required this.gender,
+    required this.isHostDefault,
+    required this.selectable,
+    required this.styleLabels,
+    this.summary,
+    required this.voiceKey,
   });
 
-  final bool audioAvailable;
+  final String ageBand;
 
-  final String key;
+  final String displayName;
 
-  final String state;
+  final String gender;
 
-  final String voice;
+  final bool isHostDefault;
 
-  factory VoicePreviewStatus.fromJson(Map<String, dynamic> value) {
-    return VoicePreviewStatus(
-      audioAvailable: value['audio_available'] as bool,
-      key: value['key'] as String,
-      state: value['state'] as String,
-      voice: value['voice'] as String,
+  final bool selectable;
+
+  final List<String> styleLabels;
+
+  final String? summary;
+
+  final String voiceKey;
+
+  factory VoiceOptionView.fromJson(Map<String, dynamic> value) {
+    return VoiceOptionView(
+      ageBand: value['age_band'] as String,
+      displayName: value['display_name'] as String,
+      gender: value['gender'] as String,
+      isHostDefault: value['is_host_default'] as bool,
+      selectable: value['selectable'] as bool,
+      styleLabels: ((value['style_labels'] as List<dynamic>)
+          .map((entry) => entry as String)
+          .toList()),
+      summary: value['summary'] as String?,
+      voiceKey: value['voice_key'] as String,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'audio_available': audioAvailable,
-      'key': key,
-      'state': state,
-      'voice': voice,
+      'age_band': ageBand,
+      'display_name': displayName,
+      'gender': gender,
+      'is_host_default': isHostDefault,
+      'selectable': selectable,
+      'style_labels': styleLabels,
+      if (summary != null) 'summary': summary,
+      'voice_key': voiceKey,
     };
   }
 }

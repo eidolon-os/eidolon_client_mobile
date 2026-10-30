@@ -641,33 +641,147 @@ class ManagementClient {
 
   Future<TeamPage> fetchTeams(Uri baseUri,
       {required String accessToken, String? after}) async {
-    final uri = baseUri.resolve(ManagementV1.teamsPath).replace(
-        queryParameters: {if (after != null) 'after': after});
-    return TeamPage.fromJson(await _send('GET', uri,
-        accessToken: accessToken, what: '读取团队'));
+    final uri = baseUri
+        .resolve(ManagementV1.teamsPath)
+        .replace(queryParameters: {if (after != null) 'after': after});
+    return TeamPage.fromJson(
+        await _send('GET', uri, accessToken: accessToken, what: '读取团队'));
   }
 
-  Future<VoicePreviewStatus> requestVoicePreview(Uri baseUri,
-      {required String accessToken, required VoicePreviewRequest request}) async =>
-      VoicePreviewStatus.fromJson(await _send('POST', baseUri.resolve(ManagementV1.voicePreviewPath),
-        accessToken: accessToken, what: '生成声音试听', body: request.toJson()));
+  // ---------------------------------------------------------------- voices
 
-  Future<Uint8List> fetchVoicePreviewAudio(Uri baseUri,
-      {required String accessToken, required String key}) async {
-    final result = VoiceAudioRequest.fromJson(await _send('GET',
-      baseUri.resolve(ManagementV1.voicePreviewByKeyAudioPath(key)),
-      accessToken: accessToken, what: '读取声音试听'));
-    final bytes = base64Decode(result.pcmBase64);
-    if (bytes.length.isOdd || bytes.length < 48000 || bytes.length > 960000) {
-      throw const FormatException('Invalid preview audio');
-    }
-    return bytes;
+  /// Making or hearing a voice happens at the speech provider and takes seconds.
+  static const _voiceTimeout = Duration(seconds: 80);
+
+  Future<SpeechVoiceCatalogView> fetchSpeechVoices(Uri baseUri,
+          {required String accessToken}) async =>
+      SpeechVoiceCatalogView.fromJson(await _send(
+          'GET', baseUri.resolve(ManagementV1.speechVoicesPath),
+          accessToken: accessToken, what: '读取可选的声音'));
+
+  Future<SpeechVoiceCatalogView> refreshSpeechVoices(Uri baseUri,
+          {required String accessToken}) async =>
+      SpeechVoiceCatalogView.fromJson(await _send(
+          'POST', baseUri.resolve(ManagementV1.speechVoicesRefreshPath),
+          accessToken: accessToken,
+          what: '刷新声音列表',
+          requestTimeout: _voiceTimeout));
+
+  /// A preview as WAV bytes, ready to play.
+  Future<Uint8List> fetchVoicePreview(Uri baseUri,
+      {required String accessToken,
+      required String voiceKey,
+      int sample = 1}) async {
+    final response = await _exchange(
+        'GET',
+        baseUri
+            .resolve(ManagementV1.speechVoicesByVoiceKeyPreviewPath(voiceKey))
+            .replace(queryParameters: {'sample': '$sample'}),
+        accessToken: accessToken,
+        what: '试听',
+        requestTimeout: _voiceTimeout);
+    return response.bodyBytes;
+  }
+
+  Future<CompanionSpeechVoiceView> fetchCompanionSpeechVoice(Uri baseUri,
+          {required String accessToken, required String companionId}) async =>
+      CompanionSpeechVoiceView.fromJson(await _send(
+          'GET',
+          baseUri.resolve(
+              ManagementV1.companionsByCompanionIdSpeechVoicePath(companionId)),
+          accessToken: accessToken,
+          what: '读取伙伴的声音'));
+
+  Future<CompanionSpeechVoiceView> chooseCompanionSpeechVoice(Uri baseUri,
+          {required String accessToken,
+          required String companionId,
+          required SpeechVoiceChoice choice}) async =>
+      CompanionSpeechVoiceView.fromJson(await _send(
+          'PUT',
+          baseUri.resolve(
+              ManagementV1.companionsByCompanionIdSpeechVoicePath(companionId)),
+          accessToken: accessToken,
+          what: '换声音',
+          body: choice.toJson()));
+
+  Future<OwnerVoicesView> fetchOwnerVoices(Uri baseUri,
+          {required String accessToken}) async =>
+      OwnerVoicesView.fromJson(await _send(
+          'GET', baseUri.resolve(ManagementV1.ownerVoicesPath),
+          accessToken: accessToken, what: '读取我的声音'));
+
+  Future<OwnerVoiceView> fetchOwnerVoice(Uri baseUri,
+          {required String accessToken, required String voiceAssetId}) async =>
+      OwnerVoiceView.fromJson(await _send(
+          'GET',
+          baseUri.resolve(
+              ManagementV1.ownerVoicesByVoiceAssetIdPath(voiceAssetId)),
+          accessToken: accessToken,
+          what: '读取这个声音'));
+
+  Future<OwnerVoiceView> designOwnerVoice(Uri baseUri,
+          {required String accessToken, required VoiceDesignBody body}) async =>
+      OwnerVoiceView.fromJson(await _send(
+          'POST', baseUri.resolve(ManagementV1.ownerVoicesDesignsPath),
+          accessToken: accessToken,
+          what: '生成声音',
+          body: body.toJson(),
+          requestTimeout: _voiceTimeout));
+
+  /// Upload a recording or an audio file to be measured; the window it returns is what a clone uses.
+  Future<ReferenceCheckView> checkVoiceReference(Uri baseUri,
+      {required String accessToken,
+      required Uint8List audio,
+      int? startMs}) async {
+    final response = await _exchange(
+        'POST',
+        baseUri.resolve(ManagementV1.ownerVoicesReferencesCheckPath).replace(
+            queryParameters: {if (startMs != null) 'start_ms': '$startMs'}),
+        accessToken: accessToken,
+        what: '检查录音',
+        body: audio,
+        requestTimeout: _voiceTimeout);
+    return ReferenceCheckView.fromJson(
+        jsonDecode(_text(response)) as Map<String, dynamic>);
+  }
+
+  Future<OwnerVoiceView> cloneOwnerVoice(Uri baseUri,
+          {required String accessToken, required VoiceCloneBody body}) async =>
+      OwnerVoiceView.fromJson(await _send(
+          'POST', baseUri.resolve(ManagementV1.ownerVoicesClonesPath),
+          accessToken: accessToken,
+          what: '复刻声音',
+          body: body.toJson(),
+          requestTimeout: _voiceTimeout));
+
+  Future<OwnerVoiceView> changeOwnerVoice(Uri baseUri,
+          {required String accessToken,
+          required String voiceAssetId,
+          required OwnerVoiceChange change}) async =>
+      OwnerVoiceView.fromJson(await _send(
+          'PATCH',
+          baseUri.resolve(
+              ManagementV1.ownerVoicesByVoiceAssetIdPath(voiceAssetId)),
+          accessToken: accessToken,
+          what: '修改这个声音',
+          body: change.toJson(),
+          requestTimeout: _voiceTimeout));
+
+  Future<void> deleteOwnerVoice(Uri baseUri,
+      {required String accessToken, required String voiceAssetId}) async {
+    await _exchange(
+        'DELETE',
+        baseUri
+            .resolve(ManagementV1.ownerVoicesByVoiceAssetIdPath(voiceAssetId)),
+        accessToken: accessToken,
+        what: '删除这个声音',
+        expectedStatus: 204);
   }
 
   Future<TeamRevision> fetchTeam(Uri baseUri,
       {required String accessToken, required String teamId}) async {
-    final result = TeamRevision.fromJson(await _send('GET',
-        baseUri.resolve(ManagementV1.teamsByTeamIdPath(teamId)),
+    final result = TeamRevision.fromJson(await _send(
+        'GET', baseUri.resolve(ManagementV1.teamsByTeamIdPath(teamId)),
         accessToken: accessToken, what: '读取团队配置'));
     if (result.teamId != teamId || result.revision < 1) {
       throw const ManagementRequestException('团队返回了不匹配的配置');
@@ -676,13 +790,18 @@ class ManagementClient {
   }
 
   Future<TeamRevision> saveTeam(Uri baseUri,
-      {required String accessToken, required String teamId,
-       required int expectedRevision, required TeamConfiguration configuration}) async {
-    final result = TeamRevision.fromJson(await _send('PUT',
-        baseUri.resolve(ManagementV1.teamsByTeamIdPath(teamId)),
-        accessToken: accessToken, what: '保存团队',
-        body: TeamWrite(expectedRevision: expectedRevision,
-            configuration: configuration).toJson()));
+      {required String accessToken,
+      required String teamId,
+      required int expectedRevision,
+      required TeamConfiguration configuration}) async {
+    final result = TeamRevision.fromJson(await _send(
+        'PUT', baseUri.resolve(ManagementV1.teamsByTeamIdPath(teamId)),
+        accessToken: accessToken,
+        what: '保存团队',
+        body: TeamWrite(
+                expectedRevision: expectedRevision,
+                configuration: configuration)
+            .toJson()));
     if (result.teamId != teamId || result.revision != expectedRevision + 1) {
       throw const ManagementRequestException('无法确认团队保存结果，请刷新确认');
     }
@@ -690,47 +809,67 @@ class ManagementClient {
   }
 
   Future<void> deleteTeam(Uri baseUri,
-      {required String accessToken, required String teamId,
-       required int expectedRevision}) async {
-    final result = TeamDeleted.fromJson(await _send('DELETE',
+      {required String accessToken,
+      required String teamId,
+      required int expectedRevision}) async {
+    final result = TeamDeleted.fromJson(await _send(
+        'DELETE',
         baseUri.resolve(ManagementV1.teamsByTeamIdPath(teamId)).replace(
             queryParameters: {'expected_revision': '$expectedRevision'}),
-        accessToken: accessToken, what: '删除团队'));
+        accessToken: accessToken,
+        what: '删除团队'));
     if (result.teamId != teamId) {
       throw const ManagementRequestException('无法确认团队删除结果，请刷新确认');
     }
   }
 
   Future<TeamConflicts> fetchTeamConflicts(Uri baseUri,
-      {required String accessToken, required String teamId}) async =>
+          {required String accessToken, required String teamId}) async =>
       TeamConflicts.fromJson(await _send('GET',
           baseUri.resolve(ManagementV1.teamsByTeamIdConflictsPath(teamId)),
           accessToken: accessToken, what: '查询团队占用'));
 
   Future<TeamStarts> fetchTeamRuns(Uri baseUri,
-      {required String accessToken, required String teamId,
-       bool includeClosed = false, String? after, int limit = 50}) async =>
-      TeamStarts.fromJson(await _send('GET',
+          {required String accessToken,
+          required String teamId,
+          bool includeClosed = false,
+          String? after,
+          int limit = 50}) async =>
+      TeamStarts.fromJson(await _send(
+          'GET',
           baseUri.resolve(ManagementV1.teamsByTeamIdRunsPath(teamId)).replace(
               queryParameters: includeClosed || after != null
-                  ? {'include_closed': '$includeClosed', 'limit': '$limit',
-                     if (after != null) 'after': after}
+                  ? {
+                      'include_closed': '$includeClosed',
+                      'limit': '$limit',
+                      if (after != null) 'after': after
+                    }
                   : null),
-          accessToken: accessToken, what: '确认团队聊天'));
+          accessToken: accessToken,
+          what: '确认团队聊天'));
 
   Future<RoleGroupStatus> savedTeamRun(Uri baseUri,
-      {required String accessToken, required String teamId, required int revision,
-       required String sessionId, required String action}) async {
+      {required String accessToken,
+      required String teamId,
+      required int revision,
+      required String sessionId,
+      required String action}) async {
     final path = switch (action) {
       'open' => ManagementV1.teamsByTeamIdRunsPath(teamId),
-      'status' => ManagementV1.teamsByTeamIdRunsBySessionIdPath(teamId, sessionId),
-      'close' => ManagementV1.teamsByTeamIdRunsBySessionIdClosePath(teamId, sessionId),
+      'status' =>
+        ManagementV1.teamsByTeamIdRunsBySessionIdPath(teamId, sessionId),
+      'close' =>
+        ManagementV1.teamsByTeamIdRunsBySessionIdClosePath(teamId, sessionId),
       _ => throw ArgumentError.value(action),
     };
-    final result = RoleGroupStatus.fromJson(await _send(action == 'status' ? 'GET' : 'POST',
-      baseUri.resolve(path), accessToken: accessToken, what: '更新团队聊天',
-      body: action == 'open' ? TeamStartRequest(expectedRevision: revision,
-          sessionId: sessionId).toJson() : null));
+    final result = RoleGroupStatus.fromJson(await _send(
+        action == 'status' ? 'GET' : 'POST', baseUri.resolve(path),
+        accessToken: accessToken,
+        what: '更新团队聊天',
+        body: action == 'open'
+            ? TeamStartRequest(expectedRevision: revision, sessionId: sessionId)
+                .toJson()
+            : null));
     if (result.sessionId != sessionId || result.scenario != 'ip_role_group') {
       throw const ManagementRequestException('团队返回了不匹配的运行状态');
     }
@@ -1740,14 +1879,41 @@ class ManagementClient {
     Duration? requestTimeout,
     int expectedStatus = 200,
   }) async {
+    final response = await _exchange(method, endpoint,
+        accessToken: accessToken,
+        what: what,
+        body: body == null ? null : utf8.encode(jsonEncode(body)),
+        contentType: 'application/json; charset=utf-8',
+        requestTimeout: requestTimeout,
+        expectedStatus: expectedStatus);
+    final decoded = jsonDecode(_text(response));
+    if (decoded is! Map<String, dynamic>) {
+      throw ManagementRequestException('$what返回了非契约响应');
+    }
+    return decoded;
+  }
+
+  /// One request, its body as bytes either way; a refusal is reported the same
+  /// way whether the answer would have been JSON or audio.
+  Future<http.Response> _exchange(
+    String method,
+    Uri endpoint, {
+    required String accessToken,
+    required String what,
+    List<int>? body,
+    String? contentType,
+    Duration? requestTimeout,
+    int expectedStatus = 200,
+  }) async {
     final http.Response response;
     try {
       final request = BoundedHttpRequest(method, endpoint,
           timeout: requestTimeout ?? timeout)
         ..headers['Authorization'] = 'Bearer $accessToken';
       if (body != null) {
-        request.headers['Content-Type'] = 'application/json; charset=utf-8';
-        request.body = jsonEncode(body);
+        request.headers['Content-Type'] =
+            contentType ?? 'application/octet-stream';
+        request.bodyBytes = body;
       }
       response = await _httpClient
           .send(request)
@@ -1770,11 +1936,7 @@ class ManagementClient {
             _refusal(body) ?? _refusalFromStatus(response.statusCode, body),
       );
     }
-    final decoded = jsonDecode(_text(response));
-    if (decoded is! Map<String, dynamic>) {
-      throw ManagementRequestException('$what返回了非契约响应');
-    }
-    return decoded;
+    return response;
   }
 
   /// Decoded as UTF-8 unconditionally, not according to the response header.

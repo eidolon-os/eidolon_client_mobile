@@ -19,6 +19,12 @@ class FakePlayer implements VoiceRecordingPlayer {
   }
 
   @override
+  Future<void> playWav(Uint8List wav) async {
+    plays++;
+    seen = wav;
+  }
+
+  @override
   Future<void> stop() async {
     stops++;
   }

@@ -1,3 +1,5 @@
+import '../speech_voice/speech_voice_page.dart';
+import '../speech_voice/speech_voice_tile.dart';
 import '../teams/team_navigation.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -425,6 +427,14 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
               onClearFace: _controller.faceFor(current.companionId) == null
                   ? null
                   : () => _clearCompanionFace(current),
+              voice: _capabilityHold('companion.voice') == null
+                  ? SpeechVoiceTile(
+                      key: ValueKey('voice-${current.companionId}'),
+                      companionId: current.companionId,
+                      voices: _controller.speechVoices,
+                      onOpen: () => _openSpeechVoice(current),
+                    )
+                  : null,
             );
           },
         ),
@@ -684,6 +694,23 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   /// saving would replace everything the person did not retype. A read that
   /// fails opens no form and says why — a form full of guesses would describe
   /// an Eidolon this Host does not have.
+  Future<void> _openSpeechVoice(HostCompanion companion) =>
+      Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => SpeechVoicePage(
+            companionId: companion.companionId,
+            companionName: companion.displayName.isNotEmpty
+                ? companion.displayName
+                : '这个 Eidolon',
+            voices: _controller.speechVoices,
+            companionNames: {
+              for (final row in _controller.home?.companions ?? const [])
+                row.companionId: row.displayName,
+            },
+          ),
+        ),
+      );
+
   Future<void> _openPersonaEdit(HostCompanion companion) async {
     final PersonaEditSnapshot standing;
     try {

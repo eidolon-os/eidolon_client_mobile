@@ -39,6 +39,7 @@ class CompanionPage extends StatelessWidget {
     this.face,
     this.onChangeFace,
     this.onClearFace,
+    this.voice,
     this.hostContext,
   });
 
@@ -95,6 +96,10 @@ class CompanionPage extends StatelessWidget {
   final Uint8List? face;
   final VoidCallback? onChangeFace;
   final VoidCallback? onClearFace;
+
+  /// The 「声音」 row, which reads its own line. Null on a Host that cannot
+  /// change how an Eidolon sounds, and the row is then absent.
+  final Widget? voice;
 
   /// What this Host says it can do at all, so a row it cannot serve is shown as
   /// held back rather than shown as working or removed without explanation.
@@ -267,6 +272,7 @@ class CompanionPage extends StatelessWidget {
                       subtitle: const Text('伙伴会恢复为默认形象'),
                       onTap: onClearFace,
                     ),
+                  if (voice case final voice?) voice,
                 ],
               ),
             ),

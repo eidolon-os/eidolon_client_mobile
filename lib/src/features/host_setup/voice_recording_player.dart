@@ -6,6 +6,9 @@ import 'package:audioplayers/audioplayers.dart';
 abstract interface class VoiceRecordingPlayer {
   Stream<void> get completed;
   Future<void> play(Uint8List pcm);
+
+  /// A finished WAV file, such as a voice preview the Host synthesized.
+  Future<void> playWav(Uint8List wav);
   Future<void> stop();
   Future<void> dispose();
 }
@@ -17,9 +20,11 @@ class LocalVoiceRecordingPlayer implements VoiceRecordingPlayer {
   @override
   Stream<void> get completed => _player.onPlayerComplete;
   @override
-  Future<void> play(Uint8List pcm) async {
+  Future<void> play(Uint8List pcm) => playWav(voiceRecordingWav(pcm));
+
+  @override
+  Future<void> playWav(Uint8List wav) async {
     if (_disposed) return;
-    final wav = voiceRecordingWav(pcm);
     // audioplayers writes BytesSource to an unmanaged file on Apple platforms.
     // Own that file explicitly so closing playback also removes the recording.
     if (!kIsWeb && (Platform.isIOS || Platform.isMacOS || Platform.isLinux)) {
@@ -65,6 +70,11 @@ Uint8List voiceRecordingWav(Uint8List pcm) {
   if (pcm.length.isOdd || pcm.length < 48000 || pcm.length > 960000) {
     throw const FormatException('Invalid voice recording');
   }
+  return pcm16Wav(pcm, sampleRate: 16000);
+}
+
+/// Mono, little-endian PCM16 wrapped in the 44-byte header every player reads.
+Uint8List pcm16Wav(Uint8List pcm, {required int sampleRate}) {
   final bytes = Uint8List(44 + pcm.length);
   final data = ByteData.sublistView(bytes);
   void text(int offset, String value) =>
@@ -76,8 +86,8 @@ Uint8List voiceRecordingWav(Uint8List pcm) {
   data.setUint32(16, 16, Endian.little);
   data.setUint16(20, 1, Endian.little);
   data.setUint16(22, 1, Endian.little);
-  data.setUint32(24, 16000, Endian.little);
-  data.setUint32(28, 32000, Endian.little);
+  data.setUint32(24, sampleRate, Endian.little);
+  data.setUint32(28, sampleRate * 2, Endian.little);
   data.setUint16(32, 2, Endian.little);
   data.setUint16(34, 16, Endian.little);
   text(36, 'data');
