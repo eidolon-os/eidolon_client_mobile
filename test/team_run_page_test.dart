@@ -74,7 +74,7 @@ void main() {
                 ]))));
     await tester.pumpAndSettle();
     expect(calls, ['status']);
-    expect(find.text('本次使用第 1 版'), findsOneWidget);
+    expect(find.text('本次使用第 1 版'), findsNothing);
     expect(
         tester
             .widget<FilledButton>(find.widgetWithText(FilledButton, '开始聊天'))

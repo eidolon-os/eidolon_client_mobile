@@ -1,5 +1,4 @@
 import '../../generated/management_v1.dart';
-import '../voice_preview/voice_preview_panel.dart';
 import 'package:flutter/material.dart';
 import '../host_setup/host_product_controller.dart';
 import 'team_management_page.dart';
@@ -12,9 +11,6 @@ Future<void> openTeamManagement(
         Future<void> Function() openDevices) =>
     Navigator.of(context).push<void>(MaterialPageRoute(
         builder: (_) => TeamManagementPage(
-              voicePreview: VoicePreviewPanel(
-                  request: controller.voicePreview.request,
-                  audio: controller.voicePreview.audio),
               load: (after) => controller.teams.list(after: after),
               openRun: (team) => _openTeamRun(context, controller, team),
               save: controller.teams.save,

@@ -79,7 +79,7 @@ class _TeamRunPageState extends State<TeamRunPage> {
                           ListTile(
                               title: Text(conflict.name),
                               subtitle: Text(
-                                  '正在使用第 ${conflict.revision} 版 · ${conflict.companionIds?.isNotEmpty == true ? '伙伴被占用' : '设备被占用'}'),
+                                  conflict.companionIds?.isNotEmpty == true ? '伙伴正在这个团队聊天' : '设备正在这个团队使用'),
                               trailing: const Icon(Icons.chevron_right),
                               onTap: () =>
                                   Navigator.pop(context, conflict.teamId)),
@@ -118,9 +118,10 @@ class _TeamRunPageState extends State<TeamRunPage> {
             ]),
             body: ListView(padding: const EdgeInsets.all(24), children: [
               Text('${_team.configuration.members.length} 位伙伴'),
-              Text(active
-                  ? '本次使用第 ${run.teamRevision} 版'
-                  : '准备使用第 ${_team.revision} 版'),
+              if ((_team.configuration.goal ?? '').trim().isNotEmpty)
+                Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(_team.configuration.goal!)),
               if (active && run.teamRevision != _team.revision)
                 const Text('已保存新配置，下次聊天生效。'),
               const SizedBox(height: 20),

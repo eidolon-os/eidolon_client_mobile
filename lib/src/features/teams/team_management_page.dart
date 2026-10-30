@@ -14,10 +14,8 @@ class TeamManagementPage extends StatefulWidget {
       required this.remove,
       required this.loadDevices,
       required this.openDevices,
-      this.openRun,
-      this.voicePreview});
+      this.openRun});
   final Future<TeamPage> Function(String?) load;
-  final Widget? voicePreview;
   final SaveTeam save;
   final Future<void> Function(TeamRevision)? openRun;
   final Future<void> Function(String, int) remove;
@@ -116,7 +114,6 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
           children: [
             const Text('把常用伙伴和设备保存为团队，下次聊天直接使用。'),
-            if (widget.voicePreview != null) widget.voicePreview!,
             if (_busy) const LinearProgressIndicator(),
             if (_error != null) ...[
               Text(_error!),
@@ -131,21 +128,20 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
             for (final team in _teams)
               Card(
                   child: ListTile(
-                      title: Text(team.configuration.name),
+                      leading: TeamEmblem(name: team.configuration.name),
+                      title: Text(team.configuration.name,
+                          maxLines: 2, overflow: TextOverflow.ellipsis),
                       subtitle: Text(
-                          '${team.configuration.members.length} 位伙伴 · 第 ${team.revision} 版'),
+                          '${team.configuration.members.length} 位伙伴'
+                          '${(team.configuration.goal ?? '').trim().isEmpty ? '' : ' · ${team.configuration.goal}'}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis),
                       onTap: _busy
                           ? null
                           : () => widget.openRun != null
                               ? widget.openRun!(team)
                               : _edit(team),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                        if (widget.openRun != null)
-                          IconButton(
-                              tooltip: '打开团队聊天',
-                              icon: const Icon(Icons.chat_bubble_outline),
-                              onPressed:
-                                  _busy ? null : () => widget.openRun!(team)),
                         PopupMenuButton<String>(
                           tooltip: '团队操作',
                           enabled: !_busy,
@@ -193,7 +189,6 @@ class _TeamEditorPageState extends State<TeamEditorPage> {
   List<MountedDevice> _devices = [];
   String? _input, _error;
   bool _loading = false, _saving = false, _dirty = false, _saved = false;
-  int _budget = 8;
   @override
   void initState() {
     super.initState();
@@ -208,7 +203,6 @@ class _TeamEditorPageState extends State<TeamEditorPage> {
     _id = widget.initial?.teamId ??
         'team-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 30)}';
     _input = c?.inputDeviceId;
-    _budget = c?.replyBudget ?? 8;
     for (final m in c?.members ?? <TeamMember>[]) {
       _members[m.outputDeviceId] = m;
     }
@@ -265,8 +259,7 @@ class _TeamEditorPageState extends State<TeamEditorPage> {
               name: _name.text.trim(),
               inputDeviceId: _input!,
               members: _members.values.toList(),
-              goal: _goal.text.trim(),
-              replyBudget: _budget));
+              goal: _goal.text.trim()));
       if (!mounted) return;
       setState(() {
         _saved = true;
@@ -313,15 +306,69 @@ class _TeamEditorPageState extends State<TeamEditorPage> {
     super.dispose();
   }
 
+  Future<void> _chooseInput() async {
+    final selected = await showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (context) => DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: .55,
+            builder: (context, scroll) => ListView(
+                    controller: scroll,
+                    padding: const EdgeInsets.all(20),
+                    children: [
+                      Text('选择说话设备',
+                          style: Theme.of(context).textTheme.titleLarge),
+                      const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Text('在这台设备上按住 PTT 提问。它与伙伴的回应设备分开。')),
+                      for (final d in _devices)
+                        ListTile(
+                            leading: const Icon(Icons.mic_none),
+                            title: Text(d.label),
+                            subtitle: Text(_members.containsKey(d.deviceId)
+                                ? '已用作伙伴的回应设备'
+                                : _availability(d)),
+                            trailing: _input == d.deviceId
+                                ? const Icon(Icons.check)
+                                : null,
+                            enabled: !_members.containsKey(d.deviceId),
+                            onTap: () => Navigator.pop(context, d.deviceId)),
+                      if (_devices.isEmpty) const Text('暂无设备，请先添加设备。'),
+                    ])));
+    if (selected != null && mounted) {
+      setState(() {
+        _input = selected;
+        _dirty = true;
+      });
+    }
+  }
+
+  String _availability(MountedDevice device) =>
+      switch (device.connectionState) {
+        'online' => '在线',
+        'offline' => '离线，连接后可聊天',
+        _ => '连接状态待确认',
+      };
+
+  Widget _section(String title, String description, List<Widget> children) =>
+      Padding(
+          padding: const EdgeInsets.only(bottom: 24),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(description, style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 12),
+            ...children,
+          ]));
+
   @override
   Widget build(BuildContext context) {
     final labels = {for (final d in _devices) d.deviceId: d.label};
-    String availability(MountedDevice device) =>
-        switch (device.connectionState) {
-          'online' => '在线',
-          'offline' => '离线，连接后才能聊天',
-          _ => '连接状态待确认',
-        };
+    final companions =
+        _devices.where((d) => d.attachedCompanionId != null).toList();
     final disabled = _loading || _saving;
     return PopScope(
         canPop: _saved || (!_dirty && !_saving),
@@ -329,151 +376,150 @@ class _TeamEditorPageState extends State<TeamEditorPage> {
           if (!didPop) _leave();
         },
         child: Scaffold(
-            appBar:
-                AppBar(title: Text(widget.initial == null ? '创建团队' : '编辑团队')),
+            appBar: AppBar(
+                title: Text(widget.initial == null ? '创建团队' : '编辑团队'),
+                actions: [
+                  IconButton(
+                      tooltip: '刷新设备',
+                      onPressed: disabled ? null : _load,
+                      icon: const Icon(Icons.refresh))
+                ]),
+            bottomNavigationBar: SafeArea(
+                top: false,
+                child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                    child: FilledButton(
+                        onPressed: disabled ? null : _save,
+                        child: Text(_saving ? '正在保存…' : '保存团队')))),
             body: Form(
                 key: _form,
-                child: ListView(padding: const EdgeInsets.all(20), children: [
-                  if (_loading || _saving) const LinearProgressIndicator(),
-                  if (_error != null) Text(_error!),
-                  TextFormField(
-                      controller: _name,
-                      enabled: !disabled,
-                      maxLength: 80,
-                      decoration: const InputDecoration(labelText: '团队名称'),
-                      validator: (v) =>
-                          v == null || v.trim().isEmpty ? '给团队起个名字' : null,
-                      onChanged: (_) => setState(() => _dirty = true)),
-                  const Text('选择伙伴与回应设备'),
-                  for (final d
-                      in _devices.where((d) => d.attachedCompanionId != null))
-                    CheckboxListTile(
-                        title: Text(d.attachedCompanionName.isEmpty
-                            ? '伙伴'
-                            : d.attachedCompanionName),
-                        subtitle: Text('${d.label} · ${availability(d)}'),
-                        value: _members.containsKey(d.deviceId),
-                        onChanged: disabled
-                            ? null
-                            : (selected) => setState(() {
-                                  _dirty = true;
-                                  if (selected == true) {
-                                    _members[d.deviceId] = TeamMember(
-                                        companionId: d.attachedCompanionId!,
-                                        outputDeviceId: d.deviceId);
-                                  } else {
-                                    _members.remove(d.deviceId);
-                                  }
-                                })),
-                  for (final m in _members.values
-                      .where((m) => !labels.containsKey(m.outputDeviceId)))
-                    ListTile(
-                        title: const Text('已选设备暂不可用'),
-                        trailing: TextButton(
-                            onPressed: disabled
-                                ? null
-                                : () => setState(() {
-                                      _members.remove(m.outputDeviceId);
-                                      _dirty = true;
-                                    }),
-                            child: const Text('移除选择'))),
-                  DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      key: ValueKey('input-$_input'),
-                      initialValue: _input,
-                      decoration: const InputDecoration(labelText: '按住说话的设备'),
-                      items: [
-                        if (_input != null && !labels.containsKey(_input))
-                          DropdownMenuItem(
-                              value: _input,
-                              enabled: false,
-                              child: const Text('原设备暂不可用')),
-                        for (final d in _devices)
-                          DropdownMenuItem(
-                              value: d.deviceId,
-                              child: Text('${d.label} · ${availability(d)}',
-                                  maxLines: 1, overflow: TextOverflow.ellipsis))
-                      ],
-                      onChanged: disabled
-                          ? null
-                          : (v) => setState(() {
-                                _input = v;
-                                _dirty = true;
-                              })),
-                  for (final id in _members.keys.toList()) ...[
-                    TextFormField(
-                        key: ValueKey('role-$id'),
-                        initialValue: _members[id]?.role?.name ?? '',
-                        enabled: !disabled,
-                        maxLength: 80,
-                        decoration: InputDecoration(
-                            labelText: '${labels[id] ?? '伙伴'} · 团队角色（可选）'),
-                        onChanged: (v) => setState(() {
-                              final m = _members[id]!;
-                              _members[id] = TeamMember(
-                                  companionId: m.companionId,
-                                  outputDeviceId: id,
-                                  role: v.trim().isEmpty
+                child: ListView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.all(20),
+                    children: [
+                      if (_loading || _saving) const LinearProgressIndicator(),
+                      if (_error != null)
+                        Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: Text(_error!,
+                                style: TextStyle(
+                                    color:
+                                        Theme.of(context).colorScheme.error))),
+                      _section('团队资料', '给伙伴们一个共同的聊天背景。', [
+                        TextFormField(
+                            controller: _name,
+                            enabled: !disabled,
+                            maxLength: 80,
+                            decoration: const InputDecoration(
+                                labelText: '团队名称',
+                                hintText: '例如：周末旅行搭子',
+                                border: OutlineInputBorder()),
+                            validator: (v) => v == null || v.trim().isEmpty
+                                ? '给团队起个名字'
+                                : null,
+                            onChanged: (_) => setState(() => _dirty = true)),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                            controller: _goal,
+                            enabled: !disabled,
+                            maxLength: 2000,
+                            minLines: 3,
+                            maxLines: 6,
+                            decoration: const InputDecoration(
+                                labelText: '团队背景（可选）',
+                                alignLabelWithHint: true,
+                                border: OutlineInputBorder(),
+                                hintText: '这个团队为什么聚在一起，有哪些共同话题或背景？'),
+                            onChanged: (_) => setState(() => _dirty = true)),
+                      ]),
+                      _section('参与伙伴', '沿用伙伴自己的档案和个性，无需为团队重新设定角色。', [
+                        if (companions.isEmpty)
+                          const Text('暂无绑定设备的伙伴，请先安排伙伴与设备。'),
+                        for (final d in companions)
+                          Card(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              child: CheckboxListTile(
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 4),
+                                  controlAffinity:
+                                      ListTileControlAffinity.leading,
+                                  title: Text(d.attachedCompanionName.isEmpty
+                                      ? '伙伴'
+                                      : d.attachedCompanionName),
+                                  subtitle: Text(
+                                      '${d.label} · ${d.deviceId == _input ? '已用作说话设备' : _availability(d)}'),
+                                  value: _members.containsKey(d.deviceId),
+                                  onChanged: disabled || d.deviceId == _input
                                       ? null
-                                      : SceneRole(
-                                          name: v.trim(),
-                                          description: m.role?.description));
-                              _dirty = true;
-                            })),
-                    if (_members[id]?.role != null)
-                      TextFormField(
-                          key: ValueKey('description-$id'),
-                          initialValue: _members[id]?.role?.description ?? '',
-                          enabled: !disabled,
-                          maxLength: 1000,
-                          decoration: const InputDecoration(labelText: '角色说明'),
-                          onChanged: (v) {
-                            final m = _members[id]!;
-                            _members[id] = TeamMember(
-                                companionId: m.companionId,
-                                outputDeviceId: id,
-                                role: SceneRole(
-                                    name: m.role!.name, description: v));
-                            _dirty = true;
-                          }),
-                  ],
-                  TextFormField(
-                      controller: _goal,
-                      enabled: !disabled,
-                      maxLength: 2000,
-                      decoration: const InputDecoration(labelText: '交流目标（可选）'),
-                      onChanged: (_) => setState(() => _dirty = true)),
-                  ExpansionTile(title: const Text('高级设置'), children: [
-                    DropdownButtonFormField<int>(
-                        initialValue: _budget,
-                        decoration:
-                            const InputDecoration(labelText: '每次提问后的连续回复上限'),
-                        items: [
-                          for (var i = 1; i <= 32; i++)
-                            DropdownMenuItem(value: i, child: Text('$i 次'))
-                        ],
-                        onChanged: disabled
-                            ? null
-                            : (v) => setState(() {
-                                  _budget = v!;
-                                  _dirty = true;
-                                }))
-                  ]),
-                  TextButton(
-                      onPressed: disabled ? null : _load,
-                      child: const Text('刷新设备')),
-                  TextButton(
-                      onPressed: disabled
-                          ? null
-                          : () async {
-                              await widget.openDevices();
-                              if (mounted) await _load();
-                            },
-                      child: const Text('管理伙伴与设备绑定')),
-                  const Text('保存不会开始聊天；正在使用的配置保持不变。'),
-                  FilledButton(
-                      onPressed: disabled ? null : _save,
-                      child: Text(_saving ? '正在保存…' : '保存团队')),
-                ]))));
+                                      : (selected) {
+                                          setState(() {
+                                            _dirty = true;
+                                            if (selected == true) {
+                                              // One Companion, one output; selecting another body moves its assignment.
+                                              _members.removeWhere((_, m) =>
+                                                  m.companionId ==
+                                                  d.attachedCompanionId);
+                                              _members[d.deviceId] = TeamMember(
+                                                  companionId:
+                                                      d.attachedCompanionId!,
+                                                  outputDeviceId: d.deviceId);
+                                            } else {
+                                              _members.remove(d.deviceId);
+                                            }
+                                          });
+                                        })),
+                        for (final m in _members.values.where(
+                            (m) => !labels.containsKey(m.outputDeviceId)))
+                          ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('已选设备暂不可用'),
+                              subtitle: const Text('选择已保留，恢复连接后可继续使用。'),
+                              trailing: IconButton(
+                                  tooltip: '移除选择',
+                                  icon: const Icon(Icons.close),
+                                  onPressed: disabled
+                                      ? null
+                                      : () => setState(() {
+                                            _members.remove(m.outputDeviceId);
+                                            _dirty = true;
+                                          }))),
+                        Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton.icon(
+                                icon: const Icon(Icons.devices),
+                                label: const Text('管理伙伴与设备'),
+                                onPressed: disabled
+                                    ? null
+                                    : () async {
+                                        await widget.openDevices();
+                                        if (mounted) await _load();
+                                      })),
+                      ]),
+                      _section('说话设备', '按住这台设备的 PTT 向团队提问，伙伴们从各自设备回应。', [
+                        Card(
+                            margin: EdgeInsets.zero,
+                            child: ListTile(
+                                leading: const Icon(Icons.mic_none),
+                                title: Text(_input == null
+                                    ? '选择说话设备'
+                                    : labels[_input] ?? '原设备暂不可用'),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: disabled ? null : _chooseInput)),
+                      ]),
+                      const Text('保存后可随时开始聊天。聊天中修改团队，下次开始时生效。'),
+                    ]))));
   }
+}
+
+/// A lightweight identity marker; no separate image asset or team avatar service.
+class TeamEmblem extends StatelessWidget {
+  const TeamEmblem({super.key, required this.name});
+  final String name;
+  @override
+  Widget build(BuildContext context) => CircleAvatar(
+      backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+      foregroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
+      child: Text(name.trim().isEmpty ? '团' : name.trim().characters.first,
+          style: const TextStyle(fontWeight: FontWeight.w600)));
 }

@@ -5325,25 +5325,6 @@ class Scene {
   }
 }
 
-class SceneRole {
-  const SceneRole({this.description, required this.name});
-
-  final String? description;
-
-  final String name;
-
-  factory SceneRole.fromJson(Map<String, dynamic> value) {
-    return SceneRole(
-      description: value['description'] as String?,
-      name: value['name'] as String,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {if (description != null) 'description': description, 'name': name};
-  }
-}
-
 class SceneWrite {
   const SceneWrite({required this.expectedRevision, required this.scene});
 
@@ -5741,7 +5722,6 @@ class TeamConfiguration {
     required this.inputDeviceId,
     required this.members,
     required this.name,
-    this.replyBudget,
   });
 
   final String? goal;
@@ -5752,8 +5732,6 @@ class TeamConfiguration {
 
   final String name;
 
-  final int? replyBudget;
-
   factory TeamConfiguration.fromJson(Map<String, dynamic> value) {
     return TeamConfiguration(
       goal: value['goal'] as String?,
@@ -5762,7 +5740,6 @@ class TeamConfiguration {
           .map((entry) => TeamMember.fromJson(entry as Map<String, dynamic>))
           .toList()),
       name: value['name'] as String,
-      replyBudget: value['reply_budget'] as int?,
     );
   }
 
@@ -5772,7 +5749,6 @@ class TeamConfiguration {
       'input_device_id': inputDeviceId,
       'members': members.map((entry) => entry.toJson()).toList(),
       'name': name,
-      if (replyBudget != null) 'reply_budget': replyBudget,
     };
   }
 }
@@ -5875,34 +5851,21 @@ class TeamDeleted {
 }
 
 class TeamMember {
-  const TeamMember({
-    required this.companionId,
-    required this.outputDeviceId,
-    this.role,
-  });
+  const TeamMember({required this.companionId, required this.outputDeviceId});
 
   final String companionId;
 
   final String outputDeviceId;
 
-  final SceneRole? role;
-
   factory TeamMember.fromJson(Map<String, dynamic> value) {
     return TeamMember(
       companionId: value['companion_id'] as String,
       outputDeviceId: value['output_device_id'] as String,
-      role: value['role'] == null
-          ? null
-          : SceneRole.fromJson(value['role'] as Map<String, dynamic>),
     );
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'companion_id': companionId,
-      'output_device_id': outputDeviceId,
-      if (role != null) 'role': role?.toJson(),
-    };
+    return {'companion_id': companionId, 'output_device_id': outputDeviceId};
   }
 }
 

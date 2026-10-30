@@ -10,17 +10,13 @@ import 'shared_conversation_preparation_test.dart' show device;
 const saved = TeamRevision(
     teamId: 'saved',
     revision: 1,
-    configuration:
-        TeamConfiguration(name: '朋友', inputDeviceId: 'input', members: [
-      TeamMember(
-          companionId: 'a',
-          outputDeviceId: 'output',
-          role: SceneRole(name: '向导'))
-    ]));
+    configuration: TeamConfiguration(
+        name: '朋友',
+        inputDeviceId: 'input',
+        members: [TeamMember(companionId: 'a', outputDeviceId: 'output')]));
 
 void main() {
-  testWidgets(
-      'refresh preserves missing member and role until explicit removal',
+  testWidgets('refresh preserves missing member until explicit removal',
       (tester) async {
     var present = true;
     var writes = 0;
@@ -34,18 +30,15 @@ void main() {
             openDevices: () async {},
             save: (_, __, config) async {
               writes++;
-              expect(config.members.single.role?.name, '向导');
+              expect(config.members.single.companionId, 'a');
               return TeamRevision(
                   teamId: 'saved', revision: 2, configuration: config);
             })));
     await tester.pumpAndSettle();
     present = false;
-    await tester.scrollUntilVisible(find.text('刷新设备'), 200,
-        scrollable: find.byType(Scrollable).first);
-    await Scrollable.ensureVisible(tester.element(find.text('刷新设备')),
-        alignment: 0.5);
+
     await tester.pumpAndSettle();
-    await tester.tap(find.text('刷新设备'));
+    await tester.tap(find.byTooltip('刷新设备'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('保存团队'), 200,
         scrollable: find.byType(Scrollable).first);
@@ -53,12 +46,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(writes, 0);
     present = true;
-    await tester.scrollUntilVisible(find.text('刷新设备'), -150,
-        scrollable: find.byType(Scrollable).first);
-    await Scrollable.ensureVisible(tester.element(find.text('刷新设备')),
-        alignment: 0.5);
+
     await tester.pumpAndSettle();
-    await tester.tap(find.text('刷新设备'));
+    await tester.tap(find.byTooltip('刷新设备'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('保存团队'), 200,
         scrollable: find.byType(Scrollable).first);

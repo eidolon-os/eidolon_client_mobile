@@ -45,13 +45,10 @@ void main() {
   testWidgets(
       'copy creates a new asset and unknown save retries the same identity',
       (tester) async {
-    const config =
-        TeamConfiguration(name: '朋友', inputDeviceId: 'input', members: [
-      TeamMember(
-          companionId: 'a',
-          outputDeviceId: 'output',
-          role: SceneRole(name: '向导', description: '介绍路线'))
-    ]);
+    const config = TeamConfiguration(
+        name: '朋友',
+        inputDeviceId: 'input',
+        members: [TeamMember(companionId: 'a', outputDeviceId: 'output')]);
     final ids = <String>[];
     await tester.pumpWidget(MaterialApp(
         home: TeamEditorPage(
@@ -65,7 +62,7 @@ void main() {
               ids.add(id);
               expect(revision, 0);
               expect(configuration.name, '朋友 副本');
-              expect(configuration.members.single.role?.name, '向导');
+              expect(configuration.members.single.companionId, 'a');
               if (ids.length == 1) throw StateError('response lost');
               return TeamRevision(
                   teamId: id, revision: 1, configuration: configuration);
@@ -95,5 +92,62 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('重试'), findsOneWidget);
     expect(find.textContaining('还没有团队'), findsNothing);
+  });
+  testWidgets(
+      'compact editor handles long labels and large text without overflow',
+      (tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(
+        builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: const TextScaler.linear(1.3)),
+            child: child!),
+        home: TeamEditorPage(
+            loadDevices: () async => [
+                  device('input-with-a-very-long-device-label',
+                      companion: null),
+                  device('output-with-a-very-long-device-label', companion: 'a')
+                ],
+            openDevices: () async {},
+            save: (_, __, ___) async => throw StateError('not saving'))));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('高级设置'), findsNothing);
+    expect(find.textContaining('团队角色'), findsNothing);
+    await tester.enterText(find.byType(TextFormField).first, '周末旅行与生活讨论团队');
+    tester.testTextInput.hide();
+    await tester.scrollUntilVisible(find.text('选择说话设备'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('选择说话设备'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DraggableScrollableSheet), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'team list has an identity marker without revision or voice preview',
+      (tester) async {
+    final team = TeamRevision(
+        teamId: 'team',
+        revision: 17,
+        configuration: const TeamConfiguration(
+            name: '周末朋友',
+            goal: '一起轻松聊天',
+            inputDeviceId: 'input',
+            members: [TeamMember(companionId: 'a', outputDeviceId: 'output')]));
+    await tester.pumpWidget(MaterialApp(
+        home: TeamManagementPage(
+            load: (_) async => TeamPage(teams: [team]),
+            save: (_, __, ___) async => team,
+            remove: (_, __) async {},
+            loadDevices: () async => [],
+            openDevices: () async {})));
+    await tester.pumpAndSettle();
+    expect(find.byType(TeamEmblem), findsOneWidget);
+    expect(find.textContaining('第 17 版'), findsNothing);
+    expect(find.textContaining('试听'), findsNothing);
   });
 }

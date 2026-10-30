@@ -1,4 +1,3 @@
-import '../voice_preview/voice_preview_repository.dart';
 import '../teams/team_repository.dart';
 import '../conversation/role_group_controller.dart';
 import 'dart:async';
@@ -216,8 +215,6 @@ class HostProductController extends ChangeNotifier {
   bool get powerOffBusy => _powerOffBusy;
   String? get powerOffOutcome => _powerOffOutcome;
 
-  late final VoicePreviewRepository voicePreview =
-      VoicePreviewRepository(_session);
   late final TeamRepository teams = TeamRepository(_session);
 
   final _teamRuns = <String, RoleGroupController>{};
