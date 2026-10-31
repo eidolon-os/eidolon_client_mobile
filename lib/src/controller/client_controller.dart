@@ -26,6 +26,29 @@ import '../services/vad_processor.dart';
 
 export '../models/client_ui_state.dart';
 
+/// What the Provider's refusal of a start tells the person, by its reason.
+///
+/// A reason this build does not know changes nothing: the attempt goes on
+/// waiting for its own timeout, as it did before the Provider answered at all.
+const _startRefusals = {
+  sessionRejectionConflict: (
+    code: 'ROOM_JOIN_CONFLICT',
+    failure: ClientFailure(
+        kind: ClientErrorKind.liveKit,
+        title: '设备暂时无法开始新对话',
+        message: '设备上已有会话或会话状态冲突，请先结束原会话后再试。',
+        technicalDetails: 'session_rejected reason=conflict'),
+  ),
+  sessionRejectionUnavailable: (
+    code: 'ROOM_JOIN_UNAVAILABLE',
+    failure: ClientFailure(
+        kind: ClientErrorKind.liveKit,
+        title: '这次没能开始对话',
+        message: '主机暂时没能开始这次对话，请稍后再试一次。',
+        technicalDetails: 'session_rejected reason=unavailable'),
+  ),
+};
+
 class ClientController extends ChangeNotifier {
   ClientController({
     PlatformBridge? platform,
@@ -1082,18 +1105,15 @@ class ClientController extends ChangeNotifier {
 
       switch (root['type']) {
         case sessionRejectedType:
+          final refusal = _startRefusals[root['reason']];
           if (!fromProvider ||
               root['schema_v'] != sessionControlSchemaVersion ||
-              root['reason'] != sessionRejectionConflict ||
+              refusal == null ||
               conversationStanding != ConversationStanding.asked) {
             return;
           }
-          failure = const ClientFailure(
-              kind: ClientErrorKind.liveKit,
-              title: '设备暂时无法开始新对话',
-              message: '设备上已有会话或会话状态冲突，请先结束原会话后再试。',
-              technicalDetails: 'session_rejected reason=conflict');
-          await _finishRoomJoin('failed', 'ROOM_JOIN_CONFLICT');
+          failure = refusal.failure;
+          await _finishRoomJoin('failed', refusal.code);
           await leave(notifyRemote: false);
         case sessionStartedType:
           // Serving, which is all this says. Whether it can hear is a separate

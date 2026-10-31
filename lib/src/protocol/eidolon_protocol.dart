@@ -52,6 +52,7 @@ const sessionStartedType = 'session_started';
 const channelProviderIdentityPrefix = 'channel-provider-';
 const sessionRejectedType = 'session_rejected';
 const sessionRejectionConflict = 'conflict';
+const sessionRejectionUnavailable = 'unavailable';
 
 /// The session-control document, built in one place.
 ///

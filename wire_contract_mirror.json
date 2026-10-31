@@ -169,6 +169,9 @@
     "SESSION_REJECTION_CONFLICT": {
       "dart": "sessionRejectionConflict"
     },
+    "SESSION_REJECTION_UNAVAILABLE": {
+      "dart": "sessionRejectionUnavailable"
+    },
     "SESSION_CONTROL_REQUEST_ID_FIELD": {
       "dart": "sessionControlRequestIdField"
     },

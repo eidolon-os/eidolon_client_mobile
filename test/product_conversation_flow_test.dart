@@ -653,6 +653,29 @@ void main() {
     h.flow.dispose();
   });
 
+  test('a start the Host could not serve is said at once, not after the wait',
+      () async {
+    // 2026-10-31: a start refused for a reason other than a conflict reached
+    // the phone as silence, and a person watched it wait twenty seconds.
+    final h = _Harness();
+    await h.flow.initialize();
+    await h.flow.chooseMode(ConversationMode.fullDuplex);
+    await h.flow.startConversation();
+    await settle();
+    final golden = jsonDecode(File(
+      '../eidolon_sdk/contracts/control/v1/golden/session-rejected-unavailable.json',
+    ).readAsStringSync()) as Map<String, dynamic>;
+    h.session.data.add(SessionData(
+        'eidolon.session_control', jsonEncode(golden['payload']),
+        fromProvider: true));
+    await settle();
+    expect(h.flow.client.canLeave, false);
+    expect(h.flow.client.failure?.title, '这次没能开始对话');
+    expect(h.flow.client.failure?.message, contains('请稍后再试'));
+    expect(h.events.where((event) => event.startsWith('close-')), isEmpty);
+    h.flow.dispose();
+  });
+
   test('invalid or stale provider packets cannot change a pending attempt',
       () async {
     final h = _Harness();
