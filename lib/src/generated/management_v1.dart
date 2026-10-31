@@ -213,6 +213,14 @@ class ManagementV1 {
       '/api/management/v1/voiceprints/captures/${Uri.encodeComponent(captureId)}';
   static String voiceprintsCapturesByCaptureIdFinishPath(String captureId) =>
       '/api/management/v1/voiceprints/captures/${Uri.encodeComponent(captureId)}/finish';
+  static const String voiceprintsChannelCalibrationPath =
+      '/api/management/v1/voiceprints/channel-calibration';
+  static String voiceprintsChannelCalibrationBatchesByBatchIdPath(
+    String batchId,
+  ) =>
+      '/api/management/v1/voiceprints/channel-calibration/batches/${Uri.encodeComponent(batchId)}';
+  static const String voiceprintsChannelCalibrationSamplesPath =
+      '/api/management/v1/voiceprints/channel-calibration/samples';
   static const String voiceprintsEnrollmentsPath =
       '/api/management/v1/voiceprints/enrollments';
   static String voiceprintsEnrollmentsByEnrollmentIdPath(String enrollmentId) =>
@@ -529,6 +537,163 @@ class AreaWrite {
 
   Map<String, dynamic> toJson() {
     return {'area': area.toJson(), 'expected_revision': expectedRevision};
+  }
+}
+
+class CalibrationCrop {
+  const CalibrationCrop({required this.speechMs, required this.vector});
+
+  final int speechMs;
+
+  final List<double> vector;
+
+  factory CalibrationCrop.fromJson(Map<String, dynamic> value) {
+    return CalibrationCrop(
+      speechMs: value['speech_ms'] as int,
+      vector: ((value['vector'] as List<dynamic>)
+          .map((entry) => entry as double)
+          .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'speech_ms': speechMs, 'vector': vector};
+  }
+}
+
+class ChannelCalibrationBatch {
+  const ChannelCalibrationBatch({
+    required this.batchId,
+    required this.channel,
+    required this.firstCapturedAt,
+    required this.lastCapturedAt,
+    required this.samples,
+  });
+
+  final String batchId;
+
+  final String channel;
+
+  final double firstCapturedAt;
+
+  final double lastCapturedAt;
+
+  final int samples;
+
+  factory ChannelCalibrationBatch.fromJson(Map<String, dynamic> value) {
+    return ChannelCalibrationBatch(
+      batchId: value['batch_id'] as String,
+      channel: value['channel'] as String,
+      firstCapturedAt: (value['first_captured_at'] as num).toDouble(),
+      lastCapturedAt: (value['last_captured_at'] as num).toDouble(),
+      samples: value['samples'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'batch_id': batchId,
+      'channel': channel,
+      'first_captured_at': firstCapturedAt,
+      'last_captured_at': lastCapturedAt,
+      'samples': samples,
+    };
+  }
+}
+
+class ChannelCalibrationCollection {
+  const ChannelCalibrationCollection({this.batches});
+
+  final List<ChannelCalibrationBatch>? batches;
+
+  factory ChannelCalibrationCollection.fromJson(Map<String, dynamic> value) {
+    return ChannelCalibrationCollection(
+      batches: value['batches'] == null
+          ? null
+          : ((value['batches'] as List<dynamic>)
+                .map(
+                  (entry) => ChannelCalibrationBatch.fromJson(
+                    entry as Map<String, dynamic>,
+                  ),
+                )
+                .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (batches != null)
+        'batches': batches?.map((entry) => entry.toJson()).toList(),
+    };
+  }
+}
+
+class ChannelCalibrationSample {
+  const ChannelCalibrationSample({
+    required this.batchId,
+    required this.capturedAt,
+    required this.channel,
+    required this.sample,
+    required this.sampleId,
+    this.source,
+  });
+
+  final String batchId;
+
+  final double capturedAt;
+
+  final String channel;
+
+  final EnrollmentSample sample;
+
+  final String sampleId;
+
+  final String? source;
+
+  factory ChannelCalibrationSample.fromJson(Map<String, dynamic> value) {
+    return ChannelCalibrationSample(
+      batchId: value['batch_id'] as String,
+      capturedAt: (value['captured_at'] as num).toDouble(),
+      channel: value['channel'] as String,
+      sample: EnrollmentSample.fromJson(
+        value['sample'] as Map<String, dynamic>,
+      ),
+      sampleId: value['sample_id'] as String,
+      source: value['source'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'batch_id': batchId,
+      'captured_at': capturedAt,
+      'channel': channel,
+      'sample': sample.toJson(),
+      'sample_id': sampleId,
+      if (source != null) 'source': source,
+    };
+  }
+}
+
+class ChannelCalibrationUpload {
+  const ChannelCalibrationUpload({
+    required this.batchId,
+    required this.pcmBase64,
+  });
+
+  final String batchId;
+
+  final String pcmBase64;
+
+  factory ChannelCalibrationUpload.fromJson(Map<String, dynamic> value) {
+    return ChannelCalibrationUpload(
+      batchId: value['batch_id'] as String,
+      pcmBase64: value['pcm_base64'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'batch_id': batchId, 'pcm_base64': pcmBase64};
   }
 }
 
@@ -2024,6 +2189,70 @@ class EnrollmentCreate {
       'operation_id': operationId,
       'person_id': personId,
       if (profileId != null) 'profile_id': profileId,
+    };
+  }
+}
+
+class EnrollmentSample {
+  const EnrollmentSample({
+    this.crops,
+    required this.modelId,
+    required this.preprocessingVersion,
+    this.quality,
+    required this.speechMs,
+    required this.vector,
+    required this.weightsHash,
+  });
+
+  final List<CalibrationCrop>? crops;
+
+  final String modelId;
+
+  final String preprocessingVersion;
+
+  final Map<String, double>? quality;
+
+  final int speechMs;
+
+  final List<double> vector;
+
+  final String weightsHash;
+
+  factory EnrollmentSample.fromJson(Map<String, dynamic> value) {
+    return EnrollmentSample(
+      crops: value['crops'] == null
+          ? null
+          : ((value['crops'] as List<dynamic>)
+                .map(
+                  (entry) =>
+                      CalibrationCrop.fromJson(entry as Map<String, dynamic>),
+                )
+                .toList()),
+      modelId: value['model_id'] as String,
+      preprocessingVersion: value['preprocessing_version'] as String,
+      quality: value['quality'] == null
+          ? null
+          : ((value['quality'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as double),
+            )),
+      speechMs: value['speech_ms'] as int,
+      vector: ((value['vector'] as List<dynamic>)
+          .map((entry) => entry as double)
+          .toList()),
+      weightsHash: value['weights_hash'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (crops != null)
+        'crops': crops?.map((entry) => entry.toJson()).toList(),
+      'model_id': modelId,
+      'preprocessing_version': preprocessingVersion,
+      if (quality != null) 'quality': quality,
+      'speech_ms': speechMs,
+      'vector': vector,
+      'weights_hash': weightsHash,
     };
   }
 }

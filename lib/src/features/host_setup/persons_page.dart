@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../generated/management_v1.dart';
 import '../../management/management_client.dart';
 import 'voiceprint_page.dart';
+import 'voice_channel_calibration_page.dart';
 import 'person_face_page.dart';
 import '../../theme/eidolon_theme.dart';
 import '../../theme/neon_components.dart';
@@ -589,6 +590,11 @@ class _PersonsPageState extends State<PersonsPage> {
     if (mounted) await _refresh();
   }
 
+  Future<void> _openCalibration() =>
+      Navigator.of(context).push<void>(MaterialPageRoute(
+          builder: (_) =>
+              VoiceChannelCalibrationPage(call: widget.voiceprints)));
+
   Future<void> _openFace(PersonView person) async {
     final path = '/${Uri.encodeComponent(person.personId)}/face-profile';
     await Navigator.of(context).push<void>(MaterialPageRoute(
@@ -795,6 +801,18 @@ class _PersonsPageState extends State<PersonsPage> {
             for (final person
                 in _archived.where((p) => p.identityState == 'missing'))
               _archiveCard(person),
+            const SizedBox(height: Neon.s4),
+            NeonPanel(
+              child: ListTile(
+                key: const ValueKey('voice-channel-calibration'),
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.spatial_audio_off, color: Neon.cyan),
+                title: const Text('声纹环境校准'),
+                subtitle: const Text('电脑回放公开录音，校准本户手机的录音环境'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: _busy ? null : _openCalibration,
+              ),
+            ),
           ],
         ),
         bottomNavigationBar: SafeArea(
