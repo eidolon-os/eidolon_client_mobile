@@ -303,6 +303,25 @@ void main() {
       expect(find.text('文件太大，请选择 10 MB 以内的文件'), findsOneWidget);
     });
 
+    testWidgets('a file refused as a whole offers another file, not a part',
+        (tester) async {
+      final voices = FakeSpeechVoices()
+        ..checkAnswer = (_, __) => const ReferenceCheckView(
+            accepted: false,
+            problems: ['too_long'],
+            durationMs: 61800,
+            windowStartMs: 0,
+            windowMs: 0);
+      await _push(
+          tester, _clone(voices, file: GivenFile('a.wav', Uint8List(1000))));
+      await _consent(tester);
+      await _reach(tester, find.byKey(const Key('voice-clone-file')));
+
+      expect(find.text('太长了，请选择 60 秒以内的音频'), findsOneWidget);
+      expect(find.byKey(const Key('voice-clone-window')), findsNothing);
+      expect(find.text('换一个文件'), findsOneWidget);
+    });
+
     testWidgets('what is wrong with a recording is said, and no submit offered',
         (tester) async {
       final voices = FakeSpeechVoices()

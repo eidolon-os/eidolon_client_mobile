@@ -519,7 +519,10 @@ class _VoiceClonePageState extends State<VoiceClonePage>
                   audition: _audition, voiceKey: 'reference', wav: wav),
         ),
       ),
-      if (!_spoken && file != null && room > 0) ...[
+      // Only a window the Host cut can move; a file refused as a whole (too
+      // long, unreadable) comes back without one, and another part of it
+      // would be refused the same way.
+      if (!_spoken && file != null && wav != null && room > 0) ...[
         const SizedBox(height: 8),
         const Text('换一段：拖动选择要用的部分'),
         Slider(
