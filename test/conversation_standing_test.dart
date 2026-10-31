@@ -85,7 +85,6 @@ void main() {
     return built;
   }
 
-
   group('serving is not the same fact as hearing', () {
     test('session_started confirms serving and nothing more', () async {
       final built = build();
@@ -303,6 +302,87 @@ void main() {
       built.controller.dispose();
     });
   });
+
+  group('the Provider releasing a conversation', () {
+    // The Provider holds a conversation's Companion until the Body answers
+    // this. Before the phone did, every phone conversation that ended without
+    // the phone saying so left its Companion taken for good.
+    String leave({String? conversationId, int capabilityVersion = 1}) =>
+        jsonEncode(<String, Object?>{
+          'v': 1,
+          'kind': 'cmd',
+          'op': bodyOpRoomLeave,
+          'id': 'leave-1',
+          'capability_version': capabilityVersion,
+          'payload': <String, Object?>{
+            if (conversationId != null)
+              sessionConversationIdField: conversationId,
+          },
+        });
+
+    Map<String, dynamic> lastAck(_StandingSession session) =>
+        jsonDecode(session.published.last) as Map<String, dynamic>;
+
+    test('its current conversation is closed, answered, then left', () async {
+      final built = await inConversation();
+      built.session.published.clear();
+
+      built.session.emit(
+          controlTopic, leave(conversationId: built.session.conversationId),
+          fromProvider: true);
+      await settle();
+      await settle();
+
+      final ack = lastAck(built.session);
+      expect(ack['ref'], 'leave-1');
+      expect(ack['status'], 'completed');
+      expect(ack['code'], 'OK');
+      expect(built.session.closedBeforeAck, isTrue);
+      expect(built.session.ackedBeforeDisconnect, isTrue,
+          reason: 'leaving drops the channel the answer goes out on');
+      expect(built.controller.canLeave, isFalse);
+      built.controller.dispose();
+    });
+
+    test('a conversation that is not the current one has already ended',
+        () async {
+      final built = await inConversation();
+      built.session.published.clear();
+
+      built.session.emit(
+          controlTopic, leave(conversationId: 'mobile-abandoned-00000001'),
+          fromProvider: true);
+      await settle();
+
+      expect(lastAck(built.session)['status'], 'completed');
+      expect(lastAck(built.session)['code'], 'SESSION_ALREADY_ENDED');
+      expect(built.controller.canLeave, isTrue);
+      built.controller.dispose();
+    });
+
+    test('only the Provider may ask, and only about a named conversation',
+        () async {
+      final built = await inConversation();
+      final current = built.session.conversationId;
+
+      for (final (packet, fromProvider, code) in [
+        (leave(conversationId: current), false, 'SESSION_CLOSE_NOT_AUTHORIZED'),
+        (
+          leave(conversationId: current, capabilityVersion: 2),
+          true,
+          'SESSION_CLOSE_NOT_AUTHORIZED'
+        ),
+        (leave(), true, 'SESSION_CLOSE_SCOPE_REQUIRED'),
+      ]) {
+        built.session.emit(controlTopic, packet, fromProvider: fromProvider);
+        await settle();
+        expect(lastAck(built.session)['status'], 'rejected');
+        expect(lastAck(built.session)['code'], code);
+      }
+      expect(built.controller.canLeave, isTrue);
+      built.controller.dispose();
+    });
+  });
 }
 
 /// A session whose far end can be emptied, and whose acks can be read back.
@@ -319,8 +399,15 @@ class _StandingSession extends EidolonSession {
   @override
   String? get conversationId => 'mobile-0123abcd-4567ef89-00000001';
 
-  void emit(String topic, String payload, {bool fromAgent = false}) =>
-      _data.add(SessionData(topic, payload, fromAgent: fromAgent));
+  void emit(String topic, String payload,
+          {bool fromAgent = false, bool fromProvider = false}) =>
+      _data.add(SessionData(topic, payload,
+          fromAgent: fromAgent, fromProvider: fromProvider));
+
+  /// The order a Body's release has to happen in, read back.
+  bool _closed = false;
+  bool closedBeforeAck = false;
+  bool ackedBeforeDisconnect = false;
 
   /// Reports occupancy verbatim, the way the real session does.
   ///
@@ -351,10 +438,19 @@ class _StandingSession extends EidolonSession {
   Future<void> openSession() async {}
 
   @override
-  Future<void> closeSession() async {}
+  Future<void> closeSession() async => _closed = true;
 
   @override
-  Future<void> publishControl(String payload) async => published.add(payload);
+  Future<void> publishControl(String payload) async {
+    if (payload.contains('"code":"OK"') && payload.contains(bodyOpRoomLeave)) {
+      closedBeforeAck = _closed;
+      ackedBeforeDisconnect = connected;
+    }
+    published.add(payload);
+  }
+
+  @override
+  Future<void> disconnect() async => connected = false;
 
   @override
   Future<void> setMicrophoneEnabled(bool enabled) async {}

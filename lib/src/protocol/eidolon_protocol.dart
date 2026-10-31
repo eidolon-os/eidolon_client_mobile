@@ -31,6 +31,11 @@ const sessionControlSchemaVersion = 1;
 /// anything.
 const sessionConversationIdField = 'conversation_id';
 
+/// The correlation a prepared device admission carries instead of a
+/// conversation. This client prepares none, so a release scoped by it alone
+/// names nothing here — but it is a scope, not a missing one.
+const sessionControlRequestIdField = 'control_request_id';
+
 /// The characters and length `normalize_conversation_id` accepts.
 ///
 /// Enforced on this side too, because a rejected id is dropped silently at the
@@ -80,6 +85,13 @@ Map<String, Object?> sessionRequestPayload({
 }
 
 const controlOpRoomJoin = 'room.join';
+
+/// The Provider releasing a conversation it served on this Body.
+///
+/// `BODY_OP_ROOM_LEAVE` in `eidolon_sdk/biz/body/capabilities.py`, outside
+/// the contracts file the wire mirror reads, and `kControlOpRoomLeave` in the
+/// firmware, whose rules this client follows.
+const bodyOpRoomLeave = 'room.leave';
 
 /// Host → client operations this client implements, and the reverse-direction
 /// session type it acts on.

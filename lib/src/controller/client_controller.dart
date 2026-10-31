@@ -827,7 +827,8 @@ class ClientController extends ChangeNotifier {
     }
     switch (event.topic) {
       case controlTopic:
-        await _handleControlCommand(event.payload);
+        await _handleControlCommand(event.payload,
+            fromProvider: event.fromProvider);
       case sessionControlTopic:
         await _handleSessionControl(event.payload,
             fromProvider: event.fromProvider, fromAgent: event.fromAgent);
@@ -838,7 +839,8 @@ class ClientController extends ChangeNotifier {
     }
   }
 
-  Future<void> _handleControlCommand(String payload) async {
+  Future<void> _handleControlCommand(String payload,
+      {bool fromProvider = false}) async {
     final command = ControlCommand.parse(payload);
     if (command == null) return;
     if (command.expired) {
@@ -849,6 +851,8 @@ class ClientController extends ChangeNotifier {
     switch (command.op) {
       case controlOpRoomJoin:
         await _handleRoomJoin(command);
+      case bodyOpRoomLeave:
+        await _handleRoomLeave(command, fromProvider: fromProvider);
       case controlOpConfigRefresh:
         try {
           final applied = await _registerAndApply(showRegistering: false);
@@ -880,6 +884,37 @@ class ClientController extends ChangeNotifier {
       default:
         await _ack(command, 'error', 'UNSUPPORTED_OPERATION');
     }
+  }
+
+  /// The Provider releasing a conversation it served on this phone.
+  ///
+  /// The firmware's rules: only the Provider may ask, and only about a
+  /// conversation it names. A named conversation that is not this phone's
+  /// current one has no microphone left here to close, which is a success —
+  /// the Provider keeps that conversation's Companion reserved until it hears
+  /// so. That is how a conversation this app abandoned (killed, or offline)
+  /// is let go when the phone next opens one.
+  Future<void> _handleRoomLeave(ControlCommand command,
+      {required bool fromProvider}) async {
+    if (!fromProvider || !command.isV1 || command.capabilityVersion != 1) {
+      await _ack(command, 'rejected', 'SESSION_CLOSE_NOT_AUTHORIZED');
+      return;
+    }
+    final named = command.payload[sessionConversationIdField];
+    if (named is! String &&
+        command.payload[sessionControlRequestIdField] is! String) {
+      await _ack(command, 'rejected', 'SESSION_CLOSE_SCOPE_REQUIRED');
+      return;
+    }
+    if (!_inConversation || named != _session.conversationId) {
+      await _ack(command, 'completed', 'SESSION_ALREADY_ENDED');
+      return;
+    }
+    // Close the microphone before answering, and answer before leaving:
+    // leaving drops the channel the answer goes out on.
+    await _session.closeSession();
+    await _ack(command, 'completed', 'OK');
+    await leave(notifyRemote: false);
   }
 
   Future<void> _handleRoomJoin(ControlCommand command) async {
