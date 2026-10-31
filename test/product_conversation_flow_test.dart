@@ -64,6 +64,7 @@ class _Session extends EidolonSession {
   int sequence = 0;
   final acknowledgements = <Map<String, dynamic>>[];
   Completer<void>? acceptanceGate;
+  Completer<void>? disconnectGate;
   bool failTerminalAck = false;
   @override
   Future<void> publishControl(String payload) async {
@@ -110,6 +111,7 @@ class _Session extends EidolonSession {
 
   @override
   Future<void> disconnect() async {
+    await disconnectGate?.future;
     connected = false;
   }
 
@@ -674,6 +676,44 @@ void main() {
     expect(h.flow.client.failure?.message, contains('请稍后再试'));
     expect(h.events.where((event) => event.startsWith('close-')), isEmpty);
     h.flow.dispose();
+  });
+
+  testWidgets('a refused start is said where the person is looking',
+      (tester) async {
+    // 2026-10-31, on a phone: the refusal arrived and the page went back to
+    // "开始对话", with the reason below the fold under the mode buttons.
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final h = _Harness();
+    await tester.pumpWidget(MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
+        home: ProductConversationPage(
+            hostName: '工作室', createFlow: () async => h.flow)));
+    await tester.pumpAndSettle();
+    await h.flow.chooseMode(ConversationMode.fullDuplex);
+    await h.flow.startConversation();
+    await tester.pumpAndSettle();
+    final golden = jsonDecode(File(
+      '../eidolon_sdk/contracts/control/v1/golden/session-rejected-unavailable.json',
+    ).readAsStringSync()) as Map<String, dynamic>;
+    // Leaving takes time on a phone, and the page changes shape when it ends;
+    // revealed before then, the notice was pushed back under the fold.
+    final leaving = h.session.disconnectGate = Completer<void>();
+    h.session.data.add(SessionData(
+        'eidolon.session_control', jsonEncode(golden['payload']),
+        fromProvider: true));
+    await tester.pumpAndSettle();
+    leaving.complete();
+    await tester.pumpAndSettle();
+    final notice = tester.getRect(find.textContaining('请稍后再试一次'));
+    final details = tester.getRect(find.byType(RefreshIndicator));
+    expect(details.top <= notice.top && notice.bottom <= details.bottom, isTrue,
+        reason: 'notice $notice outside the visible list $details');
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
   });
 
   test('invalid or stale provider packets cannot change a pending attempt',

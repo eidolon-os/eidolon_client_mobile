@@ -53,6 +53,8 @@ class _ProductConversationPageState extends State<ProductConversationPage>
   bool _allowPop = false;
   final _detailsScroll = ScrollController();
   String? _lastTranscript;
+  final _problemKey = GlobalKey();
+  String? _revealedProblem;
 
   @override
   void initState() {
@@ -101,6 +103,16 @@ class _ProductConversationPageState extends State<ProductConversationPage>
     final followsLatest =
         !_detailsScroll.hasClients || _detailsScroll.position.extentAfter < 100;
     _lastTranscript = last;
+    // A reason the person cannot see is a reason not given: below the fold, a
+    // refused start looked like the page simply going back. It is brought
+    // into view once the page has finished the change that raised it —
+    // revealed mid-change, it was pushed back under the fold when the
+    // conversation finished leaving.
+    final flow = _flow;
+    final problem = flow == null ? null : _problem(flow);
+    final settled = flow != null && !flow.busy && !flow.client.isBusy;
+    final reveal = settled && problem != null && problem != _revealedProblem;
+    if (settled || problem == null) _revealedProblem = problem;
     setState(() {});
     if (changed && followsLatest) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -109,6 +121,14 @@ class _ProductConversationPageState extends State<ProductConversationPage>
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOut);
         }
+      });
+    }
+    // Last, so a problem wins over following the transcript in the same frame.
+    if (reveal) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _problemKey.currentContext?.findRenderObject()?.showOnScreen(
+            duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
       });
     }
   }
@@ -445,7 +465,7 @@ class _ProductConversationPageState extends State<ProductConversationPage>
   Widget _body(ConversationFlow flow) =>
       LayoutBuilder(builder: (context, constraints) {
         final wide = constraints.maxWidth >= 850;
-        final error = flow.error ?? flow.client.failure?.message;
+        final error = _problem(flow);
         final errorShownInStatus = !flow.client.canJoin &&
             !flow.client.canLeave &&
             error == flow.client.uiState.supportingText;
@@ -516,14 +536,16 @@ class _ProductConversationPageState extends State<ProductConversationPage>
           const SizedBox(height: 18),
           _modes(flow),
           const SizedBox(height: 18),
-          _status(flow),
+          KeyedSubtree(
+              key: errorShownInStatus ? _problemKey : null,
+              child: _status(flow)),
           if (flow.client.enrollmentAct == MobileBodyEnrollmentAct.approve) ...[
             const SizedBox(height: 18),
             _approval(flow)
           ],
           if (error != null && !errorShownInStatus) ...[
             const SizedBox(height: 16),
-            _notice(error, error: true)
+            KeyedSubtree(key: _problemKey, child: _notice(error, error: true))
           ],
           if (flow.client.activationExhausted) ...[
             const SizedBox(height: 16),
@@ -975,6 +997,9 @@ class _ProductConversationPageState extends State<ProductConversationPage>
     }
     return button('重新检查', f.retry, Icons.refresh_rounded);
   }
+
+  String? _problem(ConversationFlow flow) =>
+      flow.error ?? flow.client.failure?.message;
 
   Widget _notice(String text, {bool error = false}) {
     final tone = error ? Neon.bad : Neon.warn;
