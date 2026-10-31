@@ -536,9 +536,7 @@ class _ProductConversationPageState extends State<ProductConversationPage>
           const SizedBox(height: 18),
           _modes(flow),
           const SizedBox(height: 18),
-          KeyedSubtree(
-              key: errorShownInStatus ? _problemKey : null,
-              child: _status(flow)),
+          _status(flow),
           if (flow.client.enrollmentAct == MobileBodyEnrollmentAct.approve) ...[
             const SizedBox(height: 18),
             _approval(flow)
