@@ -41,7 +41,7 @@ void main() {
         (tester) async {
       await tester.binding.setSurfaceSize(const Size(800, 1400));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      final recorder = FakeRecorder(finalPcm: savedBeforeFailure ? Uint8List(128000) : null);
+      final recorder = FakeRecorder(finalPcm: savedBeforeFailure ? Uint8List(192000) : null);
       var accepted = 0;
       var completionAttempts = 0;
       var saved = false;
@@ -101,7 +101,7 @@ void main() {
       for (var step = 0; step < 4; step++) {
         await tester.tap(find.byKey(const Key('voice-enrollment-record')));
         await tester.pumpAndSettle();
-        if (!savedBeforeFailure) recorder.audio.add(Uint8List(128000));
+        if (!savedBeforeFailure) recorder.audio.add(Uint8List(192000));
         await tester.pump();
         await tester.tap(find.byKey(const Key('voice-enrollment-record')));
         // Stream cancellation may finish in Dart's real async zone.
@@ -168,7 +168,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '我');
     await tester.tap(find.byKey(const Key('voice-enrollment-record')));
     await tester.pumpAndSettle();
-    recorder.audio.add(Uint8List(128000));
+    recorder.audio.add(Uint8List(192000));
     await tester.pump();
     await tester.tap(find.byKey(const Key('voice-enrollment-record')));
     await tester.runAsync(() => Future<void>.delayed(Duration.zero));
@@ -320,11 +320,11 @@ void main() {
     await tester.enterText(find.byType(TextField), '我');
     await tester.tap(find.byKey(const Key('voice-enrollment-record')));
     await tester.pumpAndSettle();
-    await tester.pump(const Duration(seconds: 9));
+    await tester.pump(const Duration(seconds: 11));
     await tester.runAsync(() => Future<void>.delayed(Duration.zero));
     await tester.pumpAndSettle();
     expect(recorder.stops, 1);
-    expect(find.text('请说完整句子，至少录制 3 秒'), findsOneWidget);
+    expect(find.text('请读完整句话，至少录制 5 秒'), findsOneWidget);
     expect(writes, ['POST']);
     await tester.pumpWidget(const SizedBox());
   });

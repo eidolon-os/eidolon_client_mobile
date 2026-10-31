@@ -236,12 +236,15 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
   bool _recording = false, _busy = false, _done = false;
   int _samples = 0;
   int _lifecycleGeneration = 0;
+  // Each read at an ordinary pace is 6–8 seconds: enough voiced speech for
+  // every duration band the Host calibrates this Person's thresholds on.
   static const _sentences = [
-    '今天的天气很好，我想和你聊聊最近发生的事情。',
-    '周末我准备出去走走，也想听听你有什么好建议。',
-    '请记住我的声音，以后我们可以一起分享生活中的故事。',
-    '我正在录制最后一段声音，保存后可以回放辨认。',
+    '今天的天气很好，阳光照进窗户，我想慢慢地和你聊聊最近发生的一些事情。',
+    '这个周末我准备带家人出去走走，顺便买点水果，也想听听你有什么好建议。',
+    '请记住我说话的声音，以后不管我在客厅还是厨房，你都能认出是我在说话。',
+    '我正在录制最后一段声音，保存之后可以回放辨认，也能让你更准确地认出我。',
   ];
+  static const _minSeconds = 5, _maxSeconds = 10;
 
   @override
   void initState() {
@@ -376,18 +379,18 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
         setState(() {});
       });
       _recordingDeadline =
-          Timer(const Duration(seconds: 8), () => unawaited(_stop()));
+          Timer(const Duration(seconds: _maxSeconds), () => unawaited(_stop()));
       setState(() {
         _recording = true;
         _busy = false;
       });
       _subscription = stream.listen((bytes) {
         if (!_recording) return;
-        final remaining = 32000 * 8 - _audio.length;
+        final remaining = 32000 * _maxSeconds - _audio.length;
         _audio.add(
             bytes.length > remaining ? bytes.sublist(0, remaining) : bytes);
         setState(() {});
-        if (_audio.length >= 32000 * 8) unawaited(_stop());
+        if (_audio.length >= 32000 * _maxSeconds) unawaited(_stop());
       }, onError: (_) {
         unawaited(_discardRecording());
         if (mounted) setState(() => _error = '录音中断，请重试');
@@ -416,9 +419,9 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
       await _subscription?.cancel();
       _subscription = null;
       _pending = finalPcm ?? _audio.takeBytes();
-      if (_pending!.length < 32000 * 3) {
+      if (_pending!.length < 32000 * _minSeconds) {
         _pending = null;
-        if (mounted) setState(() => _error = '请说完整句子，至少录制 3 秒');
+        if (mounted) setState(() => _error = '请读完整句话，至少录制 $_minSeconds 秒');
         return;
       }
       if (mounted) await _submit();
@@ -588,7 +591,7 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
                 Text(_feedback!,
                     key: const Key('voice-enrollment-feedback'),
                     style: const TextStyle(fontWeight: FontWeight.bold)),
-              const Text('请在安静环境中，以平时说话的声音读出下面的句子。每段约 4–6 秒。'),
+              const Text('请在安静环境中，以平时说话的声音读出下面的句子。每段约 6–8 秒。'),
               const SizedBox(height: 20),
               Text(_sentences[_samples.clamp(0, 3)],
                   style: Theme.of(context).textTheme.titleLarge),
