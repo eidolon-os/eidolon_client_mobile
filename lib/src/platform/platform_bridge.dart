@@ -18,10 +18,6 @@ class PlatformBridge {
 
   static const _channel = MethodChannel('live.eidolon.mobile/platform');
 
-  /// Keep the screen on while this app is in front, e.g. during a long recording.
-  Future<void> keepScreenOn(bool on) =>
-      _channel.invokeMethod<void>('keepScreenOn', {'on': on});
-
   Future<DeviceIdentity> getDeviceIdentity() async {
     final result = await _channel.invokeMapMethod<Object?, Object?>(
       'getDeviceIdentity',
