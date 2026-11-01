@@ -435,7 +435,7 @@ class _StandingSession extends EidolonSession {
   }
 
   @override
-  Future<void> openSession() async {}
+  Future<void> openSession({Stopwatch? sinceAction}) async {}
 
   @override
   Future<void> closeSession() async => _closed = true;

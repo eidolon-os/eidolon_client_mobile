@@ -89,6 +89,32 @@ void main() {
       expect(payload['conversation_id'], 'mobile-0123abcd-4567ef89-00000001');
     });
 
+    test('an open can say how long this side took since the tap', () {
+      // The Host times a start from when it hears the request; config, the
+      // connection and the microphone prompt come before that, and only this
+      // side can time them. Optional, and only ever on an open.
+      const id = 'mobile-0123abcd-4567ef89-00000003';
+      final open = sessionRequestPayload(
+        type: sessionOpenType,
+        conversationId: id,
+        actionToSendMs: 840,
+      );
+      expect(open['action_to_send_ms'], 840);
+      expect(
+        sessionRequestPayload(
+          type: sessionCloseType,
+          conversationId: id,
+          actionToSendMs: 840,
+        ).containsKey('action_to_send_ms'),
+        isFalse,
+      );
+      expect(
+        sessionRequestPayload(type: sessionOpenType, conversationId: id)
+            .containsKey('action_to_send_ms'),
+        isFalse,
+      );
+    });
+
     test('the close names the same conversation as the open', () {
       // `session_open` and `session_close` are statements of desired state
       // about one conversation, and the far end correlates them by this value.

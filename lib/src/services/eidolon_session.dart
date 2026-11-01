@@ -159,7 +159,10 @@ class EidolonSession {
   /// Ask to be served. The agent, its models and its metered speech services
   /// are what this starts, so it is said explicitly rather than implied by
   /// being connected.
-  Future<void> openSession() async {
+  ///
+  /// [sinceAction] runs from the person's tap, so the request can say how long
+  /// this side took to send it (`action_to_send_ms`).
+  Future<void> openSession({Stopwatch? sinceAction}) async {
     // One id per conversation, minted here and kept until it closes — the
     // firmware's shape (`current_conversation_id_`), because `session_open`
     // and `session_close` are statements about the same conversation and the
@@ -168,7 +171,10 @@ class EidolonSession {
       throw StateError('Channel is not connected');
     }
     _conversationId ??= _newConversationId();
-    await _publishSessionRequest(sessionOpenType);
+    await _publishSessionRequest(
+      sessionOpenType,
+      actionToSendMs: sinceAction?.elapsedMilliseconds,
+    );
   }
 
   /// Say the conversation is over. The channel stays exactly as it is.
@@ -198,7 +204,8 @@ class EidolonSession {
         '${_conversationSequence.toRadixString(16).padLeft(8, '0')}';
   }
 
-  Future<void> _publishSessionRequest(String type) async {
+  Future<void> _publishSessionRequest(String type,
+      {int? actionToSendMs}) async {
     final participant = _room?.localParticipant;
     if (participant == null) throw StateError('Channel is not connected');
     final conversationId = _conversationId;
@@ -213,7 +220,11 @@ class EidolonSession {
       Uint8List.fromList(
         utf8.encode(
           jsonEncode(
-            sessionRequestPayload(type: type, conversationId: conversationId),
+            sessionRequestPayload(
+              type: type,
+              conversationId: conversationId,
+              actionToSendMs: actionToSendMs,
+            ),
           ),
         ),
       ),

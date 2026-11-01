@@ -118,7 +118,7 @@ class _Session extends EidolonSession {
   @override
   String? get conversationId => 'conversation-$sequence';
   @override
-  Future<void> openSession() async {
+  Future<void> openSession({Stopwatch? sinceAction}) async {
     sequence++;
     events.add('open-$sequence');
   }

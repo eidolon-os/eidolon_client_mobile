@@ -36,6 +36,12 @@ const sessionConversationIdField = 'conversation_id';
 /// names nothing here — but it is a scope, not a missing one.
 const sessionControlRequestIdField = 'control_request_id';
 
+/// Optional on `session_open`: milliseconds from the person's tap to this
+/// request being sent. The Host times everything after it hears the request;
+/// what this client did first (fetching its config, connecting, asking for the
+/// microphone) only this side can measure. Measurement only.
+const sessionActionToSendMsField = 'action_to_send_ms';
+
 /// The characters and length `normalize_conversation_id` accepts.
 ///
 /// Enforced on this side too, because a rejected id is dropped silently at the
@@ -67,6 +73,7 @@ const sessionRejectionUnavailable = 'unavailable';
 Map<String, Object?> sessionRequestPayload({
   required String type,
   required String conversationId,
+  int? actionToSendMs,
 }) {
   if (type != sessionOpenType && type != sessionCloseType) {
     throw ArgumentError.value(type, 'type', 'not a session request type');
@@ -82,6 +89,8 @@ Map<String, Object?> sessionRequestPayload({
     'schema_v': sessionControlSchemaVersion,
     'type': type,
     sessionConversationIdField: conversationId,
+    if (type == sessionOpenType && actionToSendMs != null && actionToSendMs >= 0)
+      sessionActionToSendMsField: actionToSendMs,
   };
 }
 

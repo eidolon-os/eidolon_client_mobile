@@ -146,7 +146,7 @@ class _TranscriptSession extends EidolonSession {
   Future<void> connect(RoomConfig config) async {}
 
   @override
-  Future<void> openSession() async {}
+  Future<void> openSession({Stopwatch? sinceAction}) async {}
 
   @override
   Future<void> closeSession() async {}

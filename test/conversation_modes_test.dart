@@ -55,7 +55,7 @@ class _Session extends EidolonSession {
   }
 
   @override
-  Future<void> openSession() async => events.add('open');
+  Future<void> openSession({Stopwatch? sinceAction}) async => events.add('open');
   @override
   Future<void> closeSession() async => events.add('close');
   @override

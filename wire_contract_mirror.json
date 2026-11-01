@@ -175,6 +175,9 @@
     "SESSION_CONTROL_REQUEST_ID_FIELD": {
       "dart": "sessionControlRequestIdField"
     },
+    "SESSION_ACTION_TO_SEND_MS_FIELD": {
+      "dart": "sessionActionToSendMsField"
+    },
     "VOICE_APPLICATION_PROPERTY": {
       "not_mirrored": "a manifest property a Body declares to be served something other than the Companion; mobileBodyManifestDocument declares none, and mobile_body_manifest_test.dart holds it equal to the SDK's software-Body vector, which has none either"
     },

@@ -497,6 +497,9 @@ class ClientController extends ChangeNotifier {
     if (_busy || _disposed || phase != ClientPhase.ready) {
       return;
     }
+    // From the tap: config, connection and permission are this side's part of
+    // getting into a conversation, and only this side can time them.
+    final sinceAction = Stopwatch()..start();
     _busy = true;
     failure = null;
     final epoch = ++_conversationEpoch;
@@ -533,7 +536,7 @@ class ClientController extends ChangeNotifier {
       _inConversation = true;
       conversationStanding = ConversationStanding.asked;
       agentTurn = AgentTurnState.listening;
-      await _session.openSession();
+      await _session.openSession(sinceAction: sinceAction);
       if (_disposed || epoch != _conversationEpoch || !_inConversation) {
         await _session.closeSession();
         await _session.disconnect();
