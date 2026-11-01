@@ -82,13 +82,14 @@ class FakeHost {
 }
 
 Future<void> _open(WidgetTester tester, FakeHost host, FakeRecorder recorder,
-    {int maxSegments = 700}) async {
+    {int maxSegments = 700, List<bool>? screen}) async {
   await tester.binding.setSurfaceSize(const Size(800, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(MaterialApp(
       home: VoiceChannelCalibrationPage(
           call: host.call,
           recorderFactory: () => recorder,
+          keepScreenOn: (on) async => screen?.add(on),
           maxSegments: maxSegments)));
   await tester.pumpAndSettle();
 }
@@ -268,5 +269,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('开始校准'), findsOneWidget);
     expect(host.calls, ['GET /channel-calibration']);
+  });
+
+  testWidgets('keeps the screen on for exactly the length of a run',
+      (tester) async {
+    final screen = <bool>[];
+    await _open(tester, FakeHost(), FakeRecorder(), screen: screen);
+    expect(screen, isEmpty);
+    await tester.tap(_toggle);
+    await tester.pump();
+    expect(screen, [true]);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.tap(_toggle);
+    await tester.pump();
+    await tester.pump();
+    expect(screen, [true, false]);
   });
 }

@@ -20,6 +20,7 @@ import android.security.keystore.KeyProperties
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
@@ -169,6 +170,15 @@ class MainActivity : FlutterActivity() {
                 "closeCommissioningLink" -> {
                     commissioningManager?.close()
                     commissioningManager = null
+                    result.success(null)
+                }
+                "keepScreenOn" -> {
+                    val flag = WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                    if (call.argument<Boolean>("on") ?: error("on is required")) {
+                        window.addFlags(flag)
+                    } else {
+                        window.clearFlags(flag)
+                    }
                     result.success(null)
                 }
                 "readAppPreference" -> result.success(

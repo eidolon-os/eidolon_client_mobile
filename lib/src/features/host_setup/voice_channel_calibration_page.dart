@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../generated/management_v1.dart';
 import '../../management/management_client.dart';
+import '../../platform/platform_bridge.dart';
 import 'voice_enrollment_recorder.dart';
 import 'voiceprint_call.dart';
 
@@ -20,10 +21,14 @@ class VoiceChannelCalibrationPage extends StatefulWidget {
       {super.key,
       required this.call,
       this.recorderFactory,
+      this.keepScreenOn,
       this.segment = const Duration(seconds: 8),
       this.maxSegments = 700});
   final VoiceprintCall call;
   final VoiceEnrollmentRecorder Function()? recorderFactory;
+
+  /// The run outlasts any screen timeout; a locked phone would end it.
+  final Future<void> Function(bool on)? keepScreenOn;
 
   /// Back-to-back recording length; a little longer than a registration read.
   final Duration segment;
@@ -78,6 +83,7 @@ class _VoiceChannelCalibrationPageState
     WidgetsBinding.instance.removeObserver(this);
     _generation++;
     _ticker?.cancel();
+    if (_running) _holdScreen(false);
     _wake();
     final recorder = _recorder;
     if (recorder != null) {
@@ -98,6 +104,16 @@ class _VoiceChannelCalibrationPageState
     final wake = _segmentWake;
     _segmentWake = null;
     if (wake != null && !wake.isCompleted) wake.complete();
+  }
+
+  void _holdScreen(bool on) {
+    unawaited(() async {
+      try {
+        await (widget.keepScreenOn ?? const PlatformBridge().keepScreenOn)(on);
+      } catch (_) {
+        /* The run still works for as long as the screen stays on. */
+      }
+    }());
   }
 
   void _setPhase(String phase) {
@@ -186,6 +202,7 @@ class _VoiceChannelCalibrationPageState
       _stopNotice = null;
       _phase = '正在检查主机…';
     });
+    _holdScreen(true);
     _elapsed
       ..reset()
       ..start();
@@ -261,6 +278,7 @@ class _VoiceChannelCalibrationPageState
         _ticker?.cancel();
         _ticker = null;
         _elapsed.stop();
+        _holdScreen(false);
         _wake();
         if (mounted) {
           setState(() {
