@@ -1767,17 +1767,6 @@ Future<CompanionRosterView> loadDeviceCompanionChoices(
       companions: rows.values.toList(), defaultCompanionId: defaultId);
 }
 
-/// Where the device starts, before anybody has turned it here.
-///
-/// Two facts read from the firmware, not guessed: `audio_codec.h` initialises
-/// `output_volume_` to 70, and `Backlight::RestoreBrightness` falls back to 75.
-/// Neither is a measurement of this device now — it is what the slider shows
-/// until the person moves it, because nothing on this Host reads a setpoint
-/// back. Both firmware defaults also clamp a value of zero or below, so these
-/// sit inside the range the device will accept.
-const _defaultVolume = 70;
-const _defaultBrightness = 75;
-
 /// How long a drag settles before it becomes a command.
 ///
 /// A slider reports every position under the thumb, and each is a command the
@@ -1812,72 +1801,92 @@ class _DeviceKnobs extends StatefulWidget {
   State<_DeviceKnobs> createState() => _DeviceKnobsState();
 }
 
-class _DeviceKnobsState extends State<_DeviceKnobs> {
-  /// How long to wait before reopening a stream the Host ended.
+class _DeviceKnobsState extends State<_DeviceKnobs>
+    with WidgetsBindingObserver {
+  /// How often the page re-reads the values the device reports about itself.
   ///
-  /// A closed stream means the connection went away, not that the device stopped
-  /// changing, so the subscription is renewed rather than abandoned.
-  static const _streamRetry = Duration(seconds: 3);
+  /// A change made by voice or on the device shows up within this window. One
+  /// small GET answered from Provider memory is cheap enough to repeat, and the
+  /// interval stays well above the knob-settle debounce so a value this page
+  /// just sent is never mistaken for one the device reported.
+  static const _statePoll = Duration(seconds: 3);
 
-  double _volume = _defaultVolume.toDouble();
-  double _brightness = _defaultBrightness.toDouble();
+  /// Null until the device reports what it is set to. A made-up starting value
+  /// would show a number the device never had, and the first drag from it would
+  /// jump the real level by the difference.
+  double? _volume;
+  double? _brightness;
   Timer? _volumeTimer;
   Timer? _brightnessTimer;
-  StreamSubscription<Map<String, Object?>>? _stateSubscription;
-  Timer? _streamRetryTimer;
+  Timer? _statePollTimer;
   bool _sending = false;
   String? _refusal;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadCapabilityValues();
-    _listenForDeviceState();
+    _startPolling();
   }
 
-  /// Follow changes the device makes on its own, as they happen.
-  ///
-  /// A slider is not overwritten while the user is dragging it or while a set of
-  /// ours is in flight: that would replace the position under their finger with
-  /// a value from a moment earlier.
-  void _listenForDeviceState() {
-    final controller = widget.controller;
-    if (controller == null) return;
-    _stateSubscription?.cancel();
-    try {
-      _stateSubscription = controller
-          .streamDeviceState(deviceId: widget.deviceId)
-          .listen(
-            _applyReportedState,
-            onError: (_) => _scheduleReconnect(),
-            onDone: _scheduleReconnect,
-            cancelOnError: true,
-          );
-    } catch (_) {
-      _scheduleReconnect();
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Values may have moved while this page was backgrounded, so read once
+      // immediately instead of waiting out a whole interval.
+      unawaited(_pollDeviceState());
+      _startPolling();
+    } else {
+      _stopPolling();
     }
   }
 
-  void _scheduleReconnect() {
-    if (!mounted) return;
-    _streamRetryTimer?.cancel();
-    _streamRetryTimer = Timer(_streamRetry, () {
-      if (mounted) _listenForDeviceState();
-    });
+  /// Polling exists to notice changes nobody on this page asked for. While the
+  /// page is not in front of the user there is nobody to notice them, so the
+  /// timer is stopped rather than left asking a Host that has no reader.
+  void _startPolling() {
+    _statePollTimer?.cancel();
+    _statePollTimer = Timer.periodic(_statePoll, (_) => _pollDeviceState());
   }
 
-  void _applyReportedState(Map<String, Object?> change) {
-    if (!mounted || _sending) return;
-    final key = change['key'];
-    final value = change['value'];
-    if (value is! num) return;
-    setState(() {
-      if (key == 'volume' && _volumeTimer?.isActive != true) {
-        _volume = value.toDouble();
-      } else if (key == 'brightness' && _brightnessTimer?.isActive != true) {
-        _brightness = value.toDouble();
-      }
-    });
+  void _stopPolling() {
+    _statePollTimer?.cancel();
+    _statePollTimer = null;
+  }
+
+  /// Follow changes the device makes on its own while this page is open.
+  ///
+  /// A repeated read rather than a push stream: the pinned HTTPS transport this
+  /// app uses returns a whole response at once and cannot carry a long-lived
+  /// SSE body, so a stream would be cut at its deadline and never deliver. The
+  /// interval is short enough to look immediate and cheap enough to poll: one
+  /// small GET against a value the Provider already holds in memory.
+  ///
+  /// Sliders are not overwritten while the user is dragging them or while a set
+  /// of ours is in flight, which is why each value is guarded separately.
+  Future<void> _pollDeviceState() async {
+    final controller = widget.controller;
+    if (controller == null || _sending || !mounted) return;
+    try {
+      final state = await controller.getDeviceState(deviceId: widget.deviceId);
+      if (!mounted || _sending) return;
+      final values = state.values;
+      if (values == null) return;
+      final volume = values['volume'];
+      final brightness = values['brightness'];
+      setState(() {
+        if (volume != null && _volumeTimer?.isActive != true) {
+          _volume = volume.toDouble();
+        }
+        if (brightness != null && _brightnessTimer?.isActive != true) {
+          _brightness = brightness.toDouble();
+        }
+      });
+    } catch (_) {
+      // A page that cannot reach the Host keeps the values it has; the next
+      // tick tries again.
+    }
   }
 
   Future<void> _loadCapabilityValues() async {
@@ -1924,8 +1933,8 @@ class _DeviceKnobsState extends State<_DeviceKnobs> {
   void dispose() {
     _volumeTimer?.cancel();
     _brightnessTimer?.cancel();
-    _streamRetryTimer?.cancel();
-    _stateSubscription?.cancel();
+    _stopPolling();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -2045,11 +2054,13 @@ class _KnobRow extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  final double value;
+  /// Null until the device has told us what this value is.
+  final double? value;
   final ValueChanged<double>? onChanged;
 
   @override
   Widget build(BuildContext context) {
+    final current = value;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2058,16 +2069,25 @@ class _KnobRow extends StatelessWidget {
             Icon(icon, size: 20),
             const SizedBox(width: 8),
             Expanded(child: Text(label)),
-            Text('${value.round()}'),
+            Text(current == null ? '—' : '${current.round()}'),
           ],
         ),
-        Slider(
-          value: value,
-          max: 100,
-          divisions: 100,
-          label: '${value.round()}',
-          onChanged: onChanged,
-        ),
+        if (current == null)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              '还没读到这台设备的当前值，暂时不能调整',
+              style: TextStyle(fontSize: 12),
+            ),
+          )
+        else
+          Slider(
+            value: current,
+            max: 100,
+            divisions: 100,
+            label: '${current.round()}',
+            onChanged: onChanged,
+          ),
       ],
     );
   }
