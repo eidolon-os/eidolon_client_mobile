@@ -11,6 +11,7 @@ import 'package:eidolon_client_mobile/src/features/setup/setup_trust.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/fake_pake_host.dart';
 import 'support/setup_fixtures.dart';
 import 'support/setup_discovery_fixtures.dart';
 import 'support/host_session_fixtures.dart' show hostFixture;
@@ -19,7 +20,7 @@ class _FakeControllerKeyBridge implements ControllerKeyBridge {
   @override
   Future<ControllerIdentity> getIdentity() async => const ControllerIdentity(
         controllerId: 'ectrl-0123456789abcdefabcd',
-        publicKey: 'controller-public-key',
+        publicKey: fakeControllerPublicKey,
         fingerprint: 'sha256:controller',
       );
 
@@ -35,9 +36,26 @@ class _FakeCommissioningTransport implements CommissioningTransport {
     this.currentSsid,
     this.hasGrant = false,
     this.failNetwork = false,
+    this.legacyHost = false,
+    this.rateLimitedForMs,
   });
 
   bool hasGrant;
+
+  /// A Host from before ADR-0008: it has no PAKE operations.
+  final bool legacyHost;
+
+  /// A Host pacing guesses: every PAKE start is refused with this wait.
+  final int? rateLimitedForMs;
+  late final pakeHost = FakePakeHost(
+    code: '12345678',
+    commissioningId: '123e4567-e89b-42d3-a456-426614174000',
+    hostPublicKey: validHostPublicKey,
+    tlsSpkiFingerprint:
+        validCommissioningEndpoint['tls_spki_fingerprint']! as String,
+    resetEpoch: 0,
+    transport: 'ble',
+  );
   bool authenticated = false;
   bool failNetwork;
   final String currentNetworkState;
@@ -84,6 +102,24 @@ class _FakeCommissioningTransport implements CommissioningTransport {
     Map<String, dynamic> payload,
   ) async {
     operations.add(operation);
+    if (operation == 'pake.start') {
+      if (legacyHost) {
+        throw const CommissioningRequestException(
+            'unknown_operation', 'Unknown commissioning operation');
+      }
+      if (rateLimitedForMs case final wait?) {
+        throw CommissioningRequestException(
+            'rate_limited', 'Too many Setup code attempts',
+            retryAfterMs: wait);
+      }
+      return pakeHost.start(payload);
+    }
+    if (operation == 'pake.confirm') {
+      return {
+        'server_proof': pakeHost.confirm(payload),
+        'state': {'claim_state': claimState},
+      };
+    }
     if (operation == 'controller.challenge' && !hasGrant) {
       throw const CommissioningRequestException(
           'controller_denied', 'No grant');
@@ -224,6 +260,7 @@ void main() {
     final transport = _FakeCommissioningTransport(claimState: 'claimed');
     await tester.pumpWidget(MaterialApp(
         home: SetupWizardPage(
+      proveHostClaim: proveDirectly,
       registry: registry,
       transport: transport,
       controllerKeys: _FakeControllerKeyBridge(),
@@ -251,10 +288,14 @@ void main() {
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    // Forgotten after this phone claimed it: the list entry is gone, the
+    // knowledge that this Host once proved a code is not.
     final registry = InMemoryHostRegistry();
+    await registry.confirmHostKey(validHostPublicKey);
     final transport = _FakeCommissioningTransport(hasGrant: true);
     await tester.pumpWidget(MaterialApp(
         home: SetupWizardPage(
+      proveHostClaim: proveDirectly,
       registry: registry,
       transport: transport,
       controllerKeys: _FakeControllerKeyBridge(),
@@ -274,6 +315,103 @@ void main() {
     expect(find.text('主机接入已完成'), findsOneWidget);
   });
 
+  Future<void> openHost(WidgetTester tester,
+      _FakeCommissioningTransport transport, HostRegistry registry) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+        home: SetupWizardPage(
+      proveHostClaim: proveDirectly,
+      registry: registry,
+      transport: transport,
+      controllerKeys: _FakeControllerKeyBridge(),
+      developmentLanCommissioning: emptyLanCommissioning(),
+      clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
+      onComplete: (_) {},
+    )));
+    await tester.tap(find.byKey(const Key('scan-nearby-hosts')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Eidolon-4c0285'));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> enterCode(WidgetTester tester, String code) async {
+    await tester.enterText(
+        find.byKey(const Key('development-setup-code')), code);
+    await tester.tap(find.byKey(const Key('authenticate-setup-code')));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+      'a Host this phone never saw prove a code is asked for one, '
+      'however readily it says this phone is its admin', (tester) async {
+    final registry = InMemoryHostRegistry();
+    final transport = _FakeCommissioningTransport(hasGrant: true);
+    await openHost(tester, transport, registry);
+
+    // Its "yes" was never asked for: answering it costs a stand-in nothing.
+    expect(transport.operations, isEmpty);
+    expect(find.byKey(const Key('development-setup-code')), findsOneWidget);
+    expect(await registry.load(), isEmpty);
+
+    await enterCode(tester, '12345678');
+    expect(transport.operations, [
+      'pake.start',
+      'pake.confirm',
+      'claim.complete',
+      'controller.challenge',
+      'controller.authenticate',
+      'wifi.scan',
+    ]);
+    expect((await registry.load()).single.hostId, validHostId);
+    expect(await registry.isConfirmedHostKey(validHostPublicKey), isTrue);
+  });
+
+  testWidgets(
+      'a stand-in that cannot prove the code is neither saved nor told the '
+      'Wi-Fi password', (tester) async {
+    final registry = InMemoryHostRegistry();
+    final transport = _FakeCommissioningTransport(hasGrant: true);
+    transport.pakeHost.lieAboutServerProof = true;
+    await openHost(tester, transport, registry);
+    await enterCode(tester, '12345678');
+
+    expect(transport.operations, ['pake.start', 'pake.confirm']);
+    expect(find.textContaining('没能证明它知道这个 Setup 码'), findsOneWidget);
+    expect(find.text('让主机加入 Wi-Fi'), findsNothing);
+    expect(await registry.load(), isEmpty);
+    expect(await registry.isConfirmedHostKey(validHostPublicKey), isFalse);
+  });
+
+  testWidgets('a Host from before the PAKE still takes the code the old way',
+      (tester) async {
+    final registry = InMemoryHostRegistry();
+    final transport = _FakeCommissioningTransport(legacyHost: true);
+    await openHost(tester, transport, registry);
+    await enterCode(tester, '12345678');
+
+    expect(transport.operations, [
+      'pake.start',
+      'session.authenticate',
+      'claim.complete',
+      'controller.challenge',
+      'controller.authenticate',
+      'wifi.scan',
+    ]);
+    expect((await registry.load()).single.hostId, validHostId);
+  });
+
+  testWidgets('a Host pacing guesses says how long, and that nothing closed',
+      (tester) async {
+    final transport = _FakeCommissioningTransport(rateLimitedForMs: 3400);
+    await openHost(tester, transport, InMemoryHostRegistry());
+    await enterCode(tester, '12345678');
+
+    expect(find.textContaining('请等 4 秒'), findsOneWidget);
+    expect(find.textContaining('添加窗口不会关闭'), findsOneWidget);
+    expect(find.byKey(const Key('development-setup-code')), findsOneWidget);
+  });
+
   testWidgets(
       'network failure retains the enrolled peer and retry does not reenroll',
       (tester) async {
@@ -283,6 +421,7 @@ void main() {
     final transport = _FakeCommissioningTransport(failNetwork: true);
     await tester.pumpWidget(MaterialApp(
         home: SetupWizardPage(
+      proveHostClaim: proveDirectly,
       registry: registry,
       transport: transport,
       controllerKeys: _FakeControllerKeyBridge(),
@@ -300,6 +439,8 @@ void main() {
     await tester.pumpAndSettle();
     expect((await registry.load()).single.hostId, validHostId);
     await tester.tap(find.text('Home'));
+    // The password field exists only once its network row is open.
+    await tester.pump();
     await tester.enterText(
         find.byKey(const Key('wifi-passphrase')), 'wifi-password');
     await tester.tap(find.byKey(const Key('configure-host-network')));
@@ -324,6 +465,7 @@ void main() {
     ManagedHost? selected;
     await tester.pumpWidget(MaterialApp(
         home: SetupWizardPage(
+      proveHostClaim: proveDirectly,
       developmentLanCommissioning: emptyLanCommissioning(),
       registry: registry,
       transport: transport,
@@ -357,6 +499,7 @@ void main() {
     ManagedHost? selected;
     await tester.pumpWidget(MaterialApp(
         home: SetupWizardPage(
+      proveHostClaim: proveDirectly,
       registry: registry,
       transport: transport,
       controllerKeys: _FakeControllerKeyBridge(),
@@ -434,6 +577,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SetupWizardPage(
+          proveHostClaim: proveDirectly,
           developmentLanCommissioning: emptyLanCommissioning(),
           transport: transport,
           controllerKeys: controllerKeys,
@@ -463,6 +607,8 @@ void main() {
 
     expect(find.text('让主机加入 Wi-Fi'), findsOneWidget);
     await tester.tap(find.text('Home'));
+    // The password field exists only once its network row is open.
+    await tester.pump();
     await tester.enterText(
       find.byKey(const Key('wifi-passphrase')),
       'correct horse battery staple',
@@ -471,9 +617,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('主机接入已完成'), findsOneWidget);
+    // A Host this phone has never seen prove a code is not asked whether this
+    // phone is its admin; the code is proven, never sent.
     expect(transport.operations, [
-      'controller.challenge',
-      'session.authenticate',
+      'pake.start',
+      'pake.confirm',
       'claim.complete',
       'controller.challenge',
       'controller.authenticate',
@@ -504,6 +652,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SetupWizardPage(
+          proveHostClaim: proveDirectly,
           developmentLanCommissioning: emptyLanCommissioning(),
           transport: transport,
           controllerKeys: controllerKeys,
@@ -533,8 +682,8 @@ void main() {
 
     expect(find.text('主机接入已完成'), findsOneWidget);
     expect(transport.operations, [
-      'controller.challenge',
-      'session.authenticate',
+      'pake.start',
+      'pake.confirm',
       'claim.complete',
       'controller.challenge',
       'controller.authenticate',
@@ -543,17 +692,20 @@ void main() {
     expect(transport.closed, isTrue);
   });
 
-  testWidgets('voice recovery failure retains Wi-Fi and retries only recovery', (tester) async {
+  testWidgets('voice recovery failure retains Wi-Fi and retries only recovery',
+      (tester) async {
     await tester.binding.setSurfaceSize(const Size(900, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final transport = _FakeChangeNetworkTransport();
     final pending = Completer<bool>();
     var attempts = 0;
-    await tester.pumpWidget(MaterialApp(home: ChangeNetworkPage(
-      host: hostFixture(), transport: transport,
+    await tester.pumpWidget(MaterialApp(
+        home: ChangeNetworkPage(
+      host: hostFixture(),
+      transport: transport,
       controllerKeys: _FakeControllerKeyBridge(),
       nearbyHost: const NearbyEidolonHost(
-        address: 'AA:BB', name: 'Eidolon', hostMarker: '4c0285', rssi: -41),
+          address: 'AA:BB', name: 'Eidolon', hostMarker: '4c0285', rssi: -41),
       recoverVoice: () => ++attempts == 1 ? pending.future : Future.value(true),
     )));
     await tester.pumpAndSettle();
@@ -572,7 +724,8 @@ void main() {
     await tester.tap(find.text('重试语音连接'));
     await tester.pumpAndSettle();
     expect(find.text('已恢复，可以对话'), findsOneWidget);
-    expect(transport.operations.where((op) => op == 'wifi.configure').length, 1);
+    expect(
+        transport.operations.where((op) => op == 'wifi.configure').length, 1);
     expect(transport.operations, isNot(contains('wifi.rollback')));
   });
 
@@ -631,6 +784,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SetupWizardPage(
+          proveHostClaim: proveDirectly,
           developmentLanCommissioning: emptyLanCommissioning(),
           transport: _FakeCommissioningTransport(),
           controllerKeys: _FakeControllerKeyBridge(),

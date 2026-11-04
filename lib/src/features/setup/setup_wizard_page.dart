@@ -6,12 +6,15 @@ import 'package:flutter/material.dart';
 
 import '../../theme/eidolon_theme.dart';
 import '../../theme/neon_components.dart';
+import '../../widgets/wifi_network_picker.dart';
 import 'package:flutter/services.dart';
 
 import 'commissioning_transport.dart';
 import 'change_network_page.dart';
 import 'controller_key_bridge.dart';
 import 'development_lan_commissioning.dart';
+import 'host_claim_flow.dart';
+import 'host_claim_pake.dart';
 import 'host_registry.dart';
 import 'host_identity.dart';
 import 'host_discovery_sections.dart';
@@ -43,6 +46,7 @@ class SetupWizardPage extends StatefulWidget {
     this.controllerKeys,
     this.clock,
     this.developmentLanCommissioning,
+    this.proveHostClaim,
   });
 
   final ValueChanged<ManagedHost> onComplete;
@@ -51,6 +55,10 @@ class SetupWizardPage extends StatefulWidget {
   final ControllerKeyBridge? controllerKeys;
   final DateTime Function()? clock;
   final DevelopmentLanCommissioning? developmentLanCommissioning;
+
+  /// Where the Setup code proof is computed. An isolate by default; tests
+  /// hand in a direct call, because a widget test's clock does not run one.
+  final HostClaimProver? proveHostClaim;
 
   @override
   State<SetupWizardPage> createState() => _SetupWizardPageState();
@@ -78,6 +86,7 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
   bool _lanClaimFailed = false;
   List<WifiNetwork> _networks = const [];
   WifiNetwork? _selectedNetwork;
+  bool _hiddenSelected = false;
   bool _canKeepCurrentNetwork = false;
   String? _currentSsid;
   String? _error;
@@ -93,7 +102,9 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
     _controllerKeys = widget.controllerKeys ?? PlatformControllerKeyBridge();
     _developmentLanCommissioning = widget.developmentLanCommissioning ??
         DevelopmentLanCommissioning(
-            controllerKeys: _controllerKeys, clock: widget.clock);
+            controllerKeys: _controllerKeys,
+            clock: widget.clock,
+            proveHostClaim: widget.proveHostClaim);
   }
 
   @override
@@ -288,13 +299,21 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       await _transport.secure(tlsSpkiFingerprint: endpoint.tlsSpkiFingerprint);
       _endpoint = endpoint;
       _selectedNearbyHost = host;
-      try {
-        await _transport.authenticateController(_controllerKeys);
-        await _rememberController(endpoint);
-        await _loadNetworks();
-        return;
-      } on CommissioningRequestException catch (error) {
-        if (error.code != 'controller_denied') rethrow;
+      // Only a Host this phone has seen prove a Setup code is asked whether
+      // this phone is its admin. A stand-in says yes for free, and a yes used
+      // to be saved on the spot and then handed the home Wi-Fi password. A
+      // stranger is asked for the code instead — a real Host where this phone
+      // already holds a grant answers that the same way it answers a new one.
+      if (await widget.registry?.isConfirmedHostKey(endpoint.hostPublicKey) ??
+          false) {
+        try {
+          await _transport.authenticateController(_controllerKeys);
+          await _rememberController(endpoint);
+          await _loadNetworks();
+          return;
+        } on CommissioningRequestException catch (error) {
+          if (error.code != 'controller_denied') rethrow;
+        }
       }
       final developmentSetup = endpoint.developmentSetup;
       if (developmentSetup == null) {
@@ -358,14 +377,51 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       return;
     }
     await _run(() async {
-      await _transport.request('session.authenticate', {
-        'commissioning_id': developmentSetup.commissioningId,
-        'setup_code': code,
-      });
+      await _proveSetupCodeOverBle(
+          endpoint, developmentSetup.commissioningId, code);
       await _enrollController(endpoint);
       await _transport.authenticateController(_controllerKeys);
       await _loadNetworks();
     });
+  }
+
+  /// The code proven to the Host and the Host proven back, before anything
+  /// is claimed, saved or sent (ADR-0008). A Host from before that answers
+  /// `unknown_operation`, and only then does the code go the old way.
+  Future<void> _proveSetupCodeOverBle(
+      CommissioningEndpoint endpoint, String commissioningId, String code) async {
+    final controller = await _controllerKeys.getIdentity();
+    if (!mounted) return;
+    setState(() => _progress = '正在用 Setup 码和主机互相验证');
+    final proven = await proveSetupCodeToHost(
+      code: code,
+      expected: HostClaimExpectation.fromEndpoint(
+        endpoint,
+        commissioningId: commissioningId,
+        transport: 'ble',
+        controllerPublicKey: controller.publicKey,
+      ),
+      start: (payload) async {
+        try {
+          return await _transport.request('pake.start', payload);
+        } on CommissioningRequestException catch (error) {
+          if (error.code == 'unknown_operation') return null;
+          rethrow;
+        }
+      },
+      confirm: (payload) => _transport.request('pake.confirm', payload),
+      prove: widget.proveHostClaim ?? proveHostClaimInBackground,
+    );
+    if (proven == null) {
+      debugPrint('host-claim: ${endpoint.hostId} predates the Setup code PAKE; '
+          'sending the code inside the pinned TLS session');
+      await _transport.request('session.authenticate', {
+        'commissioning_id': commissioningId,
+        'setup_code': code,
+      });
+      return;
+    }
+    await widget.registry?.confirmHostKey(endpoint.hostPublicKey);
   }
 
   Future<void> _loadNetworks() async {
@@ -528,6 +584,12 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         // A wrong code is refused and the window stays open, because revoking
         // an unexpiring one leaves nobody able to reopen it (ADR-0007).
         'commissioning_denied' => 'Setup 码错误或已失效。请核对 $setupCodeDigits 位码后再试。',
+        // A wait, never a lockout: the window stays open (ADR-0007/0008).
+        'rate_limited' => '尝试太频繁了。请等 ${_retryAfterText(error.retryAfterMs)}'
+            '再输入 Setup 码；这段时间添加窗口不会关闭。',
+        'host_identity_mismatch' || 'host_not_proven' => error.message,
+        'unsupported_suite' => '这台主机的 Setup 验证方式和这个 App 版本不一致。请更新 App 或主机后再试。',
+        'pake_handshake_unknown' => '主机没有等到这一步完成。请重新输入 Setup 码再试一次。',
         'setup_code_unavailable' =>
           '这台主机现在没有开放的 Setup 窗口。$firstSetupCodeGuidance',
         'setup_code_expired' => '开发 Setup 会话已过期，请重新选择主机。',
@@ -544,6 +606,12 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
             '蓝牙入口仍会保持可用；如果重试仍然如此，需要看主机日志。',
         _ => error.message,
       };
+
+  static String _retryAfterText(int? milliseconds) {
+    if (milliseconds == null) return '一会儿';
+    final seconds = (milliseconds / 1000).ceil();
+    return seconds < 60 ? '$seconds 秒' : '${(seconds / 60).ceil()} 分钟';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -894,47 +962,38 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
             ),
           ],
           const SizedBox(height: 16),
-          ..._networks.map(
-            (network) => ListTile(
-              selected: _selectedNetwork == network,
-              leading: Icon(
-                _selectedNetwork == network
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_off,
-              ),
-              title: Text(network.ssid),
-              subtitle: Text(network.secured ? '需要密码' : '开放网络'),
-              trailing: Icon(_wifiIcon(network.signal)),
-              onTap: _busy
-                  ? null
-                  : () => setState(() {
-                        _selectedNetwork = network;
-                        _hiddenSsid.clear();
-                        _passphrase.clear();
-                      }),
-            ),
-          ),
-          const Divider(height: 28),
-          TextField(
-            controller: _hiddenSsid,
-            enabled: !_busy && _selectedNetwork == null,
-            decoration: const InputDecoration(
-              labelText: '隐藏网络名称（可选）',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            key: const Key('wifi-passphrase'),
-            controller: _passphrase,
-            enabled: !_busy && (_selectedNetwork?.secured ?? true),
-            obscureText: true,
-            enableSuggestions: false,
-            autocorrect: false,
-            decoration: const InputDecoration(
-              labelText: 'Wi-Fi 密码',
-              border: OutlineInputBorder(),
-            ),
+          // The password is typed under the network it is for, and the
+          // network's own button sends it; a hidden network is the last row.
+          WifiNetworkPicker(
+            networks: [
+              for (final network in _networks)
+                WifiNetworkChoice(
+                  ssid: network.ssid,
+                  secured: network.secured,
+                  detail: network.secured ? '需要密码' : '开放网络',
+                ),
+            ],
+            selectedSsid: _hiddenSelected ? null : _selectedNetwork?.ssid,
+            hiddenSelected: _hiddenSelected || _networks.isEmpty,
+            onSelect: (ssid) => setState(() {
+              _selectedNetwork =
+                  _networks.where((n) => n.ssid == ssid).firstOrNull;
+              _hiddenSelected = false;
+              _hiddenSsid.clear();
+              _passphrase.clear();
+            }),
+            onSelectHidden: (open) => setState(() {
+              _hiddenSelected = open;
+              _selectedNetwork = null;
+              _passphrase.clear();
+            }),
+            passwordController: _passphrase,
+            hiddenSsidController: _hiddenSsid,
+            onSubmit: _configureNetwork,
+            submitLabel: _canKeepCurrentNetwork ? '更换 Wi-Fi' : '连接 Wi-Fi',
+            passwordFieldKey: const Key('wifi-passphrase'),
+            submitButtonKey: const Key('configure-host-network'),
+            busy: _busy,
           ),
           const SizedBox(height: 12),
           FilledButton.tonalIcon(
@@ -942,15 +1001,6 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
             onPressed: _busy ? null : _skipNetwork,
             icon: const Icon(Icons.verified_user_outlined),
             label: Text(_canKeepCurrentNetwork ? '保持当前 Wi-Fi' : '稍后设置 Wi-Fi'),
-          ),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            key: const Key('configure-host-network'),
-            onPressed: _busy ? null : _configureNetwork,
-            icon: const Icon(Icons.rocket_launch_outlined),
-            label: Text(
-              _canKeepCurrentNetwork ? '更换 Wi-Fi' : '连接 Wi-Fi',
-            ),
           ),
         ],
       );
@@ -1171,10 +1221,4 @@ class _Notice extends StatelessWidget {
                       fontSize: 13, height: 1.6, color: Neon.ink))),
         ]),
       );
-}
-
-IconData _wifiIcon(int signal) {
-  if (signal >= 70) return Icons.network_wifi;
-  if (signal >= 40) return Icons.network_wifi_2_bar;
-  return Icons.network_wifi_1_bar;
 }

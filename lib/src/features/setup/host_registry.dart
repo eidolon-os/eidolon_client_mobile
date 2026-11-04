@@ -161,11 +161,25 @@ abstract interface class HostRegistry {
   /// gone, or replaced by a reinstall, and either way this list is the only
   /// place the entry exists.
   Future<void> remove(String hostId);
+
+  /// Whether this phone has reason to believe [hostPublicKey] is a Host it
+  /// claimed: it saw that Host prove a Setup code (ADR-0008), or kept it in
+  /// this list at some point. A Host with neither is a stranger however
+  /// readily it agrees that this phone is its admin — answering "yes" to
+  /// `controller.authenticate` costs a stand-in nothing, and the next thing
+  /// this phone would hand it is the home Wi-Fi password.
+  Future<bool> isConfirmedHostKey(String hostPublicKey);
+
+  /// Record that [hostPublicKey] proved a Setup code to this phone. Kept when
+  /// the Host is forgotten, so adding it back does not ask for a code again.
+  Future<void> confirmHostKey(String hostPublicKey);
 }
 
 class PlatformHostRegistry implements HostRegistry {
   static const _key = 'eidolon.managed-hosts.v1';
+  static const _confirmedKey = 'eidolon.confirmed-host-keys.v1';
   static const _maximumHosts = 16;
+  static const _maximumConfirmedKeys = 64;
 
   PlatformHostRegistry({AppPreferences? preferences})
       : _preferences = preferences ?? PlatformAppPreferences();
@@ -197,8 +211,8 @@ class PlatformHostRegistry implements HostRegistry {
   }
 
   @override
-  Future<void> save(ManagedHost host) {
-    return PreferenceWrites.run(_preferences, _key, () async {
+  Future<void> save(ManagedHost host) async {
+    await PreferenceWrites.run(_preferences, _key, () async {
       final current = await load();
       final next = [
         host,
@@ -209,6 +223,36 @@ class PlatformHostRegistry implements HostRegistry {
         jsonEncode(next.map((item) => item.toJson()).toList()),
       );
     });
+    await confirmHostKey(host.hostPublicKey);
+  }
+
+  @override
+  Future<bool> isConfirmedHostKey(String hostPublicKey) async {
+    if ((await load()).any((host) => host.hostPublicKey == hostPublicKey)) {
+      return true;
+    }
+    return (await _confirmedKeys()).contains(hostPublicKey);
+  }
+
+  @override
+  Future<void> confirmHostKey(String hostPublicKey) =>
+      PreferenceWrites.run(_preferences, _confirmedKey, () async {
+        final next = [
+          hostPublicKey,
+          ...(await _confirmedKeys()).where((key) => key != hostPublicKey),
+        ].take(_maximumConfirmedKeys).toList();
+        await _preferences.writeString(_confirmedKey, jsonEncode(next));
+      });
+
+  Future<List<String>> _confirmedKeys() async {
+    final raw = await _preferences.readString(_confirmedKey);
+    if (raw == null) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is List ? decoded.whereType<String>().toList() : const [];
+    } on FormatException {
+      return const [];
+    }
   }
 
   @override
@@ -254,6 +298,7 @@ class InMemoryHostRegistry implements HostRegistry {
       : _hosts = List.of(initial);
 
   final List<ManagedHost> _hosts;
+  final Set<String> _confirmed = {};
 
   @override
   Future<List<ManagedHost>> load() async => List.unmodifiable(_hosts);
@@ -263,6 +308,17 @@ class InMemoryHostRegistry implements HostRegistry {
     _hosts
       ..removeWhere((item) => item.hostId == host.hostId)
       ..insert(0, host);
+    _confirmed.add(host.hostPublicKey);
+  }
+
+  @override
+  Future<bool> isConfirmedHostKey(String hostPublicKey) async =>
+      _confirmed.contains(hostPublicKey) ||
+      _hosts.any((host) => host.hostPublicKey == hostPublicKey);
+
+  @override
+  Future<void> confirmHostKey(String hostPublicKey) async {
+    _confirmed.add(hostPublicKey);
   }
 
   @override

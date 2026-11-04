@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:eidolon_client_mobile/src/features/host_setup/local_api_discovery.dart';
 import 'package:eidolon_client_mobile/src/features/setup/controller_key_bridge.dart';
 import 'package:eidolon_client_mobile/src/features/setup/development_lan_commissioning.dart';
+import 'package:eidolon_client_mobile/src/features/setup/host_claim_pake.dart';
 import 'package:eidolon_client_mobile/src/features/setup/setup_wizard_page.dart';
+import 'support/fake_pake_host.dart';
 import 'support/setup_discovery_fixtures.dart';
 import 'package:eidolon_client_mobile/src/features/setup/setup_models.dart';
 import 'package:flutter/material.dart';
@@ -34,7 +36,7 @@ class _ControllerKeys implements ControllerKeyBridge {
   @override
   Future<ControllerIdentity> getIdentity() async => const ControllerIdentity(
         controllerId: _controllerId,
-        publicKey: 'controller-public-key',
+        publicKey: fakeControllerPublicKey,
         fingerprint: 'sha256:controller',
       );
 
@@ -165,11 +167,11 @@ void main() {
     expect(await registry.load(), hasLength(1));
   });
 
-  test(
-      'discovers a signed development endpoint and claims through pinned HTTPS',
+  test('a Host from before the PAKE is claimed the old way, inside the pin',
       () async {
     String? pinnedFingerprint;
     http.Request? claimRequest;
+    final paths = <String>[];
     final service = DevelopmentLanCommissioning(
       discovery: _Discovery(_announced(['192.168.1.25'])),
       controllerKeys: _ControllerKeys(),
@@ -177,6 +179,11 @@ void main() {
       pinnedClientFactory: (fingerprint) {
         pinnedFingerprint = fingerprint;
         return MockClient((request) async {
+          paths.add(request.url.path);
+          // No PAKE routes on this Host: FastAPI answers 404 for them.
+          if (request.url.path.contains('/pake/')) {
+            return http.Response('{"detail":"Not Found"}', 404);
+          }
           claimRequest = request;
           return http.Response(
             jsonEncode({
@@ -211,10 +218,10 @@ void main() {
       pinnedFingerprint,
       validCommissioningEndpoint['tls_spki_fingerprint'],
     );
-    expect(
-      claimRequest?.url.path,
+    expect(paths, [
+      '/api/local/v1/commissioning/pake/start',
       '/api/local/v1/commissioning/claim',
-    );
+    ]);
     final payload = jsonDecode(claimRequest!.body) as Map<String, dynamic>;
     expect(payload['commissioning_id'], '123e4567-e89b-42d3-a456-426614174000');
     expect(payload['setup_code'], '12345678');
@@ -225,6 +232,143 @@ void main() {
       claimed.tlsSpkiFingerprint,
       validCommissioningEndpoint['tls_spki_fingerprint'],
     );
+  });
+
+  group('the Setup code proven over the LAN', () {
+    FakePakeHost lanHost() => FakePakeHost(
+          code: '12345678',
+          commissioningId: '123e4567-e89b-42d3-a456-426614174000',
+          hostPublicKey:
+              validCommissioningEndpoint['host_public_key']! as String,
+          tlsSpkiFingerprint:
+              validCommissioningEndpoint['tls_spki_fingerprint']! as String,
+          resetEpoch: 0,
+          transport: 'lan',
+        );
+
+    DevelopmentLanCommissioning service(
+            Future<http.Response> Function(http.Request) handler) =>
+        DevelopmentLanCommissioning(
+          discovery: _Discovery(_announced(['192.168.1.25'])),
+          controllerKeys: _ControllerKeys(),
+          endpointFetcher: (_) async => jsonEncode(validCommissioningEndpoint),
+          pinnedClientFactory: (_) => MockClient(handler),
+          clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
+          proveHostClaim: proveDirectly,
+        );
+
+    Map<String, dynamic> claimResult(String serverProof) => {
+          'contract_version': '1',
+          'operation': 'local.lan-commissioning-claim',
+          'host_id': validHostId,
+          'controller': {'controller_id': _controllerId},
+          'state': {'claim_state': 'claimed', 'network_state': 'connected'},
+          'server_proof': serverProof,
+        };
+
+    test('claims without the code ever leaving the phone', () async {
+      final host = lanHost();
+      final bodies = <String>[];
+      final lan = service((request) async {
+        bodies.add(request.body);
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['contract_version'], '1');
+        return switch (request.url.path) {
+          '/api/local/v1/commissioning/pake/start' =>
+            http.Response(jsonEncode(host.start(body)), 200),
+          '/api/local/v1/commissioning/pake/claim' =>
+            http.Response(jsonEncode(claimResult(host.confirm(body))), 200),
+          _ => http.Response('{}', 500),
+        };
+      });
+      final discovered = await lan.discover();
+      final claimed = await lan.claim(discovered.hosts.single,
+          setupCode: '12345678', controllerName: 'My Pad');
+
+      expect(claimed.hostId, validHostId);
+      expect(bodies, hasLength(2));
+      // Not as a field, not as a value, not as the hash the Host stores.
+      expect(bodies.join(), isNot(contains('setup_code')));
+      expect(bodies.join(), isNot(contains('"12345678"')));
+      expect(bodies.join(), isNot(contains(hostClaimPassword('12345678'))));
+      expect((jsonDecode(bodies.last) as Map)['controller']['display_name'],
+          'My Pad');
+    });
+
+    test('a LAN Host that cannot prove the code back gives nothing to keep',
+        () async {
+      final host = lanHost()..lieAboutServerProof = true;
+      final lan = service((request) async {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        return request.url.path.endsWith('/pake/start')
+            ? http.Response(jsonEncode(host.start(body)), 200)
+            : http.Response(jsonEncode(claimResult(host.confirm(body))), 200);
+      });
+      final discovered = await lan.discover();
+      await expectLater(
+        lan.claim(discovered.hosts.single,
+            setupCode: '12345678', controllerName: 'My Pad'),
+        throwsA(isA<CommissioningRequestException>()
+            .having((e) => e.code, 'code', 'host_not_proven')),
+      );
+    });
+
+    test('a paced LAN Host is a wait with a length, not a failure', () async {
+      final lan = service((request) async => http.Response(
+            jsonEncode({
+              'detail': {
+                'code': 'rate_limited',
+                'message': 'Too many Setup code attempts',
+                'retry_after_ms': 12500,
+              },
+            }),
+            429,
+            headers: {'retry-after': '13'},
+          ));
+      final discovered = await lan.discover();
+      await expectLater(
+        lan.claim(discovered.hosts.single,
+            setupCode: '12345678', controllerName: 'My Pad'),
+        throwsA(isA<CommissioningRequestException>()
+            .having((e) => e.code, 'code', 'rate_limited')
+            .having((e) => e.retryAfterMs, 'retryAfterMs', 12500)),
+      );
+    });
+
+    test('a 409 restart is told apart from a claim conflict', () async {
+      final host = lanHost();
+      var starts = 0;
+      final lan = service((request) async {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        if (request.url.path.endsWith('/pake/start')) {
+          starts += 1;
+          return http.Response(jsonEncode(host.start(body)), 200);
+        }
+        if (starts == 1) {
+          return http.Response(
+              jsonEncode({
+                'detail': {
+                  'code': 'pake_handshake_unknown',
+                  'message': 'Start the Setup code exchange again',
+                },
+              }),
+              409);
+        }
+        return http.Response(
+            jsonEncode({
+              'detail': {'code': 'operation_conflict', 'message': 'claimed'},
+            }),
+            409);
+      });
+      final discovered = await lan.discover();
+      await expectLater(
+        lan.claim(discovered.hosts.single,
+            setupCode: '12345678', controllerName: 'My Pad'),
+        throwsA(isA<CommissioningRequestException>()
+            .having((e) => e.code, 'code', 'operation_conflict')),
+      );
+      expect(starts, 2);
+    });
   });
 
   test('ignores unsigned, production and expired LAN candidates', () async {

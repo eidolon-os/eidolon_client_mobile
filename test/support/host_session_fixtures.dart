@@ -6,6 +6,7 @@ import 'package:eidolon_client_mobile/src/features/setup/setup_models.dart';
 import 'package:eidolon_client_mobile/src/features/setup/host_registry.dart';
 import 'package:http/http.dart' as http;
 
+import 'fake_pake_host.dart';
 import 'setup_fixtures.dart';
 
 const controllerIdFixture = 'ectrl-0123456789abcdefabcd';
@@ -28,7 +29,7 @@ class FakeControllerKeys implements ControllerKeyBridge {
   @override
   Future<ControllerIdentity> getIdentity() async => const ControllerIdentity(
         controllerId: 'ectrl-0123456789abcdefabcd',
-        publicKey: 'controller-public-key',
+        publicKey: fakeControllerPublicKey,
         fingerprint: 'sha256:controller',
       );
 

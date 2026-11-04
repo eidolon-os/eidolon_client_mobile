@@ -281,10 +281,15 @@ class DevelopmentSetupSession {
 }
 
 class CommissioningRequestException implements Exception {
-  const CommissioningRequestException(this.code, this.message);
+  const CommissioningRequestException(this.code, this.message,
+      {this.retryAfterMs});
 
   final String code;
   final String message;
+
+  /// Set with `rate_limited`: how long the Host asked this phone to wait
+  /// before its next Setup code attempt (ADR-0008).
+  final int? retryAfterMs;
 
   @override
   String toString() => message;

@@ -139,9 +139,11 @@ class PlatformBleCommissioningTransport implements CommissioningTransport {
       final error = decoded['error'];
       final code = error is Map ? error['code'] : null;
       final message = error is Map ? error['message'] : null;
+      final retryAfterMs = error is Map ? error['retry_after_ms'] : null;
       throw CommissioningRequestException(
         code is String ? code : 'request_failed',
         message is String ? message : '主机拒绝了 Setup 请求',
+        retryAfterMs: retryAfterMs is int && retryAfterMs > 0 ? retryAfterMs : null,
       );
     }
     final result = decoded['result'];

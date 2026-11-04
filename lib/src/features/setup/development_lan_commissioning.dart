@@ -10,6 +10,8 @@ import '../host_setup/local_api_client.dart';
 import '../host_setup/local_api_discovery.dart';
 import '../host_setup/pinned_http_client.dart';
 import 'controller_key_bridge.dart';
+import 'host_claim_flow.dart';
+import 'host_claim_pake.dart';
 import 'host_identity.dart';
 import 'host_registry.dart';
 import 'setup_trust.dart';
@@ -205,6 +207,7 @@ class DevelopmentLanCommissioning {
     DevelopmentEndpointFetcher? endpointFetcher,
     DevelopmentPinnedClientFactory? pinnedClientFactory,
     DateTime Function()? clock,
+    HostClaimProver? proveHostClaim,
   })  : _discovery = discovery ?? platformLocalApiDiscovery(),
         _controllerKeys = controllerKeys ?? PlatformControllerKeyBridge(),
         _endpointFetcher =
@@ -212,13 +215,15 @@ class DevelopmentLanCommissioning {
         _pinnedClientFactory = pinnedClientFactory ??
             ((fingerprint) =>
                 PlatformPinnedHttpClient(tlsSpkiFingerprint: fingerprint)),
-        _clock = clock ?? DateTime.now;
+        _clock = clock ?? DateTime.now,
+        _proveHostClaim = proveHostClaim ?? proveHostClaimInBackground;
 
   final LocalApiDiscovery _discovery;
   final ControllerKeyBridge _controllerKeys;
   final DevelopmentEndpointFetcher _endpointFetcher;
   final DevelopmentPinnedClientFactory _pinnedClientFactory;
   final DateTime Function() _clock;
+  final HostClaimProver _proveHostClaim;
 
   Future<DevelopmentLanDiscovery> discover(
       {List<ManagedHost> knownHosts = const []}) async {
@@ -378,8 +383,43 @@ class DevelopmentLanCommissioning {
     }
     final controller = await _controllerKeys.getIdentity();
     final client = _pinnedClientFactory(host.endpoint.tlsSpkiFingerprint);
+    final controllerClaim = {
+      'controller_id': controller.controllerId,
+      'public_key': controller.publicKey,
+      'display_name': normalizedName,
+      'platform': 'android',
+    };
     try {
       final base = LocalApiClient.parseBaseUri(host.localApi.baseUrl);
+      // The code proven, not sent (ADR-0008). Only a Host without the PAKE
+      // routes answers 404 to the first step, and only then is the code sent
+      // the old way — inside this pinned session, as before.
+      final proven = await proveSetupCodeToHost(
+        code: setupCode,
+        expected: HostClaimExpectation.fromEndpoint(
+          host.endpoint,
+          commissioningId: setup.commissioningId,
+          transport: 'lan',
+          controllerPublicKey: controller.publicKey,
+        ),
+        start: (payload) async {
+          final response = await _postPake(
+              client, base.resolve('/api/local/v1/commissioning/pake/start'),
+              {'contract_version': '1', ...payload});
+          if (response.statusCode == 404) return null;
+          return _pakeResult(response);
+        },
+        confirm: (payload) async => _pakeResult(await _postPake(
+            client,
+            base.resolve('/api/local/v1/commissioning/pake/claim'),
+            {'contract_version': '1', ...payload, 'controller': controllerClaim})),
+        prove: _proveHostClaim,
+      );
+      if (proven != null) {
+        return _claimedHost(host, controller, proven);
+      }
+      debugPrint('host-claim: ${host.endpoint.hostId} predates the Setup code '
+          'PAKE; sending the code inside the pinned TLS session');
       final response = await client
           .put(
             base.resolve('/api/local/v1/commissioning/claim'),
@@ -391,12 +431,7 @@ class DevelopmentLanCommissioning {
               'contract_version': '1',
               'commissioning_id': setup.commissioningId,
               'setup_code': setupCode,
-              'controller': {
-                'controller_id': controller.controllerId,
-                'public_key': controller.publicKey,
-                'display_name': normalizedName,
-                'platform': 'android',
-              },
+              'controller': controllerClaim,
             }),
           )
           .timeout(const Duration(seconds: 8));
@@ -414,42 +449,108 @@ class DevelopmentLanCommissioning {
         final code = switch (response.statusCode) {
           404 => 'development_lan_unavailable',
           409 => 'operation_conflict',
+          429 => 'rate_limited',
           _ => 'lan_claim_failed',
         };
+        final retryAfterSeconds =
+            int.tryParse(response.headers['retry-after'] ?? '');
         throw CommissioningRequestException(
           code,
           '开发 Host 认领失败（HTTP ${response.statusCode}）',
+          retryAfterMs: retryAfterSeconds != null && retryAfterSeconds > 0
+              ? retryAfterSeconds * 1000
+              : null,
         );
       }
       final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-      if (decoded is! Map<String, dynamic> ||
-          decoded['contract_version'] != '1' ||
-          decoded['operation'] != 'local.lan-commissioning-claim' ||
-          decoded['host_id'] != host.endpoint.hostId ||
-          decoded['controller'] is! Map ||
-          (decoded['controller'] as Map)['controller_id'] !=
-              controller.controllerId ||
-          decoded['state'] is! Map ||
-          (decoded['state'] as Map)['claim_state'] != 'claimed') {
+      if (decoded is! Map<String, dynamic>) {
         throw const CommissioningRequestException(
           'invalid_response',
           '开发 Host 没有返回有效的认领结果',
         );
       }
-      return ManagedHost(
-        hostId: host.endpoint.hostId,
-        hostPublicKey: host.endpoint.hostPublicKey,
-        hostFingerprint: host.endpoint.hostPublicKeyFingerprint,
-        bleServiceUuid: host.endpoint.bleServiceUuid,
-        controllerId: controller.controllerId,
-        displayName: host.displayName,
-        claimedAt: _clock().toUtc(),
-        tlsSpkiFingerprint: host.endpoint.tlsSpkiFingerprint,
-        lastKnownBaseUrl: host.localApi.baseUrl,
-      );
+      return _claimedHost(host, controller, decoded);
     } finally {
       client.close();
     }
+  }
+
+  ManagedHost _claimedHost(DevelopmentLanHost host, ControllerIdentity controller,
+      Map<String, dynamic> decoded) {
+    if (decoded['contract_version'] != '1' ||
+        decoded['operation'] != 'local.lan-commissioning-claim' ||
+        decoded['host_id'] != host.endpoint.hostId ||
+        decoded['controller'] is! Map ||
+        (decoded['controller'] as Map)['controller_id'] !=
+            controller.controllerId ||
+        decoded['state'] is! Map ||
+        (decoded['state'] as Map)['claim_state'] != 'claimed') {
+      throw const CommissioningRequestException(
+        'invalid_response',
+        '开发 Host 没有返回有效的认领结果',
+      );
+    }
+    return ManagedHost(
+      hostId: host.endpoint.hostId,
+      hostPublicKey: host.endpoint.hostPublicKey,
+      hostFingerprint: host.endpoint.hostPublicKeyFingerprint,
+      bleServiceUuid: host.endpoint.bleServiceUuid,
+      controllerId: controller.controllerId,
+      displayName: host.displayName,
+      claimedAt: _clock().toUtc(),
+      tlsSpkiFingerprint: host.endpoint.tlsSpkiFingerprint,
+      lastKnownBaseUrl: host.localApi.baseUrl,
+    );
+  }
+
+  static Future<http.Response> _postPake(
+          http.Client client, Uri uri, Map<String, dynamic> body) =>
+      client
+          .post(
+            uri,
+            headers: const {
+              'accept': 'application/json',
+              'content-type': 'application/json',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 8));
+
+  /// A PAKE route's answer, or the refusal it carries. These routes put the
+  /// Host's own code in the body, because a 409 is either "start again" or
+  /// "someone else claimed it" and the two must not be handled alike.
+  static Map<String, dynamic> _pakeResult(http.Response response) {
+    Object? decoded;
+    try {
+      decoded = jsonDecode(utf8.decode(response.bodyBytes));
+    } on FormatException {
+      decoded = null;
+    }
+    if (response.statusCode == 200 && decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    final detail = decoded is Map ? decoded['detail'] : null;
+    final hostCode = detail is Map ? detail['code'] : null;
+    final retryAfterMs = detail is Map ? detail['retry_after_ms'] : null;
+    final code = hostCode is String
+        ? hostCode
+        : switch (response.statusCode) {
+            401 => 'commissioning_denied',
+            404 => 'development_lan_unavailable',
+            409 => 'operation_conflict',
+            429 => 'rate_limited',
+            _ => 'lan_claim_failed',
+          };
+    throw CommissioningRequestException(
+      code,
+      switch (code) {
+        'commissioning_denied' => 'Host 拒绝了这个 Setup 码（HTTP 401）。请核对后再试；'
+            '输错不会让窗口关闭。$controllerRecoveryGuidance',
+        _ => '开发 Host 认领失败（HTTP ${response.statusCode}，$code）',
+      },
+      retryAfterMs:
+          retryAfterMs is int && retryAfterMs > 0 ? retryAfterMs : null,
+    );
   }
 
   static void _requireDebugBuild() {

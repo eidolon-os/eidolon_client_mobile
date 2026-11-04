@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'support/fake_pake_host.dart';
 import 'support/host_session_fixtures.dart';
 import 'support/setup_discovery_fixtures.dart';
 import 'support/setup_fixtures.dart';
@@ -44,6 +45,15 @@ class _Ble extends NoopTransport {
   int secureCalls = 0;
   bool granted = false;
   final operations = <String>[];
+  final pake = FakePakeHost(
+    code: '12345678',
+    commissioningId: '123e4567-e89b-42d3-a456-426614174000',
+    hostPublicKey: validCommissioningEndpoint['host_public_key']! as String,
+    tlsSpkiFingerprint:
+        validCommissioningEndpoint['tls_spki_fingerprint']! as String,
+    resetEpoch: 0,
+    transport: 'ble',
+  );
   @override
   Future<List<NearbyEidolonHost>> scan(
           {required String serviceUuid,
@@ -70,6 +80,13 @@ class _Ble extends NoopTransport {
   Future<Map<String, dynamic>> request(
       String operation, Map<String, dynamic> payload) async {
     operations.add(operation);
+    if (operation == 'pake.start') return pake.start(payload);
+    if (operation == 'pake.confirm') {
+      return {
+        'server_proof': pake.confirm(payload),
+        'state': {'claim_state': 'unclaimed'},
+      };
+    }
     if (operation == 'controller.challenge' && !granted) {
       throw const CommissioningRequestException(
           'controller_denied', 'Not enrolled');
@@ -111,6 +128,7 @@ DevelopmentLanCommissioning _lan({
           fetch ?? (_) async => jsonEncode(validCommissioningEndpoint),
       pinnedClientFactory: client,
       clock: () => DateTime.utc(2026, 8, 5, 0, 10),
+      proveHostClaim: proveDirectly,
     );
 
 Future<void> _scan(
@@ -124,6 +142,7 @@ Future<void> _scan(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(MaterialApp(
       home: SetupWizardPage(
+    proveHostClaim: proveDirectly,
     transport: ble,
     developmentLanCommissioning: lan,
     controllerKeys: FakeControllerKeys(),
@@ -168,6 +187,15 @@ void main() {
       (tester) async {
     final requests = <http.Request>[];
     ManagedHost? completed;
+    final host = FakePakeHost(
+      code: '12345678',
+      commissioningId: '123e4567-e89b-42d3-a456-426614174000',
+      hostPublicKey: validCommissioningEndpoint['host_public_key']! as String,
+      tlsSpkiFingerprint:
+          validCommissioningEndpoint['tls_spki_fingerprint']! as String,
+      resetEpoch: 0,
+      transport: 'lan',
+    );
     await _scan(tester,
         ble: UnavailableBleTransport(),
         lan: _lan(client: (pin) {
@@ -177,6 +205,10 @@ void main() {
               return http.Response('{}', 401);
             }
             requests.add(request);
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            if (request.url.path.endsWith('/pake/start')) {
+              return http.Response(jsonEncode(host.start(body)), 200);
+            }
             return http.Response(
                 jsonEncode({
                   'contract_version': '1',
@@ -187,6 +219,7 @@ void main() {
                     'claim_state': 'claimed',
                     'network_state': 'connected'
                   },
+                  'server_proof': host.confirm(body),
                 }),
                 200);
           });
@@ -212,10 +245,12 @@ void main() {
     expect(find.text('主机接入已完成'), findsOneWidget);
     await tester.tap(find.byKey(const Key('finish-setup')));
     await tester.pumpAndSettle();
-    expect(requests, hasLength(1));
-    expect(requests.single.url.path, '/api/local/v1/commissioning/claim');
-    final payload = jsonDecode(requests.single.body) as Map<String, dynamic>;
-    expect(payload['setup_code'], '12345678');
+    expect(requests.map((request) => request.url.path), [
+      '/api/local/v1/commissioning/pake/start',
+      '/api/local/v1/commissioning/pake/claim',
+    ]);
+    final payload = jsonDecode(requests.last.body) as Map<String, dynamic>;
+    expect(payload.containsKey('setup_code'), isFalse);
     expect(payload['controller']['display_name'], '我的平板');
     expect(completed!.hostId, validHostId);
     expect(completed!.lastKnownBaseUrl, 'https://192.168.1.25:9002');
@@ -289,8 +324,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('让主机加入 Wi-Fi'), findsOneWidget);
     expect(ble.operations, [
-      'controller.challenge',
-      'session.authenticate',
+      'pake.start',
+      'pake.confirm',
       'claim.complete',
       'controller.challenge',
       'controller.authenticate',
@@ -327,7 +362,9 @@ void main() {
     await tester.tap(find.byKey(const Key('retry-setup-via-nearby')));
     await tester.pumpAndSettle();
     expect(ble.secureCalls, 1);
-    expect(ble.operations, ['controller.challenge']);
+    // A Host this phone has not seen prove a code is not asked whether this
+    // phone is its admin; it is asked for the code.
+    expect(ble.operations, isEmpty);
     expect(find.byKey(const Key('controller-name')), findsOneWidget);
     expect(
         tester
