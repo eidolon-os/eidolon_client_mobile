@@ -876,6 +876,34 @@ class ManagementClient {
     return result;
   }
 
+  Future<DeviceConversationStatus> deviceSession(
+    Uri baseUri, {
+    required String accessToken,
+    required String action,
+    required String sessionId,
+    String? deviceId,
+    String? companionId,
+  }) async {
+    final path = switch (action) {
+      'open' => ManagementV1.deviceSessionsOpenPath,
+      'status' => ManagementV1.deviceSessionsStatusPath,
+      'close' => ManagementV1.deviceSessionsClosePath,
+      _ => throw ArgumentError.value(action),
+    };
+    final body = await _send('POST', baseUri.resolve(path),
+        accessToken: accessToken, what: '更新设备对话', body: action == 'open'
+            ? DeviceSessionStart(sessionId: sessionId, deviceId: deviceId!,
+                targetCompanionId: companionId!).toJson()
+            : SharedClose(sessionId: sessionId).toJson());
+    final result = DeviceConversationStatus.fromJson(body);
+    if (result.sessionId != sessionId ||
+        !{'preparing', 'ready', 'closing', 'closed', 'failed'}
+            .contains(result.state)) {
+      throw ManagementRequestException('设备对话返回了不匹配的结果');
+    }
+    return result;
+  }
+
   Future<DeviceConversationStatus> deviceConversation(
     Uri baseUri, {
     required String accessToken,

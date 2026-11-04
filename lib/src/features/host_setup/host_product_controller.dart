@@ -233,6 +233,16 @@ class HostProductController extends ChangeNotifier {
                       sessionId: id,
                       action: action))));
 
+  Future<DeviceConversationStatus> deviceSession(String action,
+          String sessionId, String? deviceId, String? companionId) =>
+      _session.executeManagement((client, uri, token) => client.deviceSession(
+          uri,
+          accessToken: token,
+          action: action,
+          sessionId: sessionId,
+          deviceId: deviceId,
+          companionId: companionId));
+
   Future<DeviceConversationStatus> deviceConversation(
           String action, String sessionId, ConversationStart? selection) =>
       _session.executeManagement((client, uri, token) =>

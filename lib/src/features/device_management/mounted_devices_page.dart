@@ -21,6 +21,7 @@ import '../../platform/app_preferences.dart';
 import '../host_setup/host_product_controller.dart';
 import 'mounted_device_models.dart';
 import 'device_companion_setup.dart';
+import '../conversation/device_session_controls.dart';
 import '../../management/companion_portrait.dart';
 
 /// Whether to draw the control that points a device at an Eidolon.
@@ -333,6 +334,18 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
       MaterialPageRoute(
         builder: (_) => MountedDeviceDetailPage(
           device: device,
+          sessionControls: controller.workspace?.owner == null
+              ? null
+              : DeviceSessionControls(
+                  device: device,
+                  command: controller.deviceSession,
+                  online: () =>
+                      controller.presenceFor(device)?.state == 'online',
+                  refreshPresence: controller.refreshDevicePresence,
+                  preferences: widget.creationPreferences,
+                  storageKey:
+                      'device-session:${controller.host.hostId}:${controller.host.controllerId}:${controller.workspace!.owner!.ownerId}:${device.deviceId}:${device.claimGeneration}',
+                ),
           onChangeNetwork: () => _openProvisioning(existing: device),
           onRemove: (deviceId, requestId) =>
               controller.removeDevice(deviceId: deviceId, requestId: requestId),
@@ -665,9 +678,11 @@ class MountedDeviceDetailPage extends StatefulWidget {
     this.loadFace,
     this.reload,
     this.onChangeNetwork,
+    this.sessionControls,
   });
 
   final MountedDevice device;
+  final Widget? sessionControls;
   final Future<void> Function()? onChangeNetwork;
   final DeviceCompanionSetupStore? progress;
   final CompanionFaceLoader? loadFace;
@@ -1297,6 +1312,7 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          if (widget.sessionControls != null) widget.sessionControls!,
           if (widget.onChangeNetwork != null)
             OutlinedButton.icon(
               key: const Key('change-device-network'),

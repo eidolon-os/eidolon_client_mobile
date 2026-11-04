@@ -63,6 +63,12 @@ class ManagementV1 {
       '/api/management/v1/device-conversations/open';
   static const String deviceConversationsStatusPath =
       '/api/management/v1/device-conversations/status';
+  static const String deviceSessionsClosePath =
+      '/api/management/v1/device-sessions/close';
+  static const String deviceSessionsOpenPath =
+      '/api/management/v1/device-sessions/open';
+  static const String deviceSessionsStatusPath =
+      '/api/management/v1/device-sessions/status';
   static const String devicesPath = '/api/management/v1/devices';
   static const String devicesPresencePath =
       '/api/management/v1/devices/presence';
@@ -1769,6 +1775,36 @@ class DeviceRemovalView {
       'device_id': deviceId,
       'outcome': outcome,
       'request_id': requestId,
+    };
+  }
+}
+
+class DeviceSessionStart {
+  const DeviceSessionStart({
+    required this.deviceId,
+    required this.sessionId,
+    required this.targetCompanionId,
+  });
+
+  final String deviceId;
+
+  final String sessionId;
+
+  final String targetCompanionId;
+
+  factory DeviceSessionStart.fromJson(Map<String, dynamic> value) {
+    return DeviceSessionStart(
+      deviceId: value['device_id'] as String,
+      sessionId: value['session_id'] as String,
+      targetCompanionId: value['target_companion_id'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'device_id': deviceId,
+      'session_id': sessionId,
+      'target_companion_id': targetCompanionId,
     };
   }
 }
