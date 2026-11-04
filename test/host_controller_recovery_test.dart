@@ -72,9 +72,6 @@ class _RefusingTransport implements CommissioningTransport {
     Map<String, dynamic> payload,
   ) async =>
       switch (operation) {
-        'session.authenticate' => {
-            'state': {'claim_state': 'claimed'},
-          },
         'wifi.scan' => {
             'current_network': {'state': 'connected', 'ssid': 'Home'},
             'networks': const [

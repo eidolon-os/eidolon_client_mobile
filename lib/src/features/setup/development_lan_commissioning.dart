@@ -391,9 +391,9 @@ class DevelopmentLanCommissioning {
     };
     try {
       final base = LocalApiClient.parseBaseUri(host.localApi.baseUrl);
-      // The code proven, not sent (ADR-0008). Only a Host without the PAKE
-      // routes answers 404 to the first step, and only then is the code sent
-      // the old way — inside this pinned session, as before.
+      // The code proven, not sent (ADR-0008). A Host without the PAKE routes
+      // answers 404 to the first step and is told to upgrade; there is no
+      // route left that takes the code itself.
       final proven = await proveSetupCodeToHost(
         code: setupCode,
         expected: HostClaimExpectation.fromEndpoint(
@@ -404,79 +404,28 @@ class DevelopmentLanCommissioning {
         ),
         start: (payload) async {
           final response = await _postPake(
-              client, base.resolve('/api/local/v1/commissioning/pake/start'),
+              client,
+              base.resolve('/api/local/v1/commissioning/pake/start'),
               {'contract_version': '1', ...payload});
           if (response.statusCode == 404) return null;
           return _pakeResult(response);
         },
         confirm: (payload) async => _pakeResult(await _postPake(
-            client,
-            base.resolve('/api/local/v1/commissioning/pake/claim'),
-            {'contract_version': '1', ...payload, 'controller': controllerClaim})),
+            client, base.resolve('/api/local/v1/commissioning/pake/claim'), {
+          'contract_version': '1',
+          ...payload,
+          'controller': controllerClaim
+        })),
         prove: _proveHostClaim,
       );
-      if (proven != null) {
-        return _claimedHost(host, controller, proven);
-      }
-      debugPrint('host-claim: ${host.endpoint.hostId} predates the Setup code '
-          'PAKE; sending the code inside the pinned TLS session');
-      final response = await client
-          .put(
-            base.resolve('/api/local/v1/commissioning/claim'),
-            headers: const {
-              'accept': 'application/json',
-              'content-type': 'application/json',
-            },
-            body: jsonEncode({
-              'contract_version': '1',
-              'commissioning_id': setup.commissioningId,
-              'setup_code': setupCode,
-              'controller': controllerClaim,
-            }),
-          )
-          .timeout(const Duration(seconds: 8));
-      if (response.statusCode != 200) {
-        // 401 is the Host refusing this phone, which is the one failure here
-        // that a person cannot fix from the phone at all — so it is the one
-        // that has to name the way back in.
-        if (response.statusCode == 401) {
-          throw const CommissioningRequestException(
-            'commissioning_denied',
-            'Host 拒绝了这台手机（HTTP 401）。Setup 码可能已经用过、过期或输错了，'
-                '请在 Host 上重新生成一个再试。$controllerRecoveryGuidance',
-          );
-        }
-        final code = switch (response.statusCode) {
-          404 => 'development_lan_unavailable',
-          409 => 'operation_conflict',
-          429 => 'rate_limited',
-          _ => 'lan_claim_failed',
-        };
-        final retryAfterSeconds =
-            int.tryParse(response.headers['retry-after'] ?? '');
-        throw CommissioningRequestException(
-          code,
-          '开发 Host 认领失败（HTTP ${response.statusCode}）',
-          retryAfterMs: retryAfterSeconds != null && retryAfterSeconds > 0
-              ? retryAfterSeconds * 1000
-              : null,
-        );
-      }
-      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-      if (decoded is! Map<String, dynamic>) {
-        throw const CommissioningRequestException(
-          'invalid_response',
-          '开发 Host 没有返回有效的认领结果',
-        );
-      }
-      return _claimedHost(host, controller, decoded);
+      return _claimedHost(host, controller, proven);
     } finally {
       client.close();
     }
   }
 
-  ManagedHost _claimedHost(DevelopmentLanHost host, ControllerIdentity controller,
-      Map<String, dynamic> decoded) {
+  ManagedHost _claimedHost(DevelopmentLanHost host,
+      ControllerIdentity controller, Map<String, dynamic> decoded) {
     if (decoded['contract_version'] != '1' ||
         decoded['operation'] != 'local.lan-commissioning-claim' ||
         decoded['host_id'] != host.endpoint.hostId ||

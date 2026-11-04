@@ -387,13 +387,13 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
 
   /// The code proven to the Host and the Host proven back, before anything
   /// is claimed, saved or sent (ADR-0008). A Host from before that answers
-  /// `unknown_operation`, and only then does the code go the old way.
-  Future<void> _proveSetupCodeOverBle(
-      CommissioningEndpoint endpoint, String commissioningId, String code) async {
+  /// `unknown_operation` and is told to upgrade; the code is never sent.
+  Future<void> _proveSetupCodeOverBle(CommissioningEndpoint endpoint,
+      String commissioningId, String code) async {
     final controller = await _controllerKeys.getIdentity();
     if (!mounted) return;
     setState(() => _progress = '正在用 Setup 码和主机互相验证');
-    final proven = await proveSetupCodeToHost(
+    await proveSetupCodeToHost(
       code: code,
       expected: HostClaimExpectation.fromEndpoint(
         endpoint,
@@ -412,15 +412,6 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
       confirm: (payload) => _transport.request('pake.confirm', payload),
       prove: widget.proveHostClaim ?? proveHostClaimInBackground,
     );
-    if (proven == null) {
-      debugPrint('host-claim: ${endpoint.hostId} predates the Setup code PAKE; '
-          'sending the code inside the pinned TLS session');
-      await _transport.request('session.authenticate', {
-        'commissioning_id': commissioningId,
-        'setup_code': code,
-      });
-      return;
-    }
     await widget.registry?.confirmHostKey(endpoint.hostPublicKey);
   }
 
@@ -587,7 +578,10 @@ class _SetupWizardPageState extends State<SetupWizardPage> {
         // A wait, never a lockout: the window stays open (ADR-0007/0008).
         'rate_limited' => '尝试太频繁了。请等 ${_retryAfterText(error.retryAfterMs)}'
             '再输入 Setup 码；这段时间添加窗口不会关闭。',
-        'host_identity_mismatch' || 'host_not_proven' => error.message,
+        'host_identity_mismatch' ||
+        'host_not_proven' ||
+        'host_too_old' =>
+          error.message,
         'unsupported_suite' => '这台主机的 Setup 验证方式和这个 App 版本不一致。请更新 App 或主机后再试。',
         'pake_handshake_unknown' => '主机没有等到这一步完成。请重新输入 Setup 码再试一次。',
         'setup_code_unavailable' =>

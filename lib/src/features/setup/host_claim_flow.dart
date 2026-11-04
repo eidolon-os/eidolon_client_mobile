@@ -63,11 +63,12 @@ typedef HostClaimProver = Future<HostClaimProof> Function(
 /// Proves [code] to a Host without sending it, and proves the Host back.
 ///
 /// [start] returns null when the Host predates the PAKE (BLE answered
-/// `unknown_operation`, the LAN answered 404); this then returns null too and
-/// the caller falls back to sending the code the old way. Anything else
-/// returned has already passed the Host's own proof, so the caller may
-/// believe it — and nothing before that point may be believed.
-Future<Map<String, dynamic>?> proveSetupCodeToHost({
+/// `unknown_operation`, the LAN answered 404). That Host is told to upgrade:
+/// there is no older way to send it the code, so there is nothing a stand-in
+/// could make this phone fall back to. What this returns has already passed
+/// the Host's own proof, so the caller may believe it — and nothing before
+/// that point may be believed.
+Future<Map<String, dynamic>> proveSetupCodeToHost({
   required String code,
   required HostClaimExpectation expected,
   required Future<Map<String, dynamic>?> Function(Map<String, dynamic> payload)
@@ -84,7 +85,13 @@ Future<Map<String, dynamic>?> proveSetupCodeToHost({
       'commissioning_id': expected.commissioningId,
       'controller_public_key': expected.controllerPublicKey,
     });
-    if (started == null) return null;
+    if (started == null) {
+      throw const CommissioningRequestException(
+        'host_too_old',
+        '这台主机的软件太旧，还不支持用 Setup 码和手机互相验证。请先升级主机，再重新添加。'
+            'Setup 码没有发出。',
+      );
+    }
     final handshakeId = started['handshake_id'];
     final salt = started['salt'];
     final serverPublic = started['B'];

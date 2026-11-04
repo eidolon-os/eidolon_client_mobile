@@ -167,11 +167,11 @@ void main() {
     expect(await registry.load(), hasLength(1));
   });
 
-  test('a Host from before the PAKE is claimed the old way, inside the pin',
+  test(
+      'a LAN Host from before the PAKE is told to upgrade and never gets the code',
       () async {
     String? pinnedFingerprint;
-    http.Request? claimRequest;
-    final paths = <String>[];
+    final bodies = <String>[];
     final service = DevelopmentLanCommissioning(
       discovery: _Discovery(_announced(['192.168.1.25'])),
       controllerKeys: _ControllerKeys(),
@@ -179,59 +179,36 @@ void main() {
       pinnedClientFactory: (fingerprint) {
         pinnedFingerprint = fingerprint;
         return MockClient((request) async {
-          paths.add(request.url.path);
+          bodies.add('${request.method} ${request.url.path} ${request.body}');
           // No PAKE routes on this Host: FastAPI answers 404 for them.
-          if (request.url.path.contains('/pake/')) {
-            return http.Response('{"detail":"Not Found"}', 404);
-          }
-          claimRequest = request;
-          return http.Response(
-            jsonEncode({
-              'contract_version': '1',
-              'operation': 'local.lan-commissioning-claim',
-              'host_id': validHostId,
-              'controller': {'controller_id': _controllerId},
-              'state': {
-                'claim_state': 'claimed',
-                'network_state': 'connected',
-              },
-            }),
-            200,
-          );
+          return http.Response('{"detail":"Not Found"}', 404);
         });
       },
       clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
+      proveHostClaim: proveDirectly,
     );
 
     final discovered = await service.discover();
     expect(discovered.failure, isNull);
-    expect(discovered.hosts, hasLength(1));
     expect(discovered.hosts.single.endpoint.hostId, validHostId);
 
-    final claimed = await service.claim(
-      discovered.hosts.single,
-      setupCode: '12345678',
-      controllerName: 'My Pad',
+    await expectLater(
+      service.claim(
+        discovered.hosts.single,
+        setupCode: '12345678',
+        controllerName: 'My Pad',
+      ),
+      throwsA(isA<CommissioningRequestException>()
+          .having((e) => e.code, 'code', 'host_too_old')),
     );
-
     expect(
-      pinnedFingerprint,
-      validCommissioningEndpoint['tls_spki_fingerprint'],
-    );
-    expect(paths, [
-      '/api/local/v1/commissioning/pake/start',
-      '/api/local/v1/commissioning/claim',
-    ]);
-    final payload = jsonDecode(claimRequest!.body) as Map<String, dynamic>;
-    expect(payload['commissioning_id'], '123e4567-e89b-42d3-a456-426614174000');
-    expect(payload['setup_code'], '12345678');
-    expect((payload['controller'] as Map)['controller_id'], _controllerId);
-    expect(claimed.hostId, validHostId);
-    expect(claimed.controllerId, _controllerId);
-    expect(
-      claimed.tlsSpkiFingerprint,
-      validCommissioningEndpoint['tls_spki_fingerprint'],
-    );
+        pinnedFingerprint, validCommissioningEndpoint['tls_spki_fingerprint']);
+    // One step, and nothing in it could be turned into the code.
+    expect(bodies, hasLength(1));
+    expect(bodies.single,
+        startsWith('POST /api/local/v1/commissioning/pake/start'));
+    expect(bodies.single, isNot(contains('setup_code')));
+    expect(bodies.single, isNot(contains('"12345678"')));
   });
 
   group('the Setup code proven over the LAN', () {

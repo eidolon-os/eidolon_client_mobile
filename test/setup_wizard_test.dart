@@ -383,22 +383,17 @@ void main() {
     expect(await registry.isConfirmedHostKey(validHostPublicKey), isFalse);
   });
 
-  testWidgets('a Host from before the PAKE still takes the code the old way',
+  testWidgets(
+      'a Host from before the PAKE is told to upgrade and never gets the code',
       (tester) async {
     final registry = InMemoryHostRegistry();
     final transport = _FakeCommissioningTransport(legacyHost: true);
     await openHost(tester, transport, registry);
     await enterCode(tester, '12345678');
 
-    expect(transport.operations, [
-      'pake.start',
-      'session.authenticate',
-      'claim.complete',
-      'controller.challenge',
-      'controller.authenticate',
-      'wifi.scan',
-    ]);
-    expect((await registry.load()).single.hostId, validHostId);
+    expect(transport.operations, ['pake.start']);
+    expect(find.textContaining('主机的软件太旧'), findsOneWidget);
+    expect(await registry.load(), isEmpty);
   });
 
   testWidgets('a Host pacing guesses says how long, and that nothing closed',

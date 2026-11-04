@@ -58,7 +58,8 @@ Future<Map<String, dynamic>?> _run(
 }
 
 void main() {
-  test('the right code proves both sides and nothing carries the code', () async {
+  test('the right code proves both sides and nothing carries the code',
+      () async {
     final host = _host();
     final sent = <Map<String, dynamic>>[];
     final result = await proveSetupCodeToHost(
@@ -117,10 +118,15 @@ void main() {
     );
   });
 
-  test('a Host before the PAKE is reported, not guessed at', () async {
+  test('a Host before the PAKE is told to upgrade; nothing is sent', () async {
     final host = _host();
-    expect(await _run(host, hostPredatesPake: true), isNull);
+    await expectLater(
+      _run(host, hostPredatesPake: true),
+      throwsA(isA<CommissioningRequestException>()
+          .having((e) => e.code, 'code', 'host_too_old')),
+    );
     expect(host.starts, 0);
+    expect(host.confirms, 0);
   });
 
   test('a forgotten handshake is started again once, then reported', () async {
