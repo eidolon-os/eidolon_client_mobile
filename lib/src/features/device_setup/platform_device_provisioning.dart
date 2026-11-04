@@ -68,6 +68,10 @@ class PlatformDeviceProvisioning
       'DEVICE_UNREACHABLE' =>
         '未建立设备热点连接，尚未发送 Wi-Fi 密码。请在系统提示中允许连接，并确认设备仍在网络设置模式，然后重试。',
       'DEVICE_SESSION_FAILED' => _withDetail('已连接设备热点，但建立安全会话失败', error),
+      // The device draws a new code each time it opens setup, so a code that
+      // worked a minute ago can be the wrong one now.
+      'SETUP_CODE_REJECTED' => '设置码不对，或者设备已经换了新码。请重新扫描设备屏幕上的二维码。',
+      'SETUP_CODE_REQUIRED' => '这台设备的屏幕上有设置码。请扫描屏幕上的二维码，或输入屏幕上的 8 位数字。',
       'DEVICE_DISCONNECTED' => '设备中断了这次设置。请再试一次。',
       // The detail is kept. This one sentence has stood in front of three
       // unrelated faults so far, none of them the device's silence.
@@ -154,9 +158,11 @@ class PlatformDeviceProvisioning
         'openProvisioningSession',
         {
           'transportId': candidate.transportId,
+          'transportKind': candidate.transportKind,
           'sessionId': visit,
           if (candidate.accessPoint != null)
             'accessPoint': candidate.accessPoint,
+          if (candidate.setupCode != null) 'setupCode': candidate.setupCode,
         },
       );
       if (_activeVisit != visit) {

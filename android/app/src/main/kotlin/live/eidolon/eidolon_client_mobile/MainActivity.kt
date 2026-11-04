@@ -134,6 +134,7 @@ class MainActivity : FlutterActivity() {
                     call.argument<String>("transportId") ?: error("transportId is required"),
                     call.argument<String>("accessPoint"),
                     call.argument<String>("sessionId") ?: error("sessionId is required"),
+                    call.argument<String>("setupCode"),
                     result,
                 )
                 "provisioningScanNetworks", "provisioningHandOverTrust",

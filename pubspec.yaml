@@ -38,6 +38,7 @@ dependencies:
   record: ^7.1.2
   audioplayers: ^6.8.1
   file_picker: ^10.3.10
+  mobile_scanner: 7.5.0
 
 dev_dependencies:
   flutter_test:

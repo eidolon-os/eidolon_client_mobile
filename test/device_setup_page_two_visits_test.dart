@@ -1026,6 +1026,110 @@ void main() {
       });
     }
   });
+
+  group('the code on the device screen', () {
+    const scanned = '{"name":"eidolon-52f354","pop":"40718256","security":2,'
+        '"transport":"softap","username":"eidolon-setup","ver":"v1"}';
+
+    Widget page(_Transport transport, {String? scan}) => MaterialApp(
+            home: DeviceSetupPage(
+          transport: transport,
+          admission: _Admission(transport),
+          checkpoints: InMemoryDeviceSetupCheckpointStore(),
+          loadTarget: () async => deviceOnboardingTargetFixture(),
+          scanSetupCode: (_) async => scan,
+        ));
+
+    void allowDirectoryVerification(WidgetTester tester) {
+      const channel = MethodChannel('live.eidolon.mobile/platform');
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          (call) async =>
+              call.method == 'verifyOwnerDomainDescriptor' ? true : null);
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null));
+    }
+
+    testWidgets('a scanned code names the device and goes to both visits',
+        (tester) async {
+      allowDirectoryVerification(tester);
+      final transport = _Transport();
+      await tester.pumpWidget(page(transport, scan: scanned));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('scan-setup-code')));
+      await tester.pumpAndSettle();
+      // Nothing to choose: the QR code said which device.
+      expect(transport.openedCandidates.single.transportId, 'eidolon-52f354');
+      await tester.tap(find.byKey(const Key('network-owner-wifi')));
+      await tester.pump();
+      await tester.enterText(
+          find.byKey(const Key('device-wifi-password')), 'pw');
+      await tester.tap(find.byKey(const Key('confirm-device-setup')));
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+      expect(transport.openedCandidates, hasLength(2));
+      expect(transport.openedCandidates.map((c) => c.setupCode),
+          everyElement('40718256'));
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a QR code that is not a setup code opens nothing',
+        (tester) async {
+      final transport = _Transport();
+      await tester.pumpWidget(page(transport, scan: 'WIFI:S:home;P:x;;'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('scan-setup-code')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('这不是 Eidolon 设备的设置码'), findsOneWidget);
+      expect(transport.opened, 0);
+    });
+
+    testWidgets('a scanned device that is not nearby is named, not guessed',
+        (tester) async {
+      final transport = _Transport();
+      await tester.pumpWidget(page(transport,
+          scan: scanned.replaceFirst('eidolon-52f354', 'eidolon-ffffff')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('scan-setup-code')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('eidolon-ffffff'), findsOneWidget);
+      expect(transport.opened, 0);
+    });
+
+    testWidgets('a typed code goes with the device the person picks',
+        (tester) async {
+      final transport = _Transport();
+      await tester.pumpWidget(page(transport));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('enter-setup-code')));
+      await tester.pump();
+      await tester.enterText(
+          find.byKey(const Key('setup-code-field')), '4071825');
+      await tester.tap(find.byKey(const Key('setup-code-continue')));
+      await tester.pumpAndSettle();
+      expect(find.text('请输入设备屏幕上的 8 位数字。'), findsOneWidget);
+      await tester.enterText(
+          find.byKey(const Key('setup-code-field')), '40718256');
+      await tester.tap(find.byKey(const Key('setup-code-continue')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await tester.pumpAndSettle();
+      expect(transport.openedCandidates.single.setupCode, '40718256');
+    });
+
+    testWidgets('the development entry opens without a code', (tester) async {
+      final transport = _Transport();
+      await tester.pumpWidget(page(transport));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查找设备'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await tester.pumpAndSettle();
+      expect(transport.openedCandidates.single.setupCode, isNull);
+    });
+  });
 }
 
 class _Admission implements DeviceAdmissionPort {
@@ -1112,6 +1216,7 @@ class _Transport implements DeviceProvisioningTransport, PhoneWifiSource {
   bool requiresVoucher = true;
   String? preparedDeviceId;
   final List<_Session> sessions = [];
+  final List<DeviceProvisioningCandidate> openedCandidates = [];
   int opened = 0;
   Future<void>? configurationGate;
 
@@ -1138,6 +1243,7 @@ class _Transport implements DeviceProvisioningTransport, PhoneWifiSource {
     DeviceProvisioningCandidate candidate,
   ) async {
     opened += 1;
+    openedCandidates.add(candidate);
     final session = _Session()
       ..configureFailure = configureFailure
       ..configurationGate = configurationGate

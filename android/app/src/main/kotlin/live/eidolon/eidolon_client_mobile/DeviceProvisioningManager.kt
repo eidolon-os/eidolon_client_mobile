@@ -110,6 +110,12 @@ class DeviceProvisioningManager(
     private var sessionId: String? = null
 
     /**
+     * The code on the device's screen for this visit, or null for a device set
+     * up through the development entry. Held for one visit and never logged.
+     */
+    private var setupCode: String? = null
+
+    /**
      * One in-flight platform call, answered exactly once.
      *
      * The vendor client reports through a listener that may fire more than one
@@ -320,7 +326,13 @@ class DeviceProvisioningManager(
      * having nothing behind it. The same discipline was already in this app
      * once, in the path this one replaced.
      */
-    fun open(transportId: String, accessPoint: String?, id: String, result: MethodChannel.Result) {
+    fun open(
+        transportId: String,
+        accessPoint: String?,
+        id: String,
+        setupCode: String?,
+        result: MethodChannel.Result,
+    ) {
         synchronized(lock) {
             if (connectResult?.isAnswered == false || activeOperation?.isAnswered == false) {
                 result.error(
@@ -332,6 +344,7 @@ class DeviceProvisioningManager(
             }
             releaseDeviceLocked()
             sessionId = id
+            this.setupCode = setupCode
             connectResult = PendingResult(result)
         }
         joinDeviceNetwork(transportId, accessPoint)
@@ -423,13 +436,20 @@ class DeviceProvisioningManager(
         mainHandler.postDelayed({
             if (!pending.isAnswered) failConnection(pending, "DESCRIPTOR_TIMEOUT", "读取设备身份超时，请重试。")
         }, 30_000L)
-        espDevice.open(SECURITY_USERNAME, SECURITY_PASSPHRASE, object : ResponseListener {
+        val code = synchronized(lock) { setupCode }
+        espDevice.open(SECURITY_USERNAME, code ?: SECURITY_PASSPHRASE, code != null, object : ResponseListener {
             override fun onSuccess(response: ByteArray?) {
                 if (device === espDevice && connectResult === pending) readDescriptor(pending)
             }
             override fun onFailure(error: Exception?) {
-                Log.w(TAG, "Device session handshake failed", error)
-                failConnection(pending, "DEVICE_SESSION_FAILED", errorText(error))
+                Log.w(TAG, "Device session handshake failed: ${error?.javaClass?.simpleName}")
+                when (error) {
+                    is SetupCodeRequiredException -> failConnection(
+                        pending, "SETUP_CODE_REQUIRED", "This device shows a setup code")
+                    is SetupCodeRejectedException -> failConnection(
+                        pending, "SETUP_CODE_REJECTED", "The setup code was not accepted")
+                    else -> failConnection(pending, "DEVICE_SESSION_FAILED", errorText(error))
+                }
             }
         })
     }

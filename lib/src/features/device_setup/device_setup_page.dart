@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -14,6 +15,7 @@ import '../../generated/device_foundation_v1.dart';
 import 'device_setup_models.dart';
 import 'device_setup_ports.dart';
 import 'owner_domain_directory_verifier.dart';
+import 'setup_code_scanner_page.dart';
 import '../host_setup/failure_sentences.dart';
 import '../host_setup/host_product_session.dart';
 import '../host_setup/local_api_client.dart';
@@ -52,7 +54,12 @@ class DeviceSetupPage extends StatefulWidget {
     this.hostReturnBudget = const Duration(seconds: 90),
     this.hostReturnInterval = const Duration(seconds: 3),
     this.clock = DateTime.now,
+    this.scanSetupCode = scanSetupCodeWithCamera,
   });
+
+  /// Reads the QR code a device shows on its screen while its setup window is
+  /// open. The camera in the app; a fake in tests.
+  final SetupCodeScan scanSetupCode;
 
   /// Where the time comes from, for the wait above. The coordinator's own
   /// notion, so a test can move it rather than wait it out.
@@ -143,6 +150,13 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   bool _hiddenSelected = false;
   String? _connectingNetwork;
 
+  /// The code on the device's screen for the window being set up, scanned or
+  /// typed. Memory only: it is the setup credential and a new window on the
+  /// device draws a new one, so nothing here outlives this page.
+  String? _setupCode;
+  bool _enteringCode = false;
+  final _typedCode = TextEditingController();
+
   bool _refused = false;
   List<DeviceSetupCheckpoint> _pendingSetups = const [];
   String? _activeSetupId;
@@ -190,6 +204,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     _admissionObservation.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _password.dispose();
+    _typedCode.dispose();
     _hiddenSsid.dispose();
     unawaited(widget.transport.close());
     super.dispose();
@@ -253,8 +268,51 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     } while (cursor != null);
   }
 
-  Future<void> _discover() => _run(() async {
+  /// Start from the QR code on the device's screen: it names the device and
+  /// carries the code, so there is nothing to choose.
+  Future<void> _scanCode() async {
+    if (_busy) return;
+    final raw = await widget.scanSetupCode(context);
+    if (raw == null || !mounted) return;
+    final SetupQrPayloadV1 payload;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) throw const FormatException();
+      payload = SetupQrPayloadV1.fromJson(decoded);
+    } on FormatException {
+      setState(() => _error = '这不是 Eidolon 设备的设置码。请扫描设备屏幕上显示的二维码。');
+      return;
+    }
+    if (payload.transport != SetupQrTransportV1.softap) {
+      setState(() => _error = '这台设备通过蓝牙设置，需要更新 App 后再扫码。');
+      return;
+    }
+    await _discover(setupCode: payload.pop);
+    if (!mounted || _step != _Step.choosingDevice) return;
+    final match =
+        _candidates.where((c) => c.transportId == payload.name).firstOrNull;
+    if (match == null) {
+      setState(() => _error =
+          '附近没有找到 ${payload.name}。请确认设备屏幕上的二维码还在显示，然后重新扫描。');
+      return;
+    }
+    await _select(match);
+  }
+
+  /// The eight digits typed from the screen, for a phone that cannot scan.
+  /// The device is then picked from the nearby list.
+  Future<void> _continueWithTypedCode() async {
+    final code = _typedCode.text.trim();
+    if (!RegExp(r'^[0-9]{8}$').hasMatch(code)) {
+      setState(() => _error = '请输入设备屏幕上的 8 位数字。');
+      return;
+    }
+    await _discover(setupCode: code);
+  }
+
+  Future<void> _discover({String? setupCode}) => _run(() async {
         setState(() {
+          _setupCode = setupCode;
           _progress = '正在寻找可以设置的设备';
           _discoveryWarning =
               _candidates.isEmpty ? null : '本次刷新尚未完成，以下为上次发现的设备。';
@@ -300,7 +358,10 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         });
       });
 
-  Future<void> _select(DeviceProvisioningCandidate candidate) => _run(() async {
+  Future<void> _select(DeviceProvisioningCandidate found) => _run(() async {
+        // The code goes with the device for both visits; the second one opens
+        // the same window and needs the same code.
+        final candidate = found.withSetupCode(_setupCode);
         setState(() {
           _candidate = candidate;
           _progress = '正在连接设备并读取信息';
@@ -771,11 +832,51 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           const SizedBox(height: 4),
           const Text('2. 在设备上打开网络设置,进入配网模式。'),
           const SizedBox(height: 4),
-          const Text('3. 设置模式会持续开启，完成配网后自动关闭。'),
+          const Text('3. 设备屏幕会显示二维码和 8 位设置码，每次打开都会换新。'),
           const SizedBox(height: 20),
           FilledButton.icon(
+            key: const Key('scan-setup-code'),
+            onPressed: _busy ? null : _scanCode,
+            icon: const Icon(Icons.qr_code_scanner),
+            label: const Text('扫描设备屏幕上的二维码'),
+          ),
+          const SizedBox(height: 8),
+          if (!_enteringCode)
+            OutlinedButton.icon(
+              key: const Key('enter-setup-code'),
+              onPressed:
+                  _busy ? null : () => setState(() => _enteringCode = true),
+              icon: const Icon(Icons.pin_outlined),
+              label: const Text('输入屏幕上的 8 位数字'),
+            )
+          else ...[
+            TextField(
+              key: const Key('setup-code-field'),
+              controller: _typedCode,
+              enabled: !_busy,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 8,
+              enableSuggestions: false,
+              autocorrect: false,
+              textInputAction: TextInputAction.go,
+              onSubmitted: (_) => _continueWithTypedCode(),
+              decoration: const InputDecoration(
+                labelText: '设备屏幕上的 8 位数字',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            FilledButton(
+              key: const Key('setup-code-continue'),
+              onPressed: _busy ? null : _continueWithTypedCode,
+              child: const Text('查找这台设备'),
+            ),
+          ],
+          const SizedBox(height: 16),
+          const Text('屏幕上没有设置码的开发设备，或旧固件：'),
+          TextButton.icon(
             key: const Key('discover-devices'),
-            onPressed: _busy ? null : _discover,
+            onPressed: _busy ? null : () => _discover(),
             icon: const Icon(Icons.search),
             label: const Text('查找设备'),
           ),
@@ -819,7 +920,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
               ),
             ),
           TextButton(
-            onPressed: _busy ? null : _discover,
+            onPressed: _busy ? null : () => _discover(setupCode: _setupCode),
             child: const Text('重新查找'),
           ),
         ],
@@ -856,7 +957,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           const SizedBox(height: 8),
           TextButton(
             key: const Key('rescan-devices'),
-            onPressed: _busy ? null : _discover,
+            onPressed: _busy ? null : () => _discover(setupCode: _setupCode),
             child: const Text('重新选择设备'),
           ),
         ],

@@ -42,22 +42,39 @@ internal class ProvisioningSession(
         { action -> handler.post { action() } },
     )
 
-    fun open(username: String, password: String, listener: ResponseListener) {
+    /**
+     * Open the Security 2 session.
+     *
+     * [codeSupplied] says whether [password] is the code on the device's screen
+     * rather than the development passphrase. A device that draws a code says
+     * so in `proto-ver` before any proof is exchanged, so being sent there
+     * without one is reported as that, not as a failed handshake; and a failed
+     * handshake with a code supplied is the code being wrong, which is the one
+     * thing the person can fix.
+     */
+    fun open(username: String, password: String, codeSupplied: Boolean, listener: ResponseListener) {
         val reply = exchange.begin(listener) ?: return
         // Match the vendor probe: protocomm rejects a zero-length HTTP body.
         transport.sendConfigData("proto-ver", "ESP".toByteArray(Charsets.UTF_8), object : ResponseListener {
             override fun onSuccess(bytes: ByteArray?) {
                 if (closed) return
                 try {
-                    val info = JSONObject(String(bytes ?: byteArrayOf(), Charsets.UTF_8)).getJSONObject("prov")
+                    val version = JSONObject(String(bytes ?: byteArrayOf(), Charsets.UTF_8))
+                    val info = version.getJSONObject("prov")
                     check(info.getInt("sec_ver") == 2) { "Device must support Security 2" }
                     val patch = info.optInt("sec_patch_ver", 0)
                     check(patch in 0..1) { "Unsupported Security 2 patch" }
+                    if (!codeSupplied && EidolonCapabilities.of(version).contains(CAPABILITY_SETUP_CODE)) {
+                        reply.onFailure(SetupCodeRequiredException())
+                        return
+                    }
                     val protocol = Session(transport, Security2(username, password, patch))
                     session = protocol
                     protocol.init(null, object : Session.SessionListener {
                         override fun OnSessionEstablished() { if (!closed) reply.onSuccess(byteArrayOf()) }
-                        override fun OnSessionEstablishFailed(e: Exception?) { reply.onFailure(e) }
+                        override fun OnSessionEstablishFailed(e: Exception?) {
+                            reply.onFailure(if (codeSupplied && !closed) SetupCodeRejectedException(e) else e)
+                        }
                     })
                 } catch (e: Exception) { reply.onFailure(e) }
             }

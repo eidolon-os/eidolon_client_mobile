@@ -62,6 +62,7 @@ class DeviceProvisioningCandidate {
     this.signalStrength,
     this.cached = false,
     this.accessPoint,
+    this.setupCode,
   });
 
   final String transportId;
@@ -81,6 +82,27 @@ class DeviceProvisioningCandidate {
   /// second visit as the one the person already allowed, instead of asking
   /// them again right after they typed the Wi-Fi password.
   final String? accessPoint;
+
+  /// The eight digits the device is showing on its screen for this setup
+  /// window, scanned from its QR code or typed. Null for a device set up
+  /// through the development entry, which still uses the shared passphrase.
+  ///
+  /// It is the setup credential, so it lives in memory for this page only: it
+  /// is never logged, never written to a checkpoint, and a new window on the
+  /// device draws a new one.
+  final String? setupCode;
+
+  DeviceProvisioningCandidate withSetupCode(String? code) =>
+      DeviceProvisioningCandidate(
+        transportId: transportId,
+        displayName: displayName,
+        transportKind: transportKind,
+        trust: trust,
+        signalStrength: signalStrength,
+        cached: cached,
+        accessPoint: accessPoint,
+        setupCode: code,
+      );
 }
 
 /// What a device said about itself, plus the one thing it could not say.

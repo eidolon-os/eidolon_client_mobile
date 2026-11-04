@@ -168,6 +168,62 @@ void main() {
         isNot(previous));
   });
 
+  test('the code on the device screen and the transport reach native',
+      () async {
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      if (call.method == 'openProvisioningSession') return descriptorJson();
+      return null;
+    });
+    final transport = build();
+    await transport.open(const DeviceProvisioningCandidate(
+      transportId: 'eidolon-test',
+      displayName: 'test',
+      transportKind: 'softap',
+      trust: SetupDescriptorTrustV1.developmentTofu,
+      setupCode: '40718256',
+    ));
+    expect(calls.first.arguments, containsPair('setupCode', '40718256'));
+    expect(calls.first.arguments, containsPair('transportKind', 'softap'));
+    await transport.close();
+
+    calls.clear();
+    await transport.open(const DeviceProvisioningCandidate(
+      transportId: 'eidolon-test',
+      displayName: 'test',
+      transportKind: 'softap',
+      trust: SetupDescriptorTrustV1.developmentTofu,
+    ));
+    // The development entry sends no code at all, never an empty one.
+    expect((calls.first.arguments as Map).containsKey('setupCode'), isFalse);
+    await transport.close();
+  });
+
+  for (final (code, words) in [
+    ('SETUP_CODE_REJECTED', '重新扫描设备屏幕上的二维码'),
+    ('SETUP_CODE_REQUIRED', '屏幕上有设置码'),
+  ]) {
+    test('$code is said in words a person can act on', () async {
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'openProvisioningSession') {
+          throw PlatformException(code: code);
+        }
+        return null;
+      });
+      await expectLater(
+          build().open(const DeviceProvisioningCandidate(
+            transportId: 'eidolon-test',
+            displayName: 'test',
+            transportKind: 'softap',
+            trust: SetupDescriptorTrustV1.developmentTofu,
+            setupCode: '40718256',
+          )),
+          throwsA(isA<DeviceProvisioningTransportException>().having(
+              (error) => error.message, 'message', contains(words))));
+    });
+  }
+
   test('invalid descriptor releases the native visit immediately', () async {
     final calls = <MethodCall>[];
     messenger.setMockMethodCallHandler(channel, (call) async {
