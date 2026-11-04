@@ -557,7 +557,8 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
   MemoryLibraryScreen _memoryLibrary(
           {String? initialCompanionId, String? personId, String? personName}) =>
       MemoryLibraryScreen(
-        title: personName == null ? '默认记忆' : '$personName 的记忆',
+        title: personName == null ? '家里的记忆' : '$personName 的记忆',
+        household: personId == null,
         initialCompanionId: initialCompanionId,
         load: () => _controller.memoryLibrary(personId: personId),
         loadForCompanion: (companionId) => _controller.memoryLibrary(
@@ -754,6 +755,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                     builder: (_) => _memoryLibrary(
                         personId: person.personId,
                         personName: personManagementName(person)))),
+            openHouseholdMemory: _openMemoryLibrary,
             call: _controller.personRequest,
             voiceprints: _controller.voiceprintRequest,
           ),
@@ -1425,7 +1427,7 @@ class _WorkspaceCard extends StatelessWidget {
             // The Owner's, not any one Eidolon's: one Realm per person, and
             // every Eidolon reads and writes it through an audience. This row
             // used to say 它的记忆 and describe whichever one answered.
-            label: '你的记忆',
+            label: '家里的记忆',
             // Reachable, not "running". Whether a memory can be opened is
             // about this Host's memory service; the old label read
             // 「有没有默认伙伴」 and printed 运行中, which was a guess about a

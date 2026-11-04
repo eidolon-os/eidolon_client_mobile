@@ -271,7 +271,7 @@ void main() {
           ),
         );
 
-        expect(find.text('默认记忆'), findsOneWidget);
+        expect(find.text('家里的记忆'), findsOneWidget);
         expect(find.text('浏览和理解'), findsOneWidget);
         expect(find.text('搜索记忆'), findsOneWidget);
         expect(find.text('记忆时间线'), findsOneWidget);
@@ -427,7 +427,7 @@ void main() {
 
         expect(asked, ['companion-b']);
         expect(find.text('阿力能想起的'), findsOneWidget);
-        expect(find.text('默认记忆'), findsOneWidget);
+        expect(find.text('家里的记忆'), findsOneWidget);
       },
     );
 

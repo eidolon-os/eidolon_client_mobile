@@ -189,7 +189,7 @@ Widget ownerSheetBody(CockpitSnapshot snapshot) {
           ('身体', '${devices.length} 台 · $online 在线'),
           ('待认领', '${snapshot.unboundDevices.length} 台'),
           ('记忆空间', '${snapshot.memory.realmsTotal} 个'),
-          ('默认记忆', snapshot.memory.defaultRealmId.isEmpty ? '未确认' : '已设置'),
+          ('家里的记忆', snapshot.memory.defaultRealmId.isEmpty ? '未确认' : '已设置'),
           ('个人记忆空间', '${snapshot.memory.personalRealmIds.length} 个'),
           (
             '最近一轮使用',
@@ -197,7 +197,7 @@ Widget ownerSheetBody(CockpitSnapshot snapshot) {
                 ? '无个人记忆使用证据'
                 : snapshot.memory.activeRealmId ==
                         snapshot.memory.defaultRealmId
-                    ? '默认记忆'
+                    ? '家里的记忆'
                     : '个人记忆'
           ),
           (

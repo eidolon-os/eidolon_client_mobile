@@ -17,8 +17,11 @@ class PersonsPage extends StatefulWidget {
       {super.key,
       required this.call,
       required this.voiceprints,
-      this.openMemory});
+      this.openMemory,
+      this.openHouseholdMemory});
   final Future<void> Function(PersonView person)? openMemory;
+  /// The household layer: what anyone said about the home, for everyone.
+  final Future<void> Function()? openHouseholdMemory;
   final VoiceprintCall call;
   final VoiceprintCall voiceprints;
   @override
@@ -308,7 +311,7 @@ class _PersonsPageState extends State<PersonsPage> {
         builder: (context) => AlertDialog(
                 title: Text('永久删除${personManagementName(p)}？'),
                 content: const Text(
-                    '将永久移除这份人物档案、声纹、人脸资料、个人记忆及待处理记忆任务。完成后不再显示，无法恢复。其他用户和默认记忆不受影响；已有历史对话和独立备份不会随之删除。'),
+                    '将永久移除这份人物档案、声纹、人脸资料、个人记忆及待处理记忆任务。完成后不再显示，无法恢复。其他用户和家里的记忆不受影响；已有历史对话和独立备份不会随之删除。'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context, false),
@@ -408,6 +411,7 @@ class _PersonsPageState extends State<PersonsPage> {
     var save = state.policy.candidate?.saveAllowed ?? false;
     var recall = state.policy.candidate?.sessionRecallAllowed ?? false;
     var prepare = state.policy.prepareOnPromotion ?? false;
+    var household = state.policy.householdMemory ?? true;
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -437,6 +441,13 @@ class _PersonsPageState extends State<PersonsPage> {
                 onChanged: (value) => update(() => prepare = value),
               ),
               const Text('准备仍需后台完成。关闭自动准备只影响后续晋升，已启用的个人记忆不会因此关闭。'),
+              SwitchListTile(
+                key: const ValueKey('defaults-household'),
+                title: const Text('家里的记忆'),
+                subtitle: const Text('家里的事，谁说的都记下，谁问都能用；个人的事仍只记在本人名下。关闭后不再记，也不再用，已记下的保留'),
+                value: household,
+                onChanged: (value) => update(() => household = value),
+              ),
             ]),
           ),
           actions: [
@@ -460,6 +471,7 @@ class _PersonsPageState extends State<PersonsPage> {
               candidate: ProvisionalMemoryPolicy(
                   saveAllowed: save, sessionRecallAllowed: recall),
               prepareOnPromotion: prepare,
+              householdMemory: household,
             ).toJson());
       } finally {
         await _load();
@@ -744,6 +756,13 @@ class _PersonsPageState extends State<PersonsPage> {
                 ],
               ),
             ),
+            if (widget.openHouseholdMemory != null)
+              ListTile(
+                  key: const ValueKey('household-memory'),
+                  leading: const Icon(Icons.home_outlined),
+                  title: const Text('家里的记忆'),
+                  subtitle: const Text('家里每个人说过的家里的事，谁问都能用；也能看到还没认领的旧记忆'),
+                  onTap: () => widget.openHouseholdMemory!()),
             if (_busy) ...[
               const SizedBox(height: Neon.s4),
               const LinearProgressIndicator(),

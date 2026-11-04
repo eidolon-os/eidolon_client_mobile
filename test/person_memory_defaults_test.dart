@@ -3,6 +3,57 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:eidolon_client_mobile/src/features/host_setup/persons_page.dart';
 
 void main() {
+  testWidgets('household memory stays as the Owner set it', (tester) async {
+    final writes = <Map<String, dynamic>>[];
+    await tester.pumpWidget(MaterialApp(
+        home: PersonsPage(
+      call: ({method = 'GET', suffix = '', body}) async {
+        if (suffix.startsWith('/memory-policy')) {
+          if (method == 'PUT') writes.add(body!);
+          return {
+            'owner_id': 'o',
+            'owner_revision': 3,
+            'policy': {'prepare_on_promotion': false, 'household_memory': false},
+          };
+        }
+        return {'persons': []};
+      },
+      voiceprints: ({method = 'GET', suffix = '', body}) async =>
+          {'profiles': []},
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('自动记忆策略'));
+    await tester.pumpAndSettle();
+    final household = find.byKey(const ValueKey('defaults-household'));
+    await tester.ensureVisible(household);
+    expect(tester.widget<SwitchListTile>(household).value, isFalse);
+    // Saving another choice must not quietly turn the household layer back on.
+    final prepare = find.byKey(const ValueKey('defaults-prepare'));
+    await tester.ensureVisible(prepare);
+    await tester.tap(prepare);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存策略'));
+    await tester.pumpAndSettle();
+    expect(writes.single['household_memory'], isFalse);
+    expect(writes.single['prepare_on_promotion'], isTrue);
+  });
+
+  testWidgets('the persons page opens the household memory', (tester) async {
+    var opened = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: PersonsPage(
+      call: ({method = 'GET', suffix = '', body}) async => {'persons': []},
+      voiceprints: ({method = 'GET', suffix = '', body}) async =>
+          {'profiles': []},
+      openHouseholdMemory: () async => opened++,
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('household-memory')));
+    await tester.pumpAndSettle();
+    expect(opened, 1);
+    expect(find.text('家里的记忆'), findsOneWidget);
+  });
+
   for (final outcome in ['save', 'cancel', 'conflict']) {
     testWidgets('Owner defaults remain independent: $outcome', (tester) async {
       final calls = <String>[];
@@ -60,6 +111,7 @@ void main() {
         expect(writes.single, {
           'candidate': {'save_allowed': true, 'session_recall_allowed': false},
           'prepare_on_promotion': true,
+          'household_memory': true,
         });
         expect(calls, contains('PUT /memory-policy?expected_revision=7'));
         expect(calls.where((call) => call == 'GET ').length, 2);

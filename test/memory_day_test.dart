@@ -79,6 +79,31 @@ Widget _page(MemoryDayView view, {VoidCallback? onLoadMore}) => MaterialApp(
     );
 
 void main() {
+  testWidgets('in the household memory, what is not yet household is unclaimed',
+      (tester) async {
+    final household = entryWire('chores', '2026-08-24T08:00:00Z', preview: '家里周二收垃圾')
+      ..['layer'] = 'household';
+    final older = entryWire('older', '2026-08-24T07:00:00Z', preview: '用户喜欢绿茶');
+    final entries = [
+      MemoryEntryView.fromJson(household),
+      MemoryEntryView.fromJson(older),
+    ];
+    for (final isHousehold in [true, false]) {
+      await tester.pumpWidget(MaterialApp(
+        home: MemoryDayPage(
+          entries: entries,
+          undatedCount: 0,
+          truncated: false,
+          today: _today,
+          household: isHousehold,
+        ),
+      ));
+      await tester.pumpAndSettle();
+      // A person's own memory has no unclaimed entries.
+      expect(find.textContaining('待认领'), isHousehold ? findsOneWidget : findsNothing);
+    }
+  });
+
   testWidgets('a memory opens its original evidence and distinct known dates',
       (tester) async {
     final row =

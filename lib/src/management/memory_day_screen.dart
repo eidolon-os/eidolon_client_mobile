@@ -15,8 +15,13 @@ import 'memory_day_page.dart';
 /// the person's own time, which is the part of "today" worth keeping.
 class MemoryDayScreen extends StatefulWidget {
   const MemoryDayScreen(
-      {super.key, required this.load, this.now, this.scopeLabel});
+      {super.key,
+      required this.load,
+      this.now,
+      this.scopeLabel,
+      this.household = false});
   final String? scopeLabel;
+  final bool household;
 
   /// Reads one page. [cursor] is the previous page's `nextCursor`, or null for
   /// the newest page.
@@ -104,6 +109,7 @@ class _MemoryDayScreenState extends State<MemoryDayScreen> {
       return MemoryDayPage(
         entries: _entries,
         scopeLabel: widget.scopeLabel,
+        household: widget.household,
         undatedCount: last.undatedCount,
         truncated: last.truncated,
         today: (widget.now ?? DateTime.now)(),

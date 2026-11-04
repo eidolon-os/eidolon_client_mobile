@@ -15,7 +15,7 @@ class MemoryLibraryPage extends StatelessWidget {
   const MemoryLibraryPage({
     super.key,
     required this.library,
-    this.title = "默认记忆",
+    this.title = "家里的记忆",
     this.onOpenRoom,
     this.onForget,
     this.onOpenToday,

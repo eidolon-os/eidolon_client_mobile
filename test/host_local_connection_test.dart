@@ -1763,7 +1763,7 @@ void main() {
     // reading it through an audience. It used to be labelled 它的记忆 and
     // describe whichever Companion answered.
     expect(find.text('Memory Workspace'), findsNothing);
-    expect(find.text('你的记忆'), findsOneWidget);
+    expect(find.text('家里的记忆'), findsOneWidget);
     expect(find.text('它的记忆'), findsNothing);
     expect(find.textContaining('realm_primary'), findsNothing);
     // The genome version used to be printed here. It said nothing to the
