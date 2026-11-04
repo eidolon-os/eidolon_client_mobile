@@ -181,10 +181,12 @@ void main() {
     expect(find.byKey(const Key('device-output-speech')), findsOneWidget);
     expect(find.byKey(const Key('device-output-expression')), findsOneWidget);
     expect(find.byKey(const Key('device-output-dialogue_text')), findsOneWidget);
-    // Never declared, so never offered: allowing it would be a decision
-    // nothing could carry out.
-    expect(find.byKey(const Key('device-output-motion')), findsNothing);
-    expect(find.byKey(const Key('device-output-audio_cue')), findsNothing);
+    // The complete catalog is visible, but unimplemented outputs cannot be granted.
+    for (final name in ['motion', 'audio_cue']) {
+      final tile = tester.widget<SwitchListTile>(find.byKey(Key('device-output-$name')));
+      expect(tile.onChanged, isNull);
+      expect(tile.value, isFalse);
+    }
   });
 
   testWidgets('the decision carries the revision the screen was showing',

@@ -1526,12 +1526,15 @@ class _OutputsPickerState extends State<_OutputsPicker> {
               value: _microphone,
               onChanged: (value) => setState(() => _microphone = value),
             ),
-          for (final name in _declared)
+          for (final name in _labels.keys)
             SwitchListTile(
               key: Key('device-output-$name'),
               title: Text(_labels[name]!),
+              subtitle: _declared.contains(name)
+                  ? null : const Text('当前客户端未提供此能力'),
               value: _chosen[name] ?? false,
-              onChanged: (value) => setState(() => _chosen[name] = value),
+              onChanged: _declared.contains(name)
+                  ? (value) => setState(() => _chosen[name] = value) : null,
             ),
           const SizedBox(height: 4),
           // Nothing arrives switched on: a pre-ticked box is the system
