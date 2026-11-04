@@ -26,6 +26,8 @@ internal class ProvisioningSession(
     private val closed: Boolean get() = exchange.closed
     private var session: Session? = null
     private var scan: ProvisioningScan? = null
+    private var framesInUse = false
+    private var nextTransferId = 0
     private val transport = ProvisioningHttpTransport(
         OkHttpClient.Builder().socketFactory(network.socketFactory)
             .eventListenerFactory { object : EventListener() {
@@ -64,10 +66,16 @@ internal class ProvisioningSession(
                     check(info.getInt("sec_ver") == 2) { "Device must support Security 2" }
                     val patch = info.optInt("sec_patch_ver", 0)
                     check(patch in 0..1) { "Unsupported Security 2 patch" }
-                    if (!codeSupplied && EidolonCapabilities.of(version).contains(CAPABILITY_SETUP_CODE)) {
+                    val capabilities = EidolonCapabilities.of(version)
+                    if (!codeSupplied && capabilities.contains(CAPABILITY_SETUP_CODE)) {
                         reply.onFailure(SetupCodeRequiredException())
                         return
                     }
+                    // Frames whenever the device offers them, on any transport:
+                    // an ESP32 that declares frame-v1 takes nothing else on the
+                    // Eidolon endpoints. A device that does not (Reachy) gets
+                    // whole requests, as it always has.
+                    framesInUse = capabilities.contains(CAPABILITY_FRAMES)
                     val protocol = Session(transport, Security2(username, password, patch))
                     session = protocol
                     protocol.init(null, object : Session.SessionListener {
@@ -83,6 +91,35 @@ internal class ProvisioningSession(
     }
 
     fun sendDataToCustomEndPoint(path: String, data: ByteArray, listener: ResponseListener) {
+        if (!framesInUse || path !in ProvisioningFrameCodec.FRAMED_ENDPOINTS) {
+            sendWhole(path, data, listener)
+            return
+        }
+        nextTransferId = nextTransferId % 0xFFFF + 1
+        FramedEndpointExchange(
+            send = { frame, reply ->
+                sendWhole(path, frame, object : ResponseListener {
+                    override fun onSuccess(bytes: ByteArray?) = reply(bytes, null)
+                    override fun onFailure(e: Exception?) = reply(null, e ?: IOException("Frame exchange failed"))
+                })
+            },
+            schedule = { delay, action -> handler.postDelayed({ if (!closed) action() }, delay) },
+            now = { SystemClock.elapsedRealtime() },
+            transferId = nextTransferId,
+        ).run(data) { bytes, error ->
+            if (error == null && bytes != null) {
+                listener.onSuccess(bytes)
+            } else {
+                // A refused or lost frame ends the visit exactly as a failed
+                // whole request does: the owner hears it and reconnects.
+                val failure = error ?: IOException("Frame exchange failed")
+                listener.onFailure(failure)
+                if (!closed) terminate(failure, notifyOwner = true)
+            }
+        }
+    }
+
+    private fun sendWhole(path: String, data: ByteArray, listener: ResponseListener) {
         val protocol = session
         if (closed || protocol == null || !protocol.isEstablished) {
             listener.onFailure(IOException("Provisioning session closed"))
