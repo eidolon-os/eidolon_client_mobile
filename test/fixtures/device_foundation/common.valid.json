@@ -330,6 +330,32 @@
       }
     },
     {
+      "case_id": "DF-SETUP-QR-PAYLOAD-BLE-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "SetupQrPayload",
+      "value": {
+        "ver": "v1",
+        "name": "eidolon-box3-a1b2c3",
+        "username": "eidolon-setup",
+        "pop": "40718256",
+        "transport": "ble",
+        "security": 2
+      }
+    },
+    {
+      "case_id": "DF-SETUP-QR-PAYLOAD-SOFTAP-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "SetupQrPayload",
+      "value": {
+        "ver": "v1",
+        "name": "eidolon-m5stack-stackchan-a1b2c3",
+        "username": "eidolon-setup",
+        "pop": "40718256",
+        "transport": "softap",
+        "security": 2
+      }
+    },
+    {
       "case_id": "DF-MANIFEST-BOX3-DOCUMENT-VALID",
       "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
       "definition": "DeviceCapabilityManifest",

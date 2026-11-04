@@ -687,6 +687,90 @@ class SetupDescriptorV1 {
   };
 }
 
+/// Which radio a device is listening on for the setup window its QR code names.
+enum SetupQrTransportV1 {
+  ble('ble'),
+  softap('softap');
+
+  const SetupQrTransportV1(this.wireValue);
+  final String wireValue;
+}
+
+/// What the QR code on a device's own screen says while a setup window is open.
+///
+/// `pop` is the per-window SRP password the device drew and shows as eight
+/// digits. The keys are Espressif's; any other key is refused rather than
+/// ignored, as everywhere else in this contract.
+class SetupQrPayloadV1 {
+  const SetupQrPayloadV1({
+    required this.name,
+    required this.pop,
+    required this.transport,
+  });
+
+  static const String version = 'v1';
+  static const String username = 'eidolon-setup';
+  static const int security = 2;
+  static const int bleNameMaxBytes = 29;
+
+  static const Set<String> fields = {
+    'name',
+    'pop',
+    'security',
+    'transport',
+    'username',
+    'ver',
+  };
+
+  /// The name the device advertises: its BLE device name or its SoftAP SSID.
+  final String name;
+
+  /// The eight-digit setup code. Never logged and never persisted.
+  final String pop;
+  final SetupQrTransportV1 transport;
+
+  factory SetupQrPayloadV1.fromJson(Map<String, dynamic> value) {
+    if (!value.keys.toSet().containsAll(fields) ||
+        !fields.containsAll(value.keys) ||
+        value['ver'] != version ||
+        value['username'] != username ||
+        value['security'] is! int ||
+        value['security'] != security) {
+      throw const FormatException('Invalid setup QR payload envelope');
+    }
+    final name = value['name'];
+    if (name is! String ||
+        name.length < 9 ||
+        name.length > 32 ||
+        !RegExp(r'^eidolon-[a-z0-9][a-z0-9.-]*$').hasMatch(name)) {
+      throw const FormatException('Invalid setup QR device name');
+    }
+    final pop = value['pop'];
+    if (pop is! String || !RegExp(r'^[0-9]{8}$').hasMatch(pop)) {
+      throw const FormatException('Invalid setup code');
+    }
+    SetupQrTransportV1? transport;
+    for (final candidate in SetupQrTransportV1.values) {
+      if (candidate.wireValue == value['transport']) transport = candidate;
+    }
+    if (transport == null) {
+      throw const FormatException('Unknown setup transport');
+    }
+    // The name pattern is ASCII, so its length is its byte length.
+    if (transport == SetupQrTransportV1.ble && name.length > bleNameMaxBytes) {
+      throw const FormatException('Setup QR BLE name does not fit on air');
+    }
+    return SetupQrPayloadV1(name: name, pop: pop, transport: transport);
+  }
+
+  /// The exact bytes a device encodes into its QR code: sorted keys, no spaces.
+  /// Every value is restricted to characters JSON never escapes.
+  String toCanonicalJson() =>
+      '{"name":"$name","pop":"$pop","security":$security,'
+      '"transport":"${transport.wireValue}","username":"$username",'
+      '"ver":"$version"}';
+}
+
 enum CommissioningStatusStateV1 {
   applyingConfiguration('applying-configuration'),
   committed('committed'),

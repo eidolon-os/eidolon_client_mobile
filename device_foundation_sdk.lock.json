@@ -1,10 +1,10 @@
 {
-  "sdk_commit": "ff8a730c93ab1ad0ff7bdb8c9c5e99f0330eae28",
+  "sdk_commit": "669938f996bba98e5972bcd89f94978a017e2f69",
   "files": [
     {
       "source": "contracts/device_foundation/v1/generated/dart/device_foundation_v1.dart",
       "target": "lib/src/generated/device_foundation_v1.dart",
-      "sha256": "afc83f97514d3e6aef63e95e09e0d4b10b5b8d5bd0d8488f0d7dd9aa4c63d2cb"
+      "sha256": "cb98adf04bd40a54d66f7756f977303558bc8967d6beb4d8bcbbe9e20d74988e"
     },
     {
       "source": "contracts/device_foundation/v1/examples/valid/admission-consumer-surface.json",
@@ -69,7 +69,7 @@
     {
       "source": "contracts/device_foundation/v1/examples/valid/common.json",
       "target": "test/fixtures/device_foundation/common.valid.json",
-      "sha256": "da3f6e78f50e874d091656c59aa67e87c58d9c09ac4acfdf5f624df9b98e8c54"
+      "sha256": "bc843ed1e973d3272fbdff9d924a28cf2fe39aa4bdc86b1ce71b62c9c6f456df"
     },
     {
       "source": "contracts/device_foundation/v1/golden/claim-grant-collection-proof.json",
@@ -100,6 +100,26 @@
       "source": "contracts/device_foundation/v1/golden/device-control-manifest-assertion-proof.json",
       "target": "test/fixtures/device_foundation/device-control-manifest-assertion-proof.json",
       "sha256": "6ce206c815a3c2a32d45fb708ec4d5aaa542dcd6b32650a3ef92a6ea26b7ae53"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/setup-qr-payload.json",
+      "target": "test/fixtures/device_foundation/setup-qr-payload.json",
+      "sha256": "9da0934602d36123ec9f6f44c22ba0d20cf1da3eeeac4b93a5bb138a92de8764"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/setup-code-verifier.json",
+      "target": "test/fixtures/device_foundation/setup-code-verifier.json",
+      "sha256": "fe4cf7f6d7d13f365eb271f7afe7fc8ea7e97e52e83e3f233f8603cdfa8403dc"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/protocomm-endpoint-chunking.json",
+      "target": "test/fixtures/device_foundation/protocomm-endpoint-chunking.json",
+      "sha256": "c77625044c7ac5b320797628206f15b3d919516b57992a4d262211180c80b029"
+    },
+    {
+      "source": "contracts/device_foundation/v1/golden/ble-provisioning-transport.json",
+      "target": "test/fixtures/device_foundation/ble-provisioning-transport.json",
+      "sha256": "0620e13bd1695443d92b0f6c5f208c2f162f69a00214169622b75dfd7d18c9c3"
     }
   ]
 }
