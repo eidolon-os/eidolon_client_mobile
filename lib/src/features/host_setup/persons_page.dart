@@ -346,35 +346,6 @@ class _PersonsPageState extends State<PersonsPage> {
         await _load();
       });
 
-  Future<void> _retire(PersonView p) async {
-    final yes = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-              title: const Text('退出自动匹配？'),
-              content:
-                  const Text('停止自动匹配这个候选。人物资料、声纹、录音和已有数据保留；改名或启用用户不会自动恢复匹配。'),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('取消')),
-                FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('退出匹配'))
-              ],
-            ));
-    if (yes != true || !mounted) return;
-    await _act(() async {
-      try {
-        await widget.call(
-            method: 'POST',
-            suffix:
-                '/${Uri.encodeComponent(p.personId)}/recognition/retire?expected_revision=${p.revision}');
-      } finally {
-        await _load();
-      }
-    });
-  }
-
   Future<void> _archive(PersonView p) async {
     final yes = await showDialog<bool>(
         context: context,
@@ -408,39 +379,14 @@ class _PersonsPageState extends State<PersonsPage> {
     });
     if (!mounted || loaded == null) return;
     final state = loaded!;
-    var save = state.policy.candidate?.saveAllowed ?? false;
-    var recall = state.policy.candidate?.sessionRecallAllowed ?? false;
-    var prepare = state.policy.prepareOnPromotion ?? false;
     var household = state.policy.householdMemory ?? true;
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
-          title: const Text('自动记忆策略'),
+          title: const Text('记忆设置'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Text('候选许可仅影响之后新建的候选，不更改已有用户。要停止已有用户的记忆，请单独暂停。'),
-              SwitchListTile(
-                key: const ValueKey('defaults-save'),
-                title: const Text('新候选允许保存暂定内容'),
-                value: save,
-                onChanged: (value) => update(() => save = value),
-              ),
-              SwitchListTile(
-                key: const ValueKey('defaults-recall'),
-                title: const Text('新候选允许同会话读取'),
-                subtitle: const Text('每轮仍须再次确认是同一人，不开放跨会话读取'),
-                value: recall,
-                onChanged: (value) => update(() => recall = value),
-              ),
-              SwitchListTile(
-                key: const ValueKey('defaults-prepare'),
-                title: const Text('晋升后自动准备个人记忆'),
-                subtitle: const Text('适用于新策略下创建的候选；不会恢复人工暂停，也不会确认旧暂定内容'),
-                value: prepare,
-                onChanged: (value) => update(() => prepare = value),
-              ),
-              const Text('准备仍需后台完成。关闭自动准备只影响后续晋升，已启用的个人记忆不会因此关闭。'),
               SwitchListTile(
                 key: const ValueKey('defaults-household'),
                 title: const Text('家里的记忆'),
@@ -456,7 +402,7 @@ class _PersonsPageState extends State<PersonsPage> {
                 child: const Text('取消')),
             FilledButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('保存策略')),
+                child: const Text('保存')),
           ],
         ),
       ),
@@ -467,82 +413,13 @@ class _PersonsPageState extends State<PersonsPage> {
         await widget.call(
             method: 'PUT',
             suffix: '/memory-policy?expected_revision=${state.ownerRevision}',
+            // Only the household layer is set here; the rest is the next
+            // phase's (unknown voices) and goes back as it came.
             body: PersonMemoryDefaults(
-              candidate: ProvisionalMemoryPolicy(
-                  saveAllowed: save, sessionRecallAllowed: recall),
-              prepareOnPromotion: prepare,
+              candidate: state.policy.candidate,
+              prepareOnPromotion: state.policy.prepareOnPromotion,
               householdMemory: household,
             ).toJson());
-      } finally {
-        await _load();
-      }
-    });
-  }
-
-  Future<void> _provisionalPolicy(PersonView person) async {
-    final path =
-        '/${Uri.encodeComponent(person.personId)}/provisional-memory/policy';
-    ProvisionalMemoryPolicyState? loaded;
-    await _act(() async {
-      final result = ProvisionalMemoryPolicyState.fromJson(
-          await widget.call(suffix: path));
-      if (result.personId != person.personId ||
-          result.ownerId != person.ownerId) {
-        throw StateError('Policy identity mismatch');
-      }
-      loaded = result;
-    });
-    if (!mounted || loaded == null) return;
-    final state = loaded!;
-    var save = state.policy.saveAllowed ?? false;
-    var recall = state.policy.sessionRecallAllowed ?? false;
-    final accepted = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-          builder: (context, update) => AlertDialog(
-                title: Text('${person.displayName}的暂定数据许可'),
-                content: SingleChildScrollView(
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  const Text(
-                      '保存和读取分别控制。读取仅限同一会话再次确认是此人时；身份晋升不会自动确认旧内容。设置许可不代表数据已经保存或可读取。'),
-                  SwitchListTile(
-                    key: const ValueKey('provisional-save'),
-                    title: const Text('允许保存暂定内容'),
-                    subtitle: const Text('关闭后停止新增保存，保留已有数据'),
-                    value: save,
-                    onChanged: person.status == 'active' || save
-                        ? (value) => update(() => save = value)
-                        : null,
-                  ),
-                  SwitchListTile(
-                    key: const ValueKey('provisional-recall'),
-                    title: const Text('允许同会话读取'),
-                    subtitle: const Text('不开放跨会话个人记忆'),
-                    value: recall,
-                    onChanged: person.status == 'active' || recall
-                        ? (value) => update(() => recall = value)
-                        : null,
-                  ),
-                ])),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('取消')),
-                  FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('保存许可')),
-                ],
-              )),
-    );
-    if (accepted != true || !mounted) return;
-    await _act(() async {
-      try {
-        await widget.call(
-            method: 'PUT',
-            suffix: '$path?expected_revision=${state.personRevision}',
-            body: ProvisionalMemoryPolicy(
-                    saveAllowed: save, sessionRecallAllowed: recall)
-                .toJson());
       } finally {
         await _load();
       }
@@ -578,7 +455,7 @@ class _PersonsPageState extends State<PersonsPage> {
   }
 
   String _memoryStatus(PersonView person) {
-    if (person.maturity == 'candidate') return '候选身份 · 暂定数据按独立许可保存和读取';
+    if (person.maturity == 'candidate') return '身份尚未确认 · 记忆不可用';
     final state = _memoryStates[person.personId]?['state'];
     if (state == null) return '状态暂不可用，请刷新';
     if (person.status != 'active') return '用户已停用 · 记忆不可用';
@@ -633,7 +510,7 @@ class _PersonsPageState extends State<PersonsPage> {
                               color: Neon.ink)),
                       const SizedBox(height: Neon.s1),
                       Text(
-                        '${person.maturity == 'candidate' ? '候选' : '正式'} · ${person.isNamed == false ? '匿名' : '已命名'} · ${person.recognitionState == 'retained' ? '已退出匹配池' : person.status == 'active' ? '使用中' : '已停用 · 不参与辅助识别'}',
+                        person.status == 'active' ? '使用中' : '已停用 · 不参与辅助识别',
                         style: const TextStyle(
                             fontSize: 12.5, height: 1.5, color: Neon.inkDim),
                       ),
@@ -645,17 +522,9 @@ class _PersonsPageState extends State<PersonsPage> {
                   enabled: !_busy,
                   onSelected: (action) {
                     if (action == 'status') _status(person);
-                    if (action == 'provisional') _provisionalPolicy(person);
-                    if (action == 'retire') _retire(person);
                     if (action == 'archive') _archive(person);
                   },
                   itemBuilder: (_) => [
-                    const PopupMenuItem(
-                        value: 'provisional', child: Text('暂定数据许可')),
-                    if (person.maturity == 'candidate' &&
-                        person.recognitionState != 'retained')
-                      const PopupMenuItem(
-                          value: 'retire', child: Text('退出匹配池（保留数据）')),
                     PopupMenuItem(
                         value: 'status',
                         child: Text(person.status == 'active' ? '停用' : '启用')),
@@ -726,7 +595,7 @@ class _PersonsPageState extends State<PersonsPage> {
           actions: [
             IconButton(
               onPressed: _busy ? null : _memoryDefaults,
-              tooltip: '自动记忆策略',
+              tooltip: '记忆设置',
               icon: const Icon(Icons.tune),
             ),
             IconButton(
@@ -750,7 +619,7 @@ class _PersonsPageState extends State<PersonsPage> {
                   ),
                   SizedBox(height: Neon.s3),
                   Text(
-                      '手动创建的用户默认开启个人记忆，可随时暂停。自动发现的候选使用自动记忆策略；每轮确认身份后才使用对应记忆，未识别时仍可正常对话。',
+                      '手动创建的用户默认开启个人记忆，可随时暂停。每轮确认身份后才使用对应记忆，未识别时仍可正常对话。',
                       style: TextStyle(
                           fontSize: 14, height: 1.6, color: Neon.inkDim)),
                 ],

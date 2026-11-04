@@ -13,7 +13,11 @@ void main() {
           return {
             'owner_id': 'o',
             'owner_revision': 3,
-            'policy': {'prepare_on_promotion': false, 'household_memory': false},
+            'policy': {
+              'candidate': {'save_allowed': true, 'session_recall_allowed': false},
+              'prepare_on_promotion': true,
+              'household_memory': false,
+            },
           };
         }
         return {'persons': []};
@@ -22,20 +26,20 @@ void main() {
           {'profiles': []},
     )));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('自动记忆策略'));
+    await tester.tap(find.byTooltip('记忆设置'));
     await tester.pumpAndSettle();
     final household = find.byKey(const ValueKey('defaults-household'));
-    await tester.ensureVisible(household);
     expect(tester.widget<SwitchListTile>(household).value, isFalse);
-    // Saving another choice must not quietly turn the household layer back on.
-    final prepare = find.byKey(const ValueKey('defaults-prepare'));
-    await tester.ensureVisible(prepare);
-    await tester.tap(prepare);
+    // Unknown voices are the next phase: nothing here sets them.
+    expect(find.byKey(const ValueKey('defaults-save')), findsNothing);
+    await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('保存策略'));
-    await tester.pumpAndSettle();
-    expect(writes.single['household_memory'], isFalse);
-    expect(writes.single['prepare_on_promotion'], isTrue);
+    // Saving keeps the household layer as the Owner set it, and the rest as it came.
+    expect(writes.single, {
+      'candidate': {'save_allowed': true, 'session_recall_allowed': false},
+      'prepare_on_promotion': true,
+      'household_memory': false,
+    });
   });
 
   testWidgets('the persons page opens the household memory', (tester) async {
@@ -55,7 +59,7 @@ void main() {
   });
 
   for (final outcome in ['save', 'cancel', 'conflict']) {
-    testWidgets('Owner defaults remain independent: $outcome', (tester) async {
+    testWidgets('the household switch saves through the memory policy: $outcome', (tester) async {
       final calls = <String>[];
       final writes = <Map<String, dynamic>>[];
       var revision = 7;
@@ -90,39 +94,32 @@ void main() {
       )));
       await tester.pumpAndSettle();
       expect(calls.where((call) => call.contains('memory-policy')), isEmpty);
-      await tester.tap(find.byTooltip('自动记忆策略'));
+      await tester.tap(find.byTooltip('记忆设置'));
       await tester.pumpAndSettle();
-      final save = find.byKey(const ValueKey('defaults-save'));
-      final recall = find.byKey(const ValueKey('defaults-recall'));
-      final prepare = find.byKey(const ValueKey('defaults-prepare'));
-      expect(tester.widget<SwitchListTile>(save).value, isFalse);
-      expect(tester.widget<SwitchListTile>(recall).value, isTrue);
-      expect(tester.widget<SwitchListTile>(prepare).value, isFalse);
-      for (final control in [save, recall, prepare]) {
-        await tester.ensureVisible(control);
-        await tester.tap(control);
-        await tester.pumpAndSettle();
-      }
-      await tester.tap(find.text(outcome == 'cancel' ? '取消' : '保存策略'));
+      final household = find.byKey(const ValueKey('defaults-household'));
+      expect(tester.widget<SwitchListTile>(household).value, isTrue);
+      await tester.tap(household);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(outcome == 'cancel' ? '取消' : '保存'));
       await tester.pumpAndSettle();
       if (outcome == 'cancel') {
         expect(writes, isEmpty);
       } else {
         expect(writes.single, {
-          'candidate': {'save_allowed': true, 'session_recall_allowed': false},
-          'prepare_on_promotion': true,
-          'household_memory': true,
+          'candidate': {'save_allowed': false, 'session_recall_allowed': true},
+          'prepare_on_promotion': false,
+          'household_memory': false,
         });
         expect(calls, contains('PUT /memory-policy?expected_revision=7'));
         expect(calls.where((call) => call == 'GET ').length, 2);
       }
       if (outcome == 'conflict') {
         expect(find.text('操作未确认，请刷新或重试'), findsOneWidget);
-        await tester.tap(find.byTooltip('自动记忆策略'));
+        await tester.tap(find.byTooltip('记忆设置'));
         await tester.pumpAndSettle();
         // Reopening fetches authority again instead of reusing the rejected revision.
         expect(calls.where((call) => call == 'GET /memory-policy').length, 2);
-        await tester.tap(find.text('保存策略'));
+        await tester.tap(find.text('保存'));
         await tester.pumpAndSettle();
         expect(calls, contains('PUT /memory-policy?expected_revision=8'));
       }
