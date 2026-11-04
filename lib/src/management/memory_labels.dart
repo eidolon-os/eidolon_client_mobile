@@ -4,6 +4,12 @@
 /// are useful for tracing on the Host, but they are not categories a person can
 /// recognise. Every Memory surface uses this one translation so a room does not
 /// become friendly in the library and turn back into an ID in the timeline.
+///
+/// The model names a fact's room by the convention in Memory's steward prompt
+/// (`eidolon_memory/eidolon/memory/config/prompts/memory_steward.md`, "Room 命名
+/// 规范"): a kind prefix and a free topic, as in `preference_music` or
+/// `person_铁锤`. The kind becomes the category; a topic is kept only when a
+/// person can read it. A slug nothing here knows is never shown as it is.
 String memoryRoomLabel(String roomId) {
   final value = roomId.trim();
   final lower = value.toLowerCase();
@@ -17,7 +23,45 @@ String memoryRoomLabel(String roomId) {
       RegExp(r'[0-9a-f]{12,}', caseSensitive: false).hasMatch(value)) {
     return '其他记忆';
   }
-  return value;
+  final separator = lower.indexOf('_');
+  final kind = separator < 0 ? lower : lower.substring(0, separator);
+  final topic = separator < 0 ? '' : value.substring(separator + 1);
+  final category = _roomKinds[kind];
+  if (category != null) {
+    if (lower == 'profile_core' || kind == 'emotion' || kind == 'privacy') {
+      return category;
+    }
+    final readable = _readableTopic(topic);
+    return readable == null ? category : '$category · $readable';
+  }
+  // Free text a person wrote or said, kept as it was.
+  return _readableTopic(value) ?? '其他记忆';
+}
+
+const _roomKinds = <String, String>{
+  'profile': '基本情况',
+  'person': '人物',
+  'pet': '宠物',
+  'project': '项目',
+  'emotion': '心情',
+  'event': '经历',
+  'preference': '偏好',
+  'privacy': '封存的内容',
+  'home': '家里的事',
+  'household': '家里的事',
+  'topic': '话题',
+};
+
+/// A topic a person can read: one with Chinese in it, its underscores as
+/// spaces. An English slug or a date is the model's filing, not a name.
+String? _readableTopic(String topic) {
+  if (!RegExp(r'[\u4e00-\u9fff]').hasMatch(topic)) return null;
+  final words = topic
+      .split('_')
+      .where((w) => w.isNotEmpty && !RegExp(r'^\d+$').hasMatch(w))
+      .join(' ')
+      .trim();
+  return words.isEmpty ? null : words;
 }
 
 /// Product language for the backend's compact memory-type token.
