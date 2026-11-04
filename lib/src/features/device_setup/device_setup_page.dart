@@ -18,6 +18,7 @@ import '../host_setup/failure_sentences.dart';
 import '../host_setup/host_product_session.dart';
 import '../host_setup/local_api_client.dart';
 import '../host_setup/pinned_http_client.dart';
+import '../../widgets/wifi_network_picker.dart';
 
 List<DeviceWifiNetwork> _strongestNetworkPerSsid(
     Iterable<DeviceWifiNetwork> networks) {
@@ -139,7 +140,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   bool _networkConfigured = false;
   bool _networkOutcomeUnknown = false;
   bool _admissionActive = false;
-  bool _showPassword = false;
+  bool _hiddenSelected = false;
   String? _connectingNetwork;
 
   bool _refused = false;
@@ -264,6 +265,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           _voucher = null;
           _networks = const [];
           _network = null;
+          _hiddenSelected = false;
         });
         if (!await widget.transport.requestPermission()) {
           throw Exception('设置设备需要「附近设备」权限。');
@@ -674,6 +676,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           _voucher = null;
           _networks = const [];
           _network = null;
+          _hiddenSelected = false;
           _password.clear();
           _hiddenSsid.clear();
           _step = _Step.introduction;
@@ -902,7 +905,9 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
                   : () => setState(() {
                         _network =
                             _networks.where((n) => n.ssid == ssid).firstOrNull;
+                        _hiddenSelected = _network == null;
                         _hiddenSsid.text = _network == null ? ssid : '';
+                        _password.clear();
                       }),
             ),
             const Text('首次仍需输入 Wi-Fi 密码；请选择设备支持的网络。'),
@@ -919,61 +924,38 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
               _descriptor!.displayName,
             ),
           const SizedBox(height: 12),
-          for (final network in _networks)
-            ListTile(
-              key: Key('network-${network.ssid}'),
-              selected: _network == network,
-              leading: Icon(_network == network
-                  ? Icons.radio_button_checked
-                  : Icons.radio_button_off),
-              title: Text(network.ssid),
-              subtitle: Text(network.security),
-              onTap: _busy
-                  ? null
-                  : () => setState(() {
-                        _network = network;
-                        _hiddenSsid.clear();
-                      }),
-            ),
+          const Text('点一个网络输入密码。连接后，将自动完成 Wi-Fi 配置并将设备添加到当前主机。'),
           const SizedBox(height: 12),
-          TextField(
-            controller: _hiddenSsid,
-            enabled: !_busy && _network == null,
-            decoration: InputDecoration(
-              labelText: _networks.isEmpty ? 'Wi-Fi 名称' : '其他或隐藏网络名称(可选)',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _password,
-            enabled: !_busy,
-            key: const Key('device-wifi-password'),
-            obscureText: !_showPassword,
-            textInputAction: TextInputAction.go,
-            onSubmitted: (_) => _finish(),
-            enableSuggestions: false,
-            autocorrect: false,
-            decoration: InputDecoration(
-              labelText: 'Wi-Fi 密码',
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                tooltip: _showPassword ? '隐藏密码' : '显示密码',
-                onPressed: () => setState(() => _showPassword = !_showPassword),
-                icon: Icon(
-                    _showPassword ? Icons.visibility_off : Icons.visibility),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            '点击连接后，将自动完成 Wi-Fi 配置并将设备添加到当前主机。',
-          ),
-          const SizedBox(height: 12),
-          FilledButton(
-            key: const Key('confirm-device-setup'),
-            onPressed: _busy ? null : _finish,
-            child: Text(_error == null ? '连接' : '重新连接'),
+          WifiNetworkPicker(
+            networks: [
+              for (final network in _networks)
+                WifiNetworkChoice(
+                  ssid: network.ssid,
+                  secured: network.security != 'open',
+                  detail: network.security,
+                ),
+            ],
+            selectedSsid: _hiddenSelected ? null : _network?.ssid,
+            // With nothing scanned, the only way forward is typing a name.
+            hiddenSelected: _hiddenSelected || _networks.isEmpty,
+            onSelect: (ssid) => setState(() {
+              _network = _networks.where((n) => n.ssid == ssid).firstOrNull;
+              _hiddenSelected = false;
+              _hiddenSsid.clear();
+              _password.clear();
+            }),
+            onSelectHidden: (open) => setState(() {
+              _hiddenSelected = open;
+              _network = null;
+              _password.clear();
+            }),
+            passwordController: _password,
+            hiddenSsidController: _hiddenSsid,
+            onSubmit: _finish,
+            submitLabel: _error == null ? '连接' : '重新连接',
+            passwordFieldKey: const Key('device-wifi-password'),
+            submitButtonKey: const Key('confirm-device-setup'),
+            busy: _busy,
           ),
         ],
       );

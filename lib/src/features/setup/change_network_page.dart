@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'commissioning_transport.dart';
 import 'controller_key_bridge.dart';
 import 'host_identity.dart';
+import '../../widgets/wifi_network_picker.dart';
 import 'host_registry.dart';
 import 'setup_models.dart';
 import 'setup_trust.dart';
@@ -45,6 +46,7 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
   List<NearbyEidolonHost> _nearby = const [];
   List<WifiNetwork> _networks = const [];
   WifiNetwork? _selected;
+  bool _hiddenSelected = false;
   String? _error;
   String? _progress;
   bool _busy = false;
@@ -305,50 +307,36 @@ class _ChangeNetworkPageState extends State<ChangeNetworkPage> {
             ],
             if (_connected && !_complete) ...[
               if (_networkStatus != null) Text(_networkStatus!),
-              for (final network in _networks)
-                ListTile(
-                  selected: _selected == network,
-                  leading: Icon(
-                    _selected == network
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_off,
-                  ),
-                  title: Text(network.ssid),
-                  subtitle: Text(network.secured ? '需要密码' : '开放网络'),
-                  onTap: _busy
-                      ? null
-                      : () => setState(() {
-                            _selected = network;
-                            _hiddenSsid.clear();
-                            _passphrase.clear();
-                          }),
-                ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _hiddenSsid,
-                enabled: !_busy && _selected == null,
-                decoration: const InputDecoration(
-                  labelText: '隐藏网络名称（可选）',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _passphrase,
-                enabled: !_busy && (_selected?.secured ?? true),
-                obscureText: true,
-                enableSuggestions: false,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'Wi-Fi 密码',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              FilledButton(
-                key: const Key('confirm-network-change'),
-                onPressed: _busy ? null : _change,
-                child: const Text('连接并确认新 Wi-Fi'),
+              WifiNetworkPicker(
+                networks: [
+                  for (final network in _networks)
+                    WifiNetworkChoice(
+                      ssid: network.ssid,
+                      secured: network.secured,
+                      detail: network.secured ? '需要密码' : '开放网络',
+                    ),
+                ],
+                selectedSsid: _hiddenSelected ? null : _selected?.ssid,
+                hiddenSelected: _hiddenSelected || _networks.isEmpty,
+                onSelect: (ssid) => setState(() {
+                  _selected =
+                      _networks.where((n) => n.ssid == ssid).firstOrNull;
+                  _hiddenSelected = false;
+                  _hiddenSsid.clear();
+                  _passphrase.clear();
+                }),
+                onSelectHidden: (open) => setState(() {
+                  _hiddenSelected = open;
+                  _selected = null;
+                  _passphrase.clear();
+                }),
+                passwordController: _passphrase,
+                hiddenSsidController: _hiddenSsid,
+                onSubmit: _change,
+                submitLabel: '连接并确认新 Wi-Fi',
+                passwordFieldKey: const Key('wifi-passphrase'),
+                submitButtonKey: const Key('confirm-network-change'),
+                busy: _busy,
               ),
             ],
             if (_complete) ...[

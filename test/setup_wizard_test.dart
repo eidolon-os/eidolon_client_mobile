@@ -397,6 +397,8 @@ void main() {
     )));
     await tester.pumpAndSettle();
     await tester.tap(find.text('New Home'));
+    // The password field exists only once its network row is open.
+    await tester.pump();
     await tester.enterText(find.byType(TextField).last, 'new-network-secret');
     await tester.tap(find.byKey(const Key('confirm-network-change')));
     await tester.pumpAndSettle();
@@ -556,6 +558,8 @@ void main() {
     )));
     await tester.pumpAndSettle();
     await tester.tap(find.text('New Home'));
+    // The password field exists only once its network row is open.
+    await tester.pump();
     await tester.enterText(find.byType(TextField).last, 'new-network-secret');
     await tester.tap(find.byKey(const Key('confirm-network-change')));
     await tester.pump();
@@ -603,6 +607,8 @@ void main() {
     await tester.tap(find.text('Eidolon-4c0285'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('New Home'));
+    // The password field exists only once its network row is open.
+    await tester.pump();
     await tester.enterText(find.byType(TextField).last, 'new-network-secret');
     await tester.tap(find.byKey(const Key('confirm-network-change')));
     await tester.pumpAndSettle();
