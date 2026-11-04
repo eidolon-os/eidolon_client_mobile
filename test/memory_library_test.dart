@@ -140,6 +140,22 @@ void main() {
       },
     );
 
+    testWidgets(
+      'the household page says it is the household\'s, not one person\'s',
+      (tester) async {
+        // Seen on the Pad (11-04): 「家里的记忆」 opened on 「你的全部记忆 / 你的
+        // 每个伙伴记下的」, which is what a person's own memory says.
+        await tester.pumpWidget(
+          MaterialApp(
+              home: MemoryLibraryPage(library: library(), household: true)),
+        );
+
+        expect(find.text('家里的全部记忆'), findsOneWidget);
+        expect(find.text('家里每个人说过的家里的事，谁问都能用'), findsOneWidget);
+        expect(find.text('你的全部记忆'), findsNothing);
+      },
+    );
+
     testWidgets('says how much was withheld rather than hiding it', (
       tester,
     ) async {

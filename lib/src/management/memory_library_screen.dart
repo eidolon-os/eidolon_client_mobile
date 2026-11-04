@@ -25,6 +25,7 @@ class MemoryLibraryScreen extends StatefulWidget {
     super.key,
     required this.load,
     this.title = "家里的记忆",
+    this.household = false,
     this.initialCompanionId,
     this.loadForCompanion,
     this.loadGraph,
@@ -39,6 +40,9 @@ class MemoryLibraryScreen extends StatefulWidget {
   });
 
   final String title;
+
+  /// Whether this is the household layer rather than one person's memory.
+  final bool household;
   final Future<MemoryLibraryView> Function() load;
 
   /// The perspective named by the route that opened this screen.
@@ -269,9 +273,11 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     return '这个伙伴';
   }
 
-  String get _scopeLabel => _selectedCompanionName == null
-      ? '你的全部记忆'
-      : '${_selectedCompanionName!}能想起的';
+  String get _scopeLabel => _selectedCompanionName != null
+      ? '${_selectedCompanionName!}能想起的'
+      : widget.household
+          ? '家里的全部记忆'
+          : '你的全部记忆';
 
   Future<void> _openSearch() {
     final companionId = _selectedCompanionId;
@@ -292,6 +298,7 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
     if (library != null) {
       return MemoryLibraryPage(
         title: widget.title,
+        household: widget.household,
         library: library,
         onOpenRoom: widget.loadCopy == null ? null : _openRoom,
         onForget: _canForget ? _openForget : null,

@@ -56,16 +56,19 @@ void main() {
         if (conversationId != null) sessionConversationIdField: conversationId,
       });
 
-  String transcript({
+  /// A transcript as LiveKit sends one: the words as text, and on the stream
+  /// who said them and whether they are final.
+  SessionData transcript({
     required String text,
     required bool isFinal,
     String? identity,
   }) =>
-      jsonEncode(<String, Object?>{
-        'text': text,
-        'is_final': isFinal,
-        if (identity != null) 'participant_identity': identity,
-      });
+      SessionData(transcriptionTopic, text,
+          participantIdentity: identity ?? '',
+          attributes: {
+            transcriptionSegmentAttribute: 'segment-1',
+            transcriptionFinalAttribute: '$isFinal',
+          });
 
   Future<void> settle() => Future<void>.delayed(Duration.zero);
 
@@ -117,8 +120,7 @@ void main() {
         sessionControlTopic,
         started(built.session.conversationId),
       );
-      built.session.emit(
-        transcriptionTopic,
+      built.session.receive(
         transcript(text: '你好啊', isFinal: true, identity: deviceIdentity),
       );
       await settle();
@@ -142,8 +144,7 @@ void main() {
         sessionControlTopic,
         started(built.session.conversationId),
       );
-      built.session.emit(
-        transcriptionTopic,
+      built.session.receive(
         transcript(text: '你好，我在', isFinal: true, identity: 'agent-AJ_x'),
       );
       await settle();
@@ -163,8 +164,7 @@ void main() {
         sessionControlTopic,
         started(built.session.conversationId),
       );
-      built.session.emit(
-        transcriptionTopic,
+      built.session.receive(
         transcript(text: '你', isFinal: false, identity: deviceIdentity),
       );
       await settle();
@@ -245,8 +245,7 @@ void main() {
       built.session.presence(false);
       await settle();
 
-      built.session.emit(
-        transcriptionTopic,
+      built.session.receive(
         transcript(text: '还在吗', isFinal: true, identity: deviceIdentity),
       );
       await settle();
@@ -403,6 +402,8 @@ class _StandingSession extends EidolonSession {
           {bool fromAgent = false, bool fromProvider = false}) =>
       _data.add(SessionData(topic, payload,
           fromAgent: fromAgent, fromProvider: fromProvider));
+
+  void receive(SessionData data) => _data.add(data);
 
   /// The order a Body's release has to happen in, read back.
   bool _closed = false;

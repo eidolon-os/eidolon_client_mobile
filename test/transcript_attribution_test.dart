@@ -1,6 +1,5 @@
 import 'package:eidolon_client_mobile/src/models/conversation_mode.dart';
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:eidolon_client_mobile/src/controller/client_controller.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/conversation_provisioner.dart';
@@ -33,6 +32,7 @@ import 'support/phone_identity_fixtures.dart';
 /// So these tests fix the two halves: the speaker this client *can* identify,
 /// and the one it must not invent a name for.
 void main() {
+  _aReplyThatGrowsIsOneLine();
   const deviceIdentity = 'device-instance-x';
 
   HubConfig active() => const HubConfig(
@@ -56,18 +56,12 @@ void main() {
     return (controller: controller, session: session);
   }
 
-  String line({
-    required String text,
-    String? participantIdentity,
-    String? source,
-  }) =>
-      jsonEncode(<String, Object?>{
-        'text': text,
-        if (participantIdentity != null)
-          'participant_identity': participantIdentity,
-        if (source != null) 'source': source,
-        'is_final': true,
-      });
+  /// A final line as LiveKit sends it: the words as text, the speaker as the
+  /// stream's sender.
+  SessionData line({required String text, String? participantIdentity}) =>
+      SessionData(transcriptionTopic, text,
+          participantIdentity: participantIdentity ?? '',
+          attributes: {transcriptionFinalAttribute: 'true'});
 
   test('the Owner is identified by the identity the Provider minted', () async {
     // This equality is not two strings that happen to match. The Provider mints
@@ -106,9 +100,8 @@ void main() {
 
   test('a line with no identity at all is still not attributed to a name',
       () async {
-    // `source`/`role` may be absent — LiveKit's forwarded transcript is not
-    // obliged to carry it — and so may the identity. Falling back to a guess
-    // is what this test exists to prevent.
+    // The sender identity may be absent. Falling back to a guess is what this
+    // test exists to prevent.
     final built = build();
     await built.controller.start();
     await built.controller.join();
@@ -121,6 +114,47 @@ void main() {
   });
 }
 
+/// A reply is one stream that grows; it is one line, not one per piece.
+void _aReplyThatGrowsIsOneLine() {
+  test('a reply arriving a piece at a time is one line, final when it closes',
+      () async {
+    final session = _TranscriptSession();
+    final controller = ClientController(
+      platform: _MicGrantedPlatform(),
+      session: session,
+      conversationProvisioner: _FakeProvisioner(const HubConfig(
+        status: HubConfigStatus.active,
+        session: RoomConfig(
+          serverUrl: 'wss://livekit.invalid',
+          token: 'token',
+          identity: 'device-instance-x',
+          roomName: 'eidolon-device-x',
+        ),
+        deviceFingerprint: phoneFingerprint,
+      )),
+    );
+    await controller.start();
+    await controller.join();
+
+    SessionData piece(String text, {required bool closed}) =>
+        SessionData(transcriptionTopic, text,
+            participantIdentity: 'agent-AJ_x',
+            attributes: {
+              transcriptionSegmentAttribute: 'reply-1',
+              transcriptionFinalAttribute: '$closed',
+            });
+    session.emit(piece('医药箱', closed: false));
+    session.emit(piece('医药箱在电视柜', closed: false));
+    session.emit(piece('医药箱在电视柜下面。', closed: true));
+    await Future<void>.delayed(Duration.zero);
+
+    final line = controller.transcript.single;
+    expect((line.speaker, line.text, line.isFinal),
+        ('Companion', '医药箱在电视柜下面。', true));
+    controller.dispose();
+  });
+}
+
 /// A session that can be fed transcript packets on the transcription topic.
 ///
 /// Subclassed rather than mocked for the same reason as the lifecycle fake:
@@ -130,8 +164,7 @@ class _TranscriptSession extends EidolonSession {
   final _states = StreamController<SessionState>.broadcast();
   final _data = StreamController<SessionData>.broadcast();
 
-  void emit(String payload) =>
-      _data.add(SessionData(transcriptionTopic, payload));
+  void emit(SessionData data) => _data.add(data);
 
   @override
   Stream<SessionState> get stateEvents => _states.stream;

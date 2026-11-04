@@ -558,6 +558,7 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
           {String? initialCompanionId, String? personId, String? personName}) =>
       MemoryLibraryScreen(
         title: personName == null ? '家里的记忆' : '$personName 的记忆',
+        household: personName == null,
         initialCompanionId: initialCompanionId,
         load: () => _controller.memoryLibrary(personId: personId),
         loadForCompanion: (companionId) => _controller.memoryLibrary(

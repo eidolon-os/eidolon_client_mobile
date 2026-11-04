@@ -5,6 +5,13 @@ const clientAudioStateTopic = 'eidolon.audio_state';
 const uiStateTopic = 'eidolon.ui_state';
 const sessionControlTopic = 'eidolon.session_control';
 const transcriptionTopic = 'lk.transcription';
+
+/// On a [transcriptionTopic] stream the words are plain text; LiveKit puts
+/// which segment they belong to and whether it is final on the stream itself
+/// (a delta stream says final on its closing trailer). Whose words they are is
+/// the stream's sender identity.
+const transcriptionSegmentAttribute = 'lk.segment_id';
+const transcriptionFinalAttribute = 'lk.transcription_final';
 const agentSessionTopic = 'lk.agent.session';
 
 /// Client → server, on [sessionControlTopic]: the other direction of the topic

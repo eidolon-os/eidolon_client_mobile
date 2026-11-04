@@ -128,8 +128,21 @@ class EidolonSession {
         accepted = true;
         room.registerTextStreamHandler(transcriptionTopic,
             (reader, identity) async {
-          final payload = await reader.readAll();
-          _dataController.add(SessionData(transcriptionTopic, payload));
+          // A reply arrives as one stream, a piece at a time: show it as it
+          // grows, then once more with the attributes its trailer closed it on.
+          var text = '';
+          await for (final chunk in reader) {
+            text += utf8.decode(chunk.content);
+            _dataController.add(SessionData(transcriptionTopic, text,
+                participantIdentity: identity,
+                attributes: {
+                  ...?reader.info?.attributes,
+                  transcriptionFinalAttribute: 'false',
+                }));
+          }
+          _dataController.add(SessionData(transcriptionTopic, text,
+              participantIdentity: identity,
+              attributes: {...?reader.info?.attributes}));
         });
         room.registerTextStreamHandler(agentSessionTopic,
             (reader, identity) async {
@@ -379,13 +392,20 @@ class EidolonSession {
 
 class SessionData {
   const SessionData(this.topic, this.payload,
-      {this.fromProvider = false, this.fromAgent = false});
+      {this.fromProvider = false,
+      this.fromAgent = false,
+      this.participantIdentity = '',
+      this.attributes = const {}});
 
   final bool fromProvider;
   final bool fromAgent;
 
   final String topic;
   final String payload;
+
+  /// For a text stream: who sent it, and the stream's attributes.
+  final String participantIdentity;
+  final Map<String, String> attributes;
 }
 
 class SessionState {

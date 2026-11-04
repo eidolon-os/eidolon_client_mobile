@@ -16,6 +16,7 @@ class MemoryLibraryPage extends StatelessWidget {
     super.key,
     required this.library,
     this.title = "家里的记忆",
+    this.household = false,
     this.onOpenRoom,
     this.onForget,
     this.onOpenToday,
@@ -30,6 +31,10 @@ class MemoryLibraryPage extends StatelessWidget {
   });
 
   final String title;
+
+  /// The household layer: what everyone at home said about home, which every
+  /// speaker may use. Not one person's memory, so not "yours".
+  final bool household;
   final MemoryLibraryView library;
   final void Function(MemoryWingView wing, MemoryRoomView room)? onOpenRoom;
   final VoidCallback? onForget;
@@ -86,6 +91,7 @@ class MemoryLibraryPage extends StatelessWidget {
           selectedCompanionId: selectedCompanionId,
           selectedCompanionName: _selectedCompanionName,
           onCompanionChanged: onCompanionChanged,
+          household: household,
         ),
         if (library.withheldCount > 0 || library.truncated) ...[
           const SizedBox(height: 12),
@@ -158,6 +164,7 @@ class _MemoryOverview extends StatelessWidget {
     required this.selectedCompanionId,
     required this.selectedCompanionName,
     required this.onCompanionChanged,
+    required this.household,
   });
 
   final MemoryLibraryView library;
@@ -165,6 +172,7 @@ class _MemoryOverview extends StatelessWidget {
   final String? selectedCompanionId;
   final String? selectedCompanionName;
   final ValueChanged<String?>? onCompanionChanged;
+  final bool household;
 
   @override
   Widget build(BuildContext context) {
@@ -200,13 +208,21 @@ class _MemoryOverview extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        name == null ? '你的全部记忆' : '$name能想起的',
+                        name != null
+                            ? '$name能想起的'
+                            : household
+                                ? '家里的全部记忆'
+                                : '你的全部记忆',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: 4),
                       Text(
                         key: const Key('memory-library-scope'),
-                        name == null ? '你的每个伙伴记下的，都在这里' : '你们共享的，加上只告诉$name的',
+                        name != null
+                            ? '你们共享的，加上只告诉$name的'
+                            : household
+                                ? '家里每个人说过的家里的事，谁问都能用'
+                                : '你的每个伙伴记下的，都在这里',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],

@@ -861,7 +861,7 @@ class ClientController extends ChangeNotifier {
       case uiStateTopic:
         _handleUiState(event.payload);
       case transcriptionTopic:
-        _handleTranscription(event.payload);
+        _handleTranscription(event);
     }
   }
 
@@ -1181,86 +1181,66 @@ class ClientController extends ChangeNotifier {
     }
   }
 
-  void _handleTranscription(String payload) {
+  void _handleTranscription(SessionData event) {
     if (!_inConversation) return;
-    try {
-      final root = jsonDecode(payload) as Map<String, dynamic>;
-      if (root[sessionConversationIdField] != null &&
-          root[sessionConversationIdField] != _session.conversationId) {
-        return;
-      }
-      final text = (root['text'] ??
-                  root['transcript'] ??
-                  root['transcription'] ??
-                  root['content'])
-              ?.toString() ??
-          '';
-      if (text.isEmpty) return;
-      final identityValue =
-          (root['participant_identity'] ?? root['identity'])?.toString() ?? '';
-      final source = (root['source'] ?? root['role'])?.toString() ?? '';
-      // A participant identity is the Channel's, from the session binding —
-      // not a device id, and certainly not the ANDROID_ID-derived install id
-      // this used to compare against, which LiveKit never sees.
-      final sessionIdentity = config?.session.identity ?? '';
-      // Named rather than inlined because this one fact answers two
-      // questions: whose line to label, and whether the far end has proved it
-      // can hear. The identity path is the load-bearing one — LiveKit's
-      // forwarded transcript need not carry `source` — and it holds because
-      // the Provider mints the device token `.with_identity(spec.device_id)`
-      // and hands the client the same value, then resolves the runtime from
-      // that participant identity. If it ever drifted the session would fail
-      // loudly rather than mislabel a line.
-      final fromOwner = source == 'user' ||
-          (sessionIdentity.isNotEmpty && identityValue == sessionIdentity);
-      final speaker = fromOwner
-          ? '你'
-          // Not a name. Nothing on the wire tells a Body which Companion is
-          // answering: the device token deliberately carries no companion_id,
-          // and the Host resolves who answers from the Kernel mount at every
-          // session_open. This said 'Eidolon' and was right only while one
-          // Companion existed — binding this device to a second one made it
-          // wrong with nothing failing.
-          : 'Companion';
-      final isFinal = root['final'] == true || root['is_final'] == true;
-      // The only evidence a Body ever gets that the far end can hear it.
-      // `session_started` does not carry it: `_warmup_stages` logs a dead STT
-      // and carries on, so a deaf agent confirms the session and then hears
-      // nothing. A far end already known to be gone is not resurrected by a
-      // late packet — its absence was the harder evidence.
-      if (fromOwner &&
-          isFinal &&
-          conversationStanding != ConversationStanding.farEndGone) {
-        conversationStanding = ConversationStanding.hearing;
-      }
-      final segmentId = (root['segment_id'] ??
-              root['stream_id'] ??
-              root['id'] ??
-              '$speaker-current')
-          .toString();
-      final line = TranscriptLine(
-        id: segmentId,
-        speaker: speaker,
-        text: text,
-        isFinal: isFinal,
-      );
-      final pendingIndex = transcript.lastIndexWhere(
-        (existing) =>
-            !existing.isFinal &&
-            (existing.id == segmentId || existing.speaker == speaker),
-      );
-      if (pendingIndex >= 0) {
-        transcript[pendingIndex] = line;
-      } else {
-        transcript.add(line);
-      }
-      if (transcript.length > 40) {
-        transcript.removeRange(0, transcript.length - 40);
-      }
-      notifyListeners();
-    } catch (_) {
-      // Ignore unrelated/malformed data packets on this topic.
+    final text = event.payload;
+    if (text.isEmpty) return;
+    // A participant identity is the Channel's, from the session binding —
+    // not a device id, and certainly not the ANDROID_ID-derived install id
+    // this used to compare against, which LiveKit never sees.
+    final sessionIdentity = config?.session.identity ?? '';
+    // Named rather than inlined because this one fact answers two
+    // questions: whose line to label, and whether the far end has proved it
+    // can hear. LiveKit sends a transcript as the transcribed participant, so
+    // our own words come back with our own identity: the Provider mints the
+    // device token `.with_identity(spec.device_id)` and hands the client the
+    // same value, then resolves the runtime from that participant identity.
+    // If it ever drifted the session would fail loudly rather than mislabel a
+    // line.
+    final fromOwner = sessionIdentity.isNotEmpty &&
+        event.participantIdentity == sessionIdentity;
+    final speaker = fromOwner
+        ? '你'
+        // Not a name. Nothing on the wire tells a Body which Companion is
+        // answering: the device token deliberately carries no companion_id,
+        // and the Host resolves who answers from the Kernel mount at every
+        // session_open. This said 'Eidolon' and was right only while one
+        // Companion existed — binding this device to a second one made it
+        // wrong with nothing failing.
+        : 'Companion';
+    final isFinal = event.attributes[transcriptionFinalAttribute] == 'true';
+    // The only evidence a Body ever gets that the far end can hear it.
+    // `session_started` does not carry it: `_warmup_stages` logs a dead STT
+    // and carries on, so a deaf agent confirms the session and then hears
+    // nothing. A far end already known to be gone is not resurrected by a
+    // late packet — its absence was the harder evidence.
+    if (fromOwner &&
+        isFinal &&
+        conversationStanding != ConversationStanding.farEndGone) {
+      conversationStanding = ConversationStanding.hearing;
     }
+    final segmentId =
+        event.attributes[transcriptionSegmentAttribute] ?? '$speaker-current';
+    final line = TranscriptLine(
+      id: segmentId,
+      speaker: speaker,
+      text: text,
+      isFinal: isFinal,
+    );
+    final pendingIndex = transcript.lastIndexWhere(
+      (existing) =>
+          !existing.isFinal &&
+          (existing.id == segmentId || existing.speaker == speaker),
+    );
+    if (pendingIndex >= 0) {
+      transcript[pendingIndex] = line;
+    } else {
+      transcript.add(line);
+    }
+    if (transcript.length > 40) {
+      transcript.removeRange(0, transcript.length - 40);
+    }
+    notifyListeners();
   }
 
   /// Propose this phone as a Body.

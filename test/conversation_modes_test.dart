@@ -5,6 +5,7 @@ import 'package:eidolon_client_mobile/src/controller/client_controller.dart';
 import 'package:eidolon_client_mobile/src/features/conversation/conversation_provisioner.dart';
 import 'package:eidolon_client_mobile/src/models/conversation_mode.dart';
 import 'package:eidolon_client_mobile/src/models/hub_models.dart';
+import 'package:eidolon_client_mobile/src/protocol/eidolon_protocol.dart';
 import 'package:eidolon_client_mobile/src/services/eidolon_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/phone_identity_fixtures.dart';
@@ -117,8 +118,9 @@ void main() {
       session.emit('eidolon.session_control', {'type': 'session_started'});
       await settle();
       expect(c.microphoneEnabled, mode != ConversationMode.ptt);
-      session.emit('lk.transcription',
-          {'source': 'user', 'text': '第一轮', 'is_final': true});
+      session.data.add(const SessionData(transcriptionTopic, '第一轮',
+          participantIdentity: 'device',
+          attributes: {transcriptionFinalAttribute: 'true'}));
       await settle();
       if (mode == ConversationMode.ptt) {
         await c.setPttHeld(true);
