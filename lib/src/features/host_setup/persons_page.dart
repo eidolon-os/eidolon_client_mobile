@@ -761,7 +761,7 @@ class _PersonsPageState extends State<PersonsPage> {
                   key: const ValueKey('household-memory'),
                   leading: const Icon(Icons.home_outlined),
                   title: const Text('家里的记忆'),
-                  subtitle: const Text('家里每个人说过的家里的事，谁问都能用；也能看到还没认领的旧记忆'),
+                  subtitle: const Text('家里每个人说过的家里的事，谁问都能用'),
                   onTap: () => widget.openHouseholdMemory!()),
             if (_busy) ...[
               const SizedBox(height: Neon.s4),

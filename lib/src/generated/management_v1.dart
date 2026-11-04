@@ -3023,7 +3023,6 @@ class MemoryDayView {
 class MemoryEntryView {
   const MemoryEntryView({
     required this.entryId,
-    this.layer,
     this.preview,
     this.provenance,
     required this.recordedAt,
@@ -3034,8 +3033,6 @@ class MemoryEntryView {
   });
 
   final String entryId;
-
-  final String? layer;
 
   final String? preview;
 
@@ -3054,7 +3051,6 @@ class MemoryEntryView {
   factory MemoryEntryView.fromJson(Map<String, dynamic> value) {
     return MemoryEntryView(
       entryId: value['entry_id'] as String,
-      layer: value['layer'] as String?,
       preview: value['preview'] as String?,
       provenance: value['provenance'] == null
           ? null
@@ -3072,7 +3068,6 @@ class MemoryEntryView {
   Map<String, dynamic> toJson() {
     return {
       'entry_id': entryId,
-      if (layer != null) 'layer': layer,
       if (preview != null) 'preview': preview,
       if (provenance != null) 'provenance': provenance?.toJson(),
       'recorded_at': recordedAt,

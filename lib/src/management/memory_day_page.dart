@@ -27,7 +27,6 @@ class MemoryDayPage extends StatelessWidget {
     this.loadingMore = false,
     this.moreError,
     this.scopeLabel,
-    this.household = false,
   });
 
   final List<MemoryEntryView> entries;
@@ -42,10 +41,6 @@ class MemoryDayPage extends StatelessWidget {
   final bool loadingMore;
   final Object? moreError;
   final String? scopeLabel;
-
-  /// The household Realm, where anything not yet classified as household is
-  /// unclaimed: kept and listed, never used in a conversation.
-  final bool household;
 
   @override
   Widget build(BuildContext context) {
@@ -65,10 +60,7 @@ class MemoryDayPage extends StatelessWidget {
         heading = day;
         rows.add(_DayHeading(label: day));
       }
-      rows.add(_EntryRow(
-          entry: entry,
-          when: when,
-          unclaimed: household && entry.layer != 'household'));
+      rows.add(_EntryRow(entry: entry, when: when));
     }
     if (moreError != null) {
       rows.add(
@@ -182,12 +174,10 @@ class _DayHeading extends StatelessWidget {
 }
 
 class _EntryRow extends StatelessWidget {
-  const _EntryRow(
-      {required this.entry, required this.when, this.unclaimed = false});
+  const _EntryRow({required this.entry, required this.when});
 
   final MemoryEntryView entry;
   final DateTime? when;
-  final bool unclaimed;
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +198,6 @@ class _EntryRow extends StatelessWidget {
           else
             entry.recordedAt,
           if ((entry.roomId ?? '').isNotEmpty) memoryRoomLabel(entry.roomId!),
-          if (unclaimed) '待认领：对话里不会用到',
         ].join(' · '),
       ),
       trailing: const Icon(Icons.info_outline, size: 20),

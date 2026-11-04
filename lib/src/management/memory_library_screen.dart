@@ -25,7 +25,6 @@ class MemoryLibraryScreen extends StatefulWidget {
     super.key,
     required this.load,
     this.title = "家里的记忆",
-    this.household = false,
     this.initialCompanionId,
     this.loadForCompanion,
     this.loadGraph,
@@ -40,9 +39,6 @@ class MemoryLibraryScreen extends StatefulWidget {
   });
 
   final String title;
-
-  /// The household Realm rather than one person's (design §3.6).
-  final bool household;
   final Future<MemoryLibraryView> Function() load;
 
   /// The perspective named by the route that opened this screen.
@@ -194,7 +190,6 @@ class _MemoryLibraryScreenState extends State<MemoryLibraryScreen> {
         MaterialPageRoute(
           builder: (_) => MemoryDayScreen(
             scopeLabel: _scopeLabel,
-            household: widget.household,
             load: (since, cursor) =>
                 widget.loadDay!(since, _selectedCompanionId, cursor),
           ),
