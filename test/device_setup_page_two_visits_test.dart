@@ -142,6 +142,9 @@ void main() {
       expect(admission.voucherAttempts, rotates ? 0 : 1);
       expect(find.text('需要作为新设备添加'), rotates ? findsOneWidget : findsNothing);
       if (rotates) {
+        // The new identity is the removal holding, not old firmware.
+        expect(find.textContaining('之前从这台主机移除过'), findsOneWidget);
+        expect(find.textContaining('固件'), findsNothing);
         await tester.tap(find.byKey(const Key('accept-new-device-identity')));
         await tester.pumpAndSettle();
         expect(admission.requestedKey, 'p256:${'b' * 64}');

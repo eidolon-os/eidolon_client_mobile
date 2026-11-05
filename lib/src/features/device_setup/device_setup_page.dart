@@ -917,7 +917,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             ),
           ],
           const SizedBox(height: 16),
-          const Text('屏幕上没有设置码的开发设备，或旧固件：'),
+          const Text('没有屏幕的开发设备（如 Reachy Mini）：'),
           TextButton.icon(
             key: const Key('discover-devices'),
             onPressed: _busy ? null : () => _discover(),
@@ -1014,14 +1014,20 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           const SizedBox(height: 12),
           Text(_descriptor!.displayName),
           const SizedBox(height: 8),
-          const Text('设备在准备连接这台主机时返回了新的身份。部分旧固件在切换主机时会这样处理。'),
+          // A removed device always comes back under a new identity: that is
+          // the removal holding, not the firmware falling short.
+          if (_target?.replaceRevokedIdentity ?? false)
+            const Text('这台设备之前从这台主机移除过。移除后再加入，它会换一个新身份，'
+                '作为一台新设备添加；原来的记录已经不在设备列表里，伙伴和输出设置不会带过来。')
+          else ...[
+            const Text('设备在准备连接这台主机时换了新的身份。'),
+            const SizedBox(height: 8),
+            const Text('继续后将按新设备认领，原设备记录和伙伴设置不会自动迁移或合并。'
+                '如果这台主机已有它的旧记录，列表可能同时显示新旧两条记录；'
+                '确认新设备可用后，可在设备列表中移除不再使用的旧记录。'),
+          ],
           const SizedBox(height: 8),
-          const Text('继续后将按新设备认领，原设备记录和伙伴设置不会自动迁移或合并。'
-              '如果这台主机已有它的旧记录，列表可能同时显示新旧两条记录；'
-              '确认新设备可用后，可在设备列表中移除不再使用的旧记录。'),
-          const SizedBox(height: 8),
-          const Text('后续切换主机可能再次产生新记录。要保持同一设备身份，需使用支持该能力的固件。'
-              '你也可以取消本次设置，保留当前网络与归属。'),
+          const Text('你也可以取消本次设置，保留当前网络与归属。'),
           const SizedBox(height: 20),
           FilledButton(
             key: const Key('accept-new-device-identity'),
