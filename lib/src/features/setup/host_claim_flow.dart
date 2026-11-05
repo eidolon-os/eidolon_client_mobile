@@ -80,11 +80,25 @@ Future<Map<String, dynamic>> proveSetupCodeToHost({
   // One restart for a handshake the Host no longer holds — it keeps one for
   // 30 s, and a phone backgrounded in between is not a reason to fail.
   for (var attempt = 0;; attempt++) {
-    final started = await start({
-      'suite': hostClaimPakeSuite,
-      'commissioning_id': expected.commissioningId,
-      'controller_public_key': expected.controllerPublicKey,
-    });
+    final Map<String, dynamic>? started;
+    try {
+      started = await start({
+        'suite': hostClaimPakeSuite,
+        'commissioning_id': expected.commissioningId,
+        'controller_public_key': expected.controllerPublicKey,
+      });
+    } on CommissioningRequestException catch (error) {
+      // Refused before anything about the code was proven: the window is not
+      // open, whatever the code is. Telling the person to check the digits
+      // sent them back to a page where the right code failed the same way.
+      if (error.code == 'commissioning_denied') {
+        throw const CommissioningRequestException(
+          'setup_code_unavailable',
+          '这台主机现在没有开放的 Setup 窗口，Setup 码还没有被核对。',
+        );
+      }
+      rethrow;
+    }
     if (started == null) {
       throw const CommissioningRequestException(
         'host_too_old',

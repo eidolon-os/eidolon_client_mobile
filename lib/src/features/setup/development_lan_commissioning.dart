@@ -374,7 +374,8 @@ class DevelopmentLanCommissioning {
         '管理手机名称必须包含 1 到 80 个字符',
       );
     }
-    final setup = host.endpoint.developmentSetup;
+    final endpoint = await _currentEndpoint(host);
+    final setup = endpoint.developmentSetup;
     if (setup == null || !setup.isOpenAt(_clock())) {
       throw const CommissioningRequestException(
         'setup_code_expired',
@@ -397,7 +398,7 @@ class DevelopmentLanCommissioning {
       final proven = await proveSetupCodeToHost(
         code: setupCode,
         expected: HostClaimExpectation.fromEndpoint(
-          host.endpoint,
+          endpoint,
           commissioningId: setup.commissioningId,
           transport: 'lan',
           controllerPublicKey: controller.publicKey,
@@ -422,6 +423,34 @@ class DevelopmentLanCommissioning {
     } finally {
       client.close();
     }
+  }
+
+  /// The Host's endpoint as it is now, not as the search found it.
+  ///
+  /// Every code the Host issues opens a new window and closes the one before,
+  /// so the window a search saw is gone once the person fetches the code they
+  /// are about to type. Claiming with it was refused before any code was
+  /// proven, and every retry went to the same closed window. The document is
+  /// believed only from the keys the search already verified; one that cannot
+  /// be read now leaves the searched window for the PAKE to decide.
+  Future<CommissioningEndpoint> _currentEndpoint(DevelopmentLanHost host) async {
+    final CommissioningEndpoint current;
+    try {
+      current = await CommissioningEndpoint.parseAndVerifyDiscovered(
+          await _endpointFetcher(host.localApi.baseUrl));
+    } catch (error) {
+      debugPrint('DevelopmentLanCommissioning: endpoint not re-read — $error');
+      return host.endpoint;
+    }
+    if (current.hostId != host.endpoint.hostId ||
+        current.hostPublicKey != host.endpoint.hostPublicKey ||
+        current.tlsSpkiFingerprint != host.endpoint.tlsSpkiFingerprint) {
+      throw const CommissioningRequestException(
+        'host_identity_mismatch',
+        '这个地址上的主机和刚才找到的不是同一台。已经停止，Setup 码没有以任何形式发出。请重新搜索主机。',
+      );
+    }
+    return current;
   }
 
   ManagedHost _claimedHost(DevelopmentLanHost host,

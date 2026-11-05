@@ -346,6 +346,137 @@ void main() {
       );
       expect(starts, 2);
     });
+
+    // Bench, 2026-11-05: the search read one window, then the Host minted the
+    // code the person typed in a new one. Every attempt went to the old
+    // window, was refused before any code was proven, and the screen said the
+    // code was wrong; only searching again got past it.
+    group('the window is the one open now, not the one the search saw', () {
+      const searched = '123e4567-e89b-42d3-a456-426614174000';
+      const minted = '223e4567-e89b-42d3-a456-426614174001';
+
+      Future<String> document(String id, {int keySeed = 7}) =>
+          signedEndpointDocument(
+              setupSession: {'commissioning_id': id, 'expires_at': null},
+              keySeed: keySeed);
+
+      http.Response refusal(CommissioningRequestException error) =>
+          http.Response(
+              jsonEncode({
+                'detail': {'code': error.code, 'message': error.message},
+              }),
+              401);
+
+      Future<
+          ({
+            DevelopmentLanCommissioning lan,
+            List<String> startedWindows,
+            void Function(Future<String> Function()) serve,
+            FakePakeHost host,
+          })> rig(String open) async {
+        final searchedDocument = await document(searched);
+        final hostId =
+            (await CommissioningEndpoint.parseAndVerifyDiscovered(searchedDocument))
+                .hostId;
+        Future<String> Function() current = () async => searchedDocument;
+        final host = FakePakeHost(
+          code: '12345678',
+          commissioningId: open,
+          hostPublicKey:
+              (jsonDecode(searchedDocument) as Map)['host_public_key'] as String,
+          tlsSpkiFingerprint: 'sha256:ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8',
+          resetEpoch: 0,
+          transport: 'lan',
+        );
+        final startedWindows = <String>[];
+        final lan = DevelopmentLanCommissioning(
+          discovery: _Discovery(_announced(['192.168.1.25'])),
+          controllerKeys: _ControllerKeys(),
+          endpointFetcher: (_) => current(),
+          pinnedClientFactory: (_) => MockClient((request) async {
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            try {
+              if (request.url.path.endsWith('/pake/start')) {
+                startedWindows.add(body['commissioning_id'] as String);
+                return http.Response(jsonEncode(host.start(body)), 200);
+              }
+              return http.Response(
+                  jsonEncode({
+                    'contract_version': '1',
+                    'operation': 'local.lan-commissioning-claim',
+                    'host_id': hostId,
+                    'controller': {'controller_id': _controllerId},
+                    'state': {'claim_state': 'claimed'},
+                    'server_proof': host.confirm(body),
+                  }),
+                  200);
+            } on CommissioningRequestException catch (error) {
+              return refusal(error);
+            }
+          }),
+          clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
+          proveHostClaim: proveDirectly,
+        );
+        return (
+          lan: lan,
+          startedWindows: startedWindows,
+          serve: (next) => current = next,
+          host: host,
+        );
+      }
+
+      test('a code minted after the search still claims', () async {
+        final r = await rig(minted);
+        final discovered = await r.lan.discover();
+        final mintedDocument = await document(minted);
+        r.serve(() async => mintedDocument);
+
+        final claimed = await r.lan.claim(discovered.hosts.single,
+            setupCode: '12345678', controllerName: 'My Phone');
+
+        expect(claimed.hostId, discovered.hosts.single.endpoint.hostId);
+        expect(r.startedWindows, [minted]);
+      });
+
+      test('a window that is gone is said to be gone, not the code wrong',
+          () async {
+        // The Host has no window at all for what it now advertises.
+        final r = await rig('323e4567-e89b-42d3-a456-426614174002');
+        final discovered = await r.lan.discover();
+        await expectLater(
+          r.lan.claim(discovered.hosts.single,
+              setupCode: '12345678', controllerName: 'My Phone'),
+          throwsA(isA<CommissioningRequestException>()
+              .having((e) => e.code, 'code', 'setup_code_unavailable')),
+        );
+        expect(r.host.confirms, 0);
+      });
+
+      test('a Host that comes back with other keys is not asked anything',
+          () async {
+        final r = await rig(minted);
+        final discovered = await r.lan.discover();
+        final stranger = await document(minted, keySeed: 9);
+        r.serve(() async => stranger);
+        await expectLater(
+          r.lan.claim(discovered.hosts.single,
+              setupCode: '12345678', controllerName: 'My Phone'),
+          throwsA(isA<CommissioningRequestException>()
+              .having((e) => e.code, 'code', 'host_identity_mismatch')),
+        );
+        expect(r.startedWindows, isEmpty);
+      });
+
+      test('an endpoint that cannot be read again leaves the searched window',
+          () async {
+        final r = await rig(searched);
+        final discovered = await r.lan.discover();
+        r.serve(() async => throw StateError('no answer'));
+        await r.lan.claim(discovered.hosts.single,
+            setupCode: '12345678', controllerName: 'My Phone');
+        expect(r.startedWindows, [searched]);
+      });
+    });
   });
 
   test('ignores unsigned, production and expired LAN candidates', () async {
@@ -609,13 +740,30 @@ void main() {
 
   test('a Host that refuses this phone points at a fresh Setup grant',
       () async {
+    // The refusal comes at the claim: a refused start is a closed window,
+    // which is a different sentence (setup_code_unavailable).
+    final pakeHost = FakePakeHost(
+      code: '12345678',
+      commissioningId: '123e4567-e89b-42d3-a456-426614174000',
+      hostPublicKey: validCommissioningEndpoint['host_public_key']! as String,
+      tlsSpkiFingerprint:
+          validCommissioningEndpoint['tls_spki_fingerprint']! as String,
+      resetEpoch: 0,
+      transport: 'lan',
+    );
     final service = DevelopmentLanCommissioning(
       discovery: _Discovery(_announced(['192.168.1.25'])),
       controllerKeys: _ControllerKeys(),
       endpointFetcher: (_) async => jsonEncode(validCommissioningEndpoint),
-      pinnedClientFactory: (_) =>
-          MockClient((_) async => http.Response('{}', 401)),
+      pinnedClientFactory: (_) => MockClient((request) async =>
+          request.url.path.endsWith('/pake/start')
+              ? http.Response(
+                  jsonEncode(pakeHost.start(
+                      jsonDecode(request.body) as Map<String, dynamic>)),
+                  200)
+              : http.Response('{}', 401)),
       clock: () => DateTime.parse('2026-08-05T00:10:00Z'),
+      proveHostClaim: proveDirectly,
     );
     final host = (await service.discover()).hosts.single;
 

@@ -29,10 +29,11 @@ LocalApiSurvey announcedSurvey(List<LocalApiEndpoint> endpoints) =>
 /// so anything that has to be tested *after* verification succeeds needs a
 /// document this test suite can sign itself. A Host that is genuinely itself
 /// and has no Setup session open is exactly that case.
-Future<String> signedEndpointDocument({Object? setupSession}) async {
+Future<String> signedEndpointDocument(
+    {Object? setupSession, int keySeed = 7}) async {
   final algorithm = Ed25519();
   final keyPair = await algorithm.newKeyPairFromSeed(
-    List<int>.filled(32, 7),
+    List<int>.filled(32, keySeed),
   );
   final publicKey = await keyPair.extractPublicKey();
   final document = <String, dynamic>{
