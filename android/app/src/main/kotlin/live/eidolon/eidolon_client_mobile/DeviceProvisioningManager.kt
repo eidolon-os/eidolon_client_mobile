@@ -95,7 +95,13 @@ class DeviceProvisioningManager(
          */
         private const val SCAN_TIMEOUT_MILLIS = 15_000L
 
-        private const val TERMINAL_TIMEOUT_MILLIS = 30_000L
+        /**
+         * Long enough to still be listening when the device gives up on a
+         * wrong password. It retries a limited number of disconnects first
+         * (EIDOLON_PROVISIONING_WIFI_CONNECT_ATTEMPTS, about 27 s on the
+         * bench); at 30 s the phone had left before the device said so.
+         */
+        private const val TERMINAL_TIMEOUT_MILLIS = 60_000L
         private const val TERMINAL_POLL_MILLIS = 500L
     }
 
