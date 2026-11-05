@@ -621,9 +621,9 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         voucher: voucher,
         expectedDeviceId: _descriptor?.deviceId,
       );
-      // The handshake is the first thing a visit does, so a refused code
-      // wrote nothing to the device, and the attempt has nothing to resume.
-      if (_isRefusedCode(outcome)) {
+      // A refused code wrote nothing to the device; a rollback committed
+      // nothing. Either way the attempt has nothing to resume.
+      if (_endedSetupWindow(outcome)) {
         await widget.checkpoints.remove(outcome.setupId);
       }
     });
@@ -632,16 +632,38 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   static bool _needsCodeFromScreen(String? code) =>
       code == 'setup_code_rejected' || code == 'setup_code_required';
 
-  static bool _isRefusedCode(DeviceSetupCheckpoint checkpoint) =>
-      checkpoint.provisioningState == DeviceProvisioningState.failed &&
-      _needsCodeFromScreen(checkpoint.failure?.code);
+  /// The device rolled the setup back: the failure codes of its commissioning
+  /// status (device_foundation v1), and the phone's name for a rollback that
+  /// carried none. It closes its setup window after any of them.
+  static const _rolledBackCodes = {
+    'network_rejected',
+    'owner_route_unavailable',
+    'owner_identity_mismatch',
+    'storage_unavailable',
+    'window_expired',
+    'cancelled',
+    'internal',
+    'commissioning_rolled_back',
+  };
 
-  /// The device refused the code, or wants one this phone did not give. Only
-  /// the code on its screen now goes on from here, so the attempt is dropped
-  /// and the page goes back to where a code is scanned or typed, saying why.
+  static bool _endedSetupWindow(DeviceSetupCheckpoint checkpoint) {
+    final code = checkpoint.failure?.code;
+    return checkpoint.provisioningState == DeviceProvisioningState.failed &&
+        (_needsCodeFromScreen(code) || _rolledBackCodes.contains(code));
+  }
+
+  /// What a person does once the device has closed its window.
+  String _reopenHint() => _setupCode == null
+      ? '设备已结束这次设置。请在设备上重新打开网络设置，然后重新查找。'
+      : '设备已结束这次设置。请在设备上重新打开网络设置，再扫描屏幕上的新二维码。';
+
+  /// The device refused the code, wants one this phone did not give, or rolled
+  /// the setup back and closed its window. Only a window open now, and the
+  /// code on its screen, goes on from here, so the attempt is dropped and the
+  /// page goes back to where a code is scanned or typed, saying why.
   ///
-  /// Staying where the refusal happened asked for a new scan on a page with
-  /// no way to scan, whose one button tried the refused code again.
+  /// Staying put asked for a new scan on a page with no way to scan, or left
+  /// 「重新连接」 in front of a device that was no longer listening.
   void _askForCodeAgain(String message) {
     _admissionObservation.setWaiting(false);
     setState(() {
@@ -690,8 +712,11 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
 
   void _showCheckpoint(DeviceSetupCheckpoint checkpoint) {
     if (!mounted) return;
-    if (_isRefusedCode(checkpoint)) {
-      _askForCodeAgain(checkpoint.failure!.message);
+    if (_endedSetupWindow(checkpoint)) {
+      final failure = checkpoint.failure!;
+      _askForCodeAgain(_rolledBackCodes.contains(failure.code)
+          ? '${failure.message}${_reopenHint()}'
+          : failure.message);
       return;
     }
     setState(() {

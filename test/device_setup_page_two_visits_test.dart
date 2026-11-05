@@ -1221,6 +1221,70 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
     });
+
+    // After a rollback the device closes its setup window (and opens the
+    // next one with a new code), so the network form's 「重新连接」 could only
+    // fail against a device that was no longer there.
+    testWidgets('a network the device rolled back sends the person to its '
+        'screen for a new code', (tester) async {
+      allowDirectoryVerification(tester);
+      final checkpoints = InMemoryDeviceSetupCheckpointStore();
+      final transport = _Transport()
+        ..configureFailure = const DeviceProvisioningTransportException(
+            'network_rejected', '设备没有接受这个网络,请确认 Wi-Fi 名称和密码。');
+      await tester.pumpWidget(
+          page(transport, scan: scanned, checkpoints: checkpoints));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('scan-setup-code')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('network-owner-wifi')));
+      await tester.pump();
+      await tester.enterText(
+          find.byKey(const Key('device-wifi-password')), 'wrong');
+      await tester.tap(find.byKey(const Key('confirm-device-setup')));
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+
+      expect(transport.sessions.last.writes, 1);
+      expect(find.textContaining('设备没有接受这个网络'), findsOneWidget);
+      expect(find.textContaining('再扫描屏幕上的新二维码'), findsOneWidget);
+      expect(find.byKey(const Key('scan-setup-code')), findsOneWidget);
+      expect(find.byKey(const Key('confirm-device-setup')), findsNothing);
+      expect(await checkpoints.list(), isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a rollback on a device without a code says to search again',
+        (tester) async {
+      allowDirectoryVerification(tester);
+      final transport = _Transport()
+        ..configureFailure = const DeviceProvisioningTransportException(
+            'owner_route_unavailable', '设备未能连接本次选择的主机，本次配置已撤回，原有归属未变。');
+      await tester.pumpWidget(page(transport));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查找设备'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('network-owner-wifi')));
+      await tester.pump();
+      await tester.enterText(
+          find.byKey(const Key('device-wifi-password')), 'pw');
+      await tester.tap(find.byKey(const Key('confirm-device-setup')));
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+
+      final error = tester.widget<Text>(find.textContaining('原有归属未变'));
+      expect(error.data, contains('然后重新查找'));
+      expect(error.data, isNot(contains('二维码')));
+      expect(find.byKey(const Key('discover-devices')), findsOneWidget);
+      expect(find.byKey(const Key('confirm-device-setup')), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
   });
 }
 
