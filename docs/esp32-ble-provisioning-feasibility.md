@@ -3,6 +3,8 @@
 日期：2026-11-04。只做评估：没有刷机，没有改任何构建的默认配置，没有提交固件或 SDK。
 固件基于 `eidolon-client-esp32@8957618a`，ESP-IDF 5.5.4，板子 BOX-3。
 
+之后按本文做了什么、台架结果、还剩什么，见第 8 节（2026-11-05）。
+
 ## 为什么评估
 
 ESP32 设备现在走开放 SoftAP + 乐鑫 Security 2。手机必须离开家庭 Wi-Fi 两次：
@@ -334,3 +336,88 @@ CoreBluetooth 加乐鑫 iOS 库的 Security 2；SoftAP 在 iOS 上还要走 `NEH
 - Apple：[TN3111 iOS Wi-Fi API overview](https://developer.apple.com/documentation/technotes/tn3111-ios-wifi-api-overview)、[AccessorySetupKit ASAccessory](https://developer.apple.com/documentation/accessorysetupkit/asaccessory.md)
 - Improv：[BLE 规范](https://www.improv-wifi.com/ble/)、[ESPHome Improv via BLE](https://esphome.io/components/esp32_improv/)
 - 涂鸦：[Pairing mode](https://developer.tuya.com/en/docs/iot-device-dev/TuyaOS-iot_abi_network_config_mode?id=Kc67tro6mzaz0)
+
+## 8. 实施状态（2026-11-05）
+
+第 7.3 节的第 1 条（屏幕上的设置码）已经落地，主机设置码也改成了 PAKE，两者都上过台架。
+第 2 条（BLE）建议暂缓（8.4）。第 3 条（已归属设备在线换网）还没开始。
+
+### 8.1 已落地
+
+| 仓库 | 提交 | 内容 |
+|---|---|---|
+| eidolon_sdk | `669938f` | 设置码二维码载荷、BLE 传输、分帧的契约和 golden |
+| eidolon-client-esp32 | `6b6560e8` | 设置码、二维码载荷、分帧的纯逻辑核心，按 SDK golden 逐字节回放 |
+| | `55479141` | 每个窗口生成新码；SRP verifier 在设备上派生；屏幕叠加层显示二维码和数字 |
+| | `592325f5` | 所有维护中的板子默认开启设置码；korvo-1（mbedtls 4）的 SHA-512 改走 PSA；BOX-3 已刷这一版 |
+| eidolon_client_mobile | `704c1b8` | Wi-Fi 列表点一行原地展开（三个页面） |
+| | `641d2f5` | 扫码或输入 8 位数字；码只在内存里，跟着设备走两次访问 |
+| | `3ad19db`、`4345221` | 主机设置码用 SRP-6a 证明，不再发送；旧主机明确报错，不降级 |
+| | `54546e4` | 设备声明 `frame-v1` 时分帧（固件还没有声明，见 8.4） |
+| | `e18d643` | 码被拒后回到扫码那一步 |
+| | `e8edd34` | 移除后重新加入时说清楚为什么是新设备；无码入口只指无屏设备 |
+| eidolon_admin | `9777001`、`b5ca266`、`875dc4f` | 主机只接受 PAKE；猜码令牌桶只拖慢、永不关窗（ADR-0008） |
+| docs | `852aa2e`、`dd3c890` | 认领流程与状态机 |
+
+开发口令 `eidolon-dev-setup` 只剩两处用途：Reachy Mini 这类无屏设备走的「查找设备」入口，
+以及固件每次开机对 SRP 派生做已知答案自检时用的向量。
+
+### 8.2 台架
+
+BOX-3 + HyperOS 平板 + Mac Host：
+
+| 场景 | 结果 |
+|---|---|
+| 长按 BOOT 开窗 | 约 1.2 s 进入广播；屏幕显示二维码和 8 位数字 |
+| 输错码 | 设备在握手第二步拒绝，窗口保持；手机回到扫码那一步（`e18d643` 复测） |
+| 扫码换网（已归属） | 提交到设备确认约 8 s；终态 ACK 到拿到 IP 约 5 s，到主机确认约 10 s，到语音通道约 14 s。身份、认领、伙伴不变 |
+| 移除后重新加入 | Hub 依次 revoke、commissioning-standings、enrollment、grant collect/ack。设备换了新身份，这是设备生命周期 §19.3.8 的要求；旧记录离开设备列表，`erase-operations:pull` 一直是 204 |
+| 设置码外泄 | 平板 logcat 里没有出现 |
+| 内存 | 窗口打开那几秒，内部 SRAM 低水位约 11 KB（SoftAP，语音已关）。这次没有出问题，但做 BLE 之前要先查清是哪一步吃掉的 |
+
+各板默认开启设置码后的编译结果（只验证到编译；叠加层在四种屏幕尺寸上有主机端截图测试，
+除 BOX-3 外都没上真机）：
+
+| 板子 | 结果 | 应用 / 最小应用分区 | 余量 |
+|---|---|---|---|
+| esp-box-3 | 通过，已刷机上台架 | 3.39 / 4.06 MiB | 17% |
+| korvo-1（IDF 6.1） | 通过（SHA-512 改走 PSA 之后） | 3.28 / 4.31 MiB | 24% |
+| xiaoling | 通过 | 3.02 / 4.31 MiB | 30% |
+| m5stack-core-s3 | 通过 | 3.01 / 4.31 MiB | 30% |
+| m5stack-stackchan | 通过 | 3.00 / 4.31 MiB | 30% |
+| esp32-s3-touch-amoled-2.06 | 通过 | 3.03 / 4.31 MiB | 30% |
+| atk-dnesp32s3 | 不通过，原因与设置码无关（见 8.4） | — | — |
+
+korvo-1 的 SHA-512 修正只验证到编译。设备每次开机都会先做已知答案自检，自检不过就拒绝开窗、屏幕提示无法开始设置，
+不会出现码对不上的情况。这块板子上台架时先看这一条。
+
+### 8.3 还没做的台架：用设置码在真机上认领主机（B4）
+
+PAKE 有 RFC 5054 向量、跨语言 golden 和变异测试。部署后在 Mac Host 上验证过
+`pake/start` 的回答和旧接口 404，但还没有一部真手机用设置码完成认领。已经管理这台主机的手机
+会直接用管理密钥认证，走不到 PAKE，所以需要一部没有这台主机凭据的手机：
+
+1. 在 Mac 上执行 `./eidolon mac commissioning-code`，记下 8 位码。这会开一个认领窗口，
+   已认领的主机也可以再加一部手机（peer controller）。
+2. 用一部没管理过这台主机的手机（或者清除 App 数据后的 OnePlus），从「设置另一台主机」输入这个码。
+3. 期望：认领成功，耗时 p95 < 1 s；输错码时提示码不对，窗口不关；局域网上连续输错后提示稍后再试（429）。
+
+### 8.4 暂缓与后续
+
+- **BLE（P5 的固件部分、P6、P7、P9）：建议暂缓，待确认。**
+  硬件不是问题：维护中的板子都有 BLE 射频，平板和手机也都支持。暂缓是因为现在做的收益小、风险大：
+  - SoftAP 流程在台架上稳定：今天三次完整配网，平板每次从扫码到加入设备热点约 2.5 s，
+    没有停在系统确认上，之后都自己回到了家网。BLE 要消掉的离网和回网失败，这次一次都没出现。
+  - 风险在内存：配网窗口里内部 SRAM 只剩约 11 KB，BLE 常驻至少还要 3.9 KB（精简配置），
+    默认配置要 20.7 KB（第 1 节）。
+  - 两端都要新写一个传输，对「稳定」是净风险。
+  - 还没有 iOS 客户端，iOS 这条收益暂时用不上。
+
+  满足下面任一条件就重新启动：开始做 iOS 客户端；某款 Android 手机上出现回网失败或系统确认，
+  而且无法绕过；SoftAP 在某块板子上不可用。
+- **手机端的分帧代码（`54546e4`）**：固件没有声明 `frame-v1` 之前，这段代码走不到。
+  BLE 暂缓的话，它要么保留到重启 BLE 时再用，要么删掉，两种做法都可以。
+- **P8 的固件部分**：错码预算；未归属设备的 Wi-Fi 被拒后自动重开窗口。
+- **已归属设备在线换网（轨道 C）**：还没开始。
+- **atk-dnesp32s3 本来就编不过**：它的分区表没有 64 KiB 的 owner_trust NVS，
+  与设置码无关，需要单独修板子的分区配置。
