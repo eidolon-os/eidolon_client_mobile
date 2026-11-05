@@ -8,9 +8,6 @@ import org.json.JSONObject
  */
 internal const val CAPABILITY_SETUP_CODE = "setup-code"
 
-/** Declared by a device that carries the Eidolon endpoints in chunked frames. */
-internal const val CAPABILITY_FRAMES = "frame-v1"
-
 /** The device shows a code and this visit was opened without one. */
 internal class SetupCodeRequiredException : Exception("This device shows a setup code")
 
