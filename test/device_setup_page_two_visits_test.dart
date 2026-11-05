@@ -1031,11 +1031,13 @@ void main() {
     const scanned = '{"name":"eidolon-52f354","pop":"40718256","security":2,'
         '"transport":"softap","username":"eidolon-setup","ver":"v1"}';
 
-    Widget page(_Transport transport, {String? scan}) => MaterialApp(
+    Widget page(_Transport transport,
+            {String? scan, DeviceSetupCheckpointStore? checkpoints}) =>
+        MaterialApp(
             home: DeviceSetupPage(
           transport: transport,
           admission: _Admission(transport),
-          checkpoints: InMemoryDeviceSetupCheckpointStore(),
+          checkpoints: checkpoints ?? InMemoryDeviceSetupCheckpointStore(),
           loadTarget: () async => deviceOnboardingTargetFixture(),
           scanSetupCode: (_) async => scan,
         ));
@@ -1129,6 +1131,93 @@ void main() {
       await tester.pumpAndSettle();
       expect(transport.openedCandidates.single.setupCode, isNull);
     });
+
+    // Bench, 2026-11-05: the refusal said "scan again" on the device list,
+    // which had no way to scan, and its one button searched again with the
+    // refused code. The only way out was Back, which left setup altogether.
+    const refused = DeviceProvisioningTransportException('setup_code_rejected',
+        '设置码不对，或者设备已经换了新码。请重新扫描设备屏幕上的二维码。');
+
+    testWidgets('a refused code goes back to where a new one is read',
+        (tester) async {
+      final transport = _Transport()..openFailures[1] = refused;
+      await tester.pumpWidget(page(transport));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('enter-setup-code')));
+      await tester.pump();
+      await tester.enterText(
+          find.byKey(const Key('setup-code-field')), '12345678');
+      await tester.tap(find.byKey(const Key('setup-code-continue')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(refused.message), findsOneWidget);
+      expect(find.byKey(const Key('scan-setup-code')), findsOneWidget);
+      expect(find.textContaining('Eidolon Body 1'), findsNothing);
+      // The refused digits are not offered again.
+      expect(find.byKey(const Key('setup-code-field')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('enter-setup-code')));
+      await tester.pump();
+      expect(find.text('12345678'), findsNothing);
+      await tester.enterText(
+          find.byKey(const Key('setup-code-field')), '40718256');
+      await tester.tap(find.byKey(const Key('setup-code-continue')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await tester.pumpAndSettle();
+      expect(transport.openedCandidates.map((c) => c.setupCode),
+          ['12345678', '40718256']);
+      expect(find.byKey(const Key('network-owner-wifi')), findsOneWidget);
+    });
+
+    testWidgets('a device that wants a code it was not given sends the '
+        'person to its screen', (tester) async {
+      const required = DeviceProvisioningTransportException(
+          'setup_code_required', '这台设备的屏幕上有设置码。请扫描屏幕上的二维码，或输入屏幕上的 8 位数字。');
+      final transport = _Transport()..openFailures[1] = required;
+      await tester.pumpWidget(page(transport));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查找设备'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(required.message), findsOneWidget);
+      expect(find.byKey(const Key('scan-setup-code')), findsOneWidget);
+      expect(find.textContaining('Eidolon Body 1'), findsNothing);
+    });
+
+    testWidgets('a code refused on the second visit drops the attempt',
+        (tester) async {
+      // The device opened a new window between the visits, so it shows a
+      // new code; nothing was written to it, and the attempt cannot go on.
+      allowDirectoryVerification(tester);
+      final checkpoints = InMemoryDeviceSetupCheckpointStore();
+      final transport = _Transport()..openFailures[2] = refused;
+      await tester.pumpWidget(
+          page(transport, scan: scanned, checkpoints: checkpoints));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('scan-setup-code')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('network-owner-wifi')));
+      await tester.pump();
+      await tester.enterText(
+          find.byKey(const Key('device-wifi-password')), 'pw');
+      await tester.tap(find.byKey(const Key('confirm-device-setup')));
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+      }
+
+      expect(transport.opened, 2);
+      expect(transport.sessions.every((s) => s.writes == 0), isTrue);
+      expect(find.text(refused.message), findsOneWidget);
+      expect(find.byKey(const Key('scan-setup-code')), findsOneWidget);
+      expect(await checkpoints.list(), isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
   });
 }
 
@@ -1220,6 +1309,10 @@ class _Transport implements DeviceProvisioningTransport, PhoneWifiSource {
   int opened = 0;
   Future<void>? configurationGate;
 
+  /// What the nth visit (1-based) fails with before any session exists, the
+  /// way a refused handshake does.
+  final Map<int, Object> openFailures = {};
+
   int get openSessions => sessions.where((session) => !session.closed).length;
 
   @override
@@ -1244,6 +1337,7 @@ class _Transport implements DeviceProvisioningTransport, PhoneWifiSource {
   ) async {
     opened += 1;
     openedCandidates.add(candidate);
+    if (openFailures[opened] case final failure?) throw failure;
     final session = _Session()
       ..configureFailure = configureFailure
       ..configurationGate = configurationGate

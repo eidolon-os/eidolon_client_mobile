@@ -219,6 +219,11 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     try {
       await action();
     } catch (error) {
+      if (error is DeviceProvisioningTransportException &&
+          _needsCodeFromScreen(error.code)) {
+        if (mounted) _askForCodeAgain(error.message);
+        return;
+      }
       if (mounted) {
         setState(() {
           _error = switch (error) {
@@ -606,7 +611,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
       }
       _activeSetupId ??= _uuidV4();
       _activeRequestId ??= _uuidV4();
-      await _coordinator.provisionAndAdmit(
+      final outcome = await _coordinator.provisionAndAdmit(
         setupId: _activeSetupId!,
         requestId: _activeRequestId!,
         candidate: _candidate!,
@@ -616,6 +621,35 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         voucher: voucher,
         expectedDeviceId: _descriptor?.deviceId,
       );
+      // The handshake is the first thing a visit does, so a refused code
+      // wrote nothing to the device, and the attempt has nothing to resume.
+      if (_isRefusedCode(outcome)) {
+        await widget.checkpoints.remove(outcome.setupId);
+      }
+    });
+  }
+
+  static bool _needsCodeFromScreen(String? code) =>
+      code == 'setup_code_rejected' || code == 'setup_code_required';
+
+  static bool _isRefusedCode(DeviceSetupCheckpoint checkpoint) =>
+      checkpoint.provisioningState == DeviceProvisioningState.failed &&
+      _needsCodeFromScreen(checkpoint.failure?.code);
+
+  /// The device refused the code, or wants one this phone did not give. Only
+  /// the code on its screen now goes on from here, so the attempt is dropped
+  /// and the page goes back to where a code is scanned or typed, saying why.
+  ///
+  /// Staying where the refusal happened asked for a new scan on a page with
+  /// no way to scan, whose one button tried the refused code again.
+  void _askForCodeAgain(String message) {
+    _admissionObservation.setWaiting(false);
+    setState(() {
+      _forgetAttempt();
+      _setupCode = null;
+      _typedCode.clear();
+      _enteringCode = false;
+      _error = message;
     });
   }
 
@@ -656,6 +690,10 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
 
   void _showCheckpoint(DeviceSetupCheckpoint checkpoint) {
     if (!mounted) return;
+    if (_isRefusedCode(checkpoint)) {
+      _askForCodeAgain(checkpoint.failure!.message);
+      return;
+    }
     setState(() {
       _networkConfigured = checkpoint.provisioningState ==
           DeviceProvisioningState.networkConfigured;
@@ -721,28 +759,34 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         _admissionObservation.setWaiting(false);
         if (!mounted) return;
         setState(() {
-          _activeSetupId = null;
-          _activeRequestId = null;
-          _refused = false;
-          _networkConfigured = false;
-          _networkOutcomeUnknown = false;
-          _admissionActive = false;
           _pendingSetups =
               _pendingSetups.where((item) => item.setupId != setupId).toList();
-          _progress = null;
-          _error = null;
-          _candidates = const [];
-          _candidate = null;
-          _descriptor = null;
-          _voucher = null;
-          _networks = const [];
-          _network = null;
-          _hiddenSelected = false;
-          _password.clear();
-          _hiddenSsid.clear();
-          _step = _Step.introduction;
+          _forgetAttempt();
         });
       });
+
+  /// What this attempt learned from the device, the Host and the person,
+  /// dropped, and the page back at its first step. Called inside setState.
+  void _forgetAttempt() {
+    _activeSetupId = null;
+    _activeRequestId = null;
+    _refused = false;
+    _networkConfigured = false;
+    _networkOutcomeUnknown = false;
+    _admissionActive = false;
+    _progress = null;
+    _error = null;
+    _candidates = const [];
+    _candidate = null;
+    _descriptor = null;
+    _voucher = null;
+    _networks = const [];
+    _network = null;
+    _hiddenSelected = false;
+    _password.clear();
+    _hiddenSsid.clear();
+    _step = _Step.introduction;
+  }
 
   String _admissionProgress(DeviceAdmissionState state) => switch (state) {
         DeviceAdmissionState.awaitingEnrollment => '等待设备向主机登记，状态会自动更新',
