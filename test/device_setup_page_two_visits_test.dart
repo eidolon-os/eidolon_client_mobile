@@ -28,7 +28,7 @@ void main() {
   testWidgets(
       'refused rescan preserves the last device with an explicit warning',
       (tester) async {
-    final transport = _Transport();
+    final transport = _Transport()..nearby = const [_body1, _body2];
     await tester.pumpWidget(MaterialApp(
         home: DeviceSetupPage(
       transport: transport,
@@ -37,7 +37,7 @@ void main() {
       loadTarget: () async => deviceOnboardingTargetFixture(),
     )));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('查找设备'));
+    await _searchWithCode(tester);
     await tester.pumpAndSettle();
     expect(find.text('Eidolon Body 1'), findsOneWidget);
     transport.discoveryFailure = const DeviceProvisioningTransportException(
@@ -61,9 +61,7 @@ void main() {
       loadTarget: () async => deviceOnboardingTargetFixture(),
     )));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('查找设备'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await _searchWithCode(tester);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('use-phone-wifi')));
     await tester.pumpAndSettle();
@@ -88,7 +86,7 @@ void main() {
       loadTarget: () async => deviceOnboardingTargetFixture(),
     )));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('查找设备'));
+    await _searchWithCode(tester);
     await tester.pumpAndSettle();
     expect(transport.sessions, isEmpty);
     expect(find.textContaining('Eidolon Body 1'), findsNothing);
@@ -133,9 +131,7 @@ void main() {
         knownDevices: {id: 'old StackChan'},
       )));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('查找设备'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await _searchWithCode(tester);
       await tester.pumpAndSettle();
       expect(transport.sessions.single.replacementRequested, isTrue);
       expect(transport.sessions.single.writes, 0);
@@ -191,9 +187,7 @@ void main() {
             loadTarget: () async => deviceOnboardingTargetFixture()));
     await tester.pumpWidget(page());
     await tester.pumpAndSettle();
-    await tester.tap(find.text('查找设备'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await _searchWithCode(tester);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('network-owner-wifi')));
     await tester.pump();
@@ -251,9 +245,7 @@ void main() {
       expectedDeviceId: 'device-instance-${'b' * 64}',
     )));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('查找设备'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await _searchWithCode(tester);
     await tester.pumpAndSettle();
     expect(find.textContaining('发现的设备身份与原记录不同'), findsOneWidget);
     expect(transport.sessions.single.prepared, isFalse);
@@ -285,9 +277,7 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('查找设备'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await _searchWithCode(tester);
     await tester.pumpAndSettle();
 
     expect(find.text('mesh-wifi'), findsOneWidget);
@@ -310,9 +300,7 @@ void main() {
       knownDevices: {id: '书房 BOX-3'},
     )));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('查找设备'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await _searchWithCode(tester);
     await tester.pumpAndSettle();
     expect(find.textContaining('已识别原设备：书房 BOX-3'), findsOneWidget);
     expect(transport.sessions.single.closed, isTrue);
@@ -335,9 +323,7 @@ void main() {
       knownDevices: {id: 'BOX-3'},
     )));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('查找设备'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await _searchWithCode(tester);
     await tester.pumpAndSettle();
     expect(find.text('需要作为新设备添加'), findsOneWidget);
     expect(transport.sessions.single.closed, isTrue);
@@ -366,9 +352,7 @@ void main() {
       loadTarget: () async => deviceOnboardingTargetFixture(),
     )));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('查找设备'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await _searchWithCode(tester);
     await tester.pumpAndSettle();
     expect(find.textContaining('未请求新的授权'), findsOneWidget);
     expect(find.byKey(const Key('accept-new-device-identity')), findsNothing);
@@ -398,9 +382,7 @@ void main() {
     )));
     await tester.tap(find.text('open setup'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('查找设备'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await _searchWithCode(tester);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('cancel-new-device-identity')));
     await tester.pumpAndSettle();
@@ -452,9 +434,7 @@ void main() {
       loadTarget: () async => deviceOnboardingTargetFixture(),
     )));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('查找设备'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await _searchWithCode(tester);
     await tester.pumpAndSettle();
     expect(find.text('选择家庭 Wi-Fi'), findsOneWidget);
     expect(find.textContaining('可以手动输入网络名称'), findsOneWidget);
@@ -477,9 +457,7 @@ void main() {
       loadTarget: () async => deviceOnboardingTargetFixture(),
     )));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('查找设备'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await _searchWithCode(tester);
     await tester.pumpAndSettle();
     expect(find.text('设备尚未完成归属准备，请保持配置连接后重试。'), findsOneWidget);
     expect(find.text('这台手机没能完成这次操作。'), findsNothing);
@@ -543,9 +521,7 @@ void main() {
             ownerDomainId: ownerDomainIdFixture,
             deviceId: 'device-instance-${'a' * 64}');
       }
-      await tester.tap(find.text('查找设备'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await _searchWithCode(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('network-owner-wifi')));
       await tester.pump();
@@ -653,9 +629,7 @@ void main() {
     )));
     await tester.tap(find.text('open setup'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('查找设备'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await _searchWithCode(tester);
     await tester.pumpAndSettle();
     expect(admission.sessionsOpenWhenAsked, isEmpty);
     await tester.tap(find.byKey(const Key('network-owner-wifi')));
@@ -688,9 +662,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('查找设备'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Eidolon Body 1'));
+    await _searchWithCode(tester);
     await tester.pumpAndSettle();
 
     expect(admission.sessionsOpenWhenAsked, [0]);
@@ -715,7 +687,7 @@ void main() {
     testWidgets('a Host that is not reachable yet is waited for, not reported',
         (tester) async {
       var now = DateTime.utc(2026, 10, 9, 22, 28);
-      final transport = _Transport();
+      final transport = _Transport()..nearby = const [_body1, _body2];
       final admission = _Admission(transport)
         ..voucherFailure = (attempt) => attempt <= 3 ? notBack() : null;
       await tester.pumpWidget(MaterialApp(
@@ -727,7 +699,7 @@ void main() {
         clock: () => now,
       )));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('查找设备'));
+      await _searchWithCode(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.textContaining('Eidolon Body 1'));
       await tester.pump();
@@ -755,7 +727,7 @@ void main() {
         'past the budget the prepared device is kept and the Host is asked again without a second visit',
         (tester) async {
       var now = DateTime.utc(2026, 10, 9, 22, 28);
-      final transport = _Transport();
+      final transport = _Transport()..nearby = const [_body1, _body2];
       final admission = _Admission(transport)
         ..voucherFailure = (attempt) => notBack();
       await tester.pumpWidget(MaterialApp(
@@ -769,7 +741,7 @@ void main() {
         clock: () => now,
       )));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('查找设备'));
+      await _searchWithCode(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.textContaining('Eidolon Body 1'));
       await tester.pump();
@@ -800,7 +772,7 @@ void main() {
     testWidgets('coming back to the app asks the Host again by itself',
         (tester) async {
       var now = DateTime.utc(2026, 10, 9, 22, 28);
-      final transport = _Transport();
+      final transport = _Transport()..nearby = const [_body1, _body2];
       final admission = _Admission(transport)
         ..voucherFailure = (attempt) => notBack();
       await tester.pumpWidget(MaterialApp(
@@ -814,7 +786,7 @@ void main() {
         clock: () => now,
       )));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('查找设备'));
+      await _searchWithCode(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.textContaining('Eidolon Body 1'));
       await tester.pump();
@@ -852,9 +824,7 @@ void main() {
         loadTarget: () async => deviceOnboardingTargetFixture(),
       )));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('查找设备'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await _searchWithCode(tester);
       await tester.pumpAndSettle();
       expect(find.text('主机没有为这台设备签发准入凭据：这台管理设备不能为设备签发凭据'), findsOneWidget);
       expect(admission.voucherAttempts, 1);
@@ -885,7 +855,7 @@ void main() {
     testWidgets('a relocation that found only silence is waited for',
         (tester) async {
       var now = DateTime.utc(2026, 10, 9, 22, 28);
-      final transport = _Transport();
+      final transport = _Transport()..nearby = const [_body1, _body2];
       final admission = _Admission(transport)
         ..voucherFailure = (attempt) => switch (attempt) {
               1 => HostLocationException(const []),
@@ -908,7 +878,7 @@ void main() {
         clock: () => now,
       )));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('查找设备'));
+      await _searchWithCode(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.textContaining('Eidolon Body 1'));
       await tester.pump();
@@ -943,9 +913,7 @@ void main() {
         loadTarget: () async => deviceOnboardingTargetFixture(),
       )));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('查找设备'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await _searchWithCode(tester);
       await tester.pumpAndSettle();
       expect(find.textContaining('不是这台手机配对过的那一台'), findsOneWidget);
       expect(find.textContaining('回到主机所在的网络'), findsNothing);
@@ -960,7 +928,7 @@ void main() {
         'a re-authentication that lost the network is waited for; one the Host refused is not',
         (tester) async {
       var now = DateTime.utc(2026, 10, 9, 22, 28);
-      final transport = _Transport();
+      final transport = _Transport()..nearby = const [_body1, _body2];
       final admission = _Admission(transport)
         ..voucherFailure = (attempt) => attempt == 1
             ? HostControllerAuthorizationException(
@@ -977,7 +945,7 @@ void main() {
         clock: () => now,
       )));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('查找设备'));
+      await _searchWithCode(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.textContaining('Eidolon Body 1'));
       await tester.pump();
@@ -1019,9 +987,7 @@ void main() {
           loadTarget: () async => deviceOnboardingTargetFixture(),
         )));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('查找设备'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.textContaining('Eidolon Body 1'));
+        await _searchWithCode(tester);
         await tester.pumpAndSettle();
         expect(find.textContaining('签发准入凭据：'), findsOneWidget);
         expect(find.textContaining('回到主机所在的网络'), findsNothing);
@@ -1103,93 +1069,88 @@ void main() {
       expect(transport.opened, 0);
     });
 
-    testWidgets('a typed code goes with the device the person picks',
+    testWidgets('a typed code goes straight to the only device nearby',
         (tester) async {
       final transport = _Transport();
       await tester.pumpWidget(page(transport));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('enter-setup-code')));
-      await tester.pump();
-      await tester.enterText(
-          find.byKey(const Key('setup-code-field')), '4071825');
-      await tester.tap(find.byKey(const Key('setup-code-continue')));
+      await _searchWithCode(tester, '4071825');
       await tester.pumpAndSettle();
-      expect(find.text('请输入设备屏幕上的 8 位数字。'), findsOneWidget);
+      expect(find.text('请输入设备显示或念出的 8 位数字。'), findsOneWidget);
       await tester.enterText(
           find.byKey(const Key('setup-code-field')), '40718256');
       await tester.tap(find.byKey(const Key('setup-code-continue')));
       await tester.pumpAndSettle();
-      await tester.tap(find.textContaining('Eidolon Body 1'));
-      await tester.pumpAndSettle();
+      // The code names one device and only one is nearby: nothing to pick.
+      expect(transport.openedCandidates.single.transportId, 'eidolon-52f354');
       expect(transport.openedCandidates.single.setupCode, '40718256');
+      expect(find.byKey(const Key('network-owner-wifi')), findsOneWidget);
     });
 
-    testWidgets('the development entry opens without a code', (tester) async {
-      final transport = _Transport();
+    testWidgets('with several devices nearby the person picks one',
+        (tester) async {
+      final transport = _Transport()..nearby = const [_body1, _body2];
       await tester.pumpWidget(page(transport));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('查找设备'));
+      await _searchWithCode(tester);
       await tester.pumpAndSettle();
-      await tester.tap(find.textContaining('Eidolon Body 1'));
+      expect(transport.opened, 0);
+      expect(find.textContaining('Eidolon Body 1'), findsOneWidget);
+      await tester.tap(find.textContaining('Eidolon Body 2'));
       await tester.pumpAndSettle();
-      expect(transport.openedCandidates.single.setupCode, isNull);
+      expect(transport.openedCandidates.single.transportId, 'eidolon-a1b2c3');
+      expect(transport.openedCandidates.single.setupCode, '40718256');
     });
 
     // Bench, 2026-11-05: the refusal said "scan again" on the device list,
     // which had no way to scan, and its one button searched again with the
     // refused code. The only way out was Back, which left setup altogether.
     const refused = DeviceProvisioningTransportException('setup_code_rejected',
-        '设置码不对，或者设备已经换了新码。请重新扫描设备屏幕上的二维码。');
+        '这台设备没有接受这个设置码。请核对设备显示或念出的 8 位数字后再试；设备每次进入配网模式都会换新码。');
 
-    testWidgets('a refused code goes back to where a new one is read',
+    // A refused typed code is most likely a misheard or mistyped digit, so the
+    // digits stay in the field to be corrected rather than typed again.
+    testWidgets('a refused typed code stays in the field to be corrected',
         (tester) async {
       final transport = _Transport()..openFailures[1] = refused;
       await tester.pumpWidget(page(transport));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('enter-setup-code')));
-      await tester.pump();
-      await tester.enterText(
-          find.byKey(const Key('setup-code-field')), '12345678');
-      await tester.tap(find.byKey(const Key('setup-code-continue')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await _searchWithCode(tester, '12345678');
       await tester.pumpAndSettle();
 
       expect(find.text(refused.message), findsOneWidget);
       expect(find.byKey(const Key('scan-setup-code')), findsOneWidget);
       expect(find.textContaining('Eidolon Body 1'), findsNothing);
-      // The refused digits are not offered again.
-      expect(find.byKey(const Key('setup-code-field')), findsNothing);
+      expect(
+          tester
+              .widget<TextField>(find.byKey(const Key('setup-code-field')))
+              .controller!
+              .text,
+          '12345678');
 
-      await tester.tap(find.byKey(const Key('enter-setup-code')));
-      await tester.pump();
-      expect(find.text('12345678'), findsNothing);
       await tester.enterText(
           find.byKey(const Key('setup-code-field')), '40718256');
       await tester.tap(find.byKey(const Key('setup-code-continue')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.textContaining('Eidolon Body 1'));
       await tester.pumpAndSettle();
       expect(transport.openedCandidates.map((c) => c.setupCode),
           ['12345678', '40718256']);
       expect(find.byKey(const Key('network-owner-wifi')), findsOneWidget);
     });
 
-    testWidgets('a device that wants a code it was not given sends the '
-        'person to its screen', (tester) async {
-      const required = DeviceProvisioningTransportException(
-          'setup_code_required', '这台设备的屏幕上有设置码。请扫描屏幕上的二维码，或输入屏幕上的 8 位数字。');
-      final transport = _Transport()..openFailures[1] = required;
+    testWidgets('a device too old for setup codes says so and goes no further',
+        (tester) async {
+      const unsupported = DeviceProvisioningTransportException(
+          'setup_code_unsupported', '这台设备的固件太旧，不支持设置码。请先更新设备固件。');
+      final transport = _Transport()..openFailures[1] = unsupported;
       await tester.pumpWidget(page(transport));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('查找设备'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.textContaining('Eidolon Body 1'));
+      await _searchWithCode(tester);
       await tester.pumpAndSettle();
 
-      expect(find.text(required.message), findsOneWidget);
+      expect(find.text(unsupported.message), findsOneWidget);
       expect(find.byKey(const Key('scan-setup-code')), findsOneWidget);
-      expect(find.textContaining('Eidolon Body 1'), findsNothing);
+      expect(find.byKey(const Key('setup-code-field')), findsNothing);
+      expect(transport.opened, 1);
     });
 
     testWidgets('a code refused on the second visit drops the attempt',
@@ -1199,8 +1160,8 @@ void main() {
       allowDirectoryVerification(tester);
       final checkpoints = InMemoryDeviceSetupCheckpointStore();
       final transport = _Transport()..openFailures[2] = refused;
-      await tester.pumpWidget(
-          page(transport, scan: scanned, checkpoints: checkpoints));
+      await tester
+          .pumpWidget(page(transport, scan: scanned, checkpoints: checkpoints));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('scan-setup-code')));
       await tester.pumpAndSettle();
@@ -1225,15 +1186,16 @@ void main() {
     // After a rollback the device closes its setup window (and opens the
     // next one with a new code), so the network form's 「重新连接」 could only
     // fail against a device that was no longer there.
-    testWidgets('a network the device rolled back sends the person to its '
+    testWidgets(
+        'a network the device rolled back sends the person to its '
         'screen for a new code', (tester) async {
       allowDirectoryVerification(tester);
       final checkpoints = InMemoryDeviceSetupCheckpointStore();
       final transport = _Transport()
         ..configureFailure = const DeviceProvisioningTransportException(
             'network_rejected', '设备没有接受这个网络,请确认 Wi-Fi 名称和密码。');
-      await tester.pumpWidget(
-          page(transport, scan: scanned, checkpoints: checkpoints));
+      await tester
+          .pumpWidget(page(transport, scan: scanned, checkpoints: checkpoints));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('scan-setup-code')));
       await tester.pumpAndSettle();
@@ -1248,40 +1210,10 @@ void main() {
 
       expect(transport.sessions.last.writes, 1);
       expect(find.textContaining('设备没有接受这个网络'), findsOneWidget);
-      expect(find.textContaining('再扫描屏幕上的新二维码'), findsOneWidget);
+      expect(find.textContaining('再扫描或输入它的新设置码'), findsOneWidget);
       expect(find.byKey(const Key('scan-setup-code')), findsOneWidget);
       expect(find.byKey(const Key('confirm-device-setup')), findsNothing);
       expect(await checkpoints.list(), isEmpty);
-      await tester.pumpWidget(const SizedBox());
-      await tester.pumpAndSettle();
-    });
-
-    testWidgets('a rollback on a device without a code says to search again',
-        (tester) async {
-      allowDirectoryVerification(tester);
-      final transport = _Transport()
-        ..configureFailure = const DeviceProvisioningTransportException(
-            'owner_route_unavailable', '设备未能连接本次选择的主机，本次配置已撤回，原有归属未变。');
-      await tester.pumpWidget(page(transport));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('查找设备'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.textContaining('Eidolon Body 1'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('network-owner-wifi')));
-      await tester.pump();
-      await tester.enterText(
-          find.byKey(const Key('device-wifi-password')), 'pw');
-      await tester.tap(find.byKey(const Key('confirm-device-setup')));
-      for (var i = 0; i < 20; i++) {
-        await tester.pump(const Duration(milliseconds: 10));
-      }
-
-      final error = tester.widget<Text>(find.textContaining('原有归属未变'));
-      expect(error.data, contains('然后重新查找'));
-      expect(error.data, isNot(contains('二维码')));
-      expect(find.byKey(const Key('discover-devices')), findsOneWidget);
-      expect(find.byKey(const Key('confirm-device-setup')), findsNothing);
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();
     });
@@ -1361,6 +1293,30 @@ class _Admission implements DeviceAdmissionPort {
   }
 }
 
+const _body1 = DeviceProvisioningCandidate(
+  transportId: 'eidolon-52f354',
+  displayName: 'Eidolon Body 1',
+  transportKind: 'softap',
+  trust: SetupDescriptorTrustV1.manufacturerBound,
+);
+
+const _body2 = DeviceProvisioningCandidate(
+  transportId: 'eidolon-a1b2c3',
+  displayName: 'Eidolon Body 2',
+  transportKind: 'softap',
+  trust: SetupDescriptorTrustV1.manufacturerBound,
+);
+
+/// Search as a person does, with the code the device shows or speaks. With one
+/// device nearby the page goes straight to it.
+Future<void> _searchWithCode(WidgetTester tester,
+    [String code = '40718256']) async {
+  await tester.tap(find.byKey(const Key('enter-setup-code')));
+  await tester.pump();
+  await tester.enterText(find.byKey(const Key('setup-code-field')), code);
+  await tester.tap(find.byKey(const Key('setup-code-continue')));
+}
+
 class _Transport implements DeviceProvisioningTransport, PhoneWifiSource {
   @override
   Future<String?> currentWifiSsid() async => "owner-wifi";
@@ -1385,17 +1341,13 @@ class _Transport implements DeviceProvisioningTransport, PhoneWifiSource {
   @override
   Future<bool> requestPermission() async => true;
 
+  /// The devices in setup mode nearby: one, unless a test says otherwise.
+  List<DeviceProvisioningCandidate> nearby = const [_body1];
+
   @override
   Future<List<DeviceProvisioningCandidate>> discover() async {
     if (discoveryFailure != null) throw discoveryFailure!;
-    return const [
-      DeviceProvisioningCandidate(
-        transportId: 'eidolon-52f354',
-        displayName: 'Eidolon Body 1',
-        transportKind: 'softap',
-        trust: SetupDescriptorTrustV1.manufacturerBound,
-      ),
-    ];
+    return nearby;
   }
 
   @override

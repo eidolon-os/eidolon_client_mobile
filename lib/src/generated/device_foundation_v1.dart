@@ -771,6 +771,145 @@ class SetupQrPayloadV1 {
       '"ver":"$version"}';
 }
 
+enum SetupCodePresentationV1 {
+  trustedDisplay('trusted_display'),
+  spokenCode('spoken_code');
+
+  const SetupCodePresentationV1(this.wireValue);
+  final String wireValue;
+}
+
+/// How a person puts one device model into setup mode and gets its one-time
+/// setup code (`models/setup.json`). The words are the Mobile app's own.
+class SetupModelV1 {
+  const SetupModelV1({
+    required this.deviceKind,
+    required this.ssidModel,
+    required this.manifestId,
+    required this.name,
+    required this.setupCode,
+    required this.enter,
+    required this.cancel,
+    required this.rehear,
+  });
+
+  static const Set<String> fields = {
+    'cancel',
+    'device_kind',
+    'enter',
+    'manifest_id',
+    'name',
+    'rehear',
+    'setup_code',
+    'ssid_model',
+  };
+
+  /// The model as its setup descriptor names it.
+  final String deviceKind;
+
+  /// The model as its SoftAP name carries it, before a phone connects.
+  final String ssidModel;
+
+  /// The model as its Manifest names it, which the Host's device list carries.
+  final String manifestId;
+  final String name;
+  final SetupCodePresentationV1 setupCode;
+
+  /// The gesture that opens setup mode on a device already set up or removed.
+  final String enter;
+
+  /// The gesture that closes setup mode at the device.
+  final String cancel;
+
+  /// The gesture that has the device say its code again; null for a device
+  /// that shows its code.
+  final String? rehear;
+
+  factory SetupModelV1.fromJson(Map<String, dynamic> value) {
+    if (!value.keys.toSet().containsAll(fields) ||
+        !fields.containsAll(value.keys)) {
+      throw const FormatException('Invalid setup model envelope');
+    }
+    final deviceKind = _text(value['device_kind'], 64);
+    final ssidModel = _text(value['ssid_model'], 18);
+    if (!RegExp(r'^[a-z0-9][a-z0-9.-]*$').hasMatch(deviceKind) ||
+        !RegExp(r'^[a-z0-9][a-z0-9.-]*$').hasMatch(ssidModel)) {
+      throw const FormatException('Invalid setup model name');
+    }
+    SetupCodePresentationV1? setupCode;
+    for (final candidate in SetupCodePresentationV1.values) {
+      if (candidate.wireValue == value['setup_code']) setupCode = candidate;
+    }
+    if (setupCode == null) {
+      throw const FormatException('Unknown setup code presentation');
+    }
+    final rehear = value['rehear'] == null ? null : _text(value['rehear'], 200);
+    if ((setupCode == SetupCodePresentationV1.spokenCode) != (rehear != null)) {
+      throw const FormatException('Only a spoken setup code is heard again');
+    }
+    return SetupModelV1(
+      deviceKind: deviceKind,
+      ssidModel: ssidModel,
+      manifestId: _text(value['manifest_id'], 128),
+      name: _text(value['name'], 64),
+      setupCode: setupCode,
+      enter: _text(value['enter'], 200),
+      cancel: _text(value['cancel'], 200),
+      rehear: rehear,
+    );
+  }
+}
+
+/// Every shipped model's setup declaration, found by whichever name the caller
+/// holds: the SoftAP name a phone sees before connecting, or the Manifest id
+/// the Host's device list carries.
+class SetupModelCatalogV1 {
+  const SetupModelCatalogV1._(this.models);
+
+  static const String version = '1';
+
+  final List<SetupModelV1> models;
+
+  factory SetupModelCatalogV1.fromJson(Map<String, dynamic> value) {
+    final entries = value['models'];
+    if (value.length != 2 ||
+        value['catalog_version'] != version ||
+        entries is! List ||
+        entries.isEmpty) {
+      throw const FormatException('Invalid setup model catalog');
+    }
+    final models = List<SetupModelV1>.unmodifiable([
+      for (final entry in entries)
+        if (entry is Map<String, dynamic>)
+          SetupModelV1.fromJson(entry)
+        else
+          throw const FormatException('Invalid setup model'),
+    ]);
+    // Each is a key somebody looks a model up by; two models sharing one
+    // would show a person the wrong gesture.
+    for (final key in <String Function(SetupModelV1)>[
+      (model) => model.deviceKind,
+      (model) => model.ssidModel,
+      (model) => model.manifestId,
+    ]) {
+      if (models.map(key).toSet().length != models.length) {
+        throw const FormatException('Setup models share a name');
+      }
+    }
+    return SetupModelCatalogV1._(models);
+  }
+
+  /// The model behind a SoftAP name, `eidolon-<ssid_model>-<six hex digits>`.
+  SetupModelV1? forAdvertisedName(String name) {
+    final ssidModel =
+        RegExp(r'^eidolon-(.+)-[0-9a-fA-F]{6}$').firstMatch(name)?.group(1);
+    return models.where((model) => model.ssidModel == ssidModel).firstOrNull;
+  }
+
+  SetupModelV1? forManifestId(String? manifestId) =>
+      models.where((model) => model.manifestId == manifestId).firstOrNull;
+}
+
 enum CommissioningStatusStateV1 {
   applyingConfiguration('applying-configuration'),
   committed('committed'),

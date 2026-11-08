@@ -60,8 +60,8 @@ class _SetupCodeScannerPageState extends State<SetupCodeScannerPage> {
                     padding: const EdgeInsets.all(24),
                     child: Text(
                       error.errorCode == MobileScannerErrorCode.permissionDenied
-                          ? '没有相机权限。可以返回后输入设备屏幕上的 8 位数字。'
-                          : '相机打不开。可以返回后输入设备屏幕上的 8 位数字。',
+                          ? '没有相机权限。可以返回后输入 8 位设置码。'
+                          : '相机打不开。可以返回后输入 8 位设置码。',
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -71,7 +71,7 @@ class _SetupCodeScannerPageState extends State<SetupCodeScannerPage> {
             Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
-                '把二维码放进画面里。二维码只在设备的设置模式里显示，每次打开都会换新。',
+                '把二维码放进画面里。二维码只在设备的配网模式里显示，每次进入都会换新。',
                 style: Theme.of(context).textTheme.bodySmall,
                 textAlign: TextAlign.center,
               ),

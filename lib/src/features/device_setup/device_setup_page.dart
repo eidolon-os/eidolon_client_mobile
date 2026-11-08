@@ -15,7 +15,9 @@ import '../../generated/device_foundation_v1.dart';
 import 'device_setup_models.dart';
 import 'device_setup_ports.dart';
 import 'owner_domain_directory_verifier.dart';
+import 'platform_device_provisioning.dart' show provisioningDiscoveryLabel;
 import 'setup_code_scanner_page.dart';
+import 'setup_models.dart';
 import '../host_setup/failure_sentences.dart';
 import '../host_setup/host_product_session.dart';
 import '../host_setup/local_api_client.dart';
@@ -50,6 +52,7 @@ class DeviceSetupPage extends StatefulWidget {
     required this.loadTarget,
     this.allowDevelopmentTrust = true,
     this.expectedDeviceId,
+    this.expectedManifestId,
     this.knownDevices = const {},
     this.hostReturnBudget = const Duration(seconds: 90),
     this.hostReturnInterval = const Duration(seconds: 3),
@@ -70,6 +73,10 @@ class DeviceSetupPage extends StatefulWidget {
   final DeviceSetupCheckpointStore checkpoints;
   final Future<DeviceOnboardingTarget> Function() loadTarget;
   final String? expectedDeviceId;
+
+  /// The Manifest id of the device whose network is being changed, so the page
+  /// can say how that model enters setup mode.
+  final String? expectedManifestId;
   final Map<String, String> knownDevices;
 
   /// How long the Host is given to become reachable again after this phone
@@ -157,6 +164,9 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   bool _enteringCode = false;
   final _typedCode = TextEditingController();
 
+  /// How each model enters setup mode (SDK `models/setup.json`).
+  SetupModelCatalogV1? _models;
+
   bool _refused = false;
   List<DeviceSetupCheckpoint> _pendingSetups = const [];
   String? _activeSetupId;
@@ -177,6 +187,31 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     _admissionObservation = AdmissionObservation(_resumePersistedAdmission);
     WidgetsBinding.instance.addObserver(this);
     unawaited(_loadPendingSetups());
+    unawaited(setupModels.then((models) {
+      if (mounted) setState(() => _models = models);
+    }));
+  }
+
+  SetupModelV1? get _expectedModel =>
+      _models?.forManifestId(widget.expectedManifestId);
+
+  /// How to put the device into setup mode: this model's gesture when the page
+  /// knows the model, otherwise where on this page every model's is.
+  String _howToEnterSetup() {
+    final model = _expectedModel;
+    return model == null
+        ? '请让设备进入配网模式，各型号的方法见“设备没有进入配网模式？”。'
+        : setupModeInstruction(model);
+  }
+
+  /// The device as the list names it, by its model's name when the SDK
+  /// declares the model its SoftAP name carries.
+  String _candidateLabel(DeviceProvisioningCandidate candidate) {
+    final model = _models?.forAdvertisedName(candidate.transportId);
+    return model == null
+        ? candidate.displayName
+        : provisioningDiscoveryLabel(candidate.transportId,
+            modelName: model.name);
   }
 
   @override
@@ -220,8 +255,11 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
       await action();
     } catch (error) {
       if (error is DeviceProvisioningTransportException &&
-          _needsCodeFromScreen(error.code)) {
-        if (mounted) _askForCodeAgain(error.message);
+          _needsCodeFromDevice(error.code)) {
+        if (mounted) {
+          _askForCodeAgain(error.message,
+              keepTypedCode: error.code == 'setup_code_rejected');
+        }
         return;
       }
       if (mounted) {
@@ -297,22 +335,26 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     final match =
         _candidates.where((c) => c.transportId == payload.name).firstOrNull;
     if (match == null) {
-      setState(() => _error =
-          '附近没有找到 ${payload.name}。请确认设备屏幕上的二维码还在显示，然后重新扫描。');
+      setState(
+          () => _error = '附近没有找到 ${payload.name}。请确认设备屏幕上的二维码还在显示，然后重新扫描。');
       return;
     }
     await _select(match);
   }
 
-  /// The eight digits typed from the screen, for a phone that cannot scan.
-  /// The device is then picked from the nearby list.
+  /// The eight digits a device shows or speaks, typed. The code names one
+  /// device, so with only one in setup mode nearby there is nothing to choose
+  /// and the page goes straight to it; with several, the person picks.
   Future<void> _continueWithTypedCode() async {
     final code = _typedCode.text.trim();
     if (!RegExp(r'^[0-9]{8}$').hasMatch(code)) {
-      setState(() => _error = '请输入设备屏幕上的 8 位数字。');
+      setState(() => _error = '请输入设备显示或念出的 8 位数字。');
       return;
     }
     await _discover(setupCode: code);
+    if (mounted && _step == _Step.choosingDevice && _candidates.length == 1) {
+      await _select(_candidates.single);
+    }
   }
 
   Future<void> _discover({String? setupCode}) => _run(() async {
@@ -349,9 +391,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             _candidates = const [];
             _discoveryWarning = null;
           });
-          throw Exception(
-            '附近没有等待设置的设备。请在设备上打开网络设置,然后重试。',
-          );
+          throw Exception('附近没有找到配网模式中的设备。${_howToEnterSetup()}然后重试。');
         }
         setState(() {
           _candidates = found;
@@ -369,7 +409,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         final candidate = found.withSetupCode(_setupCode);
         setState(() {
           _candidate = candidate;
-          _progress = '正在连接设备并读取信息';
+          _progress = '正在连接 ${_candidateLabel(candidate)}';
           _scanWarning = null;
         });
         final session = await widget.transport.open(candidate);
@@ -629,8 +669,10 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     });
   }
 
-  static bool _needsCodeFromScreen(String? code) =>
-      code == 'setup_code_rejected' || code == 'setup_code_required';
+  static bool _needsCodeFromDevice(String? code) =>
+      code == 'setup_code_rejected' ||
+      code == 'setup_code_required' ||
+      code == 'setup_code_unsupported';
 
   /// The device rolled the setup back: the failure codes of its commissioning
   /// status (device_foundation v1), and the phone's name for a rollback that
@@ -649,28 +691,30 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   static bool _endedSetupWindow(DeviceSetupCheckpoint checkpoint) {
     final code = checkpoint.failure?.code;
     return checkpoint.provisioningState == DeviceProvisioningState.failed &&
-        (_needsCodeFromScreen(code) || _rolledBackCodes.contains(code));
+        (_needsCodeFromDevice(code) || _rolledBackCodes.contains(code));
   }
 
   /// What a person does once the device has closed its window.
-  String _reopenHint() => _setupCode == null
-      ? '设备已结束这次设置。请在设备上重新打开网络设置，然后重新查找。'
-      : '设备已结束这次设置。请在设备上重新打开网络设置，再扫描屏幕上的新二维码。';
+  String _reopenHint() => '设备已退出配网模式。${_howToEnterSetup()}再扫描或输入它的新设置码。';
 
-  /// The device refused the code, wants one this phone did not give, or rolled
-  /// the setup back and closed its window. Only a window open now, and the
-  /// code on its screen, goes on from here, so the attempt is dropped and the
-  /// page goes back to where a code is scanned or typed, saying why.
+  /// The device refused the code, cannot take one, or rolled the setup back
+  /// and closed its window. Only a window open now, and the code it shows or
+  /// speaks, goes on from here, so the attempt is dropped and the page goes
+  /// back to where a code is scanned or typed, saying why.
+  ///
+  /// A refused code that was typed stays in the field to be corrected
+  /// ([keepTypedCode]); after a closed window the old digits mean nothing.
   ///
   /// Staying put asked for a new scan on a page with no way to scan, or left
   /// 「重新连接」 in front of a device that was no longer listening.
-  void _askForCodeAgain(String message) {
+  void _askForCodeAgain(String message, {bool keepTypedCode = false}) {
     _admissionObservation.setWaiting(false);
+    final typed = keepTypedCode && _typedCode.text.trim() == _setupCode;
     setState(() {
       _forgetAttempt();
       _setupCode = null;
-      _typedCode.clear();
-      _enteringCode = false;
+      if (!typed) _typedCode.clear();
+      _enteringCode = typed;
       _error = message;
     });
   }
@@ -895,13 +939,15 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         children: [
           Text('准备设备', style: Theme.of(context).textTheme.titleLarge),
           if (widget.expectedDeviceId != null)
-            const Text('为原设备更换 Wi-Fi。请在这台设备上打开网络设置；设备身份和已有绑定将保持不变。'),
+            Text('为原设备更换 Wi-Fi，设备身份和已有绑定保持不变。${_howToEnterSetup()}'),
           const SizedBox(height: 12),
-          const Text('1. 给设备通电。'),
+          const Text('1. 给设备通电。第一次通电的设备会自动进入配网模式。'),
           const SizedBox(height: 4),
-          const Text('2. 在设备上打开网络设置,进入配网模式。'),
+          const Text('2. 用过或被移除的设备，要在设备上手动进入配网模式。'),
           const SizedBox(height: 4),
-          const Text('3. 设备屏幕会显示二维码和 8 位设置码，每次打开都会换新。'),
+          const Text('3. 有屏幕的设备会显示二维码和 8 位设置码，没有屏幕的设备会念出 8 位设置码。每次进入都会换新。'),
+          const SizedBox(height: 4),
+          const Text('4. 第一次连接某台设备时，手机可能会询问是否连接，请选择连接。'),
           const SizedBox(height: 20),
           FilledButton.icon(
             key: const Key('scan-setup-code'),
@@ -916,7 +962,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
               onPressed:
                   _busy ? null : () => setState(() => _enteringCode = true),
               icon: const Icon(Icons.pin_outlined),
-              label: const Text('输入屏幕上的 8 位数字'),
+              label: const Text('输入设备显示或念出的 8 位数字'),
             )
           else ...[
             TextField(
@@ -931,7 +977,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
               textInputAction: TextInputAction.go,
               onSubmitted: (_) => _continueWithTypedCode(),
               decoration: const InputDecoration(
-                labelText: '设备屏幕上的 8 位数字',
+                labelText: '8 位设置码',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -942,13 +988,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             ),
           ],
           const SizedBox(height: 16),
-          const Text('没有屏幕的开发设备（如 Reachy Mini）：'),
-          TextButton.icon(
-            key: const Key('discover-devices'),
-            onPressed: _busy ? null : () => _discover(),
-            icon: const Icon(Icons.search),
-            label: const Text('查找设备'),
-          ),
+          _setupModeHelp(),
           if (_pendingSetups.isNotEmpty) ...[
             const SizedBox(height: 24),
             Text('未完成的设备接入', style: Theme.of(context).textTheme.titleMedium),
@@ -969,18 +1009,38 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
         ],
       );
 
+  /// Every model's way into setup mode, folded away: a device out of the box
+  /// opens it by itself, so most people never need to look.
+  Widget _setupModeHelp() => ExpansionTile(
+        key: const Key('setup-mode-help'),
+        tilePadding: EdgeInsets.zero,
+        title: const Text('设备没有进入配网模式？'),
+        children: [
+          for (final model in _models?.models ?? const <SetupModelV1>[])
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(model.name),
+              subtitle: Text([
+                '进入：${model.enter}',
+                if (model.rehear != null) '没听清设置码：${model.rehear}',
+                '退出：${model.cancel}',
+              ].join('\n')),
+            ),
+        ],
+      );
+
   Widget _deviceList() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('选择设备', style: Theme.of(context).textTheme.titleLarge),
-          const Text('这是最近一次查找的结果。设备刚进入设置模式时，请重新查找。'),
+          const Text('这是最近一次查找的结果。设备刚进入配网模式时，请重新查找。'),
           if (_discoveryWarning != null) Text(_discoveryWarning!),
           const SizedBox(height: 12),
           for (final candidate in _candidates)
             Card(
               child: ListTile(
                 key: Key('candidate-${candidate.transportId}'),
-                title: Text(candidate.displayName),
+                title: Text(_candidateLabel(candidate)),
                 subtitle: Text(candidate.signalStrength == null
                     ? candidate.transportKind
                     : '${candidate.transportKind} · ${candidate.signalStrength} dBm'),
@@ -1012,7 +1072,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
               _descriptor!.displayName,
             ),
           const SizedBox(height: 8),
-          const Text('设备已经准备好，设备上的设置模式还开着，不用再碰设备。'),
+          const Text('设备已经准备好，配网模式还开着，不用再碰设备。'),
           const SizedBox(height: 4),
           const Text('手机离开设备热点后没有自动连回主机所在的 Wi-Fi。'
               '请到系统的 Wi-Fi 设置连回那个网络（必要时先关闭再打开 Wi-Fi），然后回到这里。'),

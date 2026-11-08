@@ -81,11 +81,15 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('discover-devices')));
+    await tester.tap(find.byKey(const Key('enter-setup-code')));
+    await tester.pump();
+    await tester.enterText(
+        find.byKey(const Key('setup-code-field')), '40718256');
+    await tester.tap(find.byKey(const Key('setup-code-continue')));
     await tester.pumpAndSettle();
     expect(admission.recoverCalls, 0);
     expect((await store.list()).map((item) => item.encode()).toList(), before);
-    expect(find.textContaining('附近没有等待设置的设备'), findsOneWidget);
+    expect(find.textContaining('附近没有找到配网模式中的设备'), findsOneWidget);
   });
 
   testWidgets('multiple pending setups require a choice and remain independent',
@@ -101,7 +105,7 @@ void main() {
     await tester.pumpWidget(_page(store, admission));
     await tester.pumpAndSettle();
     expect(find.text('继续接入'), findsNWidgets(2));
-    expect(find.byKey(const Key('discover-devices')), findsOneWidget);
+    expect(find.byKey(const Key('enter-setup-code')), findsOneWidget);
     expect(admission.recoverCalls, 0);
     await tester.tap(find.byKey(const Key('continue-setup-second')));
     await tester.pumpAndSettle();

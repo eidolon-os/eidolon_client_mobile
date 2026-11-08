@@ -66,12 +66,16 @@ class PlatformDeviceProvisioning
       'DEVICE_SCAN_BUSY' => '正在扫描,请稍候。',
       'WIFI_PERMISSION_DENIED' => '设置设备需要「附近设备」权限。',
       'DEVICE_UNREACHABLE' =>
-        '未建立设备热点连接，尚未发送 Wi-Fi 密码。请在系统提示中允许连接，并确认设备仍在网络设置模式，然后重试。',
+        '未建立设备热点连接，尚未发送 Wi-Fi 密码。请在系统提示中允许连接，并确认设备仍在配网模式，然后重试。',
       'DEVICE_SESSION_FAILED' => _withDetail('已连接设备热点，但建立安全会话失败', error),
       // The device draws a new code each time it opens setup, so a code that
       // worked a minute ago can be the wrong one now.
-      'SETUP_CODE_REJECTED' => '设置码不对，或者设备已经换了新码。请重新扫描设备屏幕上的二维码。',
-      'SETUP_CODE_REQUIRED' => '这台设备的屏幕上有设置码。请扫描屏幕上的二维码，或输入屏幕上的 8 位数字。',
+      'SETUP_CODE_REJECTED' =>
+        '这台设备没有接受这个设置码。请核对设备显示或念出的 8 位数字后再试；设备每次进入配网模式都会换新码。',
+      'SETUP_CODE_REQUIRED' => '请扫描设备屏幕上的二维码，或输入设备显示或念出的 8 位数字。',
+      // Firmware from before setup codes, keyed by the public development
+      // pair this app no longer uses.
+      'SETUP_CODE_UNSUPPORTED' => '这台设备的固件太旧，不支持设置码。请先更新设备固件。',
       'DEVICE_DISCONNECTED' => '设备中断了这次设置。请再试一次。',
       // The detail is kept. This one sentence has stood in front of three
       // unrelated faults so far, none of them the device's silence.
@@ -547,9 +551,9 @@ DeviceProvisioningDescriptor _parseDescriptor(String raw,
 }
 
 /// Decode the SoftAP discovery label at the platform boundary. Never identity proof.
-String provisioningDiscoveryLabel(String advertisedName) {
+String provisioningDiscoveryLabel(String advertisedName, {String? modelName}) {
   final match = RegExp(r'^eidolon-(?:(.+)-)?([0-9a-fA-F]{6})$')
       .firstMatch(advertisedName);
   if (match == null) return advertisedName;
-  return '${match.group(1) ?? "Eidolon 设备"} · ${match.group(2)!.toUpperCase()}';
+  return '${modelName ?? match.group(1) ?? "Eidolon 设备"} · ${match.group(2)!.toUpperCase()}';
 }

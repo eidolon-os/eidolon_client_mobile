@@ -195,14 +195,16 @@ void main() {
       transportKind: 'softap',
       trust: SetupDescriptorTrustV1.developmentTofu,
     ));
-    // The development entry sends no code at all, never an empty one.
+    // A candidate without a code sends none at all, never an empty one;
+    // Android refuses it before the phone leaves its network.
     expect((calls.first.arguments as Map).containsKey('setupCode'), isFalse);
     await transport.close();
   });
 
   for (final (code, words) in [
-    ('SETUP_CODE_REJECTED', '重新扫描设备屏幕上的二维码'),
-    ('SETUP_CODE_REQUIRED', '屏幕上有设置码'),
+    ('SETUP_CODE_REJECTED', '没有接受这个设置码'),
+    ('SETUP_CODE_REQUIRED', '设备显示或念出的 8 位数字'),
+    ('SETUP_CODE_UNSUPPORTED', '固件太旧'),
   ]) {
     test('$code is said in words a person can act on', () async {
       messenger.setMockMethodCallHandler(channel, (call) async {
@@ -219,8 +221,8 @@ void main() {
             trust: SetupDescriptorTrustV1.developmentTofu,
             setupCode: '40718256',
           )),
-          throwsA(isA<DeviceProvisioningTransportException>().having(
-              (error) => error.message, 'message', contains(words))));
+          throwsA(isA<DeviceProvisioningTransportException>()
+              .having((error) => error.message, 'message', contains(words))));
     });
   }
 

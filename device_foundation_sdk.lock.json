@@ -1,10 +1,10 @@
 {
-  "sdk_commit": "669938f996bba98e5972bcd89f94978a017e2f69",
+  "sdk_commit": "517a9ccb611259674e444d10815488ae22078cd5",
   "files": [
     {
       "source": "contracts/device_foundation/v1/generated/dart/device_foundation_v1.dart",
       "target": "lib/src/generated/device_foundation_v1.dart",
-      "sha256": "cb98adf04bd40a54d66f7756f977303558bc8967d6beb4d8bcbbe9e20d74988e"
+      "sha256": "b30cce95d062aa6baccfb9de15a26771dfdc3520cfa59315f524141be8b68b8f"
     },
     {
       "source": "contracts/device_foundation/v1/examples/valid/admission-consumer-surface.json",
@@ -69,7 +69,7 @@
     {
       "source": "contracts/device_foundation/v1/examples/valid/common.json",
       "target": "test/fixtures/device_foundation/common.valid.json",
-      "sha256": "bc843ed1e973d3272fbdff9d924a28cf2fe39aa4bdc86b1ce71b62c9c6f456df"
+      "sha256": "b8fa814171a96c6f83fe5362168760932a9339c244363d4940c54b8a20cf11ae"
     },
     {
       "source": "contracts/device_foundation/v1/golden/claim-grant-collection-proof.json",
@@ -99,7 +99,7 @@
     {
       "source": "contracts/device_foundation/v1/golden/device-control-manifest-assertion-proof.json",
       "target": "test/fixtures/device_foundation/device-control-manifest-assertion-proof.json",
-      "sha256": "6ce206c815a3c2a32d45fb708ec4d5aaa542dcd6b32650a3ef92a6ea26b7ae53"
+      "sha256": "54dc74760944bfef759372f1de95249eaaffe55af613e70d350022c0ba702414"
     },
     {
       "source": "contracts/device_foundation/v1/golden/setup-qr-payload.json",
@@ -120,6 +120,11 @@
       "source": "contracts/device_foundation/v1/golden/ble-provisioning-transport.json",
       "target": "test/fixtures/device_foundation/ble-provisioning-transport.json",
       "sha256": "0620e13bd1695443d92b0f6c5f208c2f162f69a00214169622b75dfd7d18c9c3"
+    },
+    {
+      "source": "contracts/device_foundation/v1/models/setup.json",
+      "target": "assets/device_foundation/setup-models.json",
+      "sha256": "ad96b25a34649f3436b2e0c323f5f8b7f692d33520bda3339e702c98920c7dbf"
     }
   ]
 }

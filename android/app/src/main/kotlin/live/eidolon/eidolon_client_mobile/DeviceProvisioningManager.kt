@@ -64,14 +64,10 @@ class DeviceProvisioningManager(
         private const val AP_PREFIX = "eidolon-"
 
         /**
-         * The Security 2 identity and passphrase for development builds.
-         *
-         * The device stores only a salt and an SRP verifier, so this passphrase
-         * cannot be recovered from a board; a manufacturer-bound build carries
-         * a per-device secret in its place and refuses to run with this one.
+         * The Security 2 identity. The password is the code the device drew
+         * for this window; there is no shared one to fall back to.
          */
         private const val SECURITY_USERNAME = "eidolon-setup"
-        private const val SECURITY_PASSPHRASE = "eidolon-dev-setup"
 
         private const val DESCRIPTOR_ENDPOINT = "eidolon-descriptor"
         private const val TRUST_ENDPOINT = "eidolon-trust"
@@ -115,11 +111,8 @@ class DeviceProvisioningManager(
     private var activeFailure: ((String, String) -> Unit)? = null
     private var sessionId: String? = null
 
-    /**
-     * The code on the device's screen for this visit, or null for a device set
-     * up through the development entry. Held for one visit and never logged.
-     */
-    private var setupCode: String? = null
+    /** The code the device showed or spoke for this visit. Never logged. */
+    private var setupCode = ""
 
     /**
      * One in-flight platform call, answered exactly once.
@@ -339,6 +332,12 @@ class DeviceProvisioningManager(
         setupCode: String?,
         result: MethodChannel.Result,
     ) {
+        // Refused before the phone leaves its network: without the code the
+        // device drew there is nothing to open a session with.
+        if (setupCode == null) {
+            result.error("SETUP_CODE_REQUIRED", "No setup code for this device", null)
+            return
+        }
         synchronized(lock) {
             if (connectResult?.isAnswered == false || activeOperation?.isAnswered == false) {
                 result.error(
@@ -443,15 +442,15 @@ class DeviceProvisioningManager(
             if (!pending.isAnswered) failConnection(pending, "DESCRIPTOR_TIMEOUT", "读取设备身份超时，请重试。")
         }, 30_000L)
         val code = synchronized(lock) { setupCode }
-        espDevice.open(SECURITY_USERNAME, code ?: SECURITY_PASSPHRASE, code != null, object : ResponseListener {
+        espDevice.open(SECURITY_USERNAME, code, object : ResponseListener {
             override fun onSuccess(response: ByteArray?) {
                 if (device === espDevice && connectResult === pending) readDescriptor(pending)
             }
             override fun onFailure(error: Exception?) {
                 Log.w(TAG, "Device session handshake failed: ${error?.javaClass?.simpleName}")
                 when (error) {
-                    is SetupCodeRequiredException -> failConnection(
-                        pending, "SETUP_CODE_REQUIRED", "This device shows a setup code")
+                    is SetupCodeUnsupportedException -> failConnection(
+                        pending, "SETUP_CODE_UNSUPPORTED", "This device does not draw a setup code")
                     is SetupCodeRejectedException -> failConnection(
                         pending, "SETUP_CODE_REJECTED", "The setup code was not accepted")
                     else -> failConnection(pending, "DEVICE_SESSION_FAILED", errorText(error))

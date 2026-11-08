@@ -13,6 +13,8 @@ import '../device_setup/device_admission_queue.dart';
 import '../device_setup/device_setup_page.dart';
 import '../device_setup/host_controller_device_admission.dart';
 import '../device_setup/platform_device_provisioning.dart';
+import '../device_setup/setup_models.dart';
+import '../../generated/device_foundation_v1.dart' show SetupModelV1;
 import '../../generated/management_v1.dart';
 import '../../management/management_client.dart';
 import '../../management/companion_creation_flow.dart';
@@ -255,6 +257,7 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
               widget.checkpoints ?? PersistentDeviceSetupCheckpointStore(),
           loadTarget: widget.controller.deviceOnboardingTarget,
           expectedDeviceId: existing?.deviceId,
+          expectedManifestId: existing?.manifestId,
           knownDevices: {
             for (final device
                 in widget.controller.devices?.devices ?? <MountedDevice>[])
@@ -732,11 +735,21 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
   late MountedDevice _device;
   CompanionSetupIntent? _pending;
   bool _recovering = true;
+
+  /// How this device's model opens setup mode, said before it is removed:
+  /// afterwards nothing on this phone knows which model it was.
+  SetupModelV1? _model;
+
   @override
   void initState() {
     super.initState();
     _device = widget.device;
     _readProgress();
+    unawaited(setupModels.then((models) {
+      if (mounted) {
+        setState(() => _model = models.forManifestId(_device.manifestId));
+      }
+    }));
   }
 
   @override
@@ -1075,14 +1088,16 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
 
   Future<void> _confirmRemoval() async {
     final device = _device;
+    final model = _model;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         key: const Key('confirm-device-removal'),
         title: const Text('移除这台设备？'),
-        content: const Text(
+        content: Text(
           '主机会先撤销它对当前 Owner 的访问授权，再让挂载和通道独立收敛。'
-          '之后需要重新认领才能再次使用。',
+          '之后要再次使用，需要重新添加。'
+          '${model == null ? '' : setupModeInstruction(model)}',
         ),
         actions: [
           TextButton(
@@ -1530,11 +1545,12 @@ class _OutputsPickerState extends State<_OutputsPicker> {
             SwitchListTile(
               key: Key('device-output-$name'),
               title: Text(_labels[name]!),
-              subtitle: _declared.contains(name)
-                  ? null : const Text('当前客户端未提供此能力'),
+              subtitle:
+                  _declared.contains(name) ? null : const Text('当前客户端未提供此能力'),
               value: _chosen[name] ?? false,
               onChanged: _declared.contains(name)
-                  ? (value) => setState(() => _chosen[name] = value) : null,
+                  ? (value) => setState(() => _chosen[name] = value)
+                  : null,
             ),
           const SizedBox(height: 4),
           // Nothing arrives switched on: a pre-ticked box is the system

@@ -84,10 +84,14 @@ void main() {
     final covered = entries().map((entry) => entry['target'] as String).toSet();
     final onDisk = <String>{
       'lib/src/generated/device_foundation_v1.dart',
-      ...Directory('test/fixtures/device_foundation')
-          .listSync()
-          .whereType<File>()
-          .map((file) => file.path),
+      for (final vendored in [
+        'test/fixtures/device_foundation',
+        'assets/device_foundation'
+      ])
+        ...Directory(vendored)
+            .listSync()
+            .whereType<File>()
+            .map((file) => file.path),
     };
 
     expect(

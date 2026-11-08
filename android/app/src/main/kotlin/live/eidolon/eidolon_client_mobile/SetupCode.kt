@@ -8,8 +8,11 @@ import org.json.JSONObject
  */
 internal const val CAPABILITY_SETUP_CODE = "setup-code"
 
-/** The device shows a code and this visit was opened without one. */
-internal class SetupCodeRequiredException : Exception("This device shows a setup code")
+/**
+ * The device does not say it draws a code per window: firmware from before setup
+ * codes, whose only key is the public development pair this app no longer uses.
+ */
+internal class SetupCodeUnsupportedException : Exception("This device does not draw a setup code")
 
 /** The handshake failed with a code supplied: the code is wrong or stale. */
 internal class SetupCodeRejectedException(cause: Exception?) :

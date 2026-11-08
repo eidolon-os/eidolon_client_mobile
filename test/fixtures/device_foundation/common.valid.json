@@ -542,6 +542,51 @@
         "schema_version": 1,
         "title": "every-affordance"
       }
+    },
+    {
+      "case_id": "DF-SETUP-MODEL-SPOKEN-CODE-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "SetupModel",
+      "value": {
+        "device_kind": "reachy-mini",
+        "ssid_model": "reachy",
+        "manifest_id": "eidolon-reachy-mini",
+        "name": "Reachy Mini",
+        "setup_code": "spoken_code",
+        "enter": "把任意一根天线推开，保持 3 秒。",
+        "cancel": "手指往下按住一根天线，听到“滴”声后再按 3 秒。",
+        "rehear": "轻碰一下天线。"
+      }
+    },
+    {
+      "case_id": "DF-SETUP-MODEL-CATALOG-VALID",
+      "schema": "https://contracts.eidolon.live/device-foundation/v1/common/schemas.schema.json",
+      "definition": "SetupModelCatalog",
+      "value": {
+        "catalog_version": "1",
+        "models": [
+          {
+            "device_kind": "esp-box-3",
+            "ssid_model": "esp-box-3",
+            "manifest_id": "esp-box-3",
+            "name": "ESP32-S3-BOX-3",
+            "setup_code": "trusted_display",
+            "enter": "按住 BOOT 键约 2 秒。",
+            "cancel": "配网模式中再按住 BOOT 键约 2 秒。",
+            "rehear": null
+          },
+          {
+            "device_kind": "reachy-mini",
+            "ssid_model": "reachy",
+            "manifest_id": "eidolon-reachy-mini",
+            "name": "Reachy Mini",
+            "setup_code": "spoken_code",
+            "enter": "把任意一根天线推开，保持 3 秒。",
+            "cancel": "手指往下按住一根天线，听到“滴”声后再按 3 秒。",
+            "rehear": "轻碰一下天线。"
+          }
+        ]
+      }
     }
   ]
 }
