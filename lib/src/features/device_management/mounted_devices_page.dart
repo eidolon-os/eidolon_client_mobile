@@ -1071,8 +1071,30 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
       }
       if (mounted) Navigator.of(context).pop();
     } catch (error) {
+      // The Host answered, and its answer was that this request is not one it
+      // accepts. Nothing was saved and sending the same decision again can only
+      // be refused the same way, so the decision is dropped instead of being
+      // kept as something to resume: the next visit opens the choices again.
+      final pending = _pending;
+      final rejected = error is ManagementRequestException &&
+          error.kind == 'invalid' &&
+          pending?.step == CompanionSetupStep.savingOutputs;
+      if (rejected) {
+        try {
+          await _clearProgress();
+        } catch (_) {
+          // The refusal is what has to be said; a journal that could not be
+          // cleared says so itself on the next visit.
+        }
+      }
       if (mounted) {
-        setState(() => _notice = _setupError(error));
+        setState(() => _notice = rejected && pending?.inputs?.camera != null
+            // The one refusal this decision is known to draw: the Host takes a
+            // camera use only for a device that declared a camera.
+            ? '主机没有接受这次设置，这次的选择都没有保存。'
+                '主机只接受为声明了摄像头的设备设置摄像头档位；'
+                '请重新打开设置再选一次。'
+            : _setupError(error));
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(_notice!)));
       }
@@ -1212,10 +1234,26 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
     final named = [
       if (outputs.inputCapabilities?.microphone == true)
         (outputs.inputs?.microphone ?? true) ? '收音已开启' : '收音已关闭',
+      if (_declaresCamera(outputs)) _cameraText(outputs.inputs?.camera),
       ..._outputNames(allowed),
     ];
     return named.isEmpty ? '你把它设成了什么都不表达' : named.join('、');
   }
+
+  /// How the camera is used, including the answer nobody has given yet.
+  ///
+  /// An unset choice behaves as 「仅本地」 and is said to be unchosen: the device
+  /// is already looking at whoever speaks to it, and its Owner should be able
+  /// to see that this was a default rather than something they picked.
+  static String _cameraText(String? use) => switch (use) {
+        'off' => '摄像头已关闭',
+        'local' => '摄像头仅本地',
+        'capture' => '摄像头可拍照',
+        null => '摄像头仅本地（尚未选择）',
+        // A use this app has not heard of, from a newer Host. Named as the Host
+        // names it rather than passed off as one of the three.
+        _ => '摄像头档位「$use」',
+      };
 
   static List<String> _outputNames(OutputSelection outputs) => [
         if (outputs.speech ?? false) '说话',
@@ -1487,9 +1525,112 @@ class _OutputsPicker extends StatefulWidget {
   State<_OutputsPicker> createState() => _OutputsPickerState();
 }
 
+/// Whether this device said it has a camera its Owner can decide about.
+///
+/// The declaration is the capture contract, and it is what the Host checks
+/// before it takes a camera use at all: a use sent for a device without it is
+/// refused, so nothing about the camera is drawn or sent for one.
+bool _declaresCamera(DeviceOutputs outputs) =>
+    outputs.inputCapabilities?.camera == 'capture';
+
+/// The three camera uses, narrowest first: the policy's word, what the Owner
+/// reads, and what it means for them.
+const List<(String, String, String)> _cameraUses = [
+  ('off', '关', '不使用摄像头，也不跟随人脸'),
+  ('local', '仅本地', '只在设备上使用（看着你），画面不离开设备'),
+  ('capture', '可拍照', '你让它看的时候拍一张发给主机，由模型回答'),
+];
+
 class _OutputsPickerState extends State<_OutputsPicker> {
   late Map<String, bool> _chosen;
   late bool _microphone;
+
+  /// The camera use picked in this sheet, and nothing else.
+  ///
+  /// Null until the Owner taps one, and sent only then: left out of the
+  /// request, the Host keeps whatever it holds — including "never chosen",
+  /// which this sheet must not turn into a choice by being opened and saved.
+  String? _camera;
+
+  /// What the sheet shows as in effect: this visit's pick, else what the Host
+  /// holds, else 「仅本地」, which is how an unset choice behaves.
+  String get _cameraShown =>
+      _camera ?? widget.outputs.inputs?.camera ?? 'local';
+
+  /// Pictures leaving the device is the one step here that is asked twice.
+  Future<void> _chooseCamera(String use) async {
+    if (use == 'capture' && _cameraShown != 'capture') {
+      final agreed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          key: const Key('confirm-device-camera-capture'),
+          title: const Text('允许它拍照发给主机？'),
+          content: const Text(
+            '你让它看的时候，它会拍一张照片发给主机，由模型回答。\n\n'
+            '· 照片会离开这台设备，传到主机。\n'
+            '· 主机会不会再把照片发给第三方模型，取决于主机的配置。\n'
+            '· 它睡着的时候拍不到。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('暂不允许'),
+            ),
+            FilledButton(
+              key: const Key('confirm-device-camera-capture-allow'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('允许拍照'),
+            ),
+          ],
+        ),
+      );
+      if (agreed != true || !mounted) return;
+    }
+    setState(() => _camera = use);
+  }
+
+  List<Widget> _cameraSection(BuildContext context) {
+    final stored = widget.outputs.inputs?.camera;
+    final shown = _cameraShown;
+    final known = _cameraUses.any((use) => use.$1 == shown);
+    final theme = Theme.of(context);
+    return [
+      const Divider(),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        child: Text('摄像头', style: theme.textTheme.titleSmall),
+      ),
+      if (_camera == null && (stored == null || !known))
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            stored == null
+                ? '还没有选择过，现在按「仅本地」运行。点选一项并保存后，才会记下你的选择。'
+                : '主机上记的是「$stored」，这个版本的应用不认识。不点选就保持不变。',
+            key: const Key('device-input-camera-undecided'),
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+      for (final (use, title, detail) in _cameraUses)
+        Semantics(
+          inMutuallyExclusiveGroup: true,
+          checked: shown == use,
+          child: ListTile(
+            key: Key('device-input-camera-$use'),
+            leading: Icon(
+              shown == use
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: shown == use ? theme.colorScheme.primary : null,
+            ),
+            title: Text(title),
+            subtitle: Text(detail),
+            onTap: () => _chooseCamera(use),
+          ),
+        ),
+      const Divider(),
+    ];
+  }
 
   static const Map<String, String> _labels = {
     'speech': '说话',
@@ -1529,7 +1670,10 @@ class _OutputsPickerState extends State<_OutputsPicker> {
           Text('它可以听和表达什么', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
           Text(
-            '收音控制是否允许发送麦克风声音；说话、文字和表情分别控制回复方式。',
+            _declaresCamera(widget.outputs)
+                ? '收音控制是否允许发送麦克风声音；摄像头控制画面用在哪里；'
+                    '说话、文字和表情分别控制回复方式。'
+                : '收音控制是否允许发送麦克风声音；说话、文字和表情分别控制回复方式。',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 12),
@@ -1541,6 +1685,7 @@ class _OutputsPickerState extends State<_OutputsPicker> {
               value: _microphone,
               onChanged: (value) => setState(() => _microphone = value),
             ),
+          if (_declaresCamera(widget.outputs)) ..._cameraSection(context),
           for (final name in _labels.keys)
             SwitchListTile(
               key: Key('device-output-$name'),
@@ -1558,7 +1703,8 @@ class _OutputsPickerState extends State<_OutputsPicker> {
           // this decision exists to prevent. Allowing everything is still one
           // tap, and it is still the Owner who takes it — and it can never
           // reach past what the device declared, because it only fills in the
-          // switches that are drawn.
+          // switches that are drawn. The camera is not one of them: letting
+          // pictures leave the device is asked on its own, never in bulk.
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton(
@@ -1585,6 +1731,7 @@ class _OutputsPickerState extends State<_OutputsPicker> {
                 inputs: widget.outputs.inputCapabilities == null
                     ? null
                     : InputSelection(
+                        camera: _camera,
                         microphone:
                             widget.outputs.inputCapabilities?.microphone ==
                                     true &&

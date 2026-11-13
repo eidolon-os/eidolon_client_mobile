@@ -126,6 +126,77 @@ void main() {
     expect(writes, 1);
     expect(await store(prefs).load(), isNull);
   });
+  test('a decision that changes only the camera use is sent, and sent once',
+      () async {
+    final prefs = InMemoryAppPreferences();
+    const speech = OutputSelection(
+        speech: true,
+        dialogueText: false,
+        expression: false,
+        audioCue: false,
+        motion: false);
+    // Same outputs and microphone as the decision; only the camera differs.
+    var current = device(
+        companion: 'new',
+        revision: 2,
+        allowed: speech,
+        inputs: const InputSelection(microphone: true, camera: 'local'),
+        outputRevision: 3);
+    var writes = 0;
+    final pending = intent.at(CompanionSetupStep.savingOutputs,
+        allowed: speech,
+        inputs: const InputSelection(microphone: true, camera: 'capture'),
+        outputRevision: 3);
+    await store(prefs).save(pending);
+    // The camera use survives the journal, which is what a restart resumes.
+    expect((await store(prefs).load())!.inputs?.camera, 'capture');
+    DeviceCompanionSetup flow() => DeviceCompanionSetup(
+        store: store(prefs),
+        loadDevice: () async => current,
+        bind: (_) async => fail('binding must not repeat'),
+        setOutputs: (allowed, inputs, revision) async {
+          writes++;
+          expect(revision, 3);
+          expect(inputs?.camera, 'capture');
+          current = device(
+              companion: 'new',
+              revision: 2,
+              allowed: speech,
+              inputs: inputs,
+              outputRevision: 4);
+          throw TimeoutException('lost response');
+        });
+    await expectLater(
+        flow().finishOutputs(pending), throwsA(isA<TimeoutException>()));
+    await flow().finishOutputs((await store(prefs).load())!);
+    expect(writes, 1);
+    expect(await store(prefs).load(), isNull);
+  });
+  test('a decision that leaves the camera out matches whatever use is stored',
+      () async {
+    final prefs = InMemoryAppPreferences();
+    const speech = OutputSelection(speech: true);
+    final pending = intent.at(CompanionSetupStep.savingOutputs,
+        allowed: speech,
+        inputs: const InputSelection(microphone: true),
+        outputRevision: 3);
+    await store(prefs).save(pending);
+    // The Host kept the Owner's earlier choice, as it does for a request that
+    // does not name one. That is this decision, already made.
+    await DeviceCompanionSetup(
+            store: store(prefs),
+            loadDevice: () async => device(
+                companion: 'new',
+                revision: 2,
+                allowed: speech,
+                inputs:
+                    const InputSelection(microphone: true, camera: 'capture'),
+                outputRevision: 4),
+            bind: (_) async => fail('binding must not repeat'),
+            setOutputs: (_, __, ___) async => fail('already decided'))
+        .finishOutputs(pending);
+    expect(await store(prefs).load(), isNull);
+  });
   test('concurrent binding or output edits never get overwritten on recovery',
       () async {
     final prefs = InMemoryAppPreferences();

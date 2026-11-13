@@ -218,9 +218,20 @@ class DeviceCompanionSetup {
     return device;
   }
 
-  static bool _matches(DeviceOutputs outputs, CompanionSetupIntent intent) =>
-      _same(outputs.allowed, intent.allowed) &&
-      (intent.inputs == null || outputs.inputs?.microphone == intent.inputs!.microphone);
+  /// Whether the Host already holds this decision.
+  ///
+  /// The camera use is compared only when the decision names one: left out, it
+  /// asks the Host to keep whatever is there, so any stored value matches. When
+  /// it is named it has to be compared, or a decision that changes nothing but
+  /// the camera reads as already made and is never sent.
+  static bool _matches(DeviceOutputs outputs, CompanionSetupIntent intent) {
+    final inputs = intent.inputs;
+    return _same(outputs.allowed, intent.allowed) &&
+        (inputs == null ||
+            (outputs.inputs?.microphone == inputs.microphone &&
+                (inputs.camera == null ||
+                    outputs.inputs?.camera == inputs.camera)));
+  }
 
   static bool _same(OutputSelection? a, OutputSelection? b) =>
       a != null &&

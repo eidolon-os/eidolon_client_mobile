@@ -10,6 +10,7 @@ library;
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_device_models.dart';
 import 'package:eidolon_client_mobile/src/features/device_management/mounted_devices_page.dart';
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
+import 'package:eidolon_client_mobile/src/management/management_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,6 +23,9 @@ MountedDevice _device({
   int revision = 0,
   bool? microphoneCapability,
   bool? microphone,
+  // What the device declared about its camera, and what its Owner chose.
+  String? cameraCapability,
+  String? camera,
 }) =>
     MountedDevice.fromView(
       DeviceView.fromJson({
@@ -44,8 +48,17 @@ MountedDevice _device({
         'manifest_id': 'esp-box-3',
         'manifest_revision': 1,
         'outputs': {
-          if (microphoneCapability != null) 'input_capabilities': {'microphone': microphoneCapability},
-          if (microphone != null) 'inputs': {'microphone': microphone},
+          if (microphoneCapability != null || cameraCapability != null)
+            'input_capabilities': {
+              if (microphoneCapability != null)
+                'microphone': microphoneCapability,
+              if (cameraCapability != null) 'camera': cameraCapability,
+            },
+          if (microphone != null || camera != null)
+            'inputs': {
+              if (microphone != null) 'microphone': microphone,
+              if (camera != null) 'camera': camera,
+            },
           // What this board declared: it can take audio, show the face and
           // show dialogue text. It never declared a body.
           'capabilities': {
@@ -237,5 +250,222 @@ void main() {
 
     expect(find.byKey(const Key('device-outputs')), findsOneWidget);
     expect(find.byKey(const Key('decide-device-outputs')), findsNothing);
+  });
+
+  group('camera use', () {
+    // A robot that declared the capture contract, already decided about.
+    MountedDevice robot({String? camera, bool? microphone = true}) => _device(
+          state: 'ready',
+          allowed: const {'speech': true},
+          revision: 4,
+          microphoneCapability: true,
+          microphone: microphone,
+          cameraCapability: 'capture',
+          camera: camera,
+        );
+
+    /// Opens the picker and returns what each save sent.
+    Future<List<InputSelection?>> openPicker(
+      WidgetTester tester,
+      MountedDevice device, {
+      Object? refuseWith,
+    }) async {
+      // Tall enough that the whole sheet is built: the camera adds three rows
+      // and the sheet is a lazy list.
+      tester.view.physicalSize = const Size(800, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final sent = <InputSelection?>[];
+      await _open(tester, device, onSetOutputs: ({
+        required String deviceId,
+        required OutputSelection allowed,
+        InputSelection? inputs,
+        required int expectedRevision,
+      }) async {
+        sent.add(inputs);
+        if (refuseWith != null) throw refuseWith;
+      });
+      await _tapWhereverItIs(tester, const Key('decide-device-outputs'));
+      await tester.pumpAndSettle();
+      return sent;
+    }
+
+    Future<void> save(WidgetTester tester) async {
+      await tester.tap(find.byKey(const Key('device-outputs-save')));
+      await tester.pumpAndSettle();
+    }
+
+    bool shownAsChosen(WidgetTester tester, String use) => find
+        .descendant(
+          of: find.byKey(Key('device-input-camera-$use')),
+          matching: find.byIcon(Icons.radio_button_checked),
+        )
+        .evaluate()
+        .isNotEmpty;
+
+    testWidgets('is not offered, or sent, for a device with no camera',
+        (tester) async {
+      final sent = await openPicker(
+        tester,
+        _device(
+          state: 'ready',
+          allowed: const {'speech': true},
+          microphoneCapability: true,
+          microphone: true,
+        ),
+      );
+
+      for (final use in ['off', 'local', 'capture']) {
+        expect(find.byKey(Key('device-input-camera-$use')), findsNothing);
+      }
+      await save(tester);
+      expect(sent.single?.camera, isNull);
+      expect(sent.single?.toJson().containsKey('camera'), isFalse);
+      expect(sent.single?.microphone, isTrue);
+    });
+
+    testWidgets('a choice nobody made shows as local, unchosen, and stays so',
+        (tester) async {
+      final device = robot();
+      final sent = await openPicker(tester, device);
+
+      // Behind the sheet, the device's own row says the same thing.
+      expect(find.textContaining('摄像头仅本地（尚未选择）'), findsOneWidget);
+      expect(shownAsChosen(tester, 'local'), isTrue);
+      expect(shownAsChosen(tester, 'off'), isFalse);
+      expect(shownAsChosen(tester, 'capture'), isFalse);
+      expect(
+        find.byKey(const Key('device-input-camera-undecided')),
+        findsOneWidget,
+      );
+
+      // Opening and saving is not choosing: the request leaves the camera out,
+      // which the Host reads as "keep what is there".
+      await save(tester);
+      expect(sent.single?.camera, isNull);
+      expect(sent.single?.microphone, isTrue);
+    });
+
+    testWidgets('picking local where nothing was chosen writes local',
+        (tester) async {
+      final sent = await openPicker(tester, robot());
+
+      await tester.tap(find.byKey(const Key('device-input-camera-local')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('device-input-camera-undecided')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('confirm-device-camera-capture')), findsNothing);
+
+      await save(tester);
+      expect(sent.single?.camera, 'local');
+      expect(sent.single?.microphone, isTrue);
+    });
+
+    testWidgets('capture is asked about once more, and declining changes nothing',
+        (tester) async {
+      final sent = await openPicker(tester, robot(camera: 'local'));
+
+      await tester.tap(find.byKey(const Key('device-input-camera-capture')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('confirm-device-camera-capture')),
+        findsOneWidget,
+      );
+      // The three things the Owner is agreeing to.
+      expect(find.textContaining('照片会离开这台设备，传到主机'), findsOneWidget);
+      expect(find.textContaining('第三方模型，取决于主机的配置'), findsOneWidget);
+      expect(find.textContaining('睡着的时候拍不到'), findsOneWidget);
+
+      await tester.tap(find.text('暂不允许'));
+      await tester.pumpAndSettle();
+      expect(shownAsChosen(tester, 'capture'), isFalse);
+      expect(shownAsChosen(tester, 'local'), isTrue);
+
+      await save(tester);
+      expect(sent.single?.camera, isNull);
+    });
+
+    testWidgets('capture confirmed is written with the microphone left as it was',
+        (tester) async {
+      final sent =
+          await openPicker(tester, robot(camera: 'local', microphone: false));
+
+      await tester.tap(find.byKey(const Key('device-input-camera-capture')));
+      await tester.pumpAndSettle();
+      await tester
+          .tap(find.byKey(const Key('confirm-device-camera-capture-allow')));
+      await tester.pumpAndSettle();
+      expect(shownAsChosen(tester, 'capture'), isTrue);
+
+      await save(tester);
+      expect(sent.single?.camera, 'capture');
+      expect(sent.single?.microphone, isFalse);
+    });
+
+    testWidgets('narrowing from capture needs no second question',
+        (tester) async {
+      final sent = await openPicker(tester, robot(camera: 'capture'));
+
+      expect(find.textContaining('摄像头可拍照'), findsOneWidget);
+      expect(shownAsChosen(tester, 'capture'), isTrue);
+      await tester.tap(find.byKey(const Key('device-input-camera-off')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('confirm-device-camera-capture')), findsNothing);
+      expect(shownAsChosen(tester, 'off'), isTrue);
+
+      await save(tester);
+      expect(sent.single?.camera, 'off');
+    });
+
+    testWidgets('allowing everything does not reach the camera',
+        (tester) async {
+      final sent = await openPicker(tester, robot(camera: 'local'));
+
+      await tester.tap(find.byKey(const Key('device-outputs-allow-all')));
+      await tester.pumpAndSettle();
+      expect(shownAsChosen(tester, 'local'), isTrue);
+
+      await save(tester);
+      expect(sent.single?.camera, isNull);
+    });
+
+    testWidgets('a use the Host refuses is said, and can be chosen again',
+        (tester) async {
+      // What the Hub answers when the device never declared a camera.
+      final sent = await openPicker(
+        tester,
+        robot(),
+        refuseWith: const ManagementRequestException(
+          'refused',
+          statusCode: 422,
+          refusal: Refusal(
+            kind: 'invalid',
+            reason: 'device did not declare camera use',
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('device-input-camera-off')));
+      await tester.pumpAndSettle();
+      await save(tester);
+
+      expect(sent.single?.camera, 'off');
+      expect(find.byKey(const Key('mounted-device-detail')), findsOneWidget);
+      final notice = tester.widget<Text>(
+        find.byKey(const Key('device-removal-notice'), skipOffstage: false),
+      );
+      expect(notice.data, contains('主机没有接受这次设置'));
+      expect(notice.data, contains('摄像头'));
+
+      // The refused decision is not kept as something to resume: asking again
+      // opens the choices rather than resending what was just refused.
+      await tester.pumpAndSettle(const Duration(seconds: 5));
+      await _tapWhereverItIs(tester, const Key('decide-device-outputs'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('device-outputs-picker')), findsOneWidget);
+      expect(sent, hasLength(1));
+    });
   });
 }
