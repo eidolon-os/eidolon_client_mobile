@@ -2850,16 +2850,24 @@ class HostVitalsView {
 }
 
 class InputSelection {
-  const InputSelection({this.microphone});
+  const InputSelection({this.camera, this.microphone});
+
+  final String? camera;
 
   final bool? microphone;
 
   factory InputSelection.fromJson(Map<String, dynamic> value) {
-    return InputSelection(microphone: value['microphone'] as bool?);
+    return InputSelection(
+      camera: value['camera'] as String?,
+      microphone: value['microphone'] as bool?,
+    );
   }
 
   Map<String, dynamic> toJson() {
-    return {if (microphone != null) 'microphone': microphone};
+    return {
+      if (camera != null) 'camera': camera,
+      if (microphone != null) 'microphone': microphone,
+    };
   }
 }
 
