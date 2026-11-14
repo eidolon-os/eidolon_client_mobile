@@ -1,135 +1,80 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../generated/management_v1.dart';
-import '../../platform/app_preferences.dart';
 import '../device_management/mounted_device_models.dart';
 
-typedef DeviceSessionCommand = Future<DeviceConversationStatus> Function(
-    String action, String sessionId, String? deviceId, String? companionId);
+/// `status`, `open` or `close` for one device; [conversationId] scopes a close.
+typedef DeviceSessionCommand = Future<DeviceSessionStatus> Function(
+    String action, String deviceId, String? conversationId);
 
-/// Persists only correlation, never authority or optimistic conversation state.
-/// Leaving this page does not end a device-owned conversation.
+/// Mirrors the conversation the device itself holds, whoever started it.
+///
+/// Nothing is kept here: the Host says what the device is doing, and this page
+/// asks the device to start or end. Leaving the page changes nothing.
 class DeviceSessionControls extends StatefulWidget {
   const DeviceSessionControls(
       {super.key,
       required this.device,
       required this.command,
-      required this.storageKey,
       required this.online,
-      this.preferences,
       this.refreshPresence});
   final MountedDevice device;
   final DeviceSessionCommand command;
-  final String storageKey;
   final bool Function() online;
-  final AppPreferences? preferences;
   final Future<void> Function()? refreshPresence;
   @override
   State<DeviceSessionControls> createState() => _DeviceSessionControlsState();
 }
 
 class _DeviceSessionControlsState extends State<DeviceSessionControls> {
-  late final AppPreferences _preferences =
-      widget.preferences ?? PlatformAppPreferences();
-  String? _id;
-  String _state = 'loading';
+  DeviceSessionStatus? _status;
   String? _error;
-  bool _busy = false;
+  bool _asking = false;
   Timer? _timer;
-  Timer? _presenceTimer;
+  Timer? _soon;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_restore());
-    _presenceTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+    unawaited(_request('status'));
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) async {
       try {
         await widget.refreshPresence?.call();
       } catch (_) {}
-      if (mounted) setState(() {});
+      await _request('status');
     });
-  }
-
-  Future<void> _restore() async {
-    try {
-      final saved = await _preferences.readString(widget.storageKey);
-      if (!mounted) return;
-      _id = saved == null || saved.isEmpty ? null : saved;
-      if (_id != null) {
-        await _request('status');
-      } else {
-        setState(() => _state = 'closed');
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _state = 'unknown';
-          _error = '无法读取对话记录，请重新打开页面。';
-        });
-      }
-    }
-  }
-
-  void _poll() {
-    _timer?.cancel();
-    if (mounted && _id != null) {
-      _timer = Timer(const Duration(seconds: 2), () => _request('status'));
-    }
   }
 
   Future<void> _request(String action) async {
-    if (_busy || !mounted) return;
-    if (action != 'open' && _id == null) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    _timer?.cancel();
+    if (_asking || !mounted) return;
+    final asked = action != 'status';
+    // A read never disables the buttons; a request holds them until answered.
+    if (asked) setState(() => _asking = true);
+    _soon?.cancel();
     try {
-      if (action == 'open') {
-        _id =
-            'device-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 30)}';
-        // Persist before delivery: interrupted HTTP is not evidence of refusal.
-        await _preferences.writeString(widget.storageKey, _id!);
-      }
-      final result = await widget.command(
-          action,
-          _id!,
-          action == 'open' ? widget.device.deviceId : null,
-          action == 'open' ? widget.device.attachedCompanionId : null);
-      if (result.sessionId != _id) throw StateError('session mismatch');
-      if (result.state == 'closed') {
-        await _preferences.writeString(widget.storageKey, '');
-        _id = null;
-      }
-      if (mounted) {
-        setState(() {
-          _state = result.state;
-          _error = (result.error?.isEmpty ?? true)
-              ? null
-              : '对话未正常完成：${result.error}';
-        });
+      final result = await widget.command(action, widget.device.deviceId,
+          action == 'close' ? _status?.conversationId : null);
+      if (!mounted) return;
+      setState(() {
+        _status = result;
+        _error = (result.error?.isEmpty ?? true) ? null : '设备没有接受这次请求。';
+      });
+      if (result.state == 'starting') {
+        _soon = Timer(const Duration(seconds: 1), () => _request('status'));
       }
     } catch (_) {
       if (mounted) {
-        setState(() {
-          _state = 'unknown';
-          _error = '尚未确认设备状态，请刷新或结束本次对话；不会自动重新开始。';
-        });
+        setState(() => _error = asked ? '请求没有完成，状态会自动更新。' : '暂时读不到对话状态。');
       }
     } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-        _poll();
-      }
+      if (asked && mounted) setState(() => _asking = false);
     }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    _presenceTimer?.cancel();
+    _soon?.cancel();
     super.dispose();
   }
 
@@ -137,41 +82,36 @@ class _DeviceSessionControlsState extends State<DeviceSessionControls> {
   Widget build(BuildContext context) {
     final ready =
         widget.device.state == MountedDeviceState.ready && widget.online();
-    final label = switch (_state) {
-      'loading' => '正在读取对话状态…',
-      'preparing' => '正在进入对话，请稍候…',
-      'ready' => '已进入对话，可以说话',
+    final state = _status?.state;
+    final label = switch (state) {
+      null => '正在读取对话状态…',
+      'starting' => '正在进入对话，请稍候…',
+      'in_conversation' => '对话进行中',
       'closing' => '正在结束，等待设备释放媒体…',
-      'closed' => ready ? '在线待机' : '设备离线或尚未配置完成',
-      'failed' => '对话失败，需确认结束',
-      _ => '对话状态尚未确认',
+      'occupied' => '设备正被跨设备对话或团队对话占用',
+      _ => ready ? '在线待机' : '设备离线或尚未配置完成',
     };
     return Card(
         child: Padding(
             padding: const EdgeInsets.all(16),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(label, key: const Key('device-session-state'),
-              style: Theme.of(context).textTheme.titleLarge),
+              Text(label,
+                  key: const Key('device-session-state'),
+                  style: Theme.of(context).textTheme.titleLarge),
               if (_error != null) Text(_error!),
               const SizedBox(height: 8),
-              if (_id == null)
+              if (state == 'standby')
                 FilledButton(
                     key: const Key('device-session-start'),
-                    onPressed: !_busy && _state == 'closed' && ready
-                        ? () => _request('open')
-                        : null,
+                    onPressed:
+                        !_asking && ready ? () => _request('open') : null,
                     child: const Text('开始对话'))
-              else
-                Wrap(spacing: 8, children: [
-                  FilledButton(
-                      key: const Key('device-session-end'),
-                      onPressed: _busy ? null : () => _request('close'),
-                      child: const Text('结束对话')),
-                  TextButton(
-                      onPressed: _busy ? null : () => _request('status'),
-                      child: const Text('刷新状态')),
-                ]),
+              else if (state == 'in_conversation' || state == 'closing')
+                FilledButton(
+                    key: const Key('device-session-end'),
+                    onPressed: _asking ? null : () => _request('close'),
+                    child: const Text('结束对话')),
               const Text('离开此页面不会结束设备对话。'),
             ])));
   }

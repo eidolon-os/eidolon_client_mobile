@@ -345,9 +345,6 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
                   online: () =>
                       controller.presenceFor(device)?.state == 'online',
                   refreshPresence: controller.refreshDevicePresence,
-                  preferences: widget.creationPreferences,
-                  storageKey:
-                      'device-session:${controller.host.hostId}:${controller.host.controllerId}:${controller.workspace!.owner!.ownerId}:${device.deviceId}:${device.claimGeneration}',
                 ),
           onChangeNetwork: () => _openProvisioning(existing: device),
           onRemove: (deviceId, requestId) =>

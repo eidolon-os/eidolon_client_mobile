@@ -876,28 +876,25 @@ class ManagementClient {
     return result;
   }
 
-  Future<DeviceConversationStatus> deviceSession(
+  /// Reads (`status`), starts (`open`) or ends (`close`) the conversation the
+  /// device itself holds. [conversationId] scopes an end to the one seen.
+  Future<DeviceSessionStatus> deviceSession(
     Uri baseUri, {
     required String accessToken,
     required String action,
-    required String sessionId,
-    String? deviceId,
-    String? companionId,
+    required String deviceId,
+    String? conversationId,
   }) async {
-    final path = switch (action) {
-      'open' => ManagementV1.deviceSessionsOpenPath,
-      'status' => ManagementV1.deviceSessionsStatusPath,
-      'close' => ManagementV1.deviceSessionsClosePath,
-      _ => throw ArgumentError.value(action),
-    };
-    final body = await _send('POST', baseUri.resolve(path),
-        accessToken: accessToken, what: '更新设备对话', body: action == 'open'
-            ? DeviceSessionStart(sessionId: sessionId, deviceId: deviceId!,
-                targetCompanionId: companionId!).toJson()
-            : SharedClose(sessionId: sessionId).toJson());
-    final result = DeviceConversationStatus.fromJson(body);
-    if (result.sessionId != sessionId ||
-        !{'preparing', 'ready', 'closing', 'closed', 'failed'}
+    final body = await _send('POST',
+        baseUri.resolve(ManagementV1.deviceSessionsByActionPath(action)),
+        accessToken: accessToken,
+        what: '更新设备对话',
+        body: DeviceSessionTarget(
+                deviceId: deviceId, conversationId: conversationId)
+            .toJson());
+    final result = DeviceSessionStatus.fromJson(body);
+    if (result.deviceId != deviceId ||
+        !{'standby', 'starting', 'in_conversation', 'closing', 'occupied'}
             .contains(result.state)) {
       throw ManagementRequestException('设备对话返回了不匹配的结果');
     }
