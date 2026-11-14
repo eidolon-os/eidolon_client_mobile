@@ -769,6 +769,38 @@ class HostDeviceOutputsRepository {
       );
 }
 
+class HostDeviceSettingsRepository {
+  const HostDeviceSettingsRepository(this._session);
+
+  final HostProductSession _session;
+
+  Future<DevicePropertiesView> properties({required String deviceId}) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.fetchDeviceProperties(
+          baseUri,
+          accessToken: accessToken,
+          deviceId: deviceId,
+        ),
+      );
+
+  Future<DeviceCapabilityExecutionView> invoke({
+    required String deviceId,
+    required String capability,
+    required Map<String, Object?> arguments,
+    required String requestId,
+  }) =>
+      _session.executeManagement(
+        (client, baseUri, accessToken) => client.invokeDeviceCapability(
+          baseUri,
+          accessToken: accessToken,
+          deviceId: deviceId,
+          capability: capability,
+          arguments: arguments,
+          requestId: requestId,
+        ),
+      );
+}
+
 class HostDeviceAdmissionRepository {
   const HostDeviceAdmissionRepository(this._session);
 

@@ -1041,6 +1041,48 @@ class ManagementClient {
     return DeviceView.fromJson(body);
   }
 
+  /// What one device of mine reports about its own values, such as its volume.
+  ///
+  /// Only values the device itself reported: a setting it could not be asked
+  /// about right now is absent, never zero.
+  Future<DevicePropertiesView> fetchDeviceProperties(
+    Uri baseUri, {
+    required String accessToken,
+    required String deviceId,
+  }) async {
+    final body = await _send(
+      'GET',
+      baseUri.resolve(ManagementV1.devicesByDeviceIdPropertiesPath(deviceId)),
+      accessToken: accessToken,
+      what: '读取设备状态',
+    );
+    return DevicePropertiesView.fromJson(body);
+  }
+
+  /// Ask one device of mine to do something its Owner may ask outside a
+  /// conversation, such as setting its volume.
+  ///
+  /// [requestId] must be the same value on a retry of the same intent: it names
+  /// the execution, so the device answers a retry with what it already did.
+  Future<DeviceCapabilityExecutionView> invokeDeviceCapability(
+    Uri baseUri, {
+    required String accessToken,
+    required String deviceId,
+    required String capability,
+    required Map<String, Object?> arguments,
+    required String requestId,
+  }) async {
+    final body = await _send(
+      'POST',
+      baseUri.resolve(ManagementV1.devicesByDeviceIdCapabilitiesByCapabilityPath(
+          deviceId, capability)),
+      accessToken: accessToken,
+      what: '调整设备',
+      body: {'request_id': requestId, 'arguments': arguments},
+    );
+    return DeviceCapabilityExecutionView.fromJson(body);
+  }
+
   /// Take a device off this Host.
   ///
   /// The answer says which facts are settled rather than a percentage: three

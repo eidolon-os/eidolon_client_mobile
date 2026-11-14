@@ -23,6 +23,7 @@ import '../../platform/app_preferences.dart';
 import '../host_setup/host_product_controller.dart';
 import 'mounted_device_models.dart';
 import 'device_companion_setup.dart';
+import 'device_settings_section.dart';
 import '../conversation/device_session_controls.dart';
 import '../../management/companion_portrait.dart';
 
@@ -345,6 +346,13 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
                   online: () =>
                       controller.presenceFor(device)?.state == 'online',
                   refreshPresence: controller.refreshDevicePresence,
+                ),
+          settings: controller.workspace?.owner == null
+              ? null
+              : DeviceSettingsSection(
+                  deviceId: device.deviceId,
+                  read: controller.deviceProperties,
+                  write: controller.setDeviceSetting,
                 ),
           onChangeNetwork: () => _openProvisioning(existing: device),
           onRemove: (deviceId, requestId) =>
@@ -679,10 +687,16 @@ class MountedDeviceDetailPage extends StatefulWidget {
     this.reload,
     this.onChangeNetwork,
     this.sessionControls,
+    this.settings,
   });
 
   final MountedDevice device;
   final Widget? sessionControls;
+
+  /// The device's own settings (volume, screen brightness), drawn from what it
+  /// reports. A slot like [sessionControls]: this page lays it out and knows
+  /// nothing of how it reads or writes.
+  final Widget? settings;
   final Future<void> Function()? onChangeNetwork;
   final DeviceCompanionSetupStore? progress;
   final CompanionFaceLoader? loadFace;
@@ -1447,6 +1461,10 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
             // about what the rest of the Host can see.
             '这些是主机确认的挂载与配置。当前连接状态请看设备列表；“已添加”不代表设备在线。',
           ),
+          if (widget.settings case final settings?) ...[
+            const SizedBox(height: 24),
+            settings,
+          ],
           const SizedBox(height: 24),
           if (_notice case final notice?) ...[
             Card(

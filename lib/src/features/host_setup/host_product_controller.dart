@@ -133,6 +133,7 @@ class HostProductController extends ChangeNotifier {
     _deviceAdmissionRepository = HostDeviceAdmissionRepository(_session);
     _deviceCompanionRepository = HostDeviceCompanionRepository(_session);
     _deviceOutputsRepository = HostDeviceOutputsRepository(_session);
+    _deviceSettingsRepository = HostDeviceSettingsRepository(_session);
     _hostServicesRepository = HostServicesRepository(_session);
     _controllerGrantRepository = HostControllerGrantRepository(_session);
     _companionRepository = HostCompanionRepository(_session);
@@ -157,6 +158,7 @@ class HostProductController extends ChangeNotifier {
   late final HostDeviceAdmissionRepository _deviceAdmissionRepository;
   late final HostDeviceCompanionRepository _deviceCompanionRepository;
   late final HostDeviceOutputsRepository _deviceOutputsRepository;
+  late final HostDeviceSettingsRepository _deviceSettingsRepository;
   late final HostServicesRepository _hostServicesRepository;
   late final HostControllerGrantRepository _controllerGrantRepository;
   late final HostCompanionRepository _companionRepository;
@@ -1226,6 +1228,35 @@ class HostProductController extends ChangeNotifier {
       expectedRevision: expectedRevision,
     );
     await refreshDevices();
+  }
+
+  /// What a device reports about its own settings, such as its volume.
+  ///
+  /// No inventory refresh around it: a volume is not a fact about which
+  /// devices exist.
+  Future<DevicePropertiesView> deviceProperties(String deviceId) {
+    if (_connection == null) {
+      throw const HostControllerAuthorizationException('请先安全连接主机，再读取设备');
+    }
+    return _deviceSettingsRepository.properties(deviceId: deviceId);
+  }
+
+  /// Change one setting on a device, answered with what the device applied.
+  Future<DeviceCapabilityExecutionView> setDeviceSetting({
+    required String deviceId,
+    required String capability,
+    required Map<String, Object?> arguments,
+    required String requestId,
+  }) {
+    if (_connection == null) {
+      throw const HostControllerAuthorizationException('请先安全连接主机，再调整设备');
+    }
+    return _deviceSettingsRepository.invoke(
+      deviceId: deviceId,
+      capability: capability,
+      arguments: arguments,
+      requestId: requestId,
+    );
   }
 
   /// Take a device off this Host at the Owner's request.

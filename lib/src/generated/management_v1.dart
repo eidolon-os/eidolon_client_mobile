@@ -68,10 +68,17 @@ class ManagementV1 {
   static const String devicesPath = '/api/management/v1/devices';
   static const String devicesPresencePath =
       '/api/management/v1/devices/presence';
+  static String devicesByDeviceIdCapabilitiesByCapabilityPath(
+    String deviceId,
+    String capability,
+  ) =>
+      '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/capabilities/${Uri.encodeComponent(capability)}';
   static String devicesByDeviceIdCompanionPath(String deviceId) =>
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/companion';
   static String devicesByDeviceIdOutputsPath(String deviceId) =>
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/outputs';
+  static String devicesByDeviceIdPropertiesPath(String deviceId) =>
+      '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/properties';
   static String devicesByDeviceIdRemovalPath(String deviceId) =>
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/removal';
   static const String homePath = '/api/management/v1/home';
@@ -1424,6 +1431,76 @@ class Device {
   }
 }
 
+class DeviceCapabilityExecutionView {
+  const DeviceCapabilityExecutionView({
+    required this.capability,
+    required this.deviceId,
+    this.error,
+    this.result,
+    required this.state,
+  });
+
+  final String capability;
+
+  final String deviceId;
+
+  final String? error;
+
+  final Map<String, Object?>? result;
+
+  final String state;
+
+  factory DeviceCapabilityExecutionView.fromJson(Map<String, dynamic> value) {
+    return DeviceCapabilityExecutionView(
+      capability: value['capability'] as String,
+      deviceId: value['device_id'] as String,
+      error: value['error'] as String?,
+      result: value['result'] == null
+          ? null
+          : ((value['result'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as Object?),
+            )),
+      state: value['state'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'capability': capability,
+      'device_id': deviceId,
+      if (error != null) 'error': error,
+      if (result != null) 'result': result,
+      'state': state,
+    };
+  }
+}
+
+class DeviceCapabilityRequest {
+  const DeviceCapabilityRequest({this.arguments, required this.requestId});
+
+  final Map<String, Object?>? arguments;
+
+  final String requestId;
+
+  factory DeviceCapabilityRequest.fromJson(Map<String, dynamic> value) {
+    return DeviceCapabilityRequest(
+      arguments: value['arguments'] == null
+          ? null
+          : ((value['arguments'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as Object?),
+            )),
+      requestId: value['request_id'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (arguments != null) 'arguments': arguments,
+      'request_id': requestId,
+    };
+  }
+}
+
 class DeviceCompanionRequest {
   const DeviceCompanionRequest({
     this.companionId,
@@ -1679,6 +1756,29 @@ class DevicePresencesView {
 
   Map<String, dynamic> toJson() {
     return {'devices': devices.map((entry) => entry.toJson()).toList()};
+  }
+}
+
+class DevicePropertiesView {
+  const DevicePropertiesView({required this.deviceId, this.values});
+
+  final String deviceId;
+
+  final Map<String, Object?>? values;
+
+  factory DevicePropertiesView.fromJson(Map<String, dynamic> value) {
+    return DevicePropertiesView(
+      deviceId: value['device_id'] as String,
+      values: value['values'] == null
+          ? null
+          : ((value['values'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as Object?),
+            )),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'device_id': deviceId, if (values != null) 'values': values};
   }
 }
 
