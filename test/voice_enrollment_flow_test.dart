@@ -47,14 +47,13 @@ void main() {
       var saved = false;
       final profile = {
         'person_id': 'person', 'profile_id': 'p',
-        'display_name': '我',
         'revision': 1,
         'enrollment_id': 'e',
         'recording_available': true,
       };
       final calls = <String>[];
       await tester.pumpWidget(MaterialApp(
-          home: VoiceEnrollmentPage(personId: 'person',
+          home: VoiceEnrollmentPage(personId: 'person', personName: '劲松松',
         recorderFactory: () => recorder,
         call: ({method = 'GET', suffix = '', body}) async {
           if (suffix == '/readiness') {
@@ -65,6 +64,10 @@ void main() {
             };
           }
           calls.add('$method $suffix');
+          if (method == 'POST' && suffix == '/enrollments') {
+            // A voiceprint is the Person's; the request names no one else.
+            expect(body!.keys.toSet(), {'person_id', 'operation_id'});
+          }
           if (suffix.endsWith('/complete') && completionAttempts++ == 0) {
             saved = savedBeforeFailure;
             throw Exception('network interruption');
@@ -72,7 +75,6 @@ void main() {
           if (suffix.endsWith('/complete')) {
             return {
               'person_id': 'person', 'profile_id': 'p',
-              'display_name': '我',
               'revision': 1,
               'enrollment_id': 'e',
               'recording_available': true
@@ -96,8 +98,9 @@ void main() {
         },
       )));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), '我');
       expect(find.textContaining('共 4 步'), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+      expect(find.text('为“劲松松”录入声纹'), findsOneWidget);
       for (var step = 0; step < 4; step++) {
         await tester.tap(find.byKey(const Key('voice-enrollment-record')));
         await tester.pumpAndSettle();
@@ -117,6 +120,7 @@ void main() {
       await tester.tap(find.byKey(const Key('voice-enrollment-record')));
       await tester.pumpAndSettle();
       expect(find.text('声纹已保存'), findsOneWidget);
+      expect(find.text('“劲松松”的声纹已保存到主机。'), findsOneWidget);
       expect(find.text('回放录入声音'), findsOneWidget);
       expect(calls.where((v) => v.contains('/bindings/')), isEmpty);
       expect(find.byKey(const Key('voice-enrollment-record')), findsNothing);
@@ -140,7 +144,7 @@ void main() {
                   child: const Text('打开录入'),
                   onPressed: () =>
                       Navigator.of(context).push<void>(MaterialPageRoute(
-                          builder: (_) => VoiceEnrollmentPage(personId: 'person',
+                          builder: (_) => VoiceEnrollmentPage(personId: 'person', personName: '劲松松',
                                 recorderFactory: () => recorder,
                                 call: (
                                     {method = 'GET', suffix = '', body}) async {
@@ -165,7 +169,6 @@ void main() {
     await tester.tap(find.text('打开录入'));
     await tester.pumpAndSettle();
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '我');
     await tester.tap(find.byKey(const Key('voice-enrollment-record')));
     await tester.pumpAndSettle();
     recorder.audio.add(Uint8List(192000));
@@ -198,7 +201,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(800, 1400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(
-        home: VoiceEnrollmentPage(personId: 'person',
+        home: VoiceEnrollmentPage(personId: 'person', personName: '劲松松',
       recorderFactory: () => recorder,
       call: ({method = 'GET', suffix = '', body}) async =>
           suffix == '/readiness'
@@ -216,7 +219,6 @@ void main() {
                 },
     )));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '我');
     await tester.tap(find.byKey(const Key('voice-enrollment-record')));
     await tester.pumpAndSettle();
     expect(find.text('结束并检查'), findsOneWidget);
@@ -233,7 +235,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(800, 1400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(
-        home: VoiceEnrollmentPage(personId: 'person',
+        home: VoiceEnrollmentPage(personId: 'person', personName: '劲松松',
       recorderFactory: () => recorder,
       call: ({method = 'GET', suffix = '', body}) async {
         if (suffix == '/readiness') {
@@ -253,7 +255,6 @@ void main() {
       },
     )));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '我');
     expect(
         tester
             .widget<FilledButton>(
@@ -296,7 +297,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(800, 1400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(
-        home: VoiceEnrollmentPage(personId: 'person',
+        home: VoiceEnrollmentPage(personId: 'person', personName: '劲松松',
       recorderFactory: () => recorder,
       call: ({method = 'GET', suffix = '', body}) async {
         if (suffix == '/readiness') {
@@ -317,7 +318,6 @@ void main() {
       },
     )));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '我');
     await tester.tap(find.byKey(const Key('voice-enrollment-record')));
     await tester.pumpAndSettle();
     await tester.pump(const Duration(seconds: 11));

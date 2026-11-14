@@ -34,7 +34,6 @@ class _VoiceMatchPageState extends State<VoiceMatchPage>
   bool _recording = false, _busy = false;
   int _generation = 0;
   String? _error;
-  final _profileNames = <String, String>{};
   String _scene = '本人';
   final _results = <({
     String scene,
@@ -123,11 +122,6 @@ class _VoiceMatchPageState extends State<VoiceMatchPage>
       if (collection.readiness?.extractionReady != true) {
         throw StateError('声纹服务尚未准备好，请稍后再试');
       }
-      _profileNames
-        ..clear()
-        ..addEntries((collection.profiles ?? [])
-            .where((p) => p.personId == widget.personId)
-            .map((p) => MapEntry(p.profileId, p.displayName)));
       _recorder ??=
           widget.recorderFactory?.call() ?? LiveKitVoiceEnrollmentRecorder(widget.call);
       if (!await _recorder!.hasPermission()) throw StateError('请在系统设置中允许使用麦克风');
@@ -304,7 +298,7 @@ class _VoiceMatchPageState extends State<VoiceMatchPage>
                           if (entry.result case final result?) ...[
                             for (final score in result.scores)
                               Text(
-                                  '${_profileNames[score.profileId] ?? widget.personName}: ${score.status == 'scored' ? score.similarity?.toStringAsFixed(3) : '版本不兼容，请重新录入'}'),
+                                  '${widget.personName}: ${score.status == 'scored' ? score.similarity?.toStringAsFixed(3) : '版本不兼容，请重新录入'}'),
                             Text(
                                 '提取 ${result.extractionMs.toStringAsFixed(0)} ms · 主机总耗时 ${result.elapsedMs.toStringAsFixed(0)} ms'),
                             Text('模型：${result.modelId}'),

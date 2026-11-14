@@ -68,7 +68,10 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
   Future<void> _enroll([SpeakerProfileView? profile]) async {
     await Navigator.of(context).push<void>(MaterialPageRoute(
         builder: (_) => VoiceEnrollmentPage(
-            call: widget.call, personId: widget.personId, profile: profile)));
+            call: widget.call,
+            personName: widget.personName,
+            personId: widget.personId,
+            profile: profile)));
     if (mounted) await _load();
   }
 
@@ -76,7 +79,7 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
     final yes = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-                title: Text('删除“${profile.displayName}”的声纹？'),
+                title: Text('删除“${widget.personName}”的声纹？'),
                 content: const Text('将删除此声纹、录入声音与相关证据，用户资料仍保留。'),
                 actions: [
                   TextButton(
@@ -120,7 +123,9 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
                       child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(profile.displayName,
+                            // A voiceprint has no name of its own: it is
+                            // this Person's voice, under their listed name.
+                            Text('${widget.personName}的声纹',
                                 style: Theme.of(context).textTheme.titleMedium),
                             Text(profile.origin == 'observation'
                                 ? '来源：对话观察'
@@ -136,7 +141,7 @@ class _VoiceprintPageState extends State<VoiceprintPage> {
                                                 context: context,
                                                 builder: (_) =>
                                                     VoiceRecordingDialog(
-                                                  name: profile.displayName,
+                                                  name: widget.personName,
                                                   load: () => widget.call(
                                                       suffix:
                                                           '/profiles/${Uri.encodeComponent(profile.profileId)}/recording'),
@@ -205,11 +210,13 @@ class VoiceEnrollmentPage extends StatefulWidget {
   const VoiceEnrollmentPage(
       {super.key,
       required this.call,
+      required this.personName,
       required this.personId,
       this.profile,
       this.recorderFactory});
   final VoiceEnrollmentRecorder Function()? recorderFactory;
   final VoiceprintCall call;
+  final String personName;
   final String personId;
   final SpeakerProfileView? profile;
   @override
@@ -218,14 +225,12 @@ class VoiceEnrollmentPage extends StatefulWidget {
 
 class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
     with WidgetsBindingObserver {
-  final _name = TextEditingController();
   final _operation = 'mobile_${DateTime.now().microsecondsSinceEpoch}';
   VoiceEnrollmentRecorder? _recorder;
   SpeakerProfileView? _saved;
   String? _feedback;
   bool _leaving = false;
   bool _ready = false, _preparing = true, _completionUnknown = false;
-  String? _creationName;
   Timer? _recordingTimer, _recordingDeadline;
   final _elapsed = Stopwatch();
   StreamSubscription<Uint8List>? _subscription;
@@ -249,7 +254,6 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
   @override
   void initState() {
     super.initState();
-    _name.text = widget.profile?.displayName ?? '';
     WidgetsBinding.instance.addObserver(this);
     unawaited(_checkReadiness());
   }
@@ -323,15 +327,10 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
           .catchError((_) => <String, dynamic>{}));
     }
     _pending = null;
-    _name.dispose();
     super.dispose();
   }
 
   Future<void> _start() async {
-    if (_name.text.trim().isEmpty) {
-      setState(() => _error = '请填写称呼');
-      return;
-    }
     setState(() {
       _busy = true;
       _error = null;
@@ -352,14 +351,12 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
       // The permission sheet itself can suspend the app. Fence later work only
       // after that sheet has returned, so first-time permission is not a silent no-op.
       final generation = _lifecycleGeneration;
-      _creationName ??= _name.text.trim();
       _enrollment ??= EnrollmentView.fromJson(await widget.call(
           method: 'POST',
           suffix: '/enrollments',
           body: EnrollmentCreate(
                   personId: widget.personId,
                   operationId: _operation,
-                  displayName: _creationName!,
                   profileId: widget.profile?.profileId)
               .toJson()));
       if (!mounted) return;
@@ -546,7 +543,7 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
                 const Text('声纹已保存',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 24)),
-                Text('“${_saved!.displayName}”已保存到你的声纹档案。',
+                Text('“${widget.personName}”的声纹已保存到主机。',
                     textAlign: TextAlign.center),
                 const Text('可在用户管理中回放、重录或删除。声纹不限制对话。'),
                 if (_saved!.recordingAvailable == true)
@@ -556,7 +553,7 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
                     onPressed: () => showDialog<void>(
                         context: context,
                         builder: (_) => VoiceRecordingDialog(
-                              name: _saved!.displayName,
+                              name: widget.personName,
                               load: () => widget.call(
                                   suffix:
                                       '/profiles/${Uri.encodeComponent(_saved!.profileId)}/recording'),
@@ -580,11 +577,8 @@ class _VoiceEnrollmentPageState extends State<VoiceEnrollmentPage>
         child: Scaffold(
             appBar: AppBar(title: Text('第 ${_samples + 1} 步，共 4 步')),
             body: ListView(padding: const EdgeInsets.all(24), children: [
-              TextField(
-                  controller: _name,
-                  enabled: _creationName == null && !_busy,
-                  decoration: const InputDecoration(
-                      labelText: '称呼', hintText: '例如：我、妈妈')),
+              Text('为“${widget.personName}”录入声纹',
+                  style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 24),
               const Text('先录制 3 段声音，再录制 1 段用于回放和对照。四段质量检查完成后才会保存；身份识别效果仍待验证。'),
               if (_feedback != null)

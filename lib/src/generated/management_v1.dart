@@ -2033,13 +2033,10 @@ class EffectiveVoiceView {
 
 class EnrollmentCreate {
   const EnrollmentCreate({
-    required this.displayName,
     required this.operationId,
     required this.personId,
     this.profileId,
   });
-
-  final String displayName;
 
   final String operationId;
 
@@ -2049,7 +2046,6 @@ class EnrollmentCreate {
 
   factory EnrollmentCreate.fromJson(Map<String, dynamic> value) {
     return EnrollmentCreate(
-      displayName: value['display_name'] as String,
       operationId: value['operation_id'] as String,
       personId: value['person_id'] as String,
       profileId: value['profile_id'] as String?,
@@ -2058,7 +2054,6 @@ class EnrollmentCreate {
 
   Map<String, dynamic> toJson() {
     return {
-      'display_name': displayName,
       'operation_id': operationId,
       'person_id': personId,
       if (profileId != null) 'profile_id': profileId,
@@ -5828,7 +5823,6 @@ class SpeakerExtractionReadiness {
 
 class SpeakerProfileView {
   const SpeakerProfileView({
-    required this.displayName,
     this.enrollmentId,
     this.origin,
     required this.personId,
@@ -5838,8 +5832,6 @@ class SpeakerProfileView {
     this.sourceObservationId,
     this.validationState,
   });
-
-  final String displayName;
 
   final String? enrollmentId;
 
@@ -5859,7 +5851,6 @@ class SpeakerProfileView {
 
   factory SpeakerProfileView.fromJson(Map<String, dynamic> value) {
     return SpeakerProfileView(
-      displayName: value['display_name'] as String,
       enrollmentId: value['enrollment_id'] as String?,
       origin: value['origin'] as String?,
       personId: value['person_id'] as String,
@@ -5873,7 +5864,6 @@ class SpeakerProfileView {
 
   Map<String, dynamic> toJson() {
     return {
-      'display_name': displayName,
       if (enrollmentId != null) 'enrollment_id': enrollmentId,
       if (origin != null) 'origin': origin,
       'person_id': personId,
@@ -5889,14 +5879,11 @@ class SpeakerProfileView {
 
 class SpeakerSimilarity {
   const SpeakerSimilarity({
-    this.displayName,
     required this.profileId,
     required this.revision,
     this.similarity,
     required this.status,
   });
-
-  final String? displayName;
 
   final String profileId;
 
@@ -5908,7 +5895,6 @@ class SpeakerSimilarity {
 
   factory SpeakerSimilarity.fromJson(Map<String, dynamic> value) {
     return SpeakerSimilarity(
-      displayName: value['display_name'] as String?,
       profileId: value['profile_id'] as String,
       revision: value['revision'] as int,
       similarity: (value['similarity'] as num?)?.toDouble(),
@@ -5918,7 +5904,6 @@ class SpeakerSimilarity {
 
   Map<String, dynamic> toJson() {
     return {
-      if (displayName != null) 'display_name': displayName,
       'profile_id': profileId,
       'revision': revision,
       if (similarity != null) 'similarity': similarity,

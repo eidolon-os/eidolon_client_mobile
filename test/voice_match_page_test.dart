@@ -12,7 +12,7 @@ import 'voice_enrollment_flow_test.dart' show FakeRecorder;
 void main() {
   final policy = <String, dynamic>{
     'person_id': 'person',
-    'profiles': [{'person_id':'person','profile_id':'p','display_name':'我','revision':1,'enrollment_id':'e'}],
+    'profiles': [{'person_id':'person','profile_id':'p','revision':1,'enrollment_id':'e'}],
     'readiness': {
       'state': 'ready',
       'extraction_ready': true,
@@ -33,7 +33,6 @@ void main() {
       {
         'person_id': 'person', 'profile_id': 'p',
         'revision': 1,
-        'display_name': '',
         'status': 'scored',
         'similarity': 0.72
       }
@@ -63,7 +62,7 @@ void main() {
     await tester.runAsync(() => Future<void>.delayed(Duration.zero));
     await tester.pumpAndSettle();
     expect(posts, ['/persons/person/match-test']);
-    expect(find.text('我: 0.720'), findsOneWidget);
+    expect(find.text('伙伴: 0.720'), findsOneWidget);
     expect(find.textContaining('提取 80 ms'), findsOneWidget);
     expect(find.textContaining('分数不是识别准确率'), findsOneWidget);
   });
@@ -185,7 +184,7 @@ void main() {
       expect(find.text('仅电视 · 4.0 秒录音'), findsOneWidget);
     }
     expect(posts, 2);
-    expect(find.text('我: 0.720'), findsOneWidget);
+    expect(find.text('伙伴: 0.720'), findsOneWidget);
   });
 
   testWidgets('leaving during permission does not start capture',

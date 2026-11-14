@@ -14,7 +14,6 @@ void main() {
           {
             'profile_id': 'v',
             'person_id': 'p',
-            'display_name': '匿名',
             'revision': 1,
             'origin': 'observation',
             'source_observation_id': 'o',
@@ -39,7 +38,6 @@ void main() {
                     {
                       'profile_id': 'v',
                       'person_id': 'p',
-                      'display_name': '甲',
                       'enrollment_id': 'e',
                       'revision': 1
                     }
@@ -47,7 +45,14 @@ void main() {
                 })));
     await tester.pumpAndSettle();
     expect(find.text('当前声纹档案'), findsOneWidget);
+    // The voiceprint is labelled by the Person it belongs to.
+    expect(find.text('甲的声纹'), findsOneWidget);
     expect(find.text('重新录入'), findsOneWidget);
+    await tester.tap(find.text('删除声纹'));
+    await tester.pumpAndSettle();
+    expect(find.text('删除“甲”的声纹？'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
     expect(find.text('录入声纹'), findsNothing);
     expect(find.text('录入新声音'), findsNothing);
   });
@@ -109,7 +114,6 @@ void main() {
             {
               'person_id': 'person',
               'profile_id': 'new',
-              'display_name': '妈妈',
               'revision': 1,
               'enrollment_id': 'e',
               'recording_available': true
@@ -117,7 +121,6 @@ void main() {
             {
               'person_id': 'person',
               'profile_id': 'old',
-              'display_name': '爸爸',
               'revision': 1,
               'enrollment_id': 'old-e'
             },
@@ -132,6 +135,7 @@ void main() {
     await tester.tap(find.text('回放录入声音'));
     await tester.pumpAndSettle();
     expect(calls.last, '/profiles/new/recording');
+    expect(find.text('小铮的录入声音'), findsOneWidget);
     expect(find.text('无法读取录音，请检查主机连接后重试'), findsOneWidget);
   });
 }
