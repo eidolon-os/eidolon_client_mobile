@@ -104,7 +104,42 @@ class DeviceProvisioningManager(
     private val connectivity = context.applicationContext
         .getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    /** The setup network this visit joined, once Android has handed it over. */
+    private var deviceNetwork: Network? = null
     private val lock = Any()
+
+    /** Every release of a device network goes through here. Guarded by [lock]. */
+    private val ownWifi = OwnWifiReturn(object : OwnWifiReturn.Port<Network> {
+        override fun requestOrdinaryWifi(offered: (Network) -> Unit): () -> Unit {
+            // The defaults are what any app asks for: a trusted, unrestricted
+            // network with internet. No specifier — Android picks which one.
+            val request = NetworkRequest.Builder()
+                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                .build()
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    Log.i(TAG, "Android offered Wi-Fi ${network.networkHandle} for the phone")
+                    mainHandler.post { synchronized(lock) { offered(network) } }
+                }
+            }
+            try {
+                connectivity.requestNetwork(request, callback)
+            } catch (error: SecurityException) {
+                Log.e(TAG, "Android refused the own Wi-Fi request", error)
+                return {}
+            }
+            Log.i(TAG, "Asked Android for the phone's own Wi-Fi back")
+            val release: () -> Unit = {
+                try {
+                    connectivity.unregisterNetworkCallback(callback)
+                    Log.i(TAG, "Own Wi-Fi request settled")
+                } catch (error: IllegalArgumentException) {
+                    Log.w(TAG, "The own Wi-Fi request was already gone", error)
+                }
+            }
+            return release
+        }
+    })
     private var device: ProvisioningSession? = null
     private var connectResult: PendingResult? = null
     private var activeOperation: PendingResult? = null
@@ -356,7 +391,11 @@ class DeviceProvisioningManager(
     }
 
     private fun joinDeviceNetwork(transportId: String, accessPoint: String?) {
-        val pending = synchronized(lock) { connectResult } ?: return
+        val pending = synchronized(lock) {
+            // This visit takes the radio; nothing is owed back until it lets go.
+            ownWifi.deviceVisitStarting()
+            connectResult
+        } ?: return
         val specifier = WifiNetworkSpecifier.Builder().setSsid(transportId)
         // Approval belongs to this app and this exact AP, not a board type.
         // Android may reuse previous consent for SSID+BSSID. A different AP
@@ -382,6 +421,7 @@ class DeviceProvisioningManager(
                     if (connectResult !== pending || networkCallback !== this) return
                     // One network request may report availability more than once.
                     if (device != null || pending.isAnswered) return
+                    deviceNetwork = network
                     // Only provisioning sockets use this network; Host traffic keeps its route.
                 }
                 Log.i(TAG, "Joined the device's setup network")
@@ -958,6 +998,8 @@ class DeviceProvisioningManager(
             }
             scanReceiver = null
             close()
+            // Nothing outlives this manager, including a request still waiting.
+            ownWifi.close()
         }
     }
 
@@ -999,8 +1041,11 @@ class DeviceProvisioningManager(
             } catch (error: IllegalArgumentException) {
                 Log.w(TAG, "The device network request was already gone", error)
             }
+            // Letting go is half of giving the radio back; see OwnWifiReturn.
+            ownWifi.deviceNetworkReleased(deviceNetwork)
         }
         networkCallback = null
+        deviceNetwork = null
     }
 
     private fun commissioningFailureMessage(code: String?): String = when (code) {
