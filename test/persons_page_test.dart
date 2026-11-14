@@ -259,4 +259,67 @@ void main() {
     expect(find.text('Alice'), findsOneWidget);
     expect(find.text('重试确认添加用户'), findsNothing);
   });
+
+  testWidgets('face profile subtitle shows photo and recognition state',
+      (tester) async {
+    const faces = <String, Map<String, dynamic>>{
+      'on': {'revision': 2, 'has_image': true, 'recognition_state': 'enabled'},
+      'off': {
+        'revision': 1,
+        'has_image': true,
+        'recognition_state': 'not_configured'
+      },
+      // A Host that does not report recognition yet: shown as not enabled.
+      'old': {'revision': 1, 'has_image': true},
+      'none': {
+        'revision': 0,
+        'has_image': false,
+        'recognition_state': 'not_configured'
+      },
+    };
+    await tester.binding.setSurfaceSize(const Size(400, 4000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+        home: PersonsPage(
+      call: ({method = 'GET', suffix = '', body}) async {
+        if (suffix.endsWith('/face-profile')) {
+          final id = suffix.split('/')[1];
+          if (!faces.containsKey(id)) throw StateError('unavailable');
+          return faces[id]!;
+        }
+        if (suffix.endsWith('/memory-state')) {
+          return {
+            'state': 'unbound',
+            'person_status': 'active',
+            'person_revision': 1
+          };
+        }
+        return {
+          'persons': [
+            for (final id in [...faces.keys, 'broken'])
+              {
+                'person_id': id,
+                'owner_id': 'owner',
+                'display_name': id,
+                'revision': 1,
+                'status': 'active',
+                'profile': <String, dynamic>{}
+              }
+          ]
+        };
+      },
+      voiceprints: ({method = 'GET', suffix = '', body}) async =>
+          {'profiles': []},
+    )));
+    await tester.pumpAndSettle();
+    Finder inCard(String id, String text) => find.descendant(
+        of: find.byKey(ValueKey('person-$id'), skipOffstage: false),
+        matching: find.text(text, skipOffstage: false));
+    expect(inCard('on', '照片已保存 · 识别已启用'), findsOneWidget);
+    expect(inCard('off', '照片已保存 · 识别未启用'), findsOneWidget);
+    expect(inCard('old', '照片已保存 · 识别未启用'), findsOneWidget);
+    expect(inCard('none', '未添加照片'), findsOneWidget);
+    expect(inCard('broken', '状态暂不可用，请刷新'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

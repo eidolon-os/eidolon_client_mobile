@@ -35,7 +35,8 @@ class _PersonsPageState extends State<PersonsPage> {
   bool _busy = false;
   Map<String, Map<String, dynamic>> _memoryStates = {};
   Map<String, int>? _voiceCounts;
-  Map<String, bool> _faceStates = {};
+  /// Per person: whether a photo is saved and whether recognition is on.
+  Map<String, ({bool hasImage, bool recognitionOn})> _faceStates = {};
   String? _error;
   PersonCreate? _pendingCreate;
   @override
@@ -77,7 +78,7 @@ class _PersonsPageState extends State<PersonsPage> {
     }
 
     final memory = <String, Map<String, dynamic>>{};
-    final faces = <String, bool>{};
+    final faces = <String, ({bool hasImage, bool recognitionOn})>{};
     Map<String, int>? voices;
     await Future.wait([
       for (final person in people)
@@ -87,7 +88,10 @@ class _PersonsPageState extends State<PersonsPage> {
                 suffix:
                     '/${Uri.encodeComponent(person.personId)}/face-profile');
             if (state['has_image'] is bool) {
-              faces[person.personId] = state['has_image'] as bool;
+              faces[person.personId] = (
+                hasImage: state['has_image'] as bool,
+                recognitionOn: state['recognition_state'] == 'enabled'
+              );
             }
           } catch (_) {
             /* Show unknown; photo failures do not hide the people. */
@@ -559,11 +563,12 @@ class _PersonsPageState extends State<PersonsPage> {
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.face_outlined, color: Neon.cyan),
               title: const Text('人脸档案'),
-              subtitle: Text(!_faceStates.containsKey(person.personId)
-                  ? '状态暂不可用，请刷新'
-                  : _faceStates[person.personId]!
-                      ? '照片已保存 · 识别尚未启用'
-                      : '未添加照片 · 识别尚未启用'),
+              subtitle: Text(switch (_faceStates[person.personId]) {
+                null => '状态暂不可用，请刷新',
+                (hasImage: false, recognitionOn: _) => '未添加照片',
+                (hasImage: true, recognitionOn: true) => '照片已保存 · 识别已启用',
+                (hasImage: true, recognitionOn: false) => '照片已保存 · 识别未启用',
+              }),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: _busy ? null : () => _openFace(person),
             ),

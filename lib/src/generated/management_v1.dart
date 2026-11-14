@@ -137,6 +137,8 @@ class ManagementV1 {
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/face-profile';
   static String personsByPersonIdFaceProfileImagePath(String personId) =>
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/face-profile/image';
+  static String personsByPersonIdFaceProfileRecognitionPath(String personId) =>
+      '/api/management/v1/persons/${Uri.encodeComponent(personId)}/face-profile/recognition';
   static String personsByPersonIdMemoryRealmPath(String personId) =>
       '/api/management/v1/persons/${Uri.encodeComponent(personId)}/memory-realm';
   static String personsByPersonIdMemoryRealmByActionPath(
@@ -2100,6 +2102,41 @@ class EnrollmentView {
       'expires_at': expiresAt,
       'profile_id': profileId,
       'state': state,
+    };
+  }
+}
+
+class FaceRecognitionConsent {
+  const FaceRecognitionConsent({
+    this.acceptedAt,
+    required this.attested,
+    required this.consentVersion,
+    required this.statement,
+  });
+
+  final String? acceptedAt;
+
+  final bool attested;
+
+  final String consentVersion;
+
+  final String statement;
+
+  factory FaceRecognitionConsent.fromJson(Map<String, dynamic> value) {
+    return FaceRecognitionConsent(
+      acceptedAt: value['accepted_at'] as String?,
+      attested: value['attested'] as bool,
+      consentVersion: value['consent_version'] as String,
+      statement: value['statement'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (acceptedAt != null) 'accepted_at': acceptedAt,
+      'attested': attested,
+      'consent_version': consentVersion,
+      'statement': statement,
     };
   }
 }
@@ -4179,6 +4216,30 @@ class PersonFaceImage {
   }
 }
 
+class PersonFaceRecognitionEnable {
+  const PersonFaceRecognitionEnable({
+    required this.consent,
+    required this.expectedRevision,
+  });
+
+  final FaceRecognitionConsent consent;
+
+  final int expectedRevision;
+
+  factory PersonFaceRecognitionEnable.fromJson(Map<String, dynamic> value) {
+    return PersonFaceRecognitionEnable(
+      consent: FaceRecognitionConsent.fromJson(
+        value['consent'] as Map<String, dynamic>,
+      ),
+      expectedRevision: value['expected_revision'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'consent': consent.toJson(), 'expected_revision': expectedRevision};
+  }
+}
+
 class PersonFaceState {
   const PersonFaceState({
     this.contentType,
@@ -4187,6 +4248,8 @@ class PersonFaceState {
     this.modelId,
     required this.personId,
     this.preprocessingVersion,
+    this.recognitionConsentVersion,
+    this.recognitionEnabledAt,
     this.recognitionState,
     required this.revision,
     this.schemaVersion,
@@ -4205,6 +4268,10 @@ class PersonFaceState {
 
   final String? preprocessingVersion;
 
+  final String? recognitionConsentVersion;
+
+  final String? recognitionEnabledAt;
+
   final String? recognitionState;
 
   final int revision;
@@ -4221,6 +4288,9 @@ class PersonFaceState {
       modelId: value['model_id'] as String?,
       personId: value['person_id'] as String,
       preprocessingVersion: value['preprocessing_version'] as String?,
+      recognitionConsentVersion:
+          value['recognition_consent_version'] as String?,
+      recognitionEnabledAt: value['recognition_enabled_at'] as String?,
       recognitionState: value['recognition_state'] as String?,
       revision: value['revision'] as int,
       schemaVersion: value['schema_version'] as int?,
@@ -4238,6 +4308,10 @@ class PersonFaceState {
       'person_id': personId,
       if (preprocessingVersion != null)
         'preprocessing_version': preprocessingVersion,
+      if (recognitionConsentVersion != null)
+        'recognition_consent_version': recognitionConsentVersion,
+      if (recognitionEnabledAt != null)
+        'recognition_enabled_at': recognitionEnabledAt,
       if (recognitionState != null) 'recognition_state': recognitionState,
       'revision': revision,
       if (schemaVersion != null) 'schema_version': schemaVersion,

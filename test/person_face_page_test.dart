@@ -55,7 +55,7 @@ void main() {
     expect(find.text('尚未添加照片'), findsOneWidget);
     await tester.tap(find.text('添加照片'));
     await tester.pumpAndSettle();
-    expect(find.text('照片已保存 · 识别尚未启用'), findsOneWidget);
+    expect(find.text('照片已保存 · 人脸识别未启用'), findsOneWidget);
     expect(find.byType(Image), findsOneWidget);
     await tester.ensureVisible(find.text('更换照片'));
     await tester.pumpAndSettle();
