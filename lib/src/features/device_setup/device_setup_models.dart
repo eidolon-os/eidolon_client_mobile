@@ -421,6 +421,13 @@ class DeviceSetupFailure {
   final String message;
   final bool retryable;
 
+  /// The Admission could not be read because this phone did not reach the
+  /// Host at all (see `hostNotReached`). Nothing is wrong with the device or
+  /// the setup; the phone is not on the Host's network yet.
+  static const hostNotReachedCode = 'host_not_reached';
+
+  bool get hostNotReached => code == hostNotReachedCode;
+
   Map<String, dynamic> toJson() => {
         'stage': stage,
         'code': code,

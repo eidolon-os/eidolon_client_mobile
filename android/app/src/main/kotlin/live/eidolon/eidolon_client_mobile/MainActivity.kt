@@ -6,7 +6,9 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
@@ -119,6 +121,7 @@ class MainActivity : FlutterActivity() {
                 "requestDeviceProvisioningPermission" ->
                     requestDeviceProvisioningPermission(result)
                 "currentProvisioningWifiSsid" -> result.success(deviceProvisioning.currentWifiSsid())
+                "openWifiSettings" -> result.success(openWifiSettings())
                 "discoverProvisionableDevices" -> {
                     if (!hasDeviceProvisioningPermission()) {
                         result.error(
@@ -463,6 +466,31 @@ class MainActivity : FlutterActivity() {
         requiredDeviceProvisioningPermissions().all {
             checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
         }
+
+    /**
+     * Where a person puts this phone back on a network after a device visit.
+     *
+     * Android 10's Wi-Fi panel first: it floats over this app, so the person
+     * picks the network and is back on the setup screen, which carries on by
+     * itself. The full Wi-Fi settings where a build has no panel.
+     */
+    private fun openWifiSettings(): Boolean {
+        val intents = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(Intent(Settings.Panel.ACTION_WIFI))
+            }
+            add(Intent(Settings.ACTION_WIFI_SETTINGS))
+        }
+        for (intent in intents) {
+            try {
+                startActivity(intent)
+                return true
+            } catch (_: ActivityNotFoundException) {
+                // The next one.
+            }
+        }
+        return false
+    }
 
     private fun requestDeviceProvisioningPermission(result: MethodChannel.Result) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {

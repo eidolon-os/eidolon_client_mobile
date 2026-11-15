@@ -39,6 +39,17 @@ class PlatformDeviceProvisioning
     }
   }
 
+  @override
+  Future<bool> openWifiSettings() async {
+    try {
+      return await _channel.invokeMethod<bool>('openWifiSettings') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   void _requireAndroid() {
     if (defaultTargetPlatform != TargetPlatform.android) {
       throw const DeviceProvisioningTransportException(

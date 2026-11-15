@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
 import '../../theme/eidolon_theme.dart';
 
@@ -19,9 +17,7 @@ import 'platform_device_provisioning.dart' show provisioningDiscoveryLabel;
 import 'setup_code_scanner_page.dart';
 import 'setup_models.dart';
 import '../host_setup/failure_sentences.dart';
-import '../host_setup/host_product_session.dart';
-import '../host_setup/local_api_client.dart';
-import '../host_setup/pinned_http_client.dart';
+import '../host_setup/host_reachability.dart';
 import '../../widgets/wifi_network_picker.dart';
 
 List<DeviceWifiNetwork> _strongestNetworkPerSsid(
@@ -154,6 +150,14 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
   bool _networkConfigured = false;
   bool _networkOutcomeUnknown = false;
   bool _admissionActive = false;
+
+  /// The last read of this setup's Admission did not reach the Host: the
+  /// phone is not on the Host's network (again) yet. Shown as what to do, not
+  /// as an error, and left standing between reads.
+  bool _hostUnreached = false;
+
+  /// The background read under way, if any (see [_observeAdmission]).
+  Future<void>? _observing;
   bool _hiddenSelected = false;
   String? _connectingNetwork;
 
@@ -184,7 +188,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
       allowDevelopmentTrust: widget.allowDevelopmentTrust,
       onCheckpoint: _showCheckpoint,
     );
-    _admissionObservation = AdmissionObservation(_resumePersistedAdmission);
+    _admissionObservation = AdmissionObservation(_observeAdmission);
     WidgetsBinding.instance.addObserver(this);
     unawaited(_loadPendingSetups());
     unawaited(setupModels.then((models) {
@@ -220,7 +224,9 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
       _admissionObservation.resume();
       if (!_busy) {
         if (_activeSetupId != null && _step == _Step.working && !_refused) {
-          unawaited(_resumePersistedAdmission());
+          // Coming back from the Wi-Fi settings is the usual way the phone
+          // gets back to the Host; read at once rather than an interval on.
+          unawaited(_observeAdmission());
         } else if (_step == _Step.awaitingHost) {
           // Coming back from the system Wi-Fi settings is the usual way the
           // network is restored; the person should not also have to tap.
@@ -254,33 +260,34 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     try {
       await action();
     } catch (error) {
-      if (error is DeviceProvisioningTransportException &&
-          _needsCodeFromDevice(error.code)) {
-        if (mounted) {
-          _askForCodeAgain(error.message,
-              keepTypedCode: error.code == 'setup_code_rejected');
-        }
-        return;
-      }
-      if (mounted) {
-        setState(() {
-          _error = switch (error) {
-            DeviceProvisioningTransportException failure => failure.message,
-            DeviceSetupException failure => failure.message,
-            _ => failureSentence(error),
-          };
-          _progress = null;
-          if (_step == _Step.working &&
-              error is DeviceSetupException &&
-              !error.retryable) {
-            _refused = true;
-            _admissionObservation.setWaiting(false);
-          }
-        });
-      }
+      if (mounted) _showFailure(error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// A command or a background read that threw rather than answered.
+  void _showFailure(Object error) {
+    if (error is DeviceProvisioningTransportException &&
+        _needsCodeFromDevice(error.code)) {
+      _askForCodeAgain(error.message,
+          keepTypedCode: error.code == 'setup_code_rejected');
+      return;
+    }
+    setState(() {
+      _error = switch (error) {
+        DeviceProvisioningTransportException failure => failure.message,
+        DeviceSetupException failure => failure.message,
+        _ => failureSentence(error),
+      };
+      _progress = null;
+      if (_step == _Step.working &&
+          error is DeviceSetupException &&
+          !error.retryable) {
+        _refused = true;
+        _admissionObservation.setWaiting(false);
+      }
+    });
   }
 
   final Set<String> _revokedDeviceIds = {};
@@ -578,7 +585,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           operationalSpkiSha256: descriptor.identityFingerprint,
         );
       } catch (error) {
-        if (!_hostNotReachedYet(error)) {
+        if (!hostNotReached(error)) {
           throw Exception('主机没有为这台设备签发准入凭据：${failureSentence(error)}');
         }
         lastFailure = error;
@@ -596,36 +603,6 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
       await Future<void>.delayed(widget.hostReturnInterval);
     }
   }
-
-  /// Discovery candidates with another identity do not speak for the target.
-  /// Actual target refusals and malformed responses still stop this wait.
-  static bool _hostNotReachedYet(Object error) {
-    if (error is PinnedHttpException) return _silentTransport(error);
-    if (error is HostLocationException) {
-      return error.targetFailures
-          .every((failure) => _hostNotReachedYet(failure.error));
-    }
-    if (error is LocalApiRequestException) return false;
-    if (error is HostControllerAuthorizationException) {
-      final cause = error.cause;
-      return !error.reclaimRequired &&
-          cause != null &&
-          _hostNotReachedYet(cause);
-    }
-    return error is TimeoutException ||
-        error is SocketException ||
-        error is http.ClientException;
-  }
-
-  static bool _silentTransport(PinnedHttpException error) =>
-      switch (error.kind) {
-        PinnedHttpFailureKind.unreachable ||
-        PinnedHttpFailureKind.timeout ||
-        PinnedHttpFailureKind.io ||
-        PinnedHttpFailureKind.cancelled =>
-          true,
-        _ => false,
-      };
 
   Future<void> _finish() async {
     if (_busy) return;
@@ -743,6 +720,37 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     await _resumePersistedAdmission();
   }
 
+  /// The read behind [AdmissionObservation], and the one on coming back to
+  /// the foreground. Not a command: it takes neither the screen's busy state
+  /// nor what the screen says, and only its answer changes the screen.
+  ///
+  /// It used to run as one. With the Host out of reach each read spends about
+  /// five seconds looking for it, so for five seconds in every eight the
+  /// screen showed a spinner reading 正在从主机恢复设备接入状态 with every
+  /// button gone, then three seconds of the last answer: no sentence stayed
+  /// long enough to read, and no way out stayed long enough to tap.
+  Future<void> _observeAdmission() {
+    final setupId = _activeSetupId;
+    if (_busy || setupId == null) return Future<void>.value();
+    if (_observing case final running?) return running;
+    final read = _readAdmission(setupId);
+    _observing = read;
+    // Cleared after it is stored, even when the read finished synchronously.
+    read.whenComplete(() {
+      if (identical(_observing, read)) _observing = null;
+    });
+    return read;
+  }
+
+  Future<void> _readAdmission(String setupId) async {
+    try {
+      final recovered = await _coordinator.resumeAdmission(setupId);
+      if (_activeSetupId == setupId) _showCheckpoint(recovered);
+    } catch (error) {
+      if (mounted && _activeSetupId == setupId) _showFailure(error);
+    }
+  }
+
   Future<void> _resumePersistedAdmission() => _run(() async {
         final setupId = _activeSetupId;
         if (setupId == null) return;
@@ -764,6 +772,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
       return;
     }
     setState(() {
+      _hostUnreached = false;
       _networkConfigured = checkpoint.provisioningState ==
           DeviceProvisioningState.networkConfigured;
       _admissionActive =
@@ -801,13 +810,21 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             checkpoint.admissionState == DeviceAdmissionState.completed ||
                 checkpoint.admissionState == DeviceAdmissionState.rejected ||
                 (failure != null && !failure.retryable);
+        // Not an error and not a retry to offer: the setup is fine, the next
+        // read is already scheduled, and only the phone's network stands in
+        // the way — so the screen says that, and keeps saying it.
+        _hostUnreached = !_refused && (failure?.hostNotReached ?? false);
         _progress = _refused || _admissionActive
             ? null
-            : _admissionProgress(checkpoint.admissionState);
-        _error = checkpoint.failure?.message ??
-            (checkpoint.admissionState == DeviceAdmissionState.completed
-                ? '该次接入已完成，当前归属请在设备列表查看。'
-                : null);
+            : _hostUnreached
+                ? '手机连回后会自动继续接入'
+                : _admissionProgress(checkpoint.admissionState);
+        _error = _hostUnreached
+            ? null
+            : checkpoint.failure?.message ??
+                (checkpoint.admissionState == DeviceAdmissionState.completed
+                    ? '该次接入已完成，当前归属请在设备列表查看。'
+                    : null);
       }
     });
     _admissionObservation.setWaiting(
@@ -819,6 +836,9 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
 
   /// Explicitly abandon only the selected phone-side attempt.
   Future<void> _startOver() => _run(() async {
+        // A read already under way would write this attempt back after it is
+        // forgotten, and draw it again.
+        await _observing;
         final setupId = _activeSetupId;
         if (setupId != null) {
           await widget.checkpoints.remove(setupId);
@@ -843,6 +863,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
     _networkConfigured = false;
     _networkOutcomeUnknown = false;
     _admissionActive = false;
+    _hostUnreached = false;
     _progress = null;
     _error = null;
     _candidates = const [];
@@ -1074,8 +1095,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           const SizedBox(height: 8),
           const Text('设备已经准备好，配网模式还开着，不用再碰设备。'),
           const SizedBox(height: 4),
-          const Text('手机离开设备热点后没有自动连回主机所在的 Wi-Fi。'
-              '请到系统的 Wi-Fi 设置连回那个网络（必要时先关闭再打开 Wi-Fi），然后回到这里。'),
+          _phoneOffHostNetwork(),
           const SizedBox(height: 20),
           FilledButton.icon(
             key: const Key('retry-host-voucher'),
@@ -1091,6 +1111,47 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
           ),
         ],
       );
+
+  /// What to do when this phone has not reached the Host since it left the
+  /// device's access point. Shared by the wait before the second visit and
+  /// the one after it: in both the way forward is the phone's own Wi-Fi,
+  /// which this app cannot change for the person but can take them to.
+  ///
+  /// The network is named when it is known — the one the phone was on before
+  /// the visit, where the Host was read from.
+  Widget _phoneOffHostNetwork() {
+    final network =
+        _phoneWifiSsid == null ? '主机所在的 Wi-Fi' : '「$_phoneWifiSsid」';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('App 现在连不上主机：手机离开设备热点后，还没有连回$network。'
+            '请在系统的 Wi-Fi 设置里连回它（必要时先关闭再打开 Wi-Fi）。'),
+        if (_phoneWifi != null) ...[
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            key: const Key('open-wifi-settings'),
+            onPressed: _openWifiSettings,
+            icon: const Icon(Icons.wifi),
+            label: const Text('打开 Wi-Fi 设置'),
+          ),
+        ],
+      ],
+    );
+  }
+
+  PhoneWifiSource? get _phoneWifi => switch (widget.transport) {
+        final PhoneWifiSource source => source,
+        _ => null,
+      };
+
+  Future<void> _openWifiSettings() async {
+    final opened = await _phoneWifi?.openWifiSettings() ?? false;
+    if (!opened && mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(content: Text('没能打开 Wi-Fi 设置，请从系统设置里打开。')));
+    }
+  }
 
   Widget _newIdentityConfirmation() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1260,7 +1321,37 @@ class _DeviceSetupPageState extends State<DeviceSetupPage>
             Text(
                 '2. 配置 Wi-Fi${_connectingNetwork == null ? '' : ' · $_connectingNetwork'}${_networkConfigured ? ' ✓' : ''}'),
             Text(
-                '3. 接入主机${_admissionActive ? ' ✓' : (_networkConfigured || _networkOutcomeUnknown) ? ' · 进行中' : ''}'),
+                '3. 接入主机${_admissionActive ? ' ✓' : _hostUnreached ? ' · 等手机回到主机网络' : (_networkConfigured || _networkOutcomeUnknown) ? ' · 进行中' : ''}'),
+          ],
+          if (_hostUnreached) ...[
+            const SizedBox(height: 16),
+            Card(
+              key: const Key('phone-off-host-network'),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.wifi_off),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '手机还没回到主机所在的网络',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _phoneOffHostNetwork(),
+                    const SizedBox(height: 8),
+                    const Text('设备这边不用再操作。'),
+                  ],
+                ),
+              ),
+            ),
           ],
           const SizedBox(height: 16),
           if (!_refused &&

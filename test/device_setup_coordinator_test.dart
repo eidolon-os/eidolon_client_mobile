@@ -1,6 +1,11 @@
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_coordinator.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_models.dart';
 import 'package:eidolon_client_mobile/src/features/device_setup/device_setup_ports.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/host_locator.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/host_product_session.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/local_api_client.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/local_api_discovery.dart';
+import 'package:eidolon_client_mobile/src/features/host_setup/pinned_http_client.dart';
 import 'package:eidolon_client_mobile/src/generated/device_foundation_v1.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -478,6 +483,60 @@ void main() {
     expect(admission.decisionRequestIds, isEmpty);
   });
 
+  test('a Host this phone does not reach is graded apart from its answers',
+      () async {
+    // Silence after a device visit is the phone's network to put back; an
+    // answer, even a failing one, is the Host's. The screen asks different
+    // things of the person for each, so the checkpoint has to say which.
+    for (final (error, code) in [
+      (
+        PinnedHttpException(
+            kind: PinnedHttpFailureKind.unreachable,
+            message: 'Failed to connect'),
+        DeviceSetupFailure.hostNotReachedCode,
+      ),
+      (
+        HostLocationException([
+          HostCandidateFailure(
+            const HostAddressCandidate(
+              endpoint: LocalApiEndpoint(
+                instanceName: 'mac-dev',
+                baseUrl: 'https://192.168.100.21:9002',
+                ipAddress: '192.168.100.21',
+                contractVersion: '1',
+              ),
+              evidence: HostAddressEvidence.remembered,
+            ),
+            PinnedHttpException(
+                kind: PinnedHttpFailureKind.timeout, message: 'timed out'),
+          ),
+        ]),
+        DeviceSetupFailure.hostNotReachedCode,
+      ),
+      (
+        const LocalApiRequestException('busy', statusCode: 503),
+        'admission_unavailable',
+      ),
+    ]) {
+      final store = InMemoryDeviceSetupCheckpointStore();
+      await store.save(_checkpoint('setup-unreached'));
+      final admission = _Admission(_projection())..failure = error;
+
+      final result = await _coordinator(
+        _Session(_descriptor),
+        admission,
+        store,
+      ).resumeAdmission('setup-unreached');
+
+      expect(result.failure?.code, code, reason: '$error');
+      expect(result.failure?.retryable, isTrue);
+      expect(result.failure?.hostNotReached,
+          code == DeviceSetupFailure.hostNotReachedCode);
+      expect(result.isReady, isFalse);
+      expect((await store.load('setup-unreached'))?.failure?.code, code);
+    }
+  });
+
   test('Owner mismatch and old Owner generation are contract failures',
       () async {
     for (final projection in [
@@ -845,6 +904,9 @@ class _Admission implements DeviceAdmissionPort {
   List<EnrollmentRecoveryProjectionV1>? recoveryItems;
   final bool loseDecisionReply;
   bool unavailable = false;
+
+  /// Thrown instead of answering, as a transport failure would be.
+  Object? failure;
   void Function()? onRecover;
   int recoverCalls = 0;
   final List<String> decisionRequestIds = [];
@@ -855,6 +917,7 @@ class _Admission implements DeviceAdmissionPort {
     AdmissionListCursorV1? after,
   }) async {
     if (unavailable) throw StateError('Hub unavailable');
+    if (failure case final error?) throw error;
     return canonicalRecoveryPage(recoveryItems ?? [current]);
   }
 
@@ -865,6 +928,7 @@ class _Admission implements DeviceAdmissionPort {
     recoverCalls += 1;
     onRecover?.call();
     if (unavailable) throw StateError('Hub unavailable');
+    if (failure case final error?) throw error;
     return current;
   }
 

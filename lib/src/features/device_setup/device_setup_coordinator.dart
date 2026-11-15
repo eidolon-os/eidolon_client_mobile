@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import '../../generated/device_foundation_v1.dart';
 import '../host_setup/failure_sentences.dart';
+import '../host_setup/host_reachability.dart';
 import 'admission_projection.dart';
 import 'device_setup_models.dart';
 import 'device_setup_ports.dart';
@@ -404,7 +405,12 @@ class DeviceSetupCoordinator {
       return _fail(
         current,
         DeviceSetupException(
-          code: 'admission_unavailable',
+          // Graded, because the two ask different things of the person: an
+          // unreachable Host after a device visit is the phone's network to
+          // put back, while anything the Host answered is the Host's.
+          code: hostNotReached(error)
+              ? DeviceSetupFailure.hostNotReachedCode
+              : 'admission_unavailable',
           // A sentence, not the exception: this is the message the screen
           // shows for as long as the Host is out of reach, which after a
           // visit to the device is the ordinary case rather than a crash.

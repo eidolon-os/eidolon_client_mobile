@@ -758,6 +758,11 @@ void main() {
       expect(find.byIcon(Icons.error_outline), findsNothing);
       expect(admission.voucherAttempts, 6);
       expect(transport.opened, 1);
+      // Which network, by the name the phone had for it before the visit,
+      // and the one place to put it back.
+      expect(find.textContaining('还没有连回「owner-wifi」'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('open-wifi-settings')));
+      expect(transport.wifiSettingsOpened, 1);
 
       admission.voucherFailure = null;
       await tester.tap(find.byKey(const Key('retry-host-voucher')));
@@ -1320,6 +1325,13 @@ Future<void> _searchWithCode(WidgetTester tester,
 class _Transport implements DeviceProvisioningTransport, PhoneWifiSource {
   @override
   Future<String?> currentWifiSsid() async => "owner-wifi";
+  int wifiSettingsOpened = 0;
+  @override
+  Future<bool> openWifiSettings() async {
+    wifiSettingsOpened += 1;
+    return true;
+  }
+
   Object? discoveryFailure;
   Object? configureFailure;
   Object? preparationFailure;

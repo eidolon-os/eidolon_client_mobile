@@ -114,7 +114,12 @@ class InMemoryDeviceSetupCheckpointStore implements DeviceSetupCheckpointStore {
   }
 }
 
-/// Optional phone-network hint, captured before joining the device hotspot.
+/// The phone's own Wi-Fi, as far as setup needs it: which network it was on
+/// before joining the device hotspot, and the system screen where a person
+/// puts it back on one.
 abstract interface class PhoneWifiSource {
   Future<String?> currentWifiSsid();
+
+  /// Open the system's Wi-Fi chooser. False when this phone has none to open.
+  Future<bool> openWifiSettings();
 }
