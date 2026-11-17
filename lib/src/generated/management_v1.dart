@@ -53,6 +53,8 @@ class ManagementV1 {
     String taskId,
   ) =>
       '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tasks/${Uri.encodeComponent(taskId)}/retry';
+  static String companionsByCompanionIdToolsPath(String companionId) =>
+      '/api/management/v1/companions/${Uri.encodeComponent(companionId)}/tools';
   static const String contextPath = '/api/management/v1/context';
   static const String controllersPath = '/api/management/v1/controllers';
   static String controllersByControllerIdPath(String controllerId) =>
@@ -81,6 +83,8 @@ class ManagementV1 {
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/properties';
   static String devicesByDeviceIdRemovalPath(String deviceId) =>
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/removal';
+  static String devicesByDeviceIdToolsPath(String deviceId) =>
+      '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/tools';
   static const String homePath = '/api/management/v1/home';
   static const String hostMonitorPath = '/api/management/v1/host/monitor';
   static const String hostPowerPath = '/api/management/v1/host/power';
@@ -217,6 +221,7 @@ class ManagementV1 {
     String sessionId,
   ) =>
       '/api/management/v1/teams/${Uri.encodeComponent(teamId)}/runs/${Uri.encodeComponent(sessionId)}/close';
+  static const String toolsPath = '/api/management/v1/tools';
   static const String voiceprintsPath = '/api/management/v1/voiceprints';
   static const String voiceprintsCapturesPath =
       '/api/management/v1/voiceprints/captures';
@@ -1073,6 +1078,135 @@ class CompanionSummaryView {
       if (memoryRealmId != null) 'memory_realm_id': memoryRealmId,
       'revision': revision,
       'updated_at': updatedAt,
+    };
+  }
+}
+
+class CompanionToolRowView {
+  const CompanionToolRowView({
+    this.blockedBy,
+    required this.bodyControl,
+    required this.companionEnabled,
+    required this.companionOverridden,
+    required this.defaultEnabled,
+    required this.effective,
+    required this.globalEnabled,
+    required this.group,
+    required this.key,
+    required this.kind,
+    required this.label,
+    required this.requires,
+    this.reserved,
+    required this.summary,
+  });
+
+  final String? blockedBy;
+
+  final bool bodyControl;
+
+  final bool companionEnabled;
+
+  final bool companionOverridden;
+
+  final bool defaultEnabled;
+
+  final bool effective;
+
+  final bool globalEnabled;
+
+  final String group;
+
+  final String key;
+
+  final String kind;
+
+  final String label;
+
+  final ToolRequirements requires;
+
+  final ToolReservation? reserved;
+
+  final String summary;
+
+  factory CompanionToolRowView.fromJson(Map<String, dynamic> value) {
+    return CompanionToolRowView(
+      blockedBy: value['blocked_by'] as String?,
+      bodyControl: value['body_control'] as bool,
+      companionEnabled: value['companion_enabled'] as bool,
+      companionOverridden: value['companion_overridden'] as bool,
+      defaultEnabled: value['default_enabled'] as bool,
+      effective: value['effective'] as bool,
+      globalEnabled: value['global_enabled'] as bool,
+      group: value['group'] as String,
+      key: value['key'] as String,
+      kind: value['kind'] as String,
+      label: value['label'] as String,
+      requires: ToolRequirements.fromJson(
+        value['requires'] as Map<String, dynamic>,
+      ),
+      reserved: value['reserved'] == null
+          ? null
+          : ToolReservation.fromJson(value['reserved'] as Map<String, dynamic>),
+      summary: value['summary'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (blockedBy != null) 'blocked_by': blockedBy,
+      'body_control': bodyControl,
+      'companion_enabled': companionEnabled,
+      'companion_overridden': companionOverridden,
+      'default_enabled': defaultEnabled,
+      'effective': effective,
+      'global_enabled': globalEnabled,
+      'group': group,
+      'key': key,
+      'kind': kind,
+      'label': label,
+      'requires': requires.toJson(),
+      if (reserved != null) 'reserved': reserved?.toJson(),
+      'summary': summary,
+    };
+  }
+}
+
+class CompanionToolsView {
+  const CompanionToolsView({
+    required this.allowBodyControl,
+    required this.companionId,
+    required this.revision,
+    required this.tools,
+  });
+
+  final bool allowBodyControl;
+
+  final String companionId;
+
+  final int revision;
+
+  final List<CompanionToolRowView> tools;
+
+  factory CompanionToolsView.fromJson(Map<String, dynamic> value) {
+    return CompanionToolsView(
+      allowBodyControl: value['allow_body_control'] as bool,
+      companionId: value['companion_id'] as String,
+      revision: value['revision'] as int,
+      tools: ((value['tools'] as List<dynamic>)
+          .map(
+            (entry) =>
+                CompanionToolRowView.fromJson(entry as Map<String, dynamic>),
+          )
+          .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'allow_body_control': allowBodyControl,
+      'companion_id': companionId,
+      'revision': revision,
+      'tools': tools.map((entry) => entry.toJson()).toList(),
     };
   }
 }
@@ -1952,6 +2086,109 @@ class DeviceStatusView {
 
   Map<String, dynamic> toJson() {
     return {'online': online, 'state': state};
+  }
+}
+
+class DeviceToolRowView {
+  const DeviceToolRowView({
+    required this.available,
+    required this.group,
+    required this.key,
+    required this.kind,
+    required this.label,
+    required this.reasons,
+    required this.requires,
+    required this.summary,
+  });
+
+  final bool available;
+
+  final String group;
+
+  final String key;
+
+  final String kind;
+
+  final String label;
+
+  final List<String> reasons;
+
+  final ToolRequirements requires;
+
+  final String summary;
+
+  factory DeviceToolRowView.fromJson(Map<String, dynamic> value) {
+    return DeviceToolRowView(
+      available: value['available'] as bool,
+      group: value['group'] as String,
+      key: value['key'] as String,
+      kind: value['kind'] as String,
+      label: value['label'] as String,
+      reasons: ((value['reasons'] as List<dynamic>)
+          .map((entry) => entry as String)
+          .toList()),
+      requires: ToolRequirements.fromJson(
+        value['requires'] as Map<String, dynamic>,
+      ),
+      summary: value['summary'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'available': available,
+      'group': group,
+      'key': key,
+      'kind': kind,
+      'label': label,
+      'reasons': reasons,
+      'requires': requires.toJson(),
+      'summary': summary,
+    };
+  }
+}
+
+class DeviceToolsView {
+  const DeviceToolsView({
+    this.companionId,
+    required this.deviceId,
+    this.restriction,
+    required this.tools,
+  });
+
+  final String? companionId;
+
+  final String deviceId;
+
+  final Map<String, Object?>? restriction;
+
+  final List<DeviceToolRowView> tools;
+
+  factory DeviceToolsView.fromJson(Map<String, dynamic> value) {
+    return DeviceToolsView(
+      companionId: value['companion_id'] as String?,
+      deviceId: value['device_id'] as String,
+      restriction: value['restriction'] == null
+          ? null
+          : ((value['restriction'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as Object?),
+            )),
+      tools: ((value['tools'] as List<dynamic>)
+          .map(
+            (entry) =>
+                DeviceToolRowView.fromJson(entry as Map<String, dynamic>),
+          )
+          .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (companionId != null) 'companion_id': companionId,
+      'device_id': deviceId,
+      if (restriction != null) 'restriction': restriction,
+      'tools': tools.map((entry) => entry.toJson()).toList(),
+    };
   }
 }
 
@@ -6632,6 +6869,265 @@ class TeamWrite {
     return {
       'configuration': configuration.toJson(),
       'expected_revision': expectedRevision,
+    };
+  }
+}
+
+class ToolCompanionSwitchView {
+  const ToolCompanionSwitchView({
+    required this.companionId,
+    required this.effective,
+    required this.enabled,
+    required this.name,
+  });
+
+  final String companionId;
+
+  final bool effective;
+
+  final bool enabled;
+
+  final String name;
+
+  factory ToolCompanionSwitchView.fromJson(Map<String, dynamic> value) {
+    return ToolCompanionSwitchView(
+      companionId: value['companion_id'] as String,
+      effective: value['effective'] as bool,
+      enabled: value['enabled'] as bool,
+      name: value['name'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'companion_id': companionId,
+      'effective': effective,
+      'enabled': enabled,
+      'name': name,
+    };
+  }
+}
+
+class ToolOverviewRowView {
+  const ToolOverviewRowView({
+    required this.companions,
+    required this.defaultEnabled,
+    required this.globalEnabled,
+    required this.globalOverridden,
+    required this.group,
+    this.hostAvailable,
+    required this.key,
+    required this.kind,
+    required this.label,
+    required this.requires,
+    this.reserved,
+    required this.sideEffect,
+    required this.summary,
+  });
+
+  final List<ToolCompanionSwitchView> companions;
+
+  final bool defaultEnabled;
+
+  final bool globalEnabled;
+
+  final bool globalOverridden;
+
+  final String group;
+
+  final bool? hostAvailable;
+
+  final String key;
+
+  final String kind;
+
+  final String label;
+
+  final ToolRequirements requires;
+
+  final ToolReservation? reserved;
+
+  final bool sideEffect;
+
+  final String summary;
+
+  factory ToolOverviewRowView.fromJson(Map<String, dynamic> value) {
+    return ToolOverviewRowView(
+      companions: ((value['companions'] as List<dynamic>)
+          .map(
+            (entry) =>
+                ToolCompanionSwitchView.fromJson(entry as Map<String, dynamic>),
+          )
+          .toList()),
+      defaultEnabled: value['default_enabled'] as bool,
+      globalEnabled: value['global_enabled'] as bool,
+      globalOverridden: value['global_overridden'] as bool,
+      group: value['group'] as String,
+      hostAvailable: value['host_available'] as bool?,
+      key: value['key'] as String,
+      kind: value['kind'] as String,
+      label: value['label'] as String,
+      requires: ToolRequirements.fromJson(
+        value['requires'] as Map<String, dynamic>,
+      ),
+      reserved: value['reserved'] == null
+          ? null
+          : ToolReservation.fromJson(value['reserved'] as Map<String, dynamic>),
+      sideEffect: value['side_effect'] as bool,
+      summary: value['summary'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'companions': companions.map((entry) => entry.toJson()).toList(),
+      'default_enabled': defaultEnabled,
+      'global_enabled': globalEnabled,
+      'global_overridden': globalOverridden,
+      'group': group,
+      if (hostAvailable != null) 'host_available': hostAvailable,
+      'key': key,
+      'kind': kind,
+      'label': label,
+      'requires': requires.toJson(),
+      if (reserved != null) 'reserved': reserved?.toJson(),
+      'side_effect': sideEffect,
+      'summary': summary,
+    };
+  }
+}
+
+class ToolPolicyChange {
+  const ToolPolicyChange({
+    this.allowBodyControl,
+    this.changes,
+    required this.expectedRevision,
+  });
+
+  final bool? allowBodyControl;
+
+  final Map<String, Object?>? changes;
+
+  final int expectedRevision;
+
+  factory ToolPolicyChange.fromJson(Map<String, dynamic> value) {
+    return ToolPolicyChange(
+      allowBodyControl: value['allow_body_control'] as bool?,
+      changes: value['changes'] == null
+          ? null
+          : ((value['changes'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as Object?),
+            )),
+      expectedRevision: value['expected_revision'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (allowBodyControl != null) 'allow_body_control': allowBodyControl,
+      if (changes != null) 'changes': changes,
+      'expected_revision': expectedRevision,
+    };
+  }
+}
+
+class ToolRequirements {
+  const ToolRequirements({
+    this.deviceContracts,
+    this.hostFeature,
+    this.inputs,
+    this.motionProfile,
+    this.outputs,
+  });
+
+  final List<String>? deviceContracts;
+
+  final String? hostFeature;
+
+  final Map<String, String>? inputs;
+
+  final String? motionProfile;
+
+  final List<String>? outputs;
+
+  factory ToolRequirements.fromJson(Map<String, dynamic> value) {
+    return ToolRequirements(
+      deviceContracts: value['device_contracts'] == null
+          ? null
+          : ((value['device_contracts'] as List<dynamic>)
+                .map((entry) => entry as String)
+                .toList()),
+      hostFeature: value['host_feature'] as String?,
+      inputs: value['inputs'] == null
+          ? null
+          : ((value['inputs'] as Map<String, dynamic>).map(
+              (key, entry) => MapEntry(key, entry as String),
+            )),
+      motionProfile: value['motion_profile'] as String?,
+      outputs: value['outputs'] == null
+          ? null
+          : ((value['outputs'] as List<dynamic>)
+                .map((entry) => entry as String)
+                .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (deviceContracts != null) 'device_contracts': deviceContracts,
+      if (hostFeature != null) 'host_feature': hostFeature,
+      if (inputs != null) 'inputs': inputs,
+      if (motionProfile != null) 'motion_profile': motionProfile,
+      if (outputs != null) 'outputs': outputs,
+    };
+  }
+}
+
+class ToolReservation {
+  const ToolReservation({required this.reason});
+
+  final String reason;
+
+  factory ToolReservation.fromJson(Map<String, dynamic> value) {
+    return ToolReservation(reason: value['reason'] as String);
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'reason': reason};
+  }
+}
+
+class ToolsOverviewView {
+  const ToolsOverviewView({
+    required this.catalogRevision,
+    required this.revision,
+    required this.tools,
+  });
+
+  final String catalogRevision;
+
+  final int revision;
+
+  final List<ToolOverviewRowView> tools;
+
+  factory ToolsOverviewView.fromJson(Map<String, dynamic> value) {
+    return ToolsOverviewView(
+      catalogRevision: value['catalog_revision'] as String,
+      revision: value['revision'] as int,
+      tools: ((value['tools'] as List<dynamic>)
+          .map(
+            (entry) =>
+                ToolOverviewRowView.fromJson(entry as Map<String, dynamic>),
+          )
+          .toList()),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'catalog_revision': catalogRevision,
+      'revision': revision,
+      'tools': tools.map((entry) => entry.toJson()).toList(),
     };
   }
 }
