@@ -1,3 +1,4 @@
+import 'package:eidolon_client_mobile/src/features/tools/tool_detail_page.dart';
 import 'package:eidolon_client_mobile/src/features/tools/tools_overview_page.dart';
 import 'package:eidolon_client_mobile/src/management/management_client.dart';
 import 'package:eidolon_client_mobile/src/generated/management_v1.dart';
@@ -270,6 +271,92 @@ void main() {
                   find.byKey(const Key('tool-companion-switch-$companionB')))
               .onChanged,
           isNotNull);
+    });
+
+    testWidgets('closed body control greys the switch even when it is off too',
+        (tester) async {
+      // Both above and below: 允许操控身体 off, and its own switch off as well.
+      // Nothing about its own value says which; the Host's rule does.
+      final tools = FakeToolPolicies(companions: {
+        companionA: CompanionSwitches('小忆',
+            allowBodyControl: false,
+            overrides: {'motion.nod': false},
+            revision: 3),
+        companionB: CompanionSwitches('阿福', overrides: {'motion.nod': false}),
+      });
+      await _open(tester, tools);
+      await tester.tap(find.text('点头'));
+      await tester.pumpAndSettle();
+
+      final held = tester.widget<Switch>(
+          find.byKey(const Key('tool-companion-switch-$companionA')));
+      expect(held.value, isFalse, reason: 'its own value, kept for later');
+      expect(held.onChanged, isNull);
+      expect(
+          tester
+              .widget<ListTile>(
+                  find.byKey(const Key('tool-companion-$companionA')))
+              .enabled,
+          isFalse);
+      expect(
+          find.descendant(
+              of: find.byKey(const Key('tool-companion-$companionA')),
+              matching: find.text('已关闭操控身体')),
+          findsOneWidget);
+      // Off only by its own switch: that one is its to turn on.
+      final own = tester.widget<Switch>(
+          find.byKey(const Key('tool-companion-switch-$companionB')));
+      expect(own.value, isFalse);
+      expect(own.onChanged, isNotNull);
+    });
+
+    testWidgets('after a write, what holds it back is the answer\'s',
+        (tester) async {
+      final tools = FakeToolPolicies(companions: {
+        companionA: CompanionSwitches('小忆', revision: 3),
+        companionB: CompanionSwitches('阿福'),
+      });
+      await _open(tester, tools);
+      await tester.tap(find.text('点头'));
+      await tester.pumpAndSettle();
+
+      // Meanwhile 允许操控身体 went off, without a new revision reaching here
+      // first: the answer to this write is what says so.
+      tools.companions[companionA]!.allowBodyControl = false;
+      await tester
+          .tap(find.byKey(const Key('tool-companion-switch-$companionA')));
+      await tester.pumpAndSettle();
+
+      final held = tester.widget<Switch>(
+          find.byKey(const Key('tool-companion-switch-$companionA')));
+      expect(held.value, isFalse);
+      expect(held.onChanged, isNull);
+      expect(
+          find.descendant(
+              of: find.byKey(const Key('tool-companion-$companionA')),
+              matching: find.text('已关闭操控身体')),
+          findsOneWidget);
+    });
+
+    testWidgets('a reserved tool is locked for every Eidolon', (tester) async {
+      // The overview does not open one, but the page does not rely on that.
+      final tools = FakeToolPolicies();
+      final reserved = (await tools.overview())
+          .tools
+          .singleWhere((row) => row.key == 'emit_event');
+      await tester.pumpWidget(
+          MaterialApp(home: ToolDetailPage(tools: tools, tool: reserved)));
+      await tester.pumpAndSettle();
+
+      for (final id in [companionA, companionB]) {
+        final row = find.byKey(Key('tool-companion-$id'));
+        expect(find.byKey(Key('tool-companion-switch-$id')), findsNothing);
+        expect(
+            find.descendant(of: row, matching: find.byIcon(Icons.lock_outline)),
+            findsOneWidget);
+        expect(find.descendant(of: row, matching: find.text('系统保留：语音对话中不开放')),
+            findsOneWidget);
+      }
     });
 
     testWidgets('a tool the Owner turned off greys every Eidolon\'s switch',

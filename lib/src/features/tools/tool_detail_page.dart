@@ -70,6 +70,7 @@ class _ToolDetailPageState extends State<ToolDetailPage> {
       revision: answer.revision,
       enabled: row?.companionEnabled ?? was.enabled,
       effective: row?.effective ?? was.effective,
+      blockedBy: row == null ? was.blockedBy : row.blockedBy,
     );
     _unreadCompanions.remove(companionId);
   }
@@ -191,13 +192,17 @@ class _ToolDetailPageState extends State<ToolDetailPage> {
   Widget _companionRow(ToolCompanionSwitchView companion) {
     final id = companion.companionId;
     final unread = _unreadCompanions.contains(id);
-    // Its own switch on and still not in use, with the Owner's on: what is
-    // left above it is 「允许操控身体」.
-    final overruled = !_tool.globalEnabled
-        ? toolGlobalOffText
-        : companion.enabled && !companion.effective
-            ? toolBodyControlOffText
-            : null;
+    // The first layer above its own switch, as the Host's one rule says; its
+    // own value is still shown, so lifting that layer restores it.
+    final reserved = _tool.reserved;
+    final overruled = switch (companion.blockedBy) {
+      'reserved' => reserved == null
+          ? toolReasonText('reserved')
+          : toolReservedText(reserved),
+      'global' => toolGlobalOffText,
+      'body_control' => toolBodyControlOffText,
+      _ => null,
+    };
     return ListTile(
       key: Key('tool-companion-$id'),
       title: Text(companion.name),
@@ -209,13 +214,15 @@ class _ToolDetailPageState extends State<ToolDetailPage> {
       enabled: overruled == null,
       trailing: unread
           ? null
-          : Switch(
-              key: Key('tool-companion-switch-$id'),
-              value: companion.enabled,
-              onChanged: overruled != null || _saving.contains(id)
-                  ? null
-                  : (on) => _switch(id, on),
-            ),
+          : companion.blockedBy == 'reserved'
+              ? const ToolLock()
+              : Switch(
+                  key: Key('tool-companion-switch-$id'),
+                  value: companion.enabled,
+                  onChanged: overruled != null || _saving.contains(id)
+                      ? null
+                      : (on) => _switch(id, on),
+                ),
     );
   }
 

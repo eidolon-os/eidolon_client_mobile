@@ -6929,12 +6929,15 @@ class TeamWrite {
 
 class ToolCompanionSwitchView {
   const ToolCompanionSwitchView({
+    this.blockedBy,
     required this.companionId,
     required this.effective,
     required this.enabled,
     required this.name,
     required this.revision,
   });
+
+  final String? blockedBy;
 
   final String companionId;
 
@@ -6948,6 +6951,7 @@ class ToolCompanionSwitchView {
 
   factory ToolCompanionSwitchView.fromJson(Map<String, dynamic> value) {
     return ToolCompanionSwitchView(
+      blockedBy: value['blocked_by'] as String?,
       companionId: value['companion_id'] as String,
       effective: value['effective'] as bool,
       enabled: value['enabled'] as bool,
@@ -6958,6 +6962,7 @@ class ToolCompanionSwitchView {
 
   Map<String, dynamic> toJson() {
     return {
+      if (blockedBy != null) 'blocked_by': blockedBy,
       'companion_id': companionId,
       'effective': effective,
       'enabled': enabled,

@@ -251,6 +251,7 @@ class FakeToolPolicies implements ToolPolicies {
                     revision: companion.revision,
                     enabled: companion.of(tool),
                     effective: blockedBy(tool, owner, companion) == null,
+                    blockedBy: blockedBy(tool, owner, companion),
                   ),
               ],
             ),
