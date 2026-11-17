@@ -40,6 +40,7 @@ class CompanionPage extends StatelessWidget {
     this.onChangeFace,
     this.onClearFace,
     this.voice,
+    this.tools,
     this.hostContext,
   });
 
@@ -100,6 +101,10 @@ class CompanionPage extends StatelessWidget {
   /// The 「声音」 row, which reads its own line. Null on a Host that cannot
   /// change how an Eidolon sounds, and the row is then absent.
   final Widget? voice;
+
+  /// The 「它能做的事」 row, which reads its own line. Null on a Host that does
+  /// not offer tool switches, and the row is then absent.
+  final Widget? tools;
 
   /// What this Host says it can do at all, so a row it cannot serve is shown as
   /// held back rather than shown as working or removed without explanation.
@@ -284,6 +289,11 @@ class CompanionPage extends StatelessWidget {
               onOpen: onOpenPersona,
               hold: _hold('persona.author'),
             ),
+            if (tools case final tools?)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Card(child: tools),
+              ),
             if (onChangeLifecycle != null)
               Card(
                 child: ListTile(

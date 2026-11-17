@@ -778,6 +778,68 @@ class ManagementClient {
         expectedStatus: 204);
   }
 
+  // ---------------------------------------------------------------- tools
+
+  /// Every tool this Host has, with the Owner's switch and each Companion's.
+  Future<ToolsOverviewView> fetchTools(Uri baseUri,
+          {required String accessToken}) async =>
+      ToolsOverviewView.fromJson(await _send(
+          'GET', baseUri.resolve(ManagementV1.toolsPath),
+          accessToken: accessToken, what: '读取工具'));
+
+  /// Only what changed, against the revision the screen showed.
+  Future<ToolsOverviewView> changeTools(Uri baseUri,
+          {required String accessToken,
+          required ToolPolicyChange change}) async =>
+      ToolsOverviewView.fromJson(await _send(
+          'PUT', baseUri.resolve(ManagementV1.toolsPath),
+          accessToken: accessToken,
+          what: '更改工具开关',
+          body: change.toJson()));
+
+  Future<CompanionToolsView> fetchCompanionTools(Uri baseUri,
+          {required String accessToken, required String companionId}) async =>
+      CompanionToolsView.fromJson(await _send(
+          'GET',
+          baseUri
+              .resolve(ManagementV1.companionsByCompanionIdToolsPath(companionId)),
+          accessToken: accessToken,
+          what: '读取伙伴能做的事'));
+
+  Future<CompanionToolsView> changeCompanionTools(Uri baseUri,
+          {required String accessToken,
+          required String companionId,
+          required ToolPolicyChange change}) async =>
+      CompanionToolsView.fromJson(await _send(
+          'PUT',
+          baseUri
+              .resolve(ManagementV1.companionsByCompanionIdToolsPath(companionId)),
+          accessToken: accessToken,
+          what: '更改伙伴能做的事',
+          body: change.toJson()));
+
+  /// Which tools a conversation on this device of mine could use now, and why
+  /// not the others.
+  Future<DeviceToolsView> fetchDeviceTools(Uri baseUri,
+          {required String accessToken, required String deviceId}) async =>
+      DeviceToolsView.fromJson(await _send(
+          'GET', baseUri.resolve(ManagementV1.devicesByDeviceIdToolsPath(deviceId)),
+          accessToken: accessToken, what: '读取这台设备上能用的工具'));
+
+  /// Which tools this device of mine never offers, whoever answers through
+  /// it: the whole list, against the revision the screen showed.
+  Future<DeviceToolRestriction> changeDeviceToolRestriction(Uri baseUri,
+          {required String accessToken,
+          required String deviceId,
+          required DeviceToolRestrictionRequest request}) async =>
+      DeviceToolRestriction.fromJson(await _send(
+          'PUT',
+          baseUri.resolve(
+              ManagementV1.devicesByDeviceIdToolRestrictionPath(deviceId)),
+          accessToken: accessToken,
+          what: '更改这台设备的工具限制',
+          body: request.toJson()));
+
   Future<TeamRevision> fetchTeam(Uri baseUri,
       {required String accessToken, required String teamId}) async {
     final result = TeamRevision.fromJson(await _send(
