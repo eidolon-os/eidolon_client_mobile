@@ -23,6 +23,11 @@ abstract interface class ToolPolicies {
   /// Which tools a conversation on this device could use now, and why not
   /// the others.
   Future<DeviceToolsView> device(String deviceId);
+
+  /// The tools this device never offers, as one whole list; the Host ends the
+  /// conversation the device is holding so the next one starts with it.
+  Future<DeviceToolRestriction> restrict(
+      String deviceId, DeviceToolRestrictionRequest request);
 }
 
 /// Uses the existing authenticated Host session, never a page-owned credential.
@@ -56,6 +61,13 @@ class HostToolPolicies implements ToolPolicies {
   Future<DeviceToolsView> device(String deviceId) =>
       _session.executeManagement((client, uri, token) =>
           client.fetchDeviceTools(uri, accessToken: token, deviceId: deviceId));
+
+  @override
+  Future<DeviceToolRestriction> restrict(
+          String deviceId, DeviceToolRestrictionRequest request) =>
+      _session.executeManagement((client, uri, token) =>
+          client.changeDeviceToolRestriction(uri,
+              accessToken: token, deviceId: deviceId, request: request));
 }
 
 /// Whether to offer the tool switches at all: the row on the Host card, the
@@ -68,6 +80,11 @@ class HostToolPolicies implements ToolPolicies {
 /// context is read as the Host connects, before any of these is reached.
 bool hostOffersToolSwitches(ManagementContextView? context) =>
     context != null && hostCan(context, 'tools.govern');
+
+/// Whether a device's tools section may change what that device withholds,
+/// rather than only say it. On the Host's own word, like the switches above.
+bool hostOffersDeviceToolRestriction(ManagementContextView? context) =>
+    context != null && hostCan(context, 'device.tool_restriction');
 
 /// The kinds of tool whose use depends on what a device's channel offers.
 const deviceDependentKinds = {'channel', 'device', 'agent_device'};

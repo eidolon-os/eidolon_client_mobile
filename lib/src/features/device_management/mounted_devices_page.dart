@@ -364,6 +364,8 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
                   tools: controller.tools,
                   companionName: device.attachedCompanionName,
                   devices: controller.devices?.devices ?? const [],
+                  canRestrict: hostOffersDeviceToolRestriction(
+                      controller.managementCapabilities),
                 ),
           onChangeNetwork: () => _openProvisioning(existing: device),
           onRemove: (deviceId, requestId) =>

@@ -190,6 +190,18 @@ String toolReasonActionLabel(ToolReasonAction action) => switch (action) {
       ToolReasonAction.overview => '去总览',
     };
 
+/// The switch beside a tool on a device's page (§6.1).
+const toolRestrictionLabel = '在这台设备上禁止';
+
+/// When a device's restriction takes effect (§3.6): at once, by ending the
+/// conversation the device is holding.
+const toolRestrictionNotice = '已生效；这台设备正在进行的对话会被结束，下一次对话起带上限制';
+
+/// A device whose outputs were never decided cannot be restricted yet.
+const toolRestrictionNeedsOutputs = '先决定这台设备可以听和表达什么，再来限制它的工具';
+
+const deviceRestrictionChangedElsewhere = '这台设备的工具限制刚被改过，已经重新读取';
+
 /// Said after rereading because somebody else changed the switches first.
 const toolsChangedElsewhere = '工具开关刚被改过，已经重新读取';
 const companionToolsChangedElsewhere = '这个伙伴的能力刚被改过，已经重新读取';

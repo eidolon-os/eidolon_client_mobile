@@ -160,8 +160,35 @@ DeviceToolRowView deviceRow(String key,
 
 DeviceToolsView deviceTools(String deviceId,
         {String? companionId = companionA,
-        List<DeviceToolRowView> tools = const []}) =>
-    DeviceToolsView(deviceId: deviceId, companionId: companionId, tools: tools);
+        List<DeviceToolRowView> tools = const [],
+        DeviceToolRestriction? restriction}) =>
+    DeviceToolsView(
+        deviceId: deviceId,
+        companionId: companionId,
+        tools: tools,
+        restriction: restriction);
+
+/// A device's own restriction, as the Host answers it: sorted, de-duplicated.
+DeviceToolRestriction restriction(int revision, Iterable<String> denied) =>
+    DeviceToolRestriction(
+        revision: revision, denied: ({...denied}.toList()..sort()));
+
+/// The Host refusing a restriction for a device whose outputs were never
+/// decided.
+const outputPolicyRequired = ManagementRequestException('更改这台设备的工具限制被拒绝',
+    statusCode: 409,
+    refusal: Refusal(kind: 'conflict', code: 'output_policy_required'));
+
+const _switchReasons = {
+  'global_off',
+  'no_companion',
+  'companion_off',
+  'body_control_off',
+};
+
+/// A stale restriction revision: a conflict with no code of its own.
+const restrictionChanged = ManagementRequestException('更改这台设备的工具限制被拒绝',
+    statusCode: 409, refusal: Refusal(kind: 'conflict'));
 
 /// The Host, as the tool screens see it: answers composed from [tools] and
 /// the two layers of switches, every call written down.
@@ -188,6 +215,7 @@ class FakeToolPolicies implements ToolPolicies {
   final calls = <String>[];
   final changes = <ToolPolicyChange>[];
   final companionChanges = <(String, ToolPolicyChange)>[];
+  final restrictions = <(String, DeviceToolRestrictionRequest)>[];
 
   /// What the next write does instead of succeeding, when set.
   Object? writeFailure;
@@ -302,5 +330,36 @@ class FakeToolPolicies implements ToolPolicies {
     calls.add('device $deviceId');
     if (deviceFailure case final failure?) throw failure;
     return devices[deviceId] ?? deviceTools(deviceId);
+  }
+
+  /// Keeps the new list and marks each tool it denies, the way the Host adds
+  /// `device_restricted` after the switch reasons.
+  @override
+  Future<DeviceToolRestriction> restrict(
+      String deviceId, DeviceToolRestrictionRequest request) async {
+    restrictions.add((deviceId, request));
+    if (writeFailure case final failure?) _fail(failure);
+    final view = devices[deviceId] ?? deviceTools(deviceId);
+    final answer = restriction(
+        (view.restriction?.revision ?? 0) + 1, request.denied ?? const []);
+    final denied = answer.denied!.toSet();
+    devices[deviceId] = deviceTools(deviceId,
+        companionId: view.companionId,
+        restriction: answer,
+        tools: [
+          for (final row in view.tools)
+            deviceRow(row.key,
+                label: row.label,
+                reasons: row.reasons.contains('reserved')
+                    ? row.reasons
+                    : [
+                        ...row.reasons.where(_switchReasons.contains),
+                        if (denied.contains(row.key)) 'device_restricted',
+                        ...row.reasons.where((reason) =>
+                            !_switchReasons.contains(reason) &&
+                            reason != 'device_restricted'),
+                      ]),
+        ]);
+    return answer;
   }
 }

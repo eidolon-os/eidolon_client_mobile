@@ -826,6 +826,20 @@ class ManagementClient {
           'GET', baseUri.resolve(ManagementV1.devicesByDeviceIdToolsPath(deviceId)),
           accessToken: accessToken, what: '读取这台设备上能用的工具'));
 
+  /// Which tools this device of mine never offers, whoever answers through
+  /// it: the whole list, against the revision the screen showed.
+  Future<DeviceToolRestriction> changeDeviceToolRestriction(Uri baseUri,
+          {required String accessToken,
+          required String deviceId,
+          required DeviceToolRestrictionRequest request}) async =>
+      DeviceToolRestriction.fromJson(await _send(
+          'PUT',
+          baseUri.resolve(
+              ManagementV1.devicesByDeviceIdToolRestrictionPath(deviceId)),
+          accessToken: accessToken,
+          what: '更改这台设备的工具限制',
+          body: request.toJson()));
+
   Future<TeamRevision> fetchTeam(Uri baseUri,
       {required String accessToken, required String teamId}) async {
     final result = TeamRevision.fromJson(await _send(
