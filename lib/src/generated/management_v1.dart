@@ -83,6 +83,8 @@ class ManagementV1 {
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/properties';
   static String devicesByDeviceIdRemovalPath(String deviceId) =>
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/removal';
+  static String devicesByDeviceIdToolRestrictionPath(String deviceId) =>
+      '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/tool-restriction';
   static String devicesByDeviceIdToolsPath(String deviceId) =>
       '/api/management/v1/devices/${Uri.encodeComponent(deviceId)}/tools';
   static const String homePath = '/api/management/v1/home';
@@ -2089,6 +2091,58 @@ class DeviceStatusView {
   }
 }
 
+class DeviceToolRestriction {
+  const DeviceToolRestriction({this.denied, required this.revision});
+
+  final List<String>? denied;
+
+  final int revision;
+
+  factory DeviceToolRestriction.fromJson(Map<String, dynamic> value) {
+    return DeviceToolRestriction(
+      denied: value['denied'] == null
+          ? null
+          : ((value['denied'] as List<dynamic>)
+                .map((entry) => entry as String)
+                .toList()),
+      revision: value['revision'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {if (denied != null) 'denied': denied, 'revision': revision};
+  }
+}
+
+class DeviceToolRestrictionRequest {
+  const DeviceToolRestrictionRequest({
+    this.denied,
+    required this.expectedRevision,
+  });
+
+  final List<String>? denied;
+
+  final int expectedRevision;
+
+  factory DeviceToolRestrictionRequest.fromJson(Map<String, dynamic> value) {
+    return DeviceToolRestrictionRequest(
+      denied: value['denied'] == null
+          ? null
+          : ((value['denied'] as List<dynamic>)
+                .map((entry) => entry as String)
+                .toList()),
+      expectedRevision: value['expected_revision'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (denied != null) 'denied': denied,
+      'expected_revision': expectedRevision,
+    };
+  }
+}
+
 class DeviceToolRowView {
   const DeviceToolRowView({
     required this.available,
@@ -2160,7 +2214,7 @@ class DeviceToolsView {
 
   final String deviceId;
 
-  final Map<String, Object?>? restriction;
+  final DeviceToolRestriction? restriction;
 
   final List<DeviceToolRowView> tools;
 
@@ -2170,9 +2224,9 @@ class DeviceToolsView {
       deviceId: value['device_id'] as String,
       restriction: value['restriction'] == null
           ? null
-          : ((value['restriction'] as Map<String, dynamic>).map(
-              (key, entry) => MapEntry(key, entry as Object?),
-            )),
+          : DeviceToolRestriction.fromJson(
+              value['restriction'] as Map<String, dynamic>,
+            ),
       tools: ((value['tools'] as List<dynamic>)
           .map(
             (entry) =>
@@ -2186,7 +2240,7 @@ class DeviceToolsView {
     return {
       if (companionId != null) 'companion_id': companionId,
       'device_id': deviceId,
-      if (restriction != null) 'restriction': restriction,
+      if (restriction != null) 'restriction': restriction?.toJson(),
       'tools': tools.map((entry) => entry.toJson()).toList(),
     };
   }
