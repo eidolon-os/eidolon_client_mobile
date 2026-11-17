@@ -24,6 +24,8 @@ import '../host_setup/host_product_controller.dart';
 import 'mounted_device_models.dart';
 import 'device_companion_setup.dart';
 import 'device_settings_section.dart';
+import '../tools/device_tools_section.dart';
+import '../tools/tool_policies.dart';
 import '../conversation/device_session_controls.dart';
 import '../../management/companion_portrait.dart';
 
@@ -353,6 +355,15 @@ class _MountedDevicesPageState extends State<MountedDevicesPage>
                   deviceId: device.deviceId,
                   read: controller.deviceProperties,
                   write: controller.setDeviceSetting,
+                ),
+          tools: controller.workspace?.owner == null ||
+                  !hostOffersToolSwitches(controller.managementCapabilities)
+              ? null
+              : DeviceToolsSection(
+                  deviceId: device.deviceId,
+                  tools: controller.tools,
+                  companionName: device.attachedCompanionName,
+                  devices: controller.devices?.devices ?? const [],
                 ),
           onChangeNetwork: () => _openProvisioning(existing: device),
           onRemove: (deviceId, requestId) =>
@@ -688,6 +699,7 @@ class MountedDeviceDetailPage extends StatefulWidget {
     this.onChangeNetwork,
     this.sessionControls,
     this.settings,
+    this.tools,
   });
 
   final MountedDevice device;
@@ -697,6 +709,11 @@ class MountedDeviceDetailPage extends StatefulWidget {
   /// reports. A slot like [sessionControls]: this page lays it out and knows
   /// nothing of how it reads or writes.
   final Widget? settings;
+
+  /// Which tools a conversation on this device could use, and why not the
+  /// others. A slot like [settings]; when it asks for the outputs choice
+  /// ([DeviceOutputsRequested]), this page opens the one it owns.
+  final Widget? tools;
   final Future<void> Function()? onChangeNetwork;
   final DeviceCompanionSetupStore? progress;
   final CompanionFaceLoader? loadFace;
@@ -1461,6 +1478,16 @@ class _MountedDeviceDetailPageState extends State<MountedDeviceDetailPage> {
             // about what the rest of the Host can see.
             '这些是主机确认的挂载与配置。当前连接状态请看设备列表；“已添加”不代表设备在线。',
           ),
+          if (widget.tools case final tools?) ...[
+            const SizedBox(height: 24),
+            NotificationListener<DeviceOutputsRequested>(
+              onNotification: (_) {
+                if (widget.onSetOutputs != null) unawaited(_decideOutputs());
+                return true;
+              },
+              child: tools,
+            ),
+          ],
           if (widget.settings case final settings?) ...[
             const SizedBox(height: 24),
             settings,

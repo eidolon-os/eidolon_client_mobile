@@ -1,5 +1,9 @@
 import '../speech_voice/speech_voice_page.dart';
 import '../speech_voice/speech_voice_tile.dart';
+import '../tools/companion_tools_page.dart';
+import '../tools/companion_tools_tile.dart';
+import '../tools/tool_policies.dart';
+import '../tools/tools_overview_page.dart';
 import '../teams/team_navigation.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -435,6 +439,14 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                       onOpen: () => _openSpeechVoice(current),
                     )
                   : null,
+              tools: hostOffersToolSwitches(_controller.managementCapabilities)
+                  ? CompanionToolsTile(
+                      key: ValueKey('tools-${current.companionId}'),
+                      companionId: current.companionId,
+                      tools: _controller.tools,
+                      onOpen: () => _openCompanionTools(current),
+                    )
+                  : null,
             );
           },
         ),
@@ -712,6 +724,31 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
         ),
       );
 
+  /// What this Eidolon may use, inside what the Owner allows.
+  Future<void> _openCompanionTools(HostCompanion companion) =>
+      Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => CompanionToolsPage(
+            companionId: companion.companionId,
+            companionName: companion.displayName.isNotEmpty
+                ? companion.displayName
+                : '这个 Eidolon',
+            tools: _controller.tools,
+            devices: _controller.devices?.devices ?? const [],
+          ),
+        ),
+      );
+
+  /// Every tool this Host could hand a conversation, and the Owner's switches.
+  Future<void> _openToolsOverview() => Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => ToolsOverviewPage(
+            tools: _controller.tools,
+            devices: _controller.devices?.devices ?? const [],
+          ),
+        ),
+      );
+
   Future<void> _openPersonaEdit(HostCompanion companion) async {
     final PersonaEditSnapshot standing;
     try {
@@ -891,6 +928,12 @@ class _HostLocalConnectionPageState extends State<HostLocalConnectionPage> {
                 onTap: _openTeams),
             _ConnectedHostCard(
               onOpenPersons: _openPersons,
+              // Held back by the Host's own answer, like the voice row: a Host
+              // without its Agent credential has no catalog to switch.
+              onOpenTools:
+                  hostOffersToolSwitches(_controller.managementCapabilities)
+                      ? _openToolsOverview
+                      : null,
               // Offered only once there is an Owner for the history to belong
               // to. Before that there is nothing this screen could be about.
               // Gated on this Host having an Owner, not on the Workspace setup
@@ -1138,11 +1181,14 @@ class _ConnectedHostCard extends StatelessWidget {
     required this.onOpenSystem,
     required this.onOpenPersons,
     this.onOpenConstellation,
+    this.onOpenTools,
   });
   final VoidCallback onOpenSystem;
   final VoidCallback onOpenPersons;
   // The cockpit needs an Owner; monitoring needs only a management session.
   final VoidCallback? onOpenConstellation;
+  // Null when this Host does not offer tool switches.
+  final VoidCallback? onOpenTools;
 
   @override
   Widget build(BuildContext context) => NeonPanel(
@@ -1176,6 +1222,16 @@ class _ConnectedHostCard extends StatelessWidget {
             subtitle: '用户资料与声纹',
             onTap: onOpenPersons,
           ),
+          if (onOpenTools != null) ...[
+            const Divider(height: 1, indent: Neon.s2, endIndent: Neon.s2),
+            _NavRow(
+              key: const Key('open-tools-overview'),
+              icon: Icons.handyman_outlined,
+              title: '工具与能力',
+              subtitle: '伙伴在对话里能用的工具与开关',
+              onTap: onOpenTools,
+            ),
+          ],
         ]),
       );
 }

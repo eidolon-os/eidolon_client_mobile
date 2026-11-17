@@ -2218,6 +2218,107 @@ void main() {
     expect(find.byKey(const Key('memory-wing-Wing_Life')), findsOneWidget);
     expect(find.text('饮食'), findsOneWidget);
   });
+
+  group('工具与能力', () {
+    // Offered by the Host's own answer, like the voice row: a Host without its
+    // Agent credential has no catalog, so the row is absent rather than a way
+    // onto a page that cannot load.
+    Future<void> openHostCard(
+        WidgetTester tester, Map<String, Object> capabilities) async {
+      await tester.binding.setSurfaceSize(const Size(900, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HostLocalConnectionPage(
+            host: _host(tlsSpkiFingerprint: _tlsFingerprint),
+            transport: _LegacyHostTransport(),
+            controllerKeys: _FakeControllerKeys(),
+            discovery: _FakeDiscovery(),
+            localApiClientFactory: (_) => _clientFor(
+              _hostOverview(),
+              workspaceReady: true,
+            ),
+            managementClientFactory: (_) => ManagementClient(
+              httpClient: MockClient((request) async {
+                final body = switch (request.url.path) {
+                  '/api/management/v1/context' => {
+                      'contract_version': '1',
+                      'owner': {
+                        'owner_id': 'owner-1',
+                        'display_name': 'Manson',
+                        'revision': 3,
+                      },
+                      'default_companion_id': 'companion-a',
+                      'capabilities': capabilities,
+                      'unavailable': {
+                        if (capabilities['tools.govern'] == false)
+                          'tools.govern': 'host_not_configured',
+                      },
+                      'limits': {'max_active_companions': null},
+                    },
+                  '/api/management/v1/tools' => {
+                      'revision': 1,
+                      'catalog_revision': 'sha256:catalog',
+                      'tools': [
+                        {
+                          'key': 'get_time',
+                          'label': '查询时间',
+                          'summary': '告诉你现在几点。',
+                          'group': 'general',
+                          'kind': 'brain',
+                          'side_effect': false,
+                          'reserved': null,
+                          'default_enabled': true,
+                          'global_enabled': true,
+                          'global_overridden': false,
+                          'requires': <String, Object>{},
+                          'host_available': null,
+                          'companions': <Object>[],
+                        },
+                      ],
+                    },
+                  _ => null,
+                };
+                return body == null
+                    ? _jsonResponse({'detail': 'not part of this test'}, 404)
+                    : _jsonResponse(body);
+              }),
+            ),
+            onHostUpdated: (_) async {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('is on the Host card when the Host offers it', (tester) async {
+      await openHostCard(tester, {'tools.govern': true});
+
+      final entry = find.byKey(const Key('open-tools-overview'));
+      expect(entry, findsOneWidget);
+      await tester.ensureVisible(entry);
+      await tester.pumpAndSettle();
+      await tester.tap(entry);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('tools-overview-page')), findsOneWidget);
+      expect(find.text('查询时间'), findsOneWidget);
+    });
+
+    testWidgets('is absent when the Host holds it back', (tester) async {
+      await openHostCard(tester, {'tools.govern': false});
+      // The rest of the card is still there: only this row is withheld.
+      expect(find.byKey(const Key('open-persons')), findsOneWidget);
+      expect(find.byKey(const Key('open-tools-overview')), findsNothing);
+    });
+
+    testWidgets('is absent on a Host too old to have heard of it',
+        (tester) async {
+      await openHostCard(tester, {'memory.read': true});
+      expect(find.byKey(const Key('open-persons')), findsOneWidget);
+      expect(find.byKey(const Key('open-tools-overview')), findsNothing);
+    });
+  });
 }
 
 /// A test in this file must describe a Host that can answer, on both surfaces.

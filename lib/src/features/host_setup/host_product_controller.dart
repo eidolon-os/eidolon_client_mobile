@@ -1,4 +1,5 @@
 import '../speech_voice/speech_voice_repository.dart';
+import '../tools/tool_policies.dart';
 import '../teams/team_repository.dart';
 import '../conversation/role_group_controller.dart';
 import 'dart:async';
@@ -220,6 +221,7 @@ class HostProductController extends ChangeNotifier {
 
   late final TeamRepository teams = TeamRepository(_session);
   late final SpeechVoices speechVoices = HostSpeechVoices(_session);
+  late final ToolPolicies tools = HostToolPolicies(_session);
 
   final _teamRuns = <String, RoleGroupController>{};
   RoleGroupController teamRun(String teamId) => _teamRuns.putIfAbsent(
