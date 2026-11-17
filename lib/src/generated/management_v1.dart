@@ -6933,6 +6933,7 @@ class ToolCompanionSwitchView {
     required this.effective,
     required this.enabled,
     required this.name,
+    required this.revision,
   });
 
   final String companionId;
@@ -6943,12 +6944,15 @@ class ToolCompanionSwitchView {
 
   final String name;
 
+  final int revision;
+
   factory ToolCompanionSwitchView.fromJson(Map<String, dynamic> value) {
     return ToolCompanionSwitchView(
       companionId: value['companion_id'] as String,
       effective: value['effective'] as bool,
       enabled: value['enabled'] as bool,
       name: value['name'] as String,
+      revision: value['revision'] as int,
     );
   }
 
@@ -6958,6 +6962,7 @@ class ToolCompanionSwitchView {
       'effective': effective,
       'enabled': enabled,
       'name': name,
+      'revision': revision,
     };
   }
 }

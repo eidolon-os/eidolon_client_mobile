@@ -248,6 +248,7 @@ class FakeToolPolicies implements ToolPolicies {
                   ToolCompanionSwitchView(
                     companionId: id,
                     name: companion.name,
+                    revision: companion.revision,
                     enabled: companion.of(tool),
                     effective: blockedBy(tool, owner, companion) == null,
                   ),

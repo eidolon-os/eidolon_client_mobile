@@ -165,6 +165,9 @@ void main() {
       await tester.tap(find.text('点头'));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('tool-detail-page')), findsOneWidget);
+      // Everything on it came with the overview row: no Eidolon is read.
+      expect(tools.reads('companion $companionA'), 0);
+      expect(tools.reads('companion $companionB'), 0);
       expect(
           tester
               .widget<Switch>(
@@ -180,10 +183,93 @@ void main() {
       expect(change.expectedRevision, 7);
       expect(change.changes, {'motion.nod': false});
       expect(find.text('已关闭，正在进行的对话从下一句起生效'), findsOneWidget);
+      expect(
+          tester
+              .widget<Switch>(
+                  find.byKey(const Key('tool-companion-switch-$companionA')))
+              .value,
+          isFalse);
+
+      // The next write is made against what the Host answered.
+      await tester
+          .tap(find.byKey(const Key('tool-companion-switch-$companionA')));
+      await tester.pumpAndSettle();
+      expect(tools.companionChanges.last.$2.expectedRevision, 8);
+      expect(tools.companionChanges.last.$2.changes, {'motion.nod': true});
+      // The other Eidolon's revision is its own.
+      await tester
+          .tap(find.byKey(const Key('tool-companion-switch-$companionB')));
+      await tester.pumpAndSettle();
+      expect(tools.companionChanges.last.$1, companionB);
+      expect(tools.companionChanges.last.$2.expectedRevision, 2);
+      expect(tools.reads('companion $companionA'), 0);
 
       // What it needs, in words.
       expect(find.text('需要设备允许动作'), findsOneWidget);
       expect(find.text('需要设备支持'), findsOneWidget);
+    });
+
+    testWidgets('somebody else changing one Eidolon first rereads only it',
+        (tester) async {
+      final tools = FakeToolPolicies(companions: {
+        companionA: CompanionSwitches('小忆', revision: 7),
+        companionB: CompanionSwitches('阿福', revision: 2),
+      });
+      await _open(tester, tools);
+      await tester.tap(find.text('点头'));
+      await tester.pumpAndSettle();
+
+      // Meanwhile, elsewhere: 小忆's switch for it went off.
+      tools.companions[companionA]!
+        ..overrides['motion.nod'] = false
+        ..revision = 9;
+      tools.writeFailure = toolPolicyChanged;
+      await tester
+          .tap(find.byKey(const Key('tool-companion-switch-$companionA')));
+      await tester.pumpAndSettle();
+
+      expect(tools.reads('companion $companionA'), 1);
+      expect(tools.reads('companion $companionB'), 0);
+      expect(find.text('这个伙伴的能力刚被改过，已经重新读取'), findsOneWidget);
+      expect(
+          tester
+              .widget<Switch>(
+                  find.byKey(const Key('tool-companion-switch-$companionA')))
+              .value,
+          isFalse);
+
+      // And the next write is made against the revision it reread.
+      await tester
+          .tap(find.byKey(const Key('tool-companion-switch-$companionA')));
+      await tester.pumpAndSettle();
+      expect(tools.companionChanges.last.$2.expectedRevision, 9);
+    });
+
+    testWidgets('an Eidolon not allowed to move its body says so',
+        (tester) async {
+      final tools = FakeToolPolicies(companions: {
+        companionA: CompanionSwitches('小忆', allowBodyControl: false),
+        companionB: CompanionSwitches('阿福'),
+      });
+      await _open(tester, tools);
+      await tester.tap(find.text('点头'));
+      await tester.pumpAndSettle();
+
+      final held = tester.widget<Switch>(
+          find.byKey(const Key('tool-companion-switch-$companionA')));
+      expect(held.value, isTrue);
+      expect(held.onChanged, isNull);
+      expect(
+          find.descendant(
+              of: find.byKey(const Key('tool-companion-$companionA')),
+              matching: find.text('已关闭操控身体')),
+          findsOneWidget);
+      expect(
+          tester
+              .widget<Switch>(
+                  find.byKey(const Key('tool-companion-switch-$companionB')))
+              .onChanged,
+          isNotNull);
     });
 
     testWidgets('a tool the Owner turned off greys every Eidolon\'s switch',

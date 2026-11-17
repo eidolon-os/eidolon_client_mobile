@@ -12,9 +12,8 @@ import 'tools_wording.dart';
 /// the Owner's devices can run it (§5.2).
 ///
 /// Each Eidolon's switch is that Eidolon's own, written the same way its
-/// 「它能做的事」 page writes it: against the revision of its switches this
-/// page read, which is why they are read here rather than taken from the
-/// overview row, which carries no revision.
+/// 「它能做的事」 page writes it: against the revision of its switches, as the
+/// overview row carries it and each write's answer moves it on.
 class ToolDetailPage extends StatefulWidget {
   const ToolDetailPage({
     super.key,
@@ -35,7 +34,12 @@ class ToolDetailPage extends StatefulWidget {
 }
 
 class _ToolDetailPageState extends State<ToolDetailPage> {
-  final _companions = <String, CompanionToolsView>{};
+  /// Each Eidolon's switch for this tool, from the overview row until a write
+  /// or a reread answers for it.
+  late final _companions = {
+    for (final companion in widget.tool.companions)
+      companion.companionId: companion,
+  };
   final _unreadCompanions = <String>{};
   final _saving = <String>{};
   final _onDevices = <String, DeviceToolRowView>{};
@@ -48,9 +52,6 @@ class _ToolDetailPageState extends State<ToolDetailPage> {
   @override
   void initState() {
     super.initState();
-    for (final companion in _tool.companions) {
-      unawaited(_readCompanion(companion.companionId));
-    }
     if (_needsDevice) {
       for (final device in widget.devices) {
         unawaited(_readDevice(device.deviceId));
@@ -58,14 +59,26 @@ class _ToolDetailPageState extends State<ToolDetailPage> {
     }
   }
 
-  Future<void> _readCompanion(String companionId) async {
+  /// What the Host answered for one Eidolon, kept as that Eidolon's switch
+  /// for this tool.
+  void _keep(String companionId, CompanionToolsView answer) {
+    final was = _companions[companionId]!;
+    final row = answer.tools.where((row) => row.key == _tool.key).firstOrNull;
+    _companions[companionId] = ToolCompanionSwitchView(
+      companionId: companionId,
+      name: was.name,
+      revision: answer.revision,
+      enabled: row?.companionEnabled ?? was.enabled,
+      effective: row?.effective ?? was.effective,
+    );
+    _unreadCompanions.remove(companionId);
+  }
+
+  /// Only after somebody else changed this Eidolon's switches first.
+  Future<void> _rereadCompanion(String companionId) async {
     try {
-      final view = await widget.tools.companion(companionId);
-      if (!mounted) return;
-      setState(() {
-        _companions[companionId] = view;
-        _unreadCompanions.remove(companionId);
-      });
+      final answer = await widget.tools.companion(companionId);
+      if (mounted) setState(() => _keep(companionId, answer));
     } catch (_) {
       if (mounted) setState(() => _unreadCompanions.add(companionId));
     }
@@ -98,10 +111,10 @@ class _ToolDetailPageState extends State<ToolDetailPage> {
           ToolPolicyChange(
               expectedRevision: current.revision, changes: {_tool.key: on}));
       if (!mounted) return;
-      setState(() => _companions[companionId] = answer);
+      setState(() => _keep(companionId, answer));
       sayToolNotice(context, toolChangeNotice(on));
     } catch (error) {
-      if (toolScreenIsStale(error)) await _readCompanion(companionId);
+      if (toolScreenIsStale(error)) await _rereadCompanion(companionId);
       if (!mounted) return;
       sayToolNotice(context,
           toolRefusal(error, changedElsewhere: companionToolsChangedElsewhere));
@@ -144,7 +157,7 @@ class _ToolDetailPageState extends State<ToolDetailPage> {
                 ? const ListTile(title: Text('还没有伙伴'))
                 : Column(children: [
                     for (final companion in _tool.companions)
-                      _companionRow(companion),
+                      _companionRow(_companions[companion.companionId]!),
                   ]),
           ),
           if (requirements.isNotEmpty) ...[
@@ -177,32 +190,28 @@ class _ToolDetailPageState extends State<ToolDetailPage> {
 
   Widget _companionRow(ToolCompanionSwitchView companion) {
     final id = companion.companionId;
-    final row =
-        _companions[id]?.tools.where((row) => row.key == _tool.key).firstOrNull;
-    final allowsBody = _companions[id]?.allowBodyControl ?? true;
+    final unread = _unreadCompanions.contains(id);
+    // Its own switch on and still not in use, with the Owner's on: what is
+    // left above it is 「允许操控身体」.
     final overruled = !_tool.globalEnabled
         ? toolGlobalOffText
-        : row != null && row.bodyControl && !allowsBody
+        : companion.enabled && !companion.effective
             ? toolBodyControlOffText
             : null;
     return ListTile(
       key: Key('tool-companion-$id'),
       title: Text(companion.name),
-      subtitle: _unreadCompanions.contains(id)
+      subtitle: unread
           ? const Text('读不到这个伙伴的开关')
           : overruled == null
               ? null
               : Text(overruled),
       enabled: overruled == null,
-      trailing: row == null
-          ? (_unreadCompanions.contains(id)
-              ? null
-              : const SizedBox.square(
-                  dimension: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2)))
+      trailing: unread
+          ? null
           : Switch(
               key: Key('tool-companion-switch-$id'),
-              value: row.companionEnabled,
+              value: companion.enabled,
               onChanged: overruled != null || _saving.contains(id)
                   ? null
                   : (on) => _switch(id, on),
